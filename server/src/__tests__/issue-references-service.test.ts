@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   companies,
@@ -19,31 +18,6 @@ import { issueReferenceService } from "../services/issue-references.ts";
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
-async function ensureIssueReferenceMentionsTable(db: ReturnType<typeof createDb>) {
-  await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS "issue_reference_mentions" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "company_id" uuid NOT NULL,
-      "source_issue_id" uuid NOT NULL REFERENCES "issues"("id") ON DELETE CASCADE,
-      "target_issue_id" uuid NOT NULL REFERENCES "issues"("id") ON DELETE CASCADE,
-      "source_kind" text NOT NULL,
-      "source_record_id" uuid,
-      "document_key" text,
-      "matched_text" text,
-      "created_at" timestamptz NOT NULL DEFAULT now(),
-      "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS "issue_reference_mentions_company_source_issue_idx"
-      ON "issue_reference_mentions" ("company_id", "source_issue_id");
-    CREATE INDEX IF NOT EXISTS "issue_reference_mentions_company_target_issue_idx"
-      ON "issue_reference_mentions" ("company_id", "target_issue_id");
-    CREATE INDEX IF NOT EXISTS "issue_reference_mentions_company_issue_pair_idx"
-      ON "issue_reference_mentions" ("company_id", "source_issue_id", "target_issue_id");
-    CREATE UNIQUE INDEX IF NOT EXISTS "issue_reference_mentions_company_source_mention_uq"
-      ON "issue_reference_mentions" ("company_id", "source_issue_id", "target_issue_id", "source_kind", "source_record_id");
-  `));
-}
-
 if (!embeddedPostgresSupport.supported) {
   console.warn(
     `Skipping embedded Postgres issue reference tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
@@ -59,7 +33,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-issue-refs-");
     db = createDb(tempDb.connectionString);
     refs = issueReferenceService(db);
-    await ensureIssueReferenceMentionsTable(db);
   }, 20_000);
 
   afterEach(async () => {
@@ -95,7 +68,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     await db.insert(issues).values([
       {
         id: sourceIssueId,
-        companyId,
         title: "Coordinate PAP-2",
         description: "Review /issues/pap-3 and ignore PAP-1 self references.",
         status: "todo",
@@ -104,7 +76,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
       },
       {
         id: targetTwoId,
-        companyId,
         title: "Target two",
         status: "todo",
         priority: "medium",
@@ -112,7 +83,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
       },
       {
         id: targetThreeId,
-        companyId,
         title: "Target three",
         status: "todo",
         priority: "medium",
@@ -120,7 +90,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
       },
       {
         id: inboundIssueId,
-        companyId,
         title: "Inbound reference",
         description: "This one depends on PAP-1.",
         status: "in_progress",
@@ -134,7 +103,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId: sourceIssueId,
       body: "Follow up in https://paperclip.test/issues/pap-2 after the document lands.",
     });
@@ -142,7 +110,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: "Plan",
       format: "markdown",
       latestBody: "Spec note: /PAP/issues/PAP-3",
@@ -150,7 +117,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     });
     await db.insert(issueDocuments).values({
       id: issueDocumentId,
-      companyId,
       issueId: sourceIssueId,
       documentId,
       key: "plan",
@@ -193,7 +159,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     await db.insert(issues).values([
       {
         id: sourceIssueId,
-        companyId,
         title: "Legacy issue",
         status: "todo",
         priority: "medium",
@@ -201,7 +166,6 @@ describeEmbeddedPostgres("issueReferenceService", () => {
       },
       {
         id: targetIssueId,
-        companyId,
         title: "Referenced legacy issue",
         status: "todo",
         priority: "medium",
@@ -211,14 +175,12 @@ describeEmbeddedPostgres("issueReferenceService", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId: sourceIssueId,
       body: "Legacy comment points at PAP-20.",
     });
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: "Legacy plan",
       format: "markdown",
       latestBody: "Legacy plan also links /issues/PAP-20.",
@@ -226,13 +188,12 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     });
     await db.insert(issueDocuments).values({
       id: issueDocumentId,
-      companyId,
       issueId: sourceIssueId,
       documentId,
       key: "plan",
     });
 
-    await refs.syncAllForCompany(companyId);
+    await refs.syncAllForCompany();
 
     const summary = await refs.listIssueReferenceSummary(sourceIssueId);
 

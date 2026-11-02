@@ -12,7 +12,6 @@ import {
 } from "./common.js";
 
 interface AssetOptions extends BaseClientOptions {
-  companyId?: string;
   file?: string;
   namespace?: string;
   alt?: string;
@@ -26,40 +25,36 @@ export function registerAssetCommands(program: Command): void {
   addCommonClientOptions(
     asset
       .command("image:upload")
-      .description("Upload a company image asset")
+      .description("Upload an organization image asset")
       .requiredOption("--file <path>", "Image file path")
-      .option("-C, --company-id <id>", "Company ID")
       .option("--namespace <value>", "Asset namespace suffix")
       .option("--alt <text>", "Alt text metadata")
       .option("--title <text>", "Title metadata")
       .action(async (opts: AssetOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await uploadAsset(ctx.api.apiBase, ctx.api.apiKey, apiPath`/api/companies/${ctx.companyId}/assets/images`, opts);
+          const ctx = resolveCommandContext(opts);
+          const result = await uploadAsset(ctx.api.apiBase, ctx.api.apiKey, apiPath`/api/assets/images`, opts);
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
     asset
       .command("logo:upload")
-      .description("Upload a company logo")
+      .description("Upload an organization logo")
       .requiredOption("--file <path>", "Logo file path")
-      .option("-C, --company-id <id>", "Company ID")
       .action(async (opts: AssetOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await uploadAsset(ctx.api.apiBase, ctx.api.apiKey, apiPath`/api/companies/${ctx.companyId}/logo`, opts);
+          const ctx = resolveCommandContext(opts);
+          const result = await uploadAsset(ctx.api.apiBase, ctx.api.apiKey, apiPath`/api/organization/logo`, opts);
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(

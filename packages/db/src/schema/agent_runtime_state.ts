@@ -1,12 +1,9 @@
 import { pgTable, uuid, text, timestamp, jsonb, bigint, index } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
-
 export const agentRuntimeState = pgTable(
   "agent_runtime_state",
   {
     agentId: uuid("agent_id").primaryKey().references(() => agents.id),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     adapterType: text("adapter_type").notNull(),
     sessionId: text("session_id"),
     stateJson: jsonb("state_json").$type<Record<string, unknown>>().notNull().default({}),
@@ -21,8 +18,8 @@ export const agentRuntimeState = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyAgentIdx: index("agent_runtime_state_company_agent_idx").on(table.companyId, table.agentId),
-    companyUpdatedIdx: index("agent_runtime_state_company_updated_idx").on(table.companyId, table.updatedAt),
+    companyAgentIdx: index("agent_runtime_state_company_agent_idx").on(table.agentId),
+    companyUpdatedIdx: index("agent_runtime_state_company_updated_idx").on(table.updatedAt),
   }),
 );
 

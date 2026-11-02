@@ -18,13 +18,13 @@ describe("executionWorkspacesApi.listSummaries", () => {
   });
 
   it("requests the lightweight summary payload", async () => {
-    await executionWorkspacesApi.listSummaries("company-1", {
+    await executionWorkspacesApi.listSummaries({
       projectId: "project-1",
       reuseEligible: true,
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/execution-workspaces?projectId=project-1&reuseEligible=true&summary=true",
+      "/execution-workspaces?projectId=project-1&reuseEligible=true&summary=true",
     );
   });
 
@@ -80,14 +80,14 @@ describe("executionWorkspacesApi.listSummaries", () => {
       nextOffset: null,
     });
 
-    const overview = await executionWorkspacesApi.listOverview("company-1", {
+    const overview = await executionWorkspacesApi.listOverview({
       status: ["active", "idle"],
       limit: 25,
       offset: 10,
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/workspace-overview?status=active%2Cidle&limit=25&offset=10",
+      "/workspace-overview?status=active%2Cidle&limit=25&offset=10",
     );
     expect(overview.items[0]!.lastUpdatedAt).toBeInstanceOf(Date);
     expect(overview.items[0]!.primaryService?.updatedAt).toBeInstanceOf(Date);

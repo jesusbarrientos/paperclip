@@ -58,8 +58,8 @@ vi.mock("@/lib/router", () => ({
   useNavigate: () => mockRouterState.navigate,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("../context/DialogContext", () => ({
@@ -116,7 +116,6 @@ async function act(callback: () => void | Promise<void>) {
 function makeAgent(overrides: Partial<Agent>): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "Alpha",
     urlKey: "alpha",
     role: "engineer",
@@ -260,7 +259,6 @@ const invalidOrgChainHealth: AgentOrgChainHealth = {
   fullChain: [
     {
       id: "agent-1",
-      companyId: "company-1",
       name: "Alpha",
       status: "active",
       reportsTo: "manager-1",
@@ -269,7 +267,6 @@ const invalidOrgChainHealth: AgentOrgChainHealth = {
     },
     {
       id: "manager-1",
-      companyId: "company-1",
       name: "Terminated Manager",
       status: "terminated",
       reportsTo: null,
@@ -443,7 +440,7 @@ describe("Agents", () => {
     await flushReact();
     await flushReact();
 
-    expect(mockAgentsApi.org).toHaveBeenCalledWith("company-1");
+    expect(mockAgentsApi.org).toHaveBeenCalledWith();
     expect(orgToggle?.getAttribute("aria-pressed")).toBe("true");
     const orgViewport = container.querySelector('[data-testid="org-chart-viewport"]');
     expect(orgViewport).not.toBeNull();
@@ -960,7 +957,7 @@ describe("Agents", () => {
     await flushReact();
     await flushReact();
 
-    expect(mockBuiltInAgentsApi.list).toHaveBeenCalledWith("company-1");
+    expect(mockBuiltInAgentsApi.list).toHaveBeenCalledWith();
     expect(container.textContent).toContain("Built-in");
     expect(container.textContent).toContain("Briefs Agent");
     expect(container.textContent).not.toContain("Regular Agent");

@@ -13,7 +13,6 @@ const DURABLE_STORE_SCHEMA = "paperclip.capability.live-session-checkpoint.v1" a
 export interface CapabilityLiveSessionStoreBinding {
   sessionId: string;
   runId: string;
-  companyId: string;
   actorId: string;
   taskId: string;
 }
@@ -44,7 +43,6 @@ function sameBinding(
 ): boolean {
   return left.sessionId === right.sessionId
     && left.runId === right.runId
-    && left.companyId === right.companyId
     && left.actorId === right.actorId
     && left.taskId === right.taskId;
 }
@@ -163,7 +161,6 @@ export class DurableCapabilityLiveSessionStore implements CapabilityLiveSessionS
     const actual: CapabilityLiveSessionStoreBinding = {
       sessionId: snapshot.sessionId,
       runId: authority.runId,
-      companyId: authority.companyId,
       actorId: authority.actorId,
       taskId: authority.taskId,
     };

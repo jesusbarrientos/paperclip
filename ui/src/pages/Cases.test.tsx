@@ -12,14 +12,14 @@ function act(callback: () => void) {
   flushSync(callback);
 }
 
-const companyState = vi.hoisted(() => ({ selectedCompanyId: "company-1" }));
+const companyState = vi.hoisted(() => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }));
 const mockCasesApi = vi.hoisted(() => ({ list: vi.fn() }));
 const mockProjectsApi = vi.hoisted(() => ({ list: vi.fn() }));
 const mockIssuesApi = vi.hoisted(() => ({ listLabels: vi.fn() }));
 const mockCopyTextToClipboard = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
-vi.mock("@/context/CompanyContext", () => ({ useCompany: () => companyState }));
+vi.mock("@/context/OrganizationContext", () => ({ useOrganization: () => companyState }));
 vi.mock("@/context/BreadcrumbContext", () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }) }));
 vi.mock("@/api/cases", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/cases")>()),
@@ -33,8 +33,8 @@ vi.mock("@/lib/router", () => ({
     <a href={to} {...props}>{children}</a>
   ),
   useNavigate: () => mockNavigate,
-  useCaseHref: () => (...segments: string[]) =>
-    `/PAP/${["cases", ...segments].filter(Boolean).join("/")}`,
+  caseHref: (...segments: string[]) =>
+    `/${["cases", ...segments].filter(Boolean).join("/")}`,
 }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,7 +68,6 @@ function dispatchShortcut(key: string) {
 function createCase(overrides: Partial<CaseSummary>): CaseSummary {
   return {
     id: overrides.id ?? "case-1",
-    companyId: "company-1",
     projectId: null,
     caseNumber: 1,
     identifier: overrides.identifier ?? "PAP-C1",
@@ -130,7 +129,7 @@ describe("Cases list", () => {
       expect(container.textContent).toContain("Active post");
       expect(container.textContent).not.toContain("Done post");
       expect(container.textContent).not.toContain("active ·");
-      expect(mockCasesApi.list).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(mockCasesApi.list).toHaveBeenCalledWith(expect.objectContaining({
         limit: 200,
       }));
     });
@@ -157,7 +156,7 @@ describe("Cases list", () => {
     });
 
     await waitForAssertion(() => {
-      expect(mockCasesApi.list).toHaveBeenLastCalledWith("company-1", expect.objectContaining({
+      expect(mockCasesApi.list).toHaveBeenLastCalledWith(expect.objectContaining({
         q: "launch",
         limit: 200,
       }));
@@ -254,7 +253,7 @@ describe("Cases list", () => {
 
   it("shows and copies keys only when the key column is enabled", async () => {
     window.localStorage.setItem(
-      "paperclip:cases:company-1:view",
+      "paperclip:cases:view",
       JSON.stringify({
         columns: ["id", "key", "title", "status", "updated"],
       }),
@@ -290,7 +289,7 @@ describe("Cases list", () => {
 
   it("tree mode forces an ungrouped parent-child order and adds the type column", async () => {
     window.localStorage.setItem(
-      "paperclip:cases:company-1:view",
+      "paperclip:cases:view",
       JSON.stringify({
         treeView: true,
         groupBy: "type",
@@ -331,7 +330,7 @@ describe("Cases list", () => {
       expect(container.textContent).toContain("brief");
       expect(container.textContent).toContain("asset");
       expect(container.querySelector('button[title="Show flat case list"]')).not.toBeNull();
-      expect(mockCasesApi.list).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(mockCasesApi.list).toHaveBeenCalledWith(expect.objectContaining({
         includeAncestors: true,
         limit: 200,
       }));
@@ -363,7 +362,7 @@ describe("Cases list", () => {
 
   it("keeps filtered-out ancestors visible in tree mode when descendants match", async () => {
     window.localStorage.setItem(
-      "paperclip:cases:company-1:view",
+      "paperclip:cases:view",
       JSON.stringify({
         treeView: true,
         columns: ["id", "title", "type", "status", "updated"],
@@ -452,14 +451,14 @@ describe("Cases list", () => {
     await flush();
     dispatchShortcut("Enter");
 
-    expect(mockNavigate).toHaveBeenCalledWith("/PAP/cases/PAP-C1");
+    expect(mockNavigate).toHaveBeenCalledWith("/cases/PAP-C1");
 
     act(() => root.unmount());
   });
 
   it("supports keyboard tree folding and opening parent case rows", async () => {
     window.localStorage.setItem(
-      "paperclip:cases:company-1:view",
+      "paperclip:cases:view",
       JSON.stringify({
         treeView: true,
         columns: ["id", "title", "type", "status", "updated"],
@@ -506,14 +505,14 @@ describe("Cases list", () => {
 
     dispatchShortcut("Enter");
 
-    expect(mockNavigate).toHaveBeenCalledWith("/PAP/cases/PAP-C1");
+    expect(mockNavigate).toHaveBeenCalledWith("/cases/PAP-C1");
 
     act(() => root.unmount());
   });
 
   it("restores persisted search, filters, group, sort, and columns", async () => {
     window.localStorage.setItem(
-      "paperclip:cases:company-1:view",
+      "paperclip:cases:view",
       JSON.stringify({
         search: "launch",
         statusFilters: ["done"],
@@ -546,7 +545,7 @@ describe("Cases list", () => {
     const root = renderPage(container);
 
     await waitForAssertion(() => {
-      expect(mockCasesApi.list).toHaveBeenLastCalledWith("company-1", expect.objectContaining({
+      expect(mockCasesApi.list).toHaveBeenLastCalledWith(expect.objectContaining({
         q: "launch",
         limit: 200,
       }));
@@ -560,7 +559,7 @@ describe("Cases list", () => {
 
   it("applies multi-select type and status filters from persisted state", async () => {
     window.localStorage.setItem(
-      "paperclip:cases:company-1:view",
+      "paperclip:cases:view",
       JSON.stringify({
         statusFilters: ["in_progress", "done"],
         typeFilters: ["blog_post", "docs_page"],
@@ -577,7 +576,7 @@ describe("Cases list", () => {
     const root = renderPage(container);
 
     await waitForAssertion(() => {
-      expect(mockCasesApi.list).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(mockCasesApi.list).toHaveBeenCalledWith(expect.objectContaining({
         types: ["blog_post", "docs_page"],
         statuses: ["in_progress", "done"],
         projectIds: ["project-1"],

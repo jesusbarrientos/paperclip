@@ -135,7 +135,6 @@ async function createApp() {
 function buildProject(overrides: Record<string, unknown> = {}) {
   return {
     id: "project-1",
-    companyId: "company-1",
     urlKey: "project-1",
     goalId: null,
     goalIds: [],
@@ -173,7 +172,6 @@ function buildProject(overrides: Record<string, unknown> = {}) {
 function buildWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     id: "workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     name: "Primary",
     sourceType: "local_path",
@@ -289,7 +287,7 @@ describe("project workspace host-path floor", () => {
     setManagedSandboxOnly(true);
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/projects")
+      .post("/api/projects")
       .send({
         name: "Project",
         workspace: { name: "Primary", cwd: "/srv/projects/paperclip" },
@@ -306,7 +304,7 @@ describe("project workspace host-path floor", () => {
     setManagedSandboxOnly(true);
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/projects")
+      .post("/api/projects")
       .send({
         name: "Project",
         workspace: { name: "Primary", repoUrl: "https://github.com/paperclipai/paperclip" },

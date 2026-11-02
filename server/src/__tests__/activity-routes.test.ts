@@ -50,7 +50,7 @@ async function createApp(
   actor: Record<string, unknown> = {
     type: "board",
     userId: "user-1",
-    companyIds: ["company-1"],
+    memberships: [{ membershipRole: "operator", status: "active" }],
     source: "session",
     isInstanceAdmin: false,
   },
@@ -63,10 +63,7 @@ async function createApp(
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
-      ...actor,
-      companyIds: Array.isArray(actor.companyIds) ? [...actor.companyIds] : actor.companyIds,
-    };
+    (req as any).actor = { ...actor };
     next();
   });
   app.use("/api", activityRoutes({} as any));
@@ -118,11 +115,10 @@ describe("activity routes", () => {
     mockAccessService.canUser.mockResolvedValue(false);
   });
 
-  it("returns redacted all-actors rows to a basic company reader", async () => {
+  it("returns redacted all-actors rows to a basic organization reader", async () => {
     mockAgentActionAuditService.list.mockResolvedValue({
       items: [{
         id: "activity-1",
-        companyId: "company-1",
         actorType: "plugin",
         actorId: "plugin-1",
         action: "plugin.synced",
@@ -140,11 +136,10 @@ describe("activity routes", () => {
 
     const app = await createApp();
     const res = await request(app)
-      .get("/api/companies/company-1/audit/agent-actions?actorScope=all");
+      .get("/api/audit/agent-actions?actorScope=all");
 
     expect(res.status).toBe(200);
     expect(mockAgentActionAuditService.list).toHaveBeenCalledWith({
-      companyId: "company-1",
       actorScope: "all",
       limit: 50,
     });
@@ -166,7 +161,7 @@ describe("activity routes", () => {
   it("rejects attribution filters for a basic all-actors reader", async () => {
     const app = await createApp();
     const res = await request(app)
-      .get("/api/companies/company-1/audit/agent-actions?actorScope=all&runId=00000000-0000-4000-8000-000000000001");
+      .get("/api/audit/agent-actions?actorScope=all&runId=00000000-0000-4000-8000-000000000001");
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("audit:view_agent_actions");
@@ -188,11 +183,10 @@ describe("activity routes", () => {
 
     const app = await createApp();
     const res = await request(app)
-      .get("/api/companies/company-1/audit/agent-actions?actorScope=all&actorType=system");
+      .get("/api/audit/agent-actions?actorScope=all&actorType=system");
 
     expect(res.status).toBe(200);
     expect(mockAgentActionAuditService.list).toHaveBeenCalledWith({
-      companyId: "company-1",
       actorScope: "all",
       actorType: "system",
       limit: 50,
@@ -206,15 +200,14 @@ describe("activity routes", () => {
     expect(res.body.accessTier).toBe("full");
   });
 
-  it("limits company activity lists by default", async () => {
+  it("limits activity lists by default", async () => {
     mockActivityService.list.mockResolvedValue([]);
 
     const app = await createApp();
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/companies/company-1/activity"));
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/activity"));
 
     expect(res.status).toBe(200);
     expect(mockActivityService.list).toHaveBeenCalledWith({
-      companyId: "company-1",
       agentId: undefined,
       entityType: undefined,
       entityId: undefined,
@@ -222,17 +215,16 @@ describe("activity routes", () => {
     });
   });
 
-  it("caps requested company activity list limits", async () => {
+  it("caps requested activity list limits", async () => {
     mockActivityService.list.mockResolvedValue([]);
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/activity?limit=5000&entityType=issue"),
+      request(baseUrl).get("/api/activity?limit=5000&entityType=issue"),
     );
 
     expect(res.status).toBe(200);
     expect(mockActivityService.list).toHaveBeenCalledWith({
-      companyId: "company-1",
       agentId: undefined,
       entityType: "issue",
       entityId: undefined,
@@ -242,8 +234,7 @@ describe("activity routes", () => {
 
   it("resolves alphanumeric issue identifiers before loading runs", async () => {
     mockIssueService.getByIdentifier.mockResolvedValue({
-      id: "issue-uuid-1",
-      companyId: "company-1",
+      id: "issue-uuid-1"
     });
     mockActivityService.runsForIssue.mockResolvedValue([
       {
@@ -258,14 +249,14 @@ describe("activity routes", () => {
     expect(res.status).toBe(200);
     expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PC1A2-475");
     expect(mockIssueService.getById).not.toHaveBeenCalled();
-    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("company-1", "issue-uuid-1");
+    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("issue-uuid-1");
     expect(res.body).toEqual([{ runId: "run-1", adapterType: "codex_local" }]);
   });
 
-  it("requires company access before creating activity events", async () => {
-    const app = await createApp();
+  it("requires an organization membership before creating activity events", async () => {
+    const app = await createApp({ type: "board", userId: "user-1", memberships: [], source: "session" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post("/api/companies/company-2/activity")
+      .post("/api/activity")
       .send({
         actorId: "user-1",
         action: "test.event",
@@ -277,19 +268,17 @@ describe("activity routes", () => {
     expect(mockActivityService.create).not.toHaveBeenCalled();
   });
 
-  it.each([null, { id: "issue-uuid-1", companyId: "company-2" }])(
-    "does not start run reads or retries for a missing or cross-company task", async (issue) => {
-      mockIssueService.getByIdentifier.mockResolvedValue(issue);
-      const app = await createApp();
-      const res = await request(app).get("/api/issues/TEST-1/runs");
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: "Issue not found" });
-      expect(mockActivityService.runsForIssue).not.toHaveBeenCalled();
-    },
-  );
+  it("does not start run reads or retries for a missing task", async () => {
+    mockIssueService.getByIdentifier.mockResolvedValue(null);
+    const app = await createApp();
+    const res = await request(app).get("/api/issues/TEST-1/runs");
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "Issue not found" });
+    expect(mockActivityService.runsForIssue).not.toHaveBeenCalled();
+  });
 
   it("does not start run reads or retries when task read authorization is denied", async () => {
-    mockIssueService.getByIdentifier.mockResolvedValue({ id: "issue-uuid-1", companyId: "company-1" });
+    mockIssueService.getByIdentifier.mockResolvedValue({ id: "issue-uuid-1" });
     mockAccessService.decide.mockResolvedValue({ allowed: false, reason: "denied", explanation: "Denied by test policy." });
     const app = await createApp();
     const res = await request(app).get("/api/issues/TEST-1/runs");
@@ -297,13 +286,12 @@ describe("activity routes", () => {
     expect(mockActivityService.runsForIssue).not.toHaveBeenCalled();
   });
 
-  it("returns 200 [] (not 404) when listing issues for another company's run, preserving API contract and the cross-tenant oracle", async () => {
+  it("returns 200 [] (not 404) when a non-member lists issues for an existing run", async () => {
     mockHeartbeatService.getRun.mockResolvedValue({
-      id: "run-2",
-      companyId: "company-2",
+      id: "run-2"
     });
 
-    const app = await createApp();
+    const app = await createApp({ type: "board", userId: "user-1", memberships: [], source: "session" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/heartbeat-runs/run-2/issues"));
 
     expect(res.status).toBe(200);
@@ -311,7 +299,7 @@ describe("activity routes", () => {
     expect(mockActivityService.issuesForRun).not.toHaveBeenCalled();
   });
 
-  it("returns 200 [] (not 404) for a non-existent heartbeat run, matching the cross-tenant response", async () => {
+  it("returns 200 [] (not 404) for a non-existent heartbeat run, matching the non-member response", async () => {
     mockHeartbeatService.getRun.mockResolvedValue(null);
 
     const app = await createApp();

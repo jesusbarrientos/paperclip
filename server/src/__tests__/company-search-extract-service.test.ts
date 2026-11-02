@@ -91,11 +91,10 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
     return companyId;
   }
 
-  async function createIssue(companyId: string, values: Partial<typeof issues.$inferInsert> = {}) {
+  async function createIssue(values: Partial<typeof issues.$inferInsert> = {}) {
     const id = values.id ?? randomUUID();
     await db.insert(issues).values({
       id,
-      companyId,
       identifier: values.identifier ?? "EXT-1",
       title: values.title ?? "Extract target",
       description: values.description ?? null,
@@ -107,33 +106,30 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
   }
 
   it("expands and deduplicates URLs across issue, comment, and document sources", async () => {
-    const companyId = await createCompany();
+    await createCompany();
     const firstUrl = "https://github.com/paperclipai/paperclip/pull/123";
     const secondUrl = "https://github.com/paperclipai/paperclip/pull/456";
     const thirdUrl = "https://github.com/paperclipai/paperclip/pull/789";
-    const issueId = await createIssue(companyId, {
+    const issueId = await createIssue({
       description: `Primary ${firstUrl} and duplicate ${firstUrl}.`,
     });
     await db.insert(issueComments).values({
-      companyId,
       issueId,
       body: `Review ${secondUrl} and repeat ${firstUrl}`,
     });
     const documentId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: `PR notes ${thirdUrl}`,
       latestBody: `Also see [the second PR](${secondUrl}).`,
     });
     await db.insert(issueDocuments).values({
-      companyId,
       issueId,
       documentId,
       key: "plan",
     });
 
-    const result = await svc.extract(companyId, companySearchExtractQuerySchema.parse({
+    const result = await svc.extract(companySearchExtractQuerySchema.parse({
       contains: "github.com/paperclipai/paperclip/pull",
       kind: "url",
     }));
@@ -150,30 +146,28 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
   });
 
   it("keeps URL sources selected by scheme-less queries", async () => {
-    const companyId = await createCompany();
+    await createCompany();
     const titleUrl = "https://github.com/paperclipai/paperclip/pull/101";
     const descriptionUrl = "https://github.com/paperclipai/paperclip/pull/102";
     const documentTitleUrl = "https://github.com/paperclipai/paperclip/pull/103";
     const documentBodyUrl = "https://github.com/paperclipai/paperclip/pull/104";
-    const issueId = await createIssue(companyId, {
+    const issueId = await createIssue({
       title: `Review ${titleUrl}`,
       description: `Then merge ${descriptionUrl}`,
     });
     const documentId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: `Tracking ${documentTitleUrl}`,
       latestBody: `Final follow-up ${documentBodyUrl}`,
     });
     await db.insert(issueDocuments).values({
-      companyId,
       issueId,
       documentId,
       key: "plan",
     });
 
-    const result = await svc.extract(companyId, companySearchExtractQuerySchema.parse({
+    const result = await svc.extract(companySearchExtractQuerySchema.parse({
       contains: "github.com/paperclipai/paperclip/pull",
       kind: "url",
       scope: "all",
@@ -188,28 +182,28 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
   });
 
   it("filters by issue update window and status", async () => {
-    const companyId = await createCompany();
+    await createCompany();
     const now = Date.now();
-    const recentId = await createIssue(companyId, {
+    const recentId = await createIssue({
       identifier: "EXT-RECENT",
       description: "needle",
       status: "in_review",
       updatedAt: new Date(now - 24 * 60 * 60 * 1000),
     });
-    await createIssue(companyId, {
+    await createIssue({
       identifier: "EXT-OLD",
       description: "needle",
       status: "in_review",
       updatedAt: new Date(now - 60 * 24 * 60 * 60 * 1000),
     });
-    await createIssue(companyId, {
+    await createIssue({
       identifier: "EXT-DONE",
       description: "needle",
       status: "done",
       updatedAt: new Date(now - 24 * 60 * 60 * 1000),
     });
 
-    const result = await svc.extract(companyId, companySearchExtractQuerySchema.parse({
+    const result = await svc.extract(companySearchExtractQuerySchema.parse({
       contains: "needle",
       updatedWithin: "30d",
       status: "in_review",
@@ -219,14 +213,14 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
   });
 
   it("uses the default distinct-match cap and marks truncation explicitly", async () => {
-    const companyId = await createCompany();
+    await createCompany();
     const urls = Array.from(
       { length: COMPANY_SEARCH_EXTRACT_DEFAULT_MATCHES_PER_ISSUE + 1 },
       (_, index) => `https://github.com/paperclipai/paperclip/pull/${index + 1}`,
     );
-    await createIssue(companyId, { description: urls.join(" ") });
+    await createIssue({ description: urls.join(" ") });
 
-    const result = await svc.extract(companyId, companySearchExtractQuerySchema.parse({
+    const result = await svc.extract(companySearchExtractQuerySchema.parse({
       contains: "github.com/paperclipai/paperclip/pull",
       kind: "url",
     }));
@@ -238,14 +232,14 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
   });
 
   it("supports a bounded per-issue match cap for complete machine extraction", async () => {
-    const companyId = await createCompany();
+    await createCompany();
     const urls = Array.from(
       { length: COMPANY_SEARCH_EXTRACT_DEFAULT_MATCHES_PER_ISSUE + 1 },
       (_, index) => `https://github.com/paperclipai/paperclip/pull/${index + 1}`,
     );
-    await createIssue(companyId, { description: urls.join(" ") });
+    await createIssue({ description: urls.join(" ") });
 
-    const result = await svc.extract(companyId, companySearchExtractQuerySchema.parse({
+    const result = await svc.extract(companySearchExtractQuerySchema.parse({
       contains: "github.com/paperclipai/paperclip/pull",
       kind: "url",
       matchesPerIssue: COMPANY_SEARCH_EXTRACT_MAX_MATCHES_PER_ISSUE,
@@ -255,15 +249,5 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
     expect(result.results[0]?.matches).toHaveLength(urls.length);
     expect(result.results[0]?.matchesTruncated).toBe(false);
     expect(result.truncated).toBe(false);
-  });
-
-  it("does not return matching issues from another company", async () => {
-    const companyId = await createCompany();
-    const otherCompanyId = await createCompany("Other");
-    await createIssue(otherCompanyId, { description: "needle" });
-
-    const result = await svc.extract(companyId, companySearchExtractQuerySchema.parse({ contains: "needle" }));
-
-    expect(result.results).toEqual([]);
   });
 });

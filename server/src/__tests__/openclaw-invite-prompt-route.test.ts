@@ -66,6 +66,9 @@ function createSelectChain(rows: unknown[]) {
     where() {
       return query;
     },
+    limit() {
+      return query;
+    },
   };
   return {
     from() {
@@ -77,7 +80,6 @@ function createSelectChain(rows: unknown[]) {
 function createDbStub(...selectResponses: unknown[][]) {
   const createdInvite = {
     id: "invite-1",
-    companyId: "company-1",
     inviteType: "company_join",
     allowedJoinTypes: "agent",
     defaultsPayload: null,
@@ -127,13 +129,12 @@ function createApp(actor: Record<string, unknown>, db: Record<string, unknown>) 
   return app;
 }
 
-describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
+describe("POST /openclaw/invite-prompt", () => {
   const companyBranding = {
     name: "Acme AI",
     logoAssetId: "logo-1",
   };
   const logoAsset = {
-    companyId: "company-1",
     objectKey: "company-1/assets/companies/logo-1",
     contentType: "image/png",
     byteSize: 3,
@@ -152,68 +153,42 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
     const db = createDbStub();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "engineer",
     });
     const app = createApp(
       {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
         source: "agent_key",
       },
       db,
     );
 
     const res = await request(app)
-      .post("/api/companies/company-1/openclaw/invite-prompt")
+      .post("/api/openclaw/invite-prompt")
       .send({});
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Only CEO agents");
   });
 
-  it("rejects CEO agent callers outside the target company scope", async () => {
-    const db = createDbStub();
-    const app = createApp(
-      {
-        type: "agent",
-        agentId: "agent-1",
-        companyId: "company-2",
-        source: "agent_key",
-      },
-      db,
-    );
-
-    const res = await request(app)
-      .post("/api/companies/company-1/openclaw/invite-prompt")
-      .send({});
-
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain("another company");
-    expect(mockAgentService.getById).not.toHaveBeenCalled();
-    expect((db as any).__insertValues).not.toHaveBeenCalled();
-  });
-
   it("allows CEO agent callers and creates an agent-only invite", async () => {
     const db = createDbStub([companyBranding], [logoAsset]);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "ceo",
     });
     const app = createApp(
       {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
         source: "agent_key",
       },
       db,
     );
 
     const res = await request(app)
-      .post("/api/companies/company-1/openclaw/invite-prompt")
+      .post("/api/openclaw/invite-prompt")
       .send({ agentMessage: "Join and configure OpenClaw gateway." });
 
     expect([200, 201]).toContain(res.status);
@@ -233,7 +208,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
       {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -257,7 +232,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
       {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -265,7 +240,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
     );
 
     const res = await request(app)
-      .post("/api/companies/company-1/openclaw/invite-prompt")
+      .post("/api/openclaw/invite-prompt")
       .send({});
 
     expect([200, 201]).toContain(res.status);
@@ -281,7 +256,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
       {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -289,7 +264,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
     );
 
     const res = await request(app)
-      .post("/api/companies/company-1/openclaw/invite-prompt")
+      .post("/api/openclaw/invite-prompt")
       .send({});
 
     expect(res.status).toBe(403);

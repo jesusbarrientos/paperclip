@@ -71,8 +71,6 @@ import {
   selectNativeSessionResumeRun,
 } from "./native-session-resume.js";
 import { nativeRuntimeContextFixture } from "./runtime-context.test-fixture.js";
-
-const companyId = "10000000-0000-4000-8000-000000000001";
 const issueId = "20000000-0000-4000-8000-000000000002";
 const agentId = "30000000-0000-4000-8000-000000000003";
 const previousRunId = "40000000-0000-4000-8000-000000000004";
@@ -297,7 +295,6 @@ function execution(
   } = {},
 ) {
   return buildNativeExecutionInput({
-    companyId,
     runId,
     issue: {
       id: issueId,
@@ -333,7 +330,6 @@ function execution(
 
 function planningExecution(runId: string, revisionId: string) {
   return buildNativeExecutionInput({
-    companyId,
     runId,
     issue: {
       id: issueId,
@@ -370,7 +366,6 @@ function planningExecution(runId: string, revisionId: string) {
 function previousRun(overrides: Record<string, unknown> = {}) {
   return {
     id: previousRunId,
-    companyId,
     agentId,
     nativeSessionId: normalizedSessionId,
     runnerProfileJson: {
@@ -385,7 +380,6 @@ function previousRun(overrides: Record<string, unknown> = {}) {
         identity: {
           runId: previousRunId,
           sessionId: normalizedSessionId,
-          companyId,
           issueId,
           agentId,
         },
@@ -496,8 +490,7 @@ const recoveryFakeCodex = resolve(
     const root = join(scratch, "state");
     const home = join(scratch, "home");
     const workspace = join(scratch, "workspace");
-    const companyId = randomUUID(),
-      agentId = randomUUID(),
+    const agentId = randomUUID(),
       issueId = randomUUID(),
       runId = randomUUID();
     const runnerInstanceId = randomUUID(),
@@ -515,7 +508,6 @@ const recoveryFakeCodex = resolve(
       await db
         .insert(companies)
         .values({
-          id: companyId,
           name: "Cleanup topology",
           issuePrefix: "NCT",
         });
@@ -523,7 +515,6 @@ const recoveryFakeCodex = resolve(
         .insert(agents)
         .values({
           id: agentId,
-          companyId,
           name: "Fixture",
           status: "active",
           adapterType: "paperclip_runner",
@@ -532,7 +523,6 @@ const recoveryFakeCodex = resolve(
         .insert(issues)
         .values({
           id: issueId,
-          companyId,
           title: "Exact topology",
           assigneeAgentId: agentId,
           status: "in_progress",
@@ -541,7 +531,6 @@ const recoveryFakeCodex = resolve(
         .insert(heartbeatRuns)
         .values({
           id: runId,
-          companyId,
           agentId,
           status: "running",
           runtimeMode: "native",
@@ -579,7 +568,6 @@ const recoveryFakeCodex = resolve(
       );
       session = await backend.openSession({
         identity: {
-          companyId,
           issueId,
           agentId,
           runId,
@@ -596,7 +584,6 @@ const recoveryFakeCodex = resolve(
       expect(normalized.sourceEventId).toBe(`${runnerInstanceId}:${runId}:1`);
       expect(normalized.payload).not.toHaveProperty("processId");
       const port = new PaperclipControlPlanePort(db, {
-        companyId,
         issueId,
         agentId,
         runId,
@@ -645,7 +632,6 @@ const recoveryFakeCodex = resolve(
       });
       signal.mockClear();
       const input = {
-        companyId,
         agentId,
         runId,
         nativeSessionId: normalizedSessionId,
@@ -793,27 +779,23 @@ const recoveryFakeCodex = resolve(
         CODEX_HOME: sourceHome,
       };
       await db.insert(companies).values({
-        id: companyId,
         name: "Damaged recovery",
         issuePrefix: "DNR",
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Recovery runner",
         status: "active",
         adapterType: "paperclip_runner",
       });
       await db.insert(issues).values({
         id: issueId,
-        companyId,
         title: "Preserve the same task",
         assigneeAgentId: agentId,
         status: "in_progress",
       });
       await db.insert(completionContracts).values({
         id: currentExecution.completionContract.id,
-        companyId,
         issueId,
         revision: 1,
         schemaVersion: "paperclip.completion-contract.v1",
@@ -829,7 +811,6 @@ const recoveryFakeCodex = resolve(
       await db.insert(heartbeatRuns).values([
         {
           id: previousRunId,
-          companyId,
           agentId,
           status: "running",
           runtimeMode: "native",
@@ -842,7 +823,6 @@ const recoveryFakeCodex = resolve(
         },
         {
           id: currentRunId,
-          companyId,
           agentId,
           status: "running",
           runtimeMode: "native",
@@ -863,7 +843,6 @@ const recoveryFakeCodex = resolve(
       });
       firstSession = await firstBackend.openSession({
         identity: {
-          companyId,
           issueId,
           agentId,
           runId: previousRunId,
@@ -873,7 +852,6 @@ const recoveryFakeCodex = resolve(
       });
       const checkpoint = await firstSession.snapshot();
       expect(checkpoint.identity).toEqual({
-        companyId,
         issueId,
         agentId,
         runId: previousRunId,
@@ -977,7 +955,6 @@ const recoveryFakeCodex = resolve(
         .set({ status: "failed", runnerProfileJson: source.runnerProfileJson })
         .where(eq(heartbeatRuns.id, previousRunId));
       const selected = await findNativeSessionResumeRun(db, {
-        companyId,
         agentId,
         issueId,
         normalizedSessionId,
@@ -996,7 +973,6 @@ const recoveryFakeCodex = resolve(
         providerRecoveryPolicy: "allow_replacement_after_resume_failure",
       });
       expect(rebound?.identity).toEqual({
-        companyId,
         issueId,
         agentId,
         runId: currentRunId,
@@ -1013,7 +989,6 @@ const recoveryFakeCodex = resolve(
       let continuity: Record<string, unknown> | undefined;
       const controlPlaneInstanceId = randomUUID();
       const port = new PaperclipControlPlanePort(db, {
-        companyId,
         issueId,
         runId: currentRunId,
         agentId,
@@ -1173,7 +1148,6 @@ const recoveryFakeCodex = resolve(
         }),
       ).toBe(true);
       expect(results[0]).toMatchObject({
-        companyId,
         issueId,
         runId: currentRunId,
         schemaStatus: "accepted",
@@ -1226,20 +1200,16 @@ const recoveryFakeCodex = resolve(
       );
       const db = createDb(database.connectionString);
       try {
-        const otherCompany = randomUUID(),
-          otherAgent = randomUUID(),
+        const otherAgent = randomUUID(),
           otherIssue = randomUUID();
-        await db.insert(companies).values([
-          { id: companyId, name: "Session recovery", issuePrefix: "NRS" },
-          { id: otherCompany, name: "Other company", issuePrefix: "OTHER" },
-        ]);
+        await db.insert(companies).values({ name: "Session recovery", issuePrefix: "NRS" });
         await db.insert(agents).values([
-          { id: agentId, companyId, name: "Native runner" },
-          { id: otherAgent, companyId: otherCompany, name: "Other agent" },
+          { id: agentId, name: "Native runner" },
+          { id: otherAgent, name: "Other agent" },
         ]);
         await db.insert(issues).values([
-          { id: issueId, companyId, title: "Retain this task" },
-          { id: otherIssue, companyId, title: "Other task" },
+          { id: issueId, title: "Retain this task" },
+          { id: otherIssue, title: "Other task" },
         ]);
         const at = (second: number) =>
           new Date(Date.UTC(2026, 8, 8, 0, 0, second));
@@ -1252,7 +1222,6 @@ const recoveryFakeCodex = resolve(
           runnerInstanceId: randomUUID(),
         };
         const unused = {
-          companyId,
           agentId,
           runtimeMode: "native",
           nativeIssueId: issueId,
@@ -1270,13 +1239,6 @@ const recoveryFakeCodex = resolve(
             id: currentRunId,
             status: "running",
             createdAt: at(10),
-          },
-          {
-            ...unused,
-            id: randomUUID(),
-            companyId: otherCompany,
-            createdAt: at(3),
-            status: "running",
           },
           {
             ...unused,
@@ -1306,7 +1268,6 @@ const recoveryFakeCodex = resolve(
           },
         ]);
         const selection = {
-          companyId,
           agentId,
           issueId,
           normalizedSessionId,
@@ -1334,7 +1295,6 @@ const recoveryFakeCodex = resolve(
           previousRunId,
         );
         await db.insert(heartbeatRunEvents).values({
-          companyId,
           agentId,
           runId: bootstrapId,
           seq: 1,
@@ -1459,7 +1419,6 @@ const recoveryFakeCodex = resolve(
           locked();
           await release;
           await tx.insert(heartbeatRunEvents).values({
-            companyId,
             agentId,
             runId: lateId,
             seq: 1,
@@ -1637,7 +1596,6 @@ describe("rebindNativeSessionCheckpoint", () => {
     const original = structuredClone(source);
     const selected = selectNativeSessionResumeRun({
       runs: [unusedFailure, source],
-      companyId,
       agentId,
       issueId,
       normalizedSessionId,
@@ -1676,7 +1634,6 @@ describe("rebindNativeSessionCheckpoint", () => {
     ) =>
       selectNativeSessionResumeRun({
         runs: [candidate, source],
-        companyId,
         agentId,
         issueId,
         normalizedSessionId,
@@ -1704,7 +1661,7 @@ describe("rebindNativeSessionCheckpoint", () => {
     ).toBeNull();
   });
 
-  it("does not borrow checkpoints across company, agent, issue, or normalized session", () => {
+  it("does not borrow checkpoints across agent, issue, or normalized session", () => {
     const source = {
       ...previousRun(),
       nativeIssueId: issueId,
@@ -1716,7 +1673,6 @@ describe("rebindNativeSessionCheckpoint", () => {
       processStartedAt: null,
     };
     for (const changed of [
-      { companyId: currentRunId },
       { agentId: currentRunId },
       { nativeIssueId: currentRunId },
       { nativeSessionId: currentRunId },
@@ -1725,7 +1681,6 @@ describe("rebindNativeSessionCheckpoint", () => {
       expect(
         selectNativeSessionResumeRun({
           runs: [{ ...source, ...changed }],
-          companyId,
           agentId,
           issueId,
           normalizedSessionId,
@@ -1755,7 +1710,6 @@ describe("rebindNativeSessionCheckpoint", () => {
         buildExecution: (options) => {
           calls.push(options.resumedSession);
           return buildNativeExecutionInput({
-            companyId,
             runId: currentRunId,
             issue: {
               id: issueId,
@@ -1935,7 +1889,6 @@ describe("rebindNativeSessionCheckpoint", () => {
       expect(result.checkpoint).toBeNull();
       expect(result.normalizedSessionId).not.toBe(normalizedSessionId);
       expect(result.execution.binding).toMatchObject({
-        companyId,
         issueId,
         agentId,
         runId: currentRunId,
@@ -2143,7 +2096,6 @@ describe("rebindNativeSessionCheckpoint", () => {
       identity: {
         runId: currentRunId,
         sessionId: normalizedSessionId,
-        companyId,
         issueId,
         agentId,
       },
@@ -2377,7 +2329,7 @@ describe("buildNativeExecutionInput wake projection", () => {
     const issue = { id: issueId, identifier: "DOT-2", title: "Old greeting", description: null, workMode: "standard" };
     const message = { id: "wake", body: "NEW_SLACK_MESSAGE", authorType: "user", authorId: "board", sourceTrust: "user", createdByRunId: null };
     const input = buildNativeExecutionInput({
-      companyId, runId: currentRunId, agentId, issue,
+      runId: currentRunId, agentId, issue,
       taskPrompt: "FULL_BOOTSTRAP_WITH_FILE_AND_AUTHORIZATION_INSTRUCTIONS",
       resumedSession: true,
       previousTurn: { runId: previousRunId, task: issue },
@@ -2401,7 +2353,6 @@ describe("buildNativeExecutionInput wake projection", () => {
   it("uses a neutral turn title for authenticated external-chat follow-ups", () => {
     const staleRootTitle = "Reply with exactly STALE-ROOT-MARKER";
     const input = buildNativeExecutionInput({
-      companyId,
       runId: currentRunId,
       issue: {
         id: issueId,
@@ -2500,7 +2451,6 @@ describe("buildNativeExecutionInput wake projection", () => {
 
   it("writes native v4 and pins every provider's complete effective configuration", () => {
     const common = {
-      companyId,
       runId: currentRunId,
       issue: {
         id: issueId,
@@ -2647,7 +2597,6 @@ describe("buildNativeExecutionInput wake projection", () => {
 
   it.each([false, true])("projects wake context with the appropriate execution contract (conversation=%s)", (conversationMode) => {
     const input = buildNativeExecutionInput({
-      companyId,
       runId: currentRunId,
       issue: {
         id: issueId,

@@ -5,7 +5,7 @@ import type { ToolConnection } from "@paperclipai/shared";
 import { AGGREGATOR_NAMES, aggregatorManagementUrl, isAppAggregator } from "@paperclipai/shared/aggregator-apps";
 import type { AggregatorAppCatalogEntry } from "@paperclipai/shared/aggregator-app-catalog";
 import { toolsApi } from "@/api/tools";
-import { useAccountIdentity } from "@/api/companies-query";
+import { useAccountIdentity } from "@/api/account-identity";
 import { queryKeys } from "@/lib/queryKeys";
 import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";

@@ -18,7 +18,6 @@ const SKILL_ID = "skill-code-review";
 function makeVersion(overrides: Partial<CompanySkillVersion>): CompanySkillVersion {
   return {
     id: "ver",
-    companyId: COMPANY_ID,
     companySkillId: SKILL_ID,
     revisionNumber: 1,
     label: null,
@@ -62,7 +61,6 @@ function usageAgent(overrides: Partial<CompanySkillUsageAgent>): CompanySkillUsa
 function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
   return {
     id: SKILL_ID,
-    companyId: COMPANY_ID,
     key: "paperclip/code-review",
     slug: "code-review",
     name: "Code Review",
@@ -83,7 +81,6 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
     sharingScope: "company",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,
@@ -113,8 +110,8 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
 // offline (storybook staleTime is Infinity, so nothing refetches).
 function Seed({ skill, children }: { skill: CompanySkillDetail; children: ReactNode }) {
   const queryClient = useQueryClient();
-  queryClient.setQueryData(queryKeys.companySkills.versions(COMPANY_ID, skill.id), VERSIONS);
-  queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), AGENTS);
+  queryClient.setQueryData(queryKeys.companySkills.versions(skill.id), VERSIONS);
+  queryClient.setQueryData(queryKeys.agents.list(), AGENTS);
   return <>{children}</>;
 }
 
@@ -135,7 +132,7 @@ export const HeaderBadge: Story = {
         <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
           <span className="text-base font-semibold">Code Review</span>
           <span className="font-mono text-xs text-muted-foreground">v3</span>
-          <AgentsUsingSkillBadge companyId={COMPANY_ID} skill={skill} />
+          <AgentsUsingSkillBadge skill={skill} />
         </div>
       </Seed>
     );
@@ -150,7 +147,7 @@ export const HeaderBadgeEmpty: Story = {
         <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
           <span className="text-base font-semibold">Code Review</span>
           <span className="font-mono text-xs text-muted-foreground">v3</span>
-          <AgentsUsingSkillBadge companyId={COMPANY_ID} skill={skill} />
+          <AgentsUsingSkillBadge skill={skill} />
         </div>
       </Seed>
     );
@@ -164,7 +161,6 @@ function OpenDialog({ skill, canManage = true }: { skill: CompanySkillDetail; ca
       <AgentsUsingSkillDialog
         open={open}
         onOpenChange={setOpen}
-        companyId={COMPANY_ID}
         skill={skill}
         canManage={canManage}
       />

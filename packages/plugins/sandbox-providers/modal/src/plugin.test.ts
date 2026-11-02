@@ -98,7 +98,6 @@ type FakeSandbox = ReturnType<typeof createFakeSandbox>;
 
 const baseAcquireParams = {
   driverKey: "modal",
-  companyId: "company-1",
   environmentId: "env-1",
   runId: "run-1",
 };
@@ -241,7 +240,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentProbe?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: { ...baseConfig, workdir: "/srv/work" },
     });
@@ -253,7 +251,6 @@ describe("Modal sandbox provider plugin", () => {
     expect(mockImageFromRegistry).toHaveBeenCalledWith("node:20");
     expect(sandbox.setTags).toHaveBeenCalledWith(expect.objectContaining({
       "paperclip-provider": "modal",
-      "paperclip-company-id": "c-1",
     }));
     // First exec is the mkdir for the workspace, second is the probe command.
     expect(sandbox.execCalls[0]?.argv).toEqual([
@@ -293,7 +290,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentProbe?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
     });
@@ -307,7 +303,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentProbe?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
     });
@@ -410,7 +405,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       providerLeaseId: "sb-missing",
       config: { ...baseConfig, reuseLease: true },
@@ -424,7 +418,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       providerLeaseId: "sb-resume",
       config: { ...baseConfig, reuseLease: true },
@@ -456,7 +449,6 @@ describe("Modal sandbox provider plugin", () => {
     await expect(
       plugin.definition.onEnvironmentResumeLease?.({
         driverKey: "modal",
-        companyId: "c-1",
         environmentId: "e-1",
         providerLeaseId: "sb-resume",
         config: { ...baseConfig, reuseLease: true },
@@ -472,14 +464,12 @@ describe("Modal sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       providerLeaseId: "sb-reuse",
       config: { ...baseConfig, reuseLease: true },
     });
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       providerLeaseId: "sb-ephem",
       config: { ...baseConfig, reuseLease: false },
@@ -497,7 +487,6 @@ describe("Modal sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentDestroyLease?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       providerLeaseId: "sb-destroy",
       config: baseConfig,
@@ -508,7 +497,6 @@ describe("Modal sandbox provider plugin", () => {
     await expect(
       plugin.definition.onEnvironmentDestroyLease?.({
         driverKey: "modal",
-        companyId: "c-1",
         environmentId: "e-1",
         providerLeaseId: "sb-missing",
         config: baseConfig,
@@ -522,7 +510,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentRealizeWorkspace?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
       lease: {
@@ -556,7 +543,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
       lease: { providerLeaseId: "sb-exec", metadata: {} },
@@ -597,7 +583,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
       lease: { providerLeaseId: "sb-exec", metadata: {} },
@@ -628,7 +613,6 @@ describe("Modal sandbox provider plugin", () => {
     await expect(
       plugin.definition.onEnvironmentExecute?.({
         driverKey: "modal",
-        companyId: "c-1",
         environmentId: "e-1",
         config: baseConfig,
         lease: { providerLeaseId: "sb-exec", metadata: {} },
@@ -645,7 +629,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
       lease: { providerLeaseId: "sb-expired", metadata: {} },
@@ -670,7 +653,6 @@ describe("Modal sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
       lease: { providerLeaseId: "sb-exec", metadata: {} },
@@ -691,7 +673,6 @@ describe("Modal sandbox provider plugin", () => {
   it("returns an error result when execute is called without a provider lease id", async () => {
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "modal",
-      companyId: "c-1",
       environmentId: "e-1",
       config: baseConfig,
       lease: { providerLeaseId: null, metadata: {} },
@@ -720,7 +701,7 @@ describe("modal manifest form defaults", () => {
     expect(properties.image?.default).toBe("node:24");
   });
 
-  it("declares no default on secret-ref fields, which would be persisted as a company secret", () => {
+  it("declares no default on secret-ref fields, which would be persisted as a Paperclip secret", () => {
     for (const prop of Object.values(properties)) {
       if (prop.format === "secret-ref") {
         expect(prop.default).toBeUndefined();

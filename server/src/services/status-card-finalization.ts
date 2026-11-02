@@ -13,7 +13,6 @@ const STALLED_GENERATION_STATUSES = new Set<IssueStatus>(["done", "cancelled", "
 
 interface StalledGenerationIssue {
   id: string;
-  companyId: string;
   identifier: string | null;
   title: string;
   status: IssueStatus;
@@ -48,10 +47,7 @@ export async function finalizeStatusCardsForStalledGeneration(
       updatedAt: now,
     })
     .where(
-      and(
-        eq(statusCards.companyId, issue.companyId),
-        eq(statusCards.generatingIssueId, issue.id),
-      ),
+      eq(statusCards.generatingIssueId, issue.id),
     )
     .returning({ id: statusCards.id });
 

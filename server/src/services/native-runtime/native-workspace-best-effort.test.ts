@@ -5,7 +5,7 @@ vi.mock("../heartbeat-run-events.js", () => ({ appendHeartbeatRunEvent: log }));
 import { restoreNativeWorkspaceBestEffort } from "./native-workspace-best-effort.js";
 
 function fixture() {
-  const limit = vi.fn(async () => [{ companyId: "company", agentId: "agent" }]);
+  const limit = vi.fn(async () => [{ agentId: "agent" }]);
   const db = { select: vi.fn(() => ({ from: () => ({ where: () => ({ limit }) }) })) };
   return { db: db as unknown as Db, select: db.select, limit };
 }
@@ -28,7 +28,7 @@ describe("best effort native workspace export", () => {
     const { db } = fixture();
     await expect(restoreNativeWorkspaceBestEffort({ db, runId: "run", restore: async () => { throw error; } })).resolves.toBeUndefined();
     expect(log).toHaveBeenCalledExactlyOnceWith(db, expect.objectContaining({
-      companyId: "company", agentId: "agent", runId: "run", level: "info", eventType: "workspace_export_omitted",
+      agentId: "agent", runId: "run", level: "info", eventType: "workspace_export_omitted",
     }));
     expect(JSON.stringify(log.mock.calls[0][1])).not.toContain("private");
   });

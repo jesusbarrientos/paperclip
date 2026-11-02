@@ -32,11 +32,9 @@ import {
 } from "./common.js";
 
 interface AgentListOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface AgentLocalCliOptions extends BaseClientOptions {
-  companyId?: string;
   keyName?: string;
   installSkills?: boolean;
 }
@@ -47,7 +45,6 @@ interface AgentInboxMineOptions extends BaseClientOptions {
 }
 
 interface AgentWakeOptions extends BaseClientOptions {
-  companyId?: string;
   source?: string;
   trigger?: string;
   reason?: string;
@@ -57,7 +54,6 @@ interface AgentWakeOptions extends BaseClientOptions {
 }
 
 interface AgentJsonPayloadOptions extends BaseClientOptions {
-  companyId?: string;
   payloadJson: string;
 }
 
@@ -207,14 +203,12 @@ async function installSkillsForTarget(
 
 function buildAgentEnvExports(input: {
   apiBase: string;
-  companyId: string;
   agentId: string;
   apiKey: string;
 }): string {
   const escaped = (value: string) => value.replace(/'/g, "'\"'\"'");
   return [
     `export PAPERCLIP_API_URL='${escaped(input.apiBase)}'`,
-    `export PAPERCLIP_COMPANY_ID='${escaped(input.companyId)}'`,
     `export PAPERCLIP_AGENT_ID='${escaped(input.agentId)}'`,
     `export PAPERCLIP_API_KEY='${escaped(input.apiKey)}'`,
   ].join("\n");
@@ -289,12 +283,11 @@ export function registerAgentCommands(program: Command): void {
   addCommonClientOptions(
     agent
       .command("list")
-      .description("List agents for a company")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .description("List agents")
       .action(async (opts: AgentListOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const rows = (await ctx.api.get<Agent[]>(apiPath`/api/companies/${ctx.companyId}/agents`)) ?? [];
+          const ctx = resolveCommandContext(opts);
+          const rows = (await ctx.api.get<Agent[]>(apiPath`/api/agents`)) ?? [];
 
           if (ctx.json) {
             printOutput(rows, { json: true });
@@ -322,8 +315,7 @@ export function registerAgentCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -346,37 +338,33 @@ export function registerAgentCommands(program: Command): void {
     agent
       .command("create")
       .description("Create an agent from a JSON payload")
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "CreateAgent JSON payload")
       .action(async (opts: AgentJsonPayloadOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const payload = createAgentSchema.parse(parseJson(opts.payloadJson));
-          const created = await ctx.api.post<Agent>(apiPath`/api/companies/${ctx.companyId}/agents`, payload);
+          const created = await ctx.api.post<Agent>(apiPath`/api/agents`, payload);
           printOutput(created, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
     agent
       .command("hire")
       .description("Create an agent hire request")
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "CreateAgentHire JSON payload")
       .action(async (opts: AgentJsonPayloadOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await ctx.api.post(apiPath`/api/companies/${ctx.companyId}/agent-hires`, parseJson(opts.payloadJson));
+          const ctx = resolveCommandContext(opts);
+          const result = await ctx.api.post(apiPath`/api/agent-hires`, parseJson(opts.payloadJson));
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -734,7 +722,6 @@ export function registerAgentCommands(program: Command): void {
       .command("wake")
       .description("Request a heartbeat wakeup for an agent")
       .argument("<agentRef>", "Agent ID or shortname/url-key")
-      .option("-C, --company-id <id>", "Company ID for shortname/url-key lookup")
       .option("--source <source>", "Invocation source (timer, assignment, on_demand, automation)", "on_demand")
       .option("--trigger <trigger>", "Trigger detail (manual, ping, callback, system)", "manual")
       .option("--reason <text>", "Wakeup reason")
@@ -744,8 +731,7 @@ export function registerAgentCommands(program: Command): void {
       .action(async (agentRef: string, opts: AgentWakeOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
-          const query = opts.companyId ? `?${new URLSearchParams({ companyId: opts.companyId }).toString()}` : "";
-          const agentRow = await ctx.api.get<Agent>(`${apiPath`/api/agents/${agentRef}`}${query}`);
+          const agentRow = await ctx.api.get<Agent>(apiPath`/api/agents/${agentRef}`);
           if (!agentRow) {
             throw new Error(`Agent not found: ${agentRef}`);
           }
@@ -762,8 +748,7 @@ export function registerAgentCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -773,7 +758,6 @@ export function registerAgentCommands(program: Command): void {
         "Create an agent API key, install local Paperclip skills for Codex/Claude, and print shell exports",
       )
       .argument("<agentRef>", "Agent ID or shortname/url-key")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .option("--key-name <name>", "API key label", "local-cli")
       .option(
         "--no-install-skills",
@@ -781,11 +765,8 @@ export function registerAgentCommands(program: Command): void {
       )
       .action(async (agentRef: string, opts: AgentLocalCliOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const query = new URLSearchParams({ companyId: ctx.companyId ?? "" });
-          const agentRow = await ctx.api.get<Agent>(
-            `${apiPath`/api/agents/${agentRef}`}?${query.toString()}`,
-          );
+          const ctx = resolveCommandContext(opts);
+          const agentRow = await ctx.api.get<Agent>(apiPath`/api/agents/${agentRef}`);
           if (!agentRow) {
             throw new Error(`Agent not found: ${agentRef}`);
           }
@@ -815,7 +796,6 @@ export function registerAgentCommands(program: Command): void {
 
           const exportsText = buildAgentEnvExports({
             apiBase: ctx.api.apiBase,
-            companyId: agentRow.companyId,
             agentId: agentRow.id,
             apiKey: key.token,
           });
@@ -826,8 +806,7 @@ export function registerAgentCommands(program: Command): void {
                 agent: {
                   id: agentRow.id,
                   name: agentRow.name,
-                  urlKey: agentRow.urlKey,
-                  companyId: agentRow.companyId,
+                  urlKey: agentRow.urlKey
                 },
                 key: {
                   id: key.id,
@@ -861,8 +840,7 @@ export function registerAgentCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

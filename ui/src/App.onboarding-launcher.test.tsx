@@ -9,8 +9,8 @@ import {
 } from "./lib/onboarding-route";
 
 /**
- * The third way into onboarding for a company that already exists: the "Add
- * Agent" card on `/{prefix}/onboarding`, shown once the wizard is dismissed.
+ * The third way into onboarding for an organization that already exists: the
+ * "Add Agent" card on `/onboarding`, shown once the wizard is dismissed.
  *
  * The route resolver and the dashboard both choose the step from whether the
  * company already has its mission. This button hardcoded the mission step, so
@@ -47,7 +47,11 @@ vi.hoisted(() => {
   }
 });
 
-const routeState = vi.hoisted(() => ({ companyPrefix: "PC1" as string | undefined }));
+const organizationState = vi.hoisted(() => ({
+  organization: { id: "company-1", name: "Acme", issuePrefix: "PC1" } as
+    | { id: string; name: string; issuePrefix: string }
+    | null,
+}));
 const dialogState = vi.hoisted(() => ({
   onboardingOpen: false,
   onboardingRouteDismissed: true,
@@ -55,19 +59,9 @@ const dialogState = vi.hoisted(() => ({
 }));
 const mockGoalsApi = vi.hoisted(() => ({ list: vi.fn() }));
 
-vi.mock("@/lib/router", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
-  return {
-    ...actual,
-    useParams: () => ({ companyPrefix: routeState.companyPrefix }),
-    useActiveCompanyPrefix: () => routeState.companyPrefix ?? null,
-  };
-});
-
-vi.mock("./context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: [{ id: "company-1", name: "Acme", issuePrefix: "PC1" }],
-    selectedCompanyId: "company-1",
+vi.mock("./context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: organizationState.organization,
     loading: false,
     error: null,
   }),
@@ -136,7 +130,7 @@ describe("the onboarding launcher's Add Agent button", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    routeState.companyPrefix = "PC1";
+    organizationState.organization = { id: "company-1", name: "Acme", issuePrefix: "PC1" };
     dialogState.onboardingOpen = false;
     dialogState.onboardingRouteDismissed = true;
     mockGoalsApi.list.mockResolvedValue([]);
@@ -151,7 +145,7 @@ describe("the onboarding launcher's Add Agent button", () => {
     vi.clearAllMocks();
   });
 
-  it("opens on the agent step for a company that already has its mission", async () => {
+  it("opens on the agent step for an organization that already has its mission", async () => {
     mockGoalsApi.list.mockResolvedValue([COMPANY_GOAL]);
     await render();
     await settle();
@@ -191,8 +185,8 @@ describe("the onboarding launcher's Add Agent button", () => {
     }
   });
 
-  it("opens with no company when the prefix matches none", async () => {
-    routeState.companyPrefix = "NOPE";
+  it("opens organization creation when the instance has none", async () => {
+    organizationState.organization = null;
     await render();
     await settle();
 

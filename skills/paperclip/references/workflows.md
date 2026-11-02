@@ -8,7 +8,7 @@ Reference material for niche workflows that are pointed to from `SKILL.md`. Load
 
 When asked to set up a new project with workspace config (local folder and/or GitHub repo):
 
-1. `POST /api/companies/{companyId}/projects` with project fields.
+1. `POST /api/projects` with project fields.
 2. Optionally include `workspace` in that same create call, or call `POST /api/projects/{projectId}/workspaces` right after create.
 
 Workspace rules:
@@ -26,7 +26,7 @@ Use this when asked to invite a new OpenClaw employee.
 1. Generate a fresh OpenClaw invite prompt:
 
 ```
-POST /api/companies/{companyId}/openclaw/invite-prompt
+POST /api/openclaw/invite-prompt
 { "agentMessage": "optional onboarding note for OpenClaw" }
 ```
 
@@ -81,8 +81,8 @@ PATCH /api/agents/{agentId}/instructions-path
 Use the company-scoped routes when a CEO agent needs to inspect or move package content.
 
 - CEO-safe imports:
-  - `POST /api/companies/{companyId}/imports/preview`
-  - `POST /api/companies/{companyId}/imports/apply`
+  - `POST /api/imports/preview`
+  - `POST /api/imports/apply`
 - Allowed callers: board users and the CEO agent of that same company.
 - Safe import rules:
   - existing-company imports are non-destructive
@@ -93,8 +93,8 @@ Use the company-scoped routes when a CEO agent needs to inspect or move package 
 
 For export, preview first and keep tasks explicit:
 
-- `POST /api/companies/{companyId}/exports/preview`
-- `POST /api/companies/{companyId}/exports`
+- `POST /api/exports/preview`
+- `POST /api/exports`
 - Export preview defaults to `issues: false`
 - Add `issues` or `projectIssues` only when you intentionally need task files
 - Use `selectedFiles` to narrow the final package to specific agents, skills, projects, or tasks after you inspect the preview inventory
@@ -111,7 +111,6 @@ Use this when validating Paperclip itself (assignment flow, checkouts, run visib
 
 ```bash
 npx paperclipai issue create \
-  --company-id "$PAPERCLIP_COMPANY_ID" \
   --title "Self-test: assignment/watch flow" \
   --description "Temporary validation issue" \
   --status todo \

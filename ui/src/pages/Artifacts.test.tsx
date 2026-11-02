@@ -9,7 +9,7 @@ import { Artifacts } from "./Artifacts";
 import type { CompanyArtifact, CompanyArtifactGroup } from "../api/artifacts";
 
 const companyState = vi.hoisted(() => ({
-  selectedCompanyId: "company-1",
+  organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
 }));
 
 const breadcrumbState = vi.hoisted(() => ({
@@ -20,8 +20,8 @@ const artifactsApiMock = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => companyState,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => companyState,
 }));
 
 vi.mock("../context/BreadcrumbContext", () => ({
@@ -177,7 +177,7 @@ describe("Artifacts page", () => {
     const { root } = renderArtifacts(container);
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenCalledWith({
         kind: "all",
         q: undefined,
         groupBy: "task",
@@ -223,7 +223,7 @@ describe("Artifacts page", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenLastCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenLastCalledWith({
         kind: "all",
         q: "launch",
         groupBy: "task",
@@ -280,7 +280,7 @@ describe("Artifacts page", () => {
     );
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenLastCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenLastCalledWith({
         kind: "all",
         q: undefined,
         groupBy: "none",
@@ -297,7 +297,7 @@ describe("Artifacts page", () => {
   });
 
   it("switches grouping via the group control and refetches stacks", async () => {
-    artifactsApiMock.list.mockImplementation((_companyId: string, params?: { groupBy?: string }) => {
+    artifactsApiMock.list.mockImplementation((params?: { groupBy?: string }) => {
       if (params?.groupBy === "none") {
         return Promise.resolve({ artifacts: [sampleArtifact()], nextCursor: null });
       }
@@ -320,7 +320,7 @@ describe("Artifacts page", () => {
     });
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenLastCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenLastCalledWith({
         kind: "all",
         q: undefined,
         groupBy: "none",
@@ -348,7 +348,7 @@ describe("Artifacts page", () => {
     const { root } = renderArtifacts(container, ["/artifacts?groupBy=task"]);
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenCalledWith({
         kind: "all",
         q: undefined,
         groupBy: "task",
@@ -381,7 +381,7 @@ describe("Artifacts page", () => {
     ]);
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenCalledWith({
         kind: "all",
         q: undefined,
         groupBy: "task",
@@ -412,7 +412,7 @@ describe("Artifacts page", () => {
     const { root } = renderArtifacts(container, ["/artifacts?kind=image&groupBy=task"]);
 
     await waitForAssertion(() => {
-      expect(artifactsApiMock.list).toHaveBeenCalledWith("company-1", {
+      expect(artifactsApiMock.list).toHaveBeenCalledWith({
         kind: "image",
         q: undefined,
         groupBy: "task",

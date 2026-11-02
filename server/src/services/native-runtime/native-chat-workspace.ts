@@ -5,7 +5,6 @@ import { chatConversations, issues, type Db } from "@paperclipai/db";
 import { resolvePaperclipInstanceRoot } from "../../home-paths.js";
 
 export type NativeChatWorkspaceScope = {
-  companyId: string;
   agentId: string;
   issueId: string;
   projectId: string | null;
@@ -26,7 +25,6 @@ export async function findNativeChatWorkspaceScope(
   input: {
     adapterType: string;
     environmentDriver: string | null;
-    companyId: string;
     agentId: string;
     issueId: string | null;
     instanceRoot?: string;
@@ -46,12 +44,11 @@ export async function findNativeChatWorkspaceScope(
       hasConversation: sql<boolean>`exists (
       select 1 from ${chatConversations}
       where ${chatConversations.issueId} = ${issues.id}
-        and ${chatConversations.companyId} = ${input.companyId}
     )`,
     })
     .from(issues)
     .where(
-      and(eq(issues.id, input.issueId), eq(issues.companyId, input.companyId)),
+      eq(issues.id, input.issueId),
     )
     .limit(1);
   if (!issue) throw new Error("native_chat_workspace_issue_unavailable");
@@ -61,7 +58,6 @@ export async function findNativeChatWorkspaceScope(
     input.instanceRoot ?? resolvePaperclipInstanceRoot(),
   );
   return {
-    companyId: input.companyId,
     agentId: input.agentId,
     issueId: issue.id,
     projectId: issue.projectId,
@@ -71,7 +67,6 @@ export async function findNativeChatWorkspaceScope(
     taskRoot: path.join(
       instanceRoot,
       "chat-workspaces",
-      segment(input.companyId),
       segment(input.agentId),
       segment(issue.id),
     ),
@@ -79,7 +74,6 @@ export async function findNativeChatWorkspaceScope(
 }
 
 export type NativeChatProjectWorkspace = {
-  companyId: string;
   projectId: string;
   sourceIssueId: string | null;
   mode: string;
@@ -99,7 +93,6 @@ export function nativeChatWorkspaceCwd(
   if (
     !reuseExisting ||
     !workspace ||
-    workspace.companyId !== scope.companyId ||
     workspace.projectId !== scope.projectId ||
     workspace.sourceIssueId !== scope.issueId ||
     workspace.mode !== "isolated_workspace" ||
@@ -122,7 +115,6 @@ export async function materializeNativeChatTaskRoot(
   let cursor = scope.instanceRoot;
   for (const part of [
     "chat-workspaces",
-    segment(scope.companyId),
     segment(scope.agentId),
     segment(scope.issueId),
   ]) {
@@ -148,13 +140,12 @@ export function nativeChatWorkspaceMatches(input: {
   scope: NativeChatWorkspaceScope;
   expectedCwd: string | null;
   execution: {
-    binding: { companyId: string; agentId: string; issueId: string };
+    binding: { agentId: string; issueId: string };
     workspace: { cwd: string };
   };
 }): boolean {
   return (
-    input.expectedCwd !== null &&
-    input.execution.binding.companyId === input.scope.companyId &&
+    (input.expectedCwd !== null) &&
     input.execution.binding.agentId === input.scope.agentId &&
     input.execution.binding.issueId === input.scope.issueId &&
     path.resolve(input.execution.workspace.cwd) === input.expectedCwd

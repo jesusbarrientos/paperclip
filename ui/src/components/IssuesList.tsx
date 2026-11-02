@@ -5,7 +5,6 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVisibilityRefetchInterval } from "@/lib/polling";
 import { accessApi } from "../api/access";
 import { useDialogActions } from "../context/DialogContext";
-import { useCompany } from "../context/CompanyContext";
 import { Link, useNavigate } from "@/lib/router";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { issuesApi } from "../api/issues";
@@ -475,7 +474,7 @@ type CreatorOption = {
 };
 
 type ProjectOption = Pick<Project, "id" | "name"> & Partial<Pick<Project, "color" | "workspaces" | "executionWorkspacePolicy" | "primaryWorkspace">>;
-type IssueListRequestFilters = NonNullable<Parameters<typeof issuesApi.list>[1]>;
+type IssueListRequestFilters = NonNullable<Parameters<typeof issuesApi.list>[0]>;
 
 interface IssuesListProps {
   issues: Issue[];
@@ -788,16 +787,14 @@ function StreamlinedIssuesList({
     // null, so continuous hovering triggers no re-render.
     setSelectedNavKey((prev) => (prev === null ? prev : null));
   }, []);
-  const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialogActions();
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
@@ -809,13 +806,10 @@ function StreamlinedIssuesList({
   const isolatedWorkspacesEnabled = experimentalSettings?.enableIsolatedWorkspaces === true;
   const externalObjectsEnabled = experimentalSettings?.enableExternalObjects === true;
 
-  // Scope the storage key per company so folding/view state is independent across companies.
-  const scopedKey = selectedCompanyId ? `${viewStateKey}:${selectedCompanyId}` : viewStateKey;
   const preferenceLocation: TaskCollectionPreferenceLocation = {
-    companyId: selectedCompanyId ?? "__unscoped__",
     collectionKey: viewStateKey,
-    legacyViewStorageKey: scopedKey,
-    legacyColumnsStorageKey: getIssueColumnsStorageKey(scopedKey),
+    legacyViewStorageKey: viewStateKey,
+    legacyColumnsStorageKey: getIssueColumnsStorageKey(viewStateKey),
   };
   const initialAssigneesKey = initialAssignees?.join("|") ?? "";
   const initialWorkspacesKey = initialWorkspaces?.join("|") ?? "";
@@ -851,10 +845,10 @@ function StreamlinedIssuesList({
 
   // Reload view state whenever the persisted context changes.
   const prevViewStateContextKey = useRef(
-    `${scopedKey}::${initialAssigneesKey}::${initialWorkspacesKey}::${initialStatusesKey}`,
+    `${viewStateKey}::${initialAssigneesKey}::${initialWorkspacesKey}::${initialStatusesKey}`,
   );
   useEffect(() => {
-    const nextContextKey = `${scopedKey}::${initialAssigneesKey}::${initialWorkspacesKey}::${initialStatusesKey}`;
+    const nextContextKey = `${viewStateKey}::${initialAssigneesKey}::${initialWorkspacesKey}::${initialStatusesKey}`;
     if (prevViewStateContextKey.current !== nextContextKey) {
       prevViewStateContextKey.current = nextContextKey;
       const preferences = loadIssueCollectionPreferences(preferenceLocation);
@@ -868,7 +862,7 @@ function StreamlinedIssuesList({
       setVisibleIssueColumns(preferences.columns);
     }
   }, [
-    scopedKey,
+    viewStateKey,
     initialAssignees,
     initialAssigneesKey,
     initialWorkspaces,
@@ -876,7 +870,6 @@ function StreamlinedIssuesList({
     initialStatuses,
     initialStatusesKey,
     defaultSortField,
-    preferenceLocation.companyId,
     preferenceLocation.collectionKey,
     preferenceLocation.legacyViewStorageKey,
     preferenceLocation.legacyColumnsStorageKey,
@@ -892,7 +885,6 @@ function StreamlinedIssuesList({
       return next;
     });
   }, [
-    preferenceLocation.companyId,
     preferenceLocation.collectionKey,
     preferenceLocation.legacyColumnsStorageKey,
     preferenceLocation.legacyViewStorageKey,
@@ -918,28 +910,28 @@ function StreamlinedIssuesList({
 
   const { data: searchedIssues = [] } = useQuery({
     queryKey: [
-      ...queryKeys.issues.search(selectedCompanyId!, normalizedIssueSearch, projectId),
+      ...queryKeys.issues.search(normalizedIssueSearch, projectId),
       searchFilters ?? {},
       "compact",
       ISSUE_SEARCH_RESULT_LIMIT,
       enableRoutineVisibilityFilter ? "with-routine-executions" : "without-routine-executions",
     ],
     queryFn: ({ signal }) =>
-      issuesApi.listCompact(selectedCompanyId!, {
+      issuesApi.listCompact({
         q: normalizedIssueSearch,
         projectId,
         limit: ISSUE_SEARCH_RESULT_LIMIT,
         ...searchFilters,
         ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
       }, { signal }).then((rows) => rows as Issue[]),
-    enabled: !!selectedCompanyId && normalizedIssueSearch.length > 0 && !searchWithinLoadedIssues,
+    enabled: normalizedIssueSearch.length > 0 && !searchWithinLoadedIssues,
     placeholderData: (previousData) => previousData,
   });
   const boardSort = boardColumnServerSort(viewState);
   const boardIssueQueries = useQueries({
     queries: boardIssueStatuses.map((status) => ({
       queryKey: [
-        ...queryKeys.issues.list(selectedCompanyId ?? "__no-company__"),
+        ...queryKeys.issues.list(),
         "board-column",
         status,
         normalizedIssueSearch,
@@ -952,7 +944,7 @@ function StreamlinedIssuesList({
         boardSort.sortDir,
       ],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        issuesApi.listCompact(selectedCompanyId!, {
+        issuesApi.listCompact({
           ...searchFilters,
           ...(normalizedIssueSearch.length > 0 ? { q: normalizedIssueSearch } : {}),
           projectId,
@@ -962,16 +954,14 @@ function StreamlinedIssuesList({
           sortDir: boardSort.sortDir,
           ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
         }, { signal }).then((rows) => rows as Issue[]),
-      enabled: !!selectedCompanyId && viewState.viewMode === "board" && !searchWithinLoadedIssues,
+      enabled: viewState.viewMode === "board" && !searchWithinLoadedIssues,
       placeholderData: (previousData: Issue[] | undefined) => previousData,
     })),
   });
   const { data: executionWorkspaces = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.executionWorkspaces.summaryList(selectedCompanyId)
-      : ["execution-workspaces", "__disabled__"],
-    queryFn: () => executionWorkspacesApi.listSummaries(selectedCompanyId!),
-    enabled: !!selectedCompanyId && isolatedWorkspacesEnabled,
+    queryKey: queryKeys.executionWorkspaces.summaryList(),
+    queryFn: () => executionWorkspacesApi.listSummaries(),
+    enabled: isolatedWorkspacesEnabled,
   });
 
   const agentName = useCallback((id: string | null) => {
@@ -1213,7 +1203,6 @@ function StreamlinedIssuesList({
     isLoading: externalObjectSummariesLoading,
     isReady: externalObjectSummariesReady,
   } = useIssueExternalObjectSummaries(
-    selectedCompanyId,
     issueIdsForExternalObjectSummaries,
   );
   const issueFilterContext = useMemo(() => ({
@@ -1292,9 +1281,8 @@ function StreamlinedIssuesList({
   }, [checklistAffordanceEnabled, filtered, issueById, viewState.nestingEnabled]);
 
   const { data: labels } = useQuery({
-    queryKey: queryKeys.issues.labels(selectedCompanyId!),
-    queryFn: () => issuesApi.listLabels(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
   });
 
   const activeFilterCount = countActiveIssueFilters(viewState, enableRoutineVisibilityFilter);
@@ -1741,7 +1729,6 @@ function StreamlinedIssuesList({
       columns: normalized,
     });
   }, [
-    preferenceLocation.companyId,
     preferenceLocation.collectionKey,
     preferenceLocation.legacyColumnsStorageKey,
     preferenceLocation.legacyViewStorageKey,

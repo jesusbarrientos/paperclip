@@ -166,7 +166,6 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(projects).values({
     id: projectId,
-    companyId,
     name: "Workspace Finalize Branch Guard",
     status: "active",
     createdAt: new Date(),
@@ -174,7 +173,6 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(projectWorkspaces).values({
     id: projectWorkspaceId,
-    companyId,
     projectId,
     name: "Primary",
     cwd: repoRoot,
@@ -184,7 +182,6 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(agents).values({
     id: agentId,
-    companyId,
     name: "CodexCoder",
     role: "engineer",
     status: "idle",
@@ -202,7 +199,6 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(issues).values({
     id: issueId,
-    companyId,
     projectId,
     projectWorkspaceId,
     title: "Publish without drifting managed workspace",
@@ -218,7 +214,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
     updatedAt: new Date(),
   });
 
-  return { companyId, projectId, projectWorkspaceId, issueId, agentId };
+  return { projectId, projectWorkspaceId, issueId, agentId };
 }
 
 async function wakeIssue(heartbeat: Heartbeat, agentId: string, issueId: string) {

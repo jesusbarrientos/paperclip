@@ -27,13 +27,13 @@ function getRecentUtcDateKeys(now: Date, days: number): string[] {
 export function dashboardService(db: Db) {
   const budgets = budgetService(db);
   return {
-    summary: async (companyId: string) => {
+    summary: async () => {
       // This lookup only reads the company row. Rebuild it after a transient
       // disconnect; do not replay the later summary or budget workflows.
       const company = await retryIdempotentDatabaseOperation(() => db
         .select()
         .from(companies)
-        .where(eq(companies.id, companyId))
+        .limit(1)
         .then((rows) => rows[0] ?? null));
 
       if (!company) throw notFound("Company not found");
@@ -41,19 +41,18 @@ export function dashboardService(db: Db) {
       const agentRows = await retryIdempotentDatabaseOperation(() => db
         .select({ status: agents.status, count: sql<number>`count(*)` })
         .from(agents)
-        .where(eq(agents.companyId, companyId))
         .groupBy(agents.status));
 
       const taskRows = await retryIdempotentDatabaseOperation(() => db
         .select({ status: issues.status, count: sql<number>`count(*)` })
         .from(issues)
-        .where(and(eq(issues.companyId, companyId), executionIssueCondition()))
+        .where(executionIssueCondition())
         .groupBy(issues.status));
 
       const pendingApprovals = await retryIdempotentDatabaseOperation(() => db
         .select({ count: sql<number>`count(*)` })
         .from(approvals)
-        .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending")))
+        .where(eq(approvals.status, "pending"))
         .then((rows) => Number(rows[0]?.count ?? 0)));
 
       const agentCounts: Record<string, number> = {
@@ -93,10 +92,7 @@ export function dashboardService(db: Db) {
         })
         .from(costEvents)
         .where(
-          and(
-            eq(costEvents.companyId, companyId),
-            gte(costEvents.occurredAt, monthStart),
-          ),
+          gte(costEvents.occurredAt, monthStart),
         ));
 
       const monthSpendCents = Number(monthSpend);
@@ -114,8 +110,7 @@ export function dashboardService(db: Db) {
           SELECT parent.id
           FROM ${heartbeatRuns} AS child
           JOIN ${heartbeatRuns} AS parent ON parent.id = child.retry_of_run_id
-          WHERE child.company_id = ${companyId}
-            AND child.status = 'succeeded'
+          WHERE child.status = 'succeeded'
             AND child.created_at >= ${runActivityStart.toISOString()}::timestamptz
           UNION
           SELECT parent.id
@@ -131,8 +126,7 @@ export function dashboardService(db: Db) {
           (run.id IN (SELECT id FROM recovered_runs)) AS recovered,
           count(*)::double precision AS count
         FROM ${heartbeatRuns} AS run
-        WHERE run.company_id = ${companyId}
-          AND run.created_at >= ${runActivityStart.toISOString()}::timestamptz
+        WHERE run.created_at >= ${runActivityStart.toISOString()}::timestamptz
         GROUP BY date, run.status, run.error_code, recovered
       `))) as unknown as Iterable<{
         date: string;
@@ -186,10 +180,9 @@ export function dashboardService(db: Db) {
         company.budgetMonthlyCents > 0
           ? (monthSpendCents / company.budgetMonthlyCents) * 100
           : 0;
-      const budgetOverview = await budgets.overview(companyId);
+      const budgetOverview = await budgets.overview();
 
       return {
-        companyId,
         agents: {
           active: agentCounts.active,
           running: agentCounts.running,

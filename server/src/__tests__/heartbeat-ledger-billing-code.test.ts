@@ -25,7 +25,7 @@ describe("resolveLedgerScopeForRun billing code propagation", () => {
   it("carries the issue's billing code onto the ledger scope", async () => {
     const { db } = makeDb([{ id: "issue-1", projectId: "project-1", billingCode: "ACME-42" }]);
 
-    const scope = await resolveLedgerScopeForRun(db, "company-1", makeRun({
+    const scope = await resolveLedgerScopeForRun(db, makeRun({
       issueId: "issue-1",
       projectId: "context-project",
     }));
@@ -40,7 +40,7 @@ describe("resolveLedgerScopeForRun billing code propagation", () => {
   it("resolves a null billing code when the issue has none set", async () => {
     const { db } = makeDb([{ id: "issue-1", projectId: "project-1", billingCode: null }]);
 
-    const scope = await resolveLedgerScopeForRun(db, "company-1", makeRun({
+    const scope = await resolveLedgerScopeForRun(db, makeRun({
       issueId: "issue-1",
       projectId: "context-project",
     }));
@@ -52,7 +52,7 @@ describe("resolveLedgerScopeForRun billing code propagation", () => {
   it("resolves a null billing code without querying when the run has no issue in context", async () => {
     const { db, select } = makeDb([]);
 
-    const scope = await resolveLedgerScopeForRun(db, "company-1", makeRun({
+    const scope = await resolveLedgerScopeForRun(db, makeRun({
       projectId: "context-project",
     }));
 
@@ -67,7 +67,7 @@ describe("resolveLedgerScopeForRun billing code propagation", () => {
   it("resolves a null billing code when the issue is not visible to the company", async () => {
     const { db } = makeDb([]);
 
-    const scope = await resolveLedgerScopeForRun(db, "other-company", makeRun({
+    const scope = await resolveLedgerScopeForRun(db, makeRun({
       issueId: "issue-1",
       projectId: "context-project",
     }));

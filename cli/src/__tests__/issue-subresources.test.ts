@@ -196,11 +196,11 @@ describe("issue subresource commands", () => {
       await run(["issue", "tree-hold:get", ISSUE_ID, HOLD_ID]);
       await run(["issue", "tree-hold:release", ISSUE_ID, HOLD_ID]);
       await run(["issue", "attachments", ISSUE_ID]);
-      await run(["issue", "attachment:upload", ISSUE_ID, "--company-id", COMPANY_ID, "--file", filePath]);
+      await run(["issue", "attachment:upload", ISSUE_ID, "--file", filePath]);
       await run(["issue", "attachment:download", ATTACHMENT_ID]);
       await run(["issue", "attachment:delete", ATTACHMENT_ID]);
-      await run(["issue", "label:list", "--company-id", COMPANY_ID]);
-      await run(["issue", "label:create", "--company-id", COMPANY_ID, "--name", "bug", "--color", "#ff0000"]);
+      await run(["issue", "label:list"]);
+      await run(["issue", "label:create", "--name", "bug", "--color", "#ff0000"]);
       await run(["issue", "label:delete", LABEL_ID]);
       await run(["issue", "feedback:votes", ISSUE_ID]);
       await run([
@@ -227,11 +227,11 @@ describe("issue subresource commands", () => {
       ["GET", `http://localhost:3100/api/issues/${ISSUE_ID}/tree-holds/${HOLD_ID}`],
       ["POST", `http://localhost:3100/api/issues/${ISSUE_ID}/tree-holds/${HOLD_ID}/release`],
       ["GET", `http://localhost:3100/api/issues/${ISSUE_ID}/attachments`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/issues/${ISSUE_ID}/attachments`],
+      ["POST", `http://localhost:3100/api/issues/${ISSUE_ID}/attachments`],
       ["GET", `http://localhost:3100/api/attachments/${ATTACHMENT_ID}/content`],
       ["DELETE", `http://localhost:3100/api/attachments/${ATTACHMENT_ID}`],
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/labels`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/labels`],
+      ["GET", `http://localhost:3100/api/labels`],
+      ["POST", `http://localhost:3100/api/labels`],
       ["DELETE", `http://localhost:3100/api/labels/${LABEL_ID}`],
       ["GET", `http://localhost:3100/api/issues/${ISSUE_ID}/feedback-votes`],
       ["POST", `http://localhost:3100/api/issues/${ISSUE_ID}/feedback-votes`],
@@ -256,7 +256,6 @@ describe("issue subresource commands", () => {
     try {
       await run([
         "issue", "attachment:upload", ISSUE_ID,
-        "--company-id", COMPANY_ID,
         "--file", filePath,
         "--run-id", RUN_ID,
       ]);
@@ -266,7 +265,7 @@ describe("issue subresource commands", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`http://localhost:3100/api/companies/${COMPANY_ID}/issues/${ISSUE_ID}/attachments`);
+    expect(url).toBe(`http://localhost:3100/api/issues/${ISSUE_ID}/attachments`);
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
     expect(headers["x-paperclip-run-id"]).toBe(RUN_ID);

@@ -35,7 +35,7 @@ export const callApiAction = {
     "call": {
       "operationId": "call_api",
       "input": {
-        "operationId": "GET /api/companies/{companyId}/projects"
+        "operationId": "GET /api/projects"
       }
     },
     "success": {

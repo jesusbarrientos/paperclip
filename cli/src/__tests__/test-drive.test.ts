@@ -22,14 +22,13 @@ import type { PaperclipConfig } from "../config/schema.js";
 const ORIGINAL_ENV = { ...process.env };
 const cleanupDirectories: string[] = [];
 
-function company(id = "company-1", name = "Test Company"): Company {
+function organization(id = "org-1", name = "Test Organization"): Company {
   return { id, name } as Company;
 }
 
 function agent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "CEO",
     role: "ceo",
     adapterType: "claude_local",
@@ -47,18 +46,17 @@ function settings(overrides: Partial<InstanceExperimentalSettings> = {}): Instan
   } as InstanceExperimentalSettings;
 }
 
-function freshBootstrapApi(input?: { failAgent?: boolean }) {
+function freshBootstrapApi() {
   const calls: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = {
     get: vi.fn(async <T>(requestPath: string) => {
       calls.push({ method: "GET", path: requestPath });
+      if (requestPath === "/api/organization") return organization() as T;
       return [] as T;
     }),
     post: vi.fn(async <T>(requestPath: string, body?: unknown) => {
       calls.push({ method: "POST", path: requestPath, body });
-      if (requestPath === "/api/companies") return company() as T;
-      if (requestPath.endsWith("/agents")) {
-        if (input?.failAgent) throw new Error("agent setup failed");
+      if (requestPath === "/api/agents") {
         const payload = body as { name: string; adapterType: Agent["adapterType"]; adapterConfig: Record<string, unknown> };
         return agent({
           name: payload.name,
@@ -179,7 +177,6 @@ describe("test-drive bootstrap validation", () => {
   it("uses Claude defaults and the canonical environment credential", () => {
     const resolved = resolveTestDriveBootstrap({}, { ANTHROPIC_API_KEY: "anthropic-secret" });
     expect(resolved).toMatchObject({
-      companyName: "Test Company",
       agentName: "CEO",
       adapterType: "claude_local",
       credentialTarget: "ANTHROPIC_API_KEY",
@@ -283,7 +280,7 @@ describe("test-drive API bootstrap", () => {
     ["claude", "claude_local", "ANTHROPIC_API_KEY", undefined],
     ["codex", "codex_local", "OPENAI_API_KEY", undefined],
     ["opencode", "opencode_local", "OPENROUTER_API_KEY", "openrouter/anthropic/claude-sonnet-4.5"],
-  ] as const)("creates exactly one company and one CEO for %s", async (
+  ] as const)("creates exactly one CEO for %s", async (
     harness,
     adapterType,
     credentialTarget,
@@ -301,15 +298,15 @@ describe("test-drive API bootstrap", () => {
     expect(result.reused).toBe(false);
     expect(result.agent?.role).toBe("ceo");
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
-      "GET /api/companies",
-      "POST /api/companies",
-      "POST /api/companies/company-1/user-secret-definitions",
-      "POST /api/companies/company-1/me/user-secrets",
-      "POST /api/companies/company-1/agents",
+      "GET /api/organization",
+      "GET /api/agents",
+      "POST /api/user-secret-definitions",
+      "POST /api/me/user-secrets",
+      "POST /api/agents",
     ]);
-    const secretValueCall = calls.find((call) => call.path.endsWith("/me/user-secrets"));
+    const secretValueCall = calls.find((call) => call.path === "/api/me/user-secrets");
     expect(secretValueCall?.body).toEqual({ definitionKey: credentialTarget, value: "secret" });
-    const agentCall = calls.find((call) => call.path.endsWith("/agents"));
+    const agentCall = calls.find((call) => call.method === "POST" && call.path === "/api/agents");
     expect(agentCall?.body).toEqual({
       name: "CEO",
       role: "ceo",
@@ -329,7 +326,7 @@ describe("test-drive API bootstrap", () => {
     expect(calls.some((call) => /issues|projects|goals|tasks|heartbeat/.test(call.path))).toBe(false);
   });
 
-  it("rejects invalid OpenCode configuration before creating a company", async () => {
+  it("rejects invalid OpenCode configuration before any write", async () => {
     const { api, calls } = freshBootstrapApi();
     await expect(bootstrapTestDrive({
       api,
@@ -338,12 +335,16 @@ describe("test-drive API bootstrap", () => {
       instanceId: "default",
       env: { OPENROUTER_API_KEY: "secret" },
     })).rejects.toThrow(/require --model openrouter/);
-    expect(calls).toEqual([{ method: "GET", path: "/api/companies" }]);
+    expect(calls).toEqual([
+      { method: "GET", path: "/api/organization" },
+      { method: "GET", path: "/api/agents" },
+    ]);
   });
 
   it("preserves seeded data and ignores every bootstrap flag", async () => {
     const get = vi.fn(async <T>(requestPath: string) => {
-      if (requestPath === "/api/companies") return [company("existing", "Existing Company")] as T;
+      if (requestPath === "/api/organization") return organization("existing", "Existing Organization") as T;
+      if (requestPath === "/api/agents") return [agent()] as T;
       throw new Error(`Unexpected GET ${requestPath}`);
     });
     const api = {
@@ -355,29 +356,18 @@ describe("test-drive API bootstrap", () => {
 
     const result = await bootstrapTestDrive({
       api,
-      options: { harness: "opencode", companyName: "Ignored" },
+      options: { harness: "opencode", agentName: "Ignored" },
       linkedWorktree: false,
       instanceId: "default",
       env: {},
     });
 
-    expect(result).toMatchObject({ reused: true, company: { id: "existing" }, agent: null });
+    expect(result).toMatchObject({ reused: true, organization: { id: "existing" }, agent: null });
     expect(api.post).not.toHaveBeenCalled();
     expect(api.patch).not.toHaveBeenCalled();
     expect(api.delete).not.toHaveBeenCalled();
   });
 
-  it("deletes only the newly-created company when fresh bootstrap fails", async () => {
-    const { api, calls } = freshBootstrapApi({ failAgent: true });
-    await expect(bootstrapTestDrive({
-      api,
-      options: {},
-      linkedWorktree: false,
-      instanceId: "default",
-      env: { ANTHROPIC_API_KEY: "secret" },
-    })).rejects.toThrow("agent setup failed");
-    expect(calls.at(-1)).toEqual({ method: "DELETE", path: "/api/companies/company-1" });
-  });
 });
 
 describe("test-drive worktree setting reconciliation", () => {
@@ -463,9 +453,9 @@ describe("test-drive foreground lifecycle", () => {
     const events: string[] = [];
     let runOptions: RunOptions | undefined;
     const api = {
-      get: vi.fn(async <T>() => {
-        events.push("initialized");
-        return [company("existing", "Existing")] as T;
+      get: vi.fn(async <T>(requestPath: string) => {
+        if (requestPath === "/api/organization") events.push("initialized");
+        return [organization("existing", "Existing")] as T;
       }),
       post: vi.fn(),
       patch: vi.fn(),
@@ -501,7 +491,7 @@ describe("test-drive foreground lifecycle", () => {
     process.env.PAPERCLIP_IN_WORKTREE = "false";
     let runOptions: RunOptions | undefined;
     const api = {
-      get: vi.fn(async <T>() => [company("existing", "Existing")] as T),
+      get: vi.fn(async <T>() => [organization("existing", "Existing")] as T),
       post: vi.fn(),
       patch: vi.fn(),
       delete: vi.fn(),
@@ -537,7 +527,7 @@ describe("test-drive foreground lifecycle", () => {
       openBrowser: vi.fn(async () => true),
     });
 
-    const secretValueCall = calls.find((call) => call.path.endsWith("/me/user-secrets"));
+    const secretValueCall = calls.find((call) => call.path === "/api/me/user-secrets");
     expect(secretValueCall?.body).toEqual({
       definitionKey: "ANTHROPIC_API_KEY",
       value: "upstream-secret",
@@ -584,7 +574,7 @@ describe("test-drive foreground lifecycle", () => {
     process.env.PAPERCLIP_INSTANCE_ID = "default";
     process.env.PAPERCLIP_IN_WORKTREE = "false";
     const api = {
-      get: vi.fn(async <T>() => [company("existing", "Existing")] as T),
+      get: vi.fn(async <T>() => [organization("existing", "Existing")] as T),
       post: vi.fn(),
       patch: vi.fn(),
       delete: vi.fn(),

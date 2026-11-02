@@ -22,10 +22,10 @@ describe("exact failed chat run retry", () => {
       status: "deferred",
     });
     await expect(
-      agentsApi.retryFailedRun("agent-1", "failed-run-1", "company-1"),
+      agentsApi.retryFailedRun("agent-1", "failed-run-1"),
     ).resolves.toEqual({ runId: null, issueId: "issue-1" });
     expect(mockApi.post).toHaveBeenCalledExactlyOnceWith(
-      "/agents/agent-1/wakeup?companyId=company-1",
+      "/agents/agent-1/wakeup",
       {
         source: "on_demand",
         triggerDetail: "manual",
@@ -45,7 +45,7 @@ describe("exact failed chat run retry", () => {
         status,
       });
       await expect(
-        agentsApi.retryFailedRun("agent-1", "failed-run-1", "company-1"),
+        agentsApi.retryFailedRun("agent-1", "failed-run-1"),
       ).resolves.toEqual({ runId: "new-run-1", issueId: "issue-1" });
     },
   );
@@ -60,7 +60,7 @@ describe("exact failed chat run retry", () => {
         status,
       });
       await expect(
-        agentsApi.retryFailedRun("agent-1", "failed-run-1", "company-1"),
+        agentsApi.retryFailedRun("agent-1", "failed-run-1"),
       ).rejects.toThrow("This retry could not start");
     },
   );
@@ -68,14 +68,14 @@ describe("exact failed chat run retry", () => {
   it("keeps ordinary non-chat retry results and skipped guidance", async () => {
     mockApi.post.mockResolvedValueOnce({ id: "ordinary-run-1" });
     await expect(
-      agentsApi.retryFailedRun("agent-1", "failed-run-1", "company-1"),
+      agentsApi.retryFailedRun("agent-1", "failed-run-1"),
     ).resolves.toEqual({ runId: "ordinary-run-1", issueId: null });
     mockApi.post.mockResolvedValueOnce({
       status: "skipped",
       message: "The agent is paused.",
     });
     await expect(
-      agentsApi.retryFailedRun("agent-1", "failed-run-1", "company-1"),
+      agentsApi.retryFailedRun("agent-1", "failed-run-1"),
     ).rejects.toThrow("The agent is paused.");
   });
 });
@@ -86,16 +86,16 @@ describe("chatEndpointsApi", () => {
   it("uses company-scoped creation and list routes", async () => {
     mockApi.get.mockResolvedValue({ endpoints: [] });
     mockApi.post.mockResolvedValue({ id: "endpoint-1" });
-    await expect(chatEndpointsApi.list("company-1")).resolves.toEqual([]);
-    await chatEndpointsApi.create("company-1", {
+    await expect(chatEndpointsApi.list()).resolves.toEqual([]);
+    await chatEndpointsApi.create({
       provider: "slack",
       assignedAgentId: "agent-1",
     });
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/chat-endpoints",
+      "/chat-endpoints",
     );
     expect(mockApi.post).toHaveBeenCalledWith(
-      "/companies/company-1/chat-endpoints",
+      "/chat-endpoints",
       { provider: "slack", assignedAgentId: "agent-1" },
     );
   });

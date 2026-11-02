@@ -26,6 +26,7 @@ import { workProductService } from "../services/work-products.js";
 import type { ImportIssueWorkProductRow } from "../services/import-write-types.js";
 import type { CompanyPortabilityFileEntry } from "@paperclipai/shared";
 import { randomUUID } from "node:crypto";
+import { captureEmptyTablesReset } from "./helpers/reset-organization.js";
 
 // This suite proves the company-import writers batch their inserts: it runs a
 // real import against embedded Postgres and counts the SQL insert statements
@@ -236,14 +237,18 @@ describeEmbeddedPostgres("company import batches inserts", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-import-batching-");
     db = createDb(tempDb.connectionString);
     counts = instrumentInserts(db as unknown as Record<string, unknown>);
+    resetTables = await captureEmptyTablesReset(db);
   }, 30_000);
+
+  let resetTables: () => Promise<void>;
 
   afterAll(async () => {
     await tempDb?.cleanup();
   });
 
   beforeEach(async () => {
-    await db.execute(sql.raw("TRUNCATE companies CASCADE"));
+    await resetTables();
+    await db.insert(companies).values({ name: "Import Target Co", issuePrefix: "IMP", requireBoardApprovalForNewAgents: false });
     counts.reset();
   });
 
@@ -258,13 +263,11 @@ describeEmbeddedPostgres("company import batches inserts", () => {
       {
         source: { type: "inline", rootPath: bundle.rootPath, files: bundle.files },
         include: { company: true, agents: false, projects: false, issues: true },
-        target: { mode: "new_company", newCompanyName: "Batching Regression Co" },
+        target: { mode: "existing_company" },
         collisionStrategy: "rename",
       },
       "user-batching-regression",
     );
-
-    const companyId = result.company.id;
     const issueInserts = counts.byTable.get("issues") ?? 0;
     const commentInserts = counts.byTable.get("issue_comments") ?? 0;
 
@@ -277,18 +280,15 @@ describeEmbeddedPostgres("company import batches inserts", () => {
     // And the data must actually land, unchanged in shape.
     const [{ issueRows }] = await db
       .select({ issueRows: sql<number>`count(*)::int` })
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     const [{ commentRows }] = await db
       .select({ commentRows: sql<number>`count(*)::int` })
-      .from(issueComments)
-      .where(eq(issueComments.companyId, companyId));
+      .from(issueComments);
     // Count the issue-document links so company-bootstrap routine documents
     // (seeded on company creation) don't skew the imported-document count.
     const [{ documentLinkRows }] = await db
       .select({ documentLinkRows: sql<number>`count(*)::int` })
-      .from(issueDocuments)
-      .where(eq(issueDocuments.companyId, companyId));
+      .from(issueDocuments);
 
     expect(issueRows).toBe(issueCount);
     expect(commentRows).toBe(issueCount * commentsPerIssue);
@@ -298,8 +298,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
     // Identifiers are a contiguous range allocated from the company counter.
     const identifiers = await db
       .select({ identifier: issues.identifier })
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     const uniqueIdentifiers = new Set(identifiers.map((row) => row.identifier));
     expect(uniqueIdentifiers.size).toBe(issueCount);
   });
@@ -313,17 +312,14 @@ describeEmbeddedPostgres("company import batches inserts", () => {
       {
         source: { type: "inline", rootPath: bundle.rootPath, files: bundle.files },
         include: { company: true, agents: false, projects: false, issues: true },
-        target: { mode: "new_company", newCompanyName: "Inbox Flood Co" },
+        target: { mode: "existing_company" },
         collisionStrategy: "rename",
       },
       importingUserId,
     );
-    const companyId = result.company.id;
-
     const importedIssues = await db
       .select({ id: issues.id })
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     expect(importedIssues.length).toBe(3);
     const importedIds = new Set(importedIssues.map((row) => row.id));
 
@@ -335,10 +331,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
         archivedByActorType: issueInboxArchives.archivedByActorType,
       })
       .from(issueInboxArchives)
-      .where(and(
-        eq(issueInboxArchives.companyId, companyId),
-        eq(issueInboxArchives.userId, importingUserId),
-      ));
+      .where(eq(issueInboxArchives.userId, importingUserId));
     expect(new Set(archives.map((row) => row.issueId))).toEqual(importedIds);
     expect(archives.every((row) => row.archivedByActorType === "user")).toBe(true);
 
@@ -347,12 +340,12 @@ describeEmbeddedPostgres("company import batches inserts", () => {
     // Sanity: the imported issues really are "touched by me" (their user comment
     // was re-attributed to the importing user), so without the archive filter
     // they would all flood the inbox.
-    const touched = await issuesSvc.list(companyId, { touchedByUserId: importingUserId });
+    const touched = await issuesSvc.list({ touchedByUserId: importingUserId });
     expect(new Set(touched.map((issue) => issue.id))).toEqual(importedIds);
 
     // The inbox "mine" query (touched AND not inbox-archived) returns none of
     // them — the seeding is load-bearing.
-    const mineInbox = await issuesSvc.list(companyId, {
+    const mineInbox = await issuesSvc.list({
       touchedByUserId: importingUserId,
       inboxArchivedByUserId: importingUserId,
     });
@@ -360,13 +353,13 @@ describeEmbeddedPostgres("company import batches inserts", () => {
 
     // Normal (non-import) creation is unaffected: an issue the same user creates
     // after the import is not archived and shows up in their inbox.
-    const fresh = await issuesSvc.create(companyId, {
+    const fresh = await issuesSvc.create({
       title: "Freshly created work",
       status: "todo",
       priority: "medium",
       createdByUserId: importingUserId,
     });
-    const mineAfterCreate = await issuesSvc.list(companyId, {
+    const mineAfterCreate = await issuesSvc.list({
       touchedByUserId: importingUserId,
       inboxArchivedByUserId: importingUserId,
     });
@@ -375,18 +368,10 @@ describeEmbeddedPostgres("company import batches inserts", () => {
   });
 
   it("imports in_progress issues with a null startedAt", async () => {
-    const companyId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Carried Over Co",
-      issuePrefix: "CAR",
-      requireBoardApprovalForNewAgents: false,
-    });
     // pauseAutomations imports assignees paused; paused agents keep assignments.
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Carried Coder",
       role: "engineer",
       status: "paused",
@@ -396,7 +381,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
       permissions: {},
     });
 
-    await issueService(db).importIssues(companyId, [{
+    await issueService(db).importIssues([{
       id: randomUUID(),
       ref: "carried-over",
       projectId: null,
@@ -416,8 +401,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
 
     const [imported] = await db
       .select({ status: issues.status, startedAt: issues.startedAt })
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     expect(imported?.status).toBe("in_progress");
     // An import-time startedAt would misrepresent carried-over work
     // as a newly started active episode.
@@ -476,7 +460,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
       {
         source: { type: "inline", rootPath: "timestamp-fidelity", files },
         include: { company: true, agents: false, projects: false, issues: true },
-        target: { mode: "new_company", newCompanyName: "Timestamp Fidelity Co" },
+        target: { mode: "existing_company" },
         collisionStrategy: "rename",
       },
       "user-timestamp-fidelity",
@@ -493,8 +477,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
         startedAt: issues.startedAt,
         completedAt: issues.completedAt,
       })
-      .from(issues)
-      .where(eq(issues.companyId, result.company.id));
+      .from(issues);
     const parent = rows.find((row) => row.title === "Parent")!;
     const child = rows.find((row) => row.title === "Child")!;
     const grandchild = rows.find((row) => row.title === "Grandchild")!;
@@ -543,7 +526,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
       {
         source: { type: "inline", rootPath: "legacy-shape", files },
         include: { company: true, agents: false, projects: false, issues: true },
-        target: { mode: "new_company", newCompanyName: "Legacy Shape Co" },
+        target: { mode: "existing_company" },
         collisionStrategy: "rename",
       },
       "user-legacy-shape",
@@ -559,8 +542,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
         updatedAt: issues.updatedAt,
         startedAt: issues.startedAt,
       })
-      .from(issues)
-      .where(eq(issues.companyId, result.company.id));
+      .from(issues);
     expect(row?.parentId).toBeNull();
     expect(row?.startedAt).toBeNull();
     // Without preserved timestamps the row keeps the old behavior: created and
@@ -571,28 +553,25 @@ describeEmbeddedPostgres("company import batches inserts", () => {
   });
 
   it("rolls back the whole work-product batch when a later chunk fails", async () => {
-    // Seed a real company + issue to hang work products off of.
+    // Seed a real issue to hang work products off of.
     const bundle = buildSyntheticBundle({ issueCount: 1, commentsPerIssue: 0, documentsPerIssue: 0 });
     const portability = companyPortabilityService(db);
     const seeded = await portability.importBundle(
       {
         source: { type: "inline", rootPath: bundle.rootPath, files: bundle.files },
         include: { company: true, agents: false, projects: false, issues: true },
-        target: { mode: "new_company", newCompanyName: "Work Product Atomicity Co" },
+        target: { mode: "existing_company" },
         collisionStrategy: "rename",
       },
       "user-work-product-atomicity",
     );
-    const companyId = seeded.company.id;
     const [issueRow] = await db
       .select({ id: issues.id })
       .from(issues)
-      .where(eq(issues.companyId, companyId))
       .limit(1);
     expect(issueRow?.id).toBeTruthy();
 
     const buildRow = (issueId: string, index: number): ImportIssueWorkProductRow => ({
-      companyId,
       issueId,
       projectId: null,
       type: "pull_request",
@@ -624,8 +603,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
 
     const [{ workProductRows }] = await db
       .select({ workProductRows: sql<number>`count(*)::int` })
-      .from(issueWorkProducts)
-      .where(eq(issueWorkProducts.companyId, companyId));
+      .from(issueWorkProducts);
     expect(workProductRows).toBe(0);
   });
 
@@ -646,7 +624,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
         {
           source: { type: "inline", rootPath: bundle.rootPath, files: bundle.files },
           include: { company: true, agents: false, projects: false, issues: true },
-          target: { mode: "new_company", newCompanyName: "Batching Benchmark Co" },
+          target: { mode: "existing_company" },
           collisionStrategy: "rename",
         },
         "user-batching-benchmark",
@@ -667,12 +645,9 @@ describeEmbeddedPostgres("company import batches inserts", () => {
           + `  reduction: ${(beforeStatements / Math.max(1, afterStatements)).toFixed(0)}x\n`
           + `  per-table insert statements: ${JSON.stringify(perTable)}`,
       );
-
-      const companyId = result.company.id;
       const [{ issueRows }] = await db
         .select({ issueRows: sql<number>`count(*)::int` })
-        .from(issues)
-        .where(eq(issues.companyId, companyId));
+        .from(issues);
       expect(issueRows).toBe(issueCount);
 
       // Two orders of magnitude fewer statements than the per-row baseline.

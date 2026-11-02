@@ -99,7 +99,6 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
       root!.render(
         <QueryClientProvider client={queryClient}>
           <ConfigureBuiltInAgentModal
-            companyId="c1"
             state={state}
             open
             onOpenChange={onOpenChange}
@@ -153,7 +152,7 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
     });
     await flushReact();
 
-    expect(provisionMock).toHaveBeenCalledWith("c1", "briefs", {
+    expect(provisionMock).toHaveBeenCalledWith("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5" },
     });
@@ -183,7 +182,7 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
     });
     await flushReact();
 
-    expect(provisionMock).toHaveBeenCalledWith("c1", "briefs", {
+    expect(provisionMock).toHaveBeenCalledWith("briefs", {
       adapterType: "claude_local",
       adapterConfig: { model: "claude-haiku-4-5" },
     });
@@ -240,7 +239,7 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
     await flushReact();
 
     expect(provisionMock).toHaveBeenCalled();
-    expect(provisionMock).toHaveBeenCalledWith("c1", "briefs", {
+    expect(provisionMock).toHaveBeenCalledWith("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5" },
       budgetMonthlyCents: 5000,
@@ -267,7 +266,7 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
     });
     await flushReact();
 
-    expect(provisionMock).toHaveBeenCalledWith("c1", "briefs", {
+    expect(provisionMock).toHaveBeenCalledWith("briefs", {
       adapterType: "process",
       adapterConfig: {},
     });

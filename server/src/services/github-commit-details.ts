@@ -19,13 +19,12 @@ export type GitHubCommitDiffDetails = {
 };
 
 export type GitHubCommitDiffDetailsResolver = (
-  companyId: string,
   reference: GitHubCommitReference,
 ) => Promise<GitHubCommitDiffDetails | null>;
 
 export interface GitHubCommitDetailsResolverOptions {
   fetch?: FetchLike;
-  tokenProvider?: (companyId: string) => Promise<string | null> | string | null;
+  tokenProvider?: () => Promise<string | null> | string | null;
   secretNames?: readonly string[];
 }
 
@@ -57,12 +56,12 @@ export function extractGitHubCommitReference(values: readonly unknown[]): GitHub
   return null;
 }
 
-async function defaultTokenProvider(db: Db, companyId: string, secretNames: readonly string[]) {
+async function defaultTokenProvider(db: Db, secretNames: readonly string[]) {
   const secrets = secretService(db);
   for (const secretName of secretNames) {
-    const secret = await secrets.getByName(companyId, secretName);
+    const secret = await secrets.getByName(secretName);
     if (!secret) continue;
-    const token = await secrets.resolveSecretValue(companyId, secret.id, "latest");
+    const token = await secrets.resolveSecretValue(secret.id, "latest");
     const trimmed = token.trim();
     if (trimmed) return trimmed;
   }
@@ -87,11 +86,11 @@ export function createGitHubCommitDiffDetailsResolver(
   const secretNames = opts.secretNames ?? DEFAULT_GITHUB_TOKEN_SECRET_NAMES;
   const tokenProvider = Object.prototype.hasOwnProperty.call(opts, "tokenProvider") && opts.tokenProvider !== undefined
     ? opts.tokenProvider
-    : ((companyId: string) => defaultTokenProvider(db, companyId, secretNames));
+    : (() => defaultTokenProvider(db, secretNames));
 
-  return async (companyId, reference) => {
+  return async (reference) => {
     try {
-      const token = (typeof tokenProvider === "function" ? await tokenProvider(companyId) : tokenProvider)?.trim() || null;
+      const token = (typeof tokenProvider === "function" ? await tokenProvider() : tokenProvider)?.trim() || null;
       const headers: Record<string, string> = {
         accept: "application/vnd.github+json",
         "user-agent": "paperclip-work-product-resolver",

@@ -88,7 +88,6 @@ function toRunSnapshot(row: HeartbeatRunRow): RunSnapshot {
   const configurationIncompletePayload = parseObject(parseObject(row.resultJson).configurationIncomplete);
   return {
     id: row.id,
-    companyId: row.companyId,
     agentId: row.agentId,
     status: row.status,
     runtimeMode: row.runtimeMode,
@@ -106,7 +105,6 @@ function toIssueSnapshot(row: IssueRow): IssueSnapshot {
     conversationUserId: row.conversationUserId,
     conversationState: row.conversationState,
     id: row.id,
-    companyId: row.companyId,
     identifier: row.identifier ?? "",
     status: row.status,
     assigneeAgentId: row.assigneeAgentId,
@@ -125,7 +123,6 @@ function toIssueSnapshot(row: IssueRow): IssueSnapshot {
 function toRunSummary(row: HeartbeatRunRow): RunSummary {
   return {
     id: row.id,
-    companyId: row.companyId,
     agentId: row.agentId,
     invocationSource: row.invocationSource,
     triggerDetail: row.triggerDetail,
@@ -152,7 +149,6 @@ function toDeferredWakeCandidate(row: typeof agentWakeupRequests.$inferSelect): 
 
   return {
     id: row.id,
-    companyId: row.companyId,
     agentId: row.agentId,
     reason: row.reason,
     source: row.source,
@@ -190,25 +186,24 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
     : null;
 
   return {
-    async findInvokableAgent({ companyId, agentId }): Promise<InvokableAgentSnapshot | null> {
+    async findInvokableAgent({ agentId }): Promise<InvokableAgentSnapshot | null> {
       const agent = await tx
         .select()
         .from(agents)
-        .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
+        .where(eq(agents.id, agentId))
         .then((rows) => rows[0] ?? null);
       if (!agent) return null;
       const invokability = await evaluateAgentInvokabilityFromDb(tx, agent);
-      return { id: agent.id, companyId: agent.companyId, name: agent.name, invokable: invokability.invokable };
+      return { id: agent.id, name: agent.name, invokable: invokability.invokable };
     },
 
-    async findNextDeferredWake({ companyId, issueId, excludedWakeIds }) {
+    async findNextDeferredWake({ issueId, excludedWakeIds }) {
       while (true) {
         const row = await tx
           .select()
           .from(agentWakeupRequests)
           .where(
             and(
-              eq(agentWakeupRequests.companyId, companyId),
               eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
               excludedWakeIds?.length ? notInArray(agentWakeupRequests.id, excludedWakeIds) : undefined,
               sql`${agentWakeupRequests.payload} ->> 'issueId' = ${issueId}`,
@@ -228,7 +223,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
             {
               phase: "promotion",
               wakeupRequestId: row.id,
-              companyId,
               agentId: row.agentId,
               issueId,
               contextSnapshot: candidate.deferredContextSeed,
@@ -260,7 +254,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
             })
             .where(
               and(
-                eq(agentWakeupRequests.companyId, companyId),
                 eq(agentWakeupRequests.id, row.id),
                 eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
               ),
@@ -269,11 +262,11 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       }
     },
 
-    async getQueuedCommentLiveness({ companyId, issueId, wakeAgentId, finishingRunId, finishingRunAgentId, queuedCommentIds }) {
+    async getQueuedCommentLiveness({ issueId, wakeAgentId, finishingRunId, finishingRunAgentId, queuedCommentIds }) {
       const rows = await tx
         .select({ id: issueComments.id, deletedAt: issueComments.deletedAt, createdByRunId: issueComments.createdByRunId })
         .from(issueComments)
-        .where(and(eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId), inArray(issueComments.id, queuedCommentIds), currentConversationCommentCondition()));
+        .where(and(eq(issueComments.issueId, issueId), inArray(issueComments.id, queuedCommentIds), currentConversationCommentCondition()));
       const targetsFinishingRunAgent = wakeAgentId === finishingRunAgentId;
       const liveNonSelfCommentIds = queuedCommentIds.filter((commentId) => {
         const row = rows.find((candidate) => candidate.id === commentId);
@@ -285,14 +278,13 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return { liveNonSelfCommentIds, containedSelfAuthoredComment };
     },
 
-    async cancelDeferredWake({ companyId, wakeId, reason, now }) {
+    async cancelDeferredWake({ wakeId, reason, now }) {
       const rows = await tx
         .update(agentWakeupRequests)
         .set({ status: "cancelled", finishedAt: now, error: reason, updatedAt: now })
         .where(
           and(
             eq(agentWakeupRequests.id, wakeId),
-            eq(agentWakeupRequests.companyId, companyId),
             eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
           ),
         )
@@ -300,14 +292,13 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return rows.length > 0;
     },
 
-    async normalizeDeferredWakeCommentIds({ companyId, wakeId, payload, liveCommentIds, now }) {
+    async normalizeDeferredWakeCommentIds({ wakeId, payload, liveCommentIds, now }) {
       const rows = await tx
         .update(agentWakeupRequests)
         .set({ payload: withQueuedCommentIdsInWakePayload(payload, liveCommentIds), updatedAt: now })
         .where(
           and(
             eq(agentWakeupRequests.id, wakeId),
-            eq(agentWakeupRequests.companyId, companyId),
             eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
           ),
         )
@@ -316,7 +307,7 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return row ? toDeferredWakeCandidate(row) : null;
     },
 
-    async failDeferredWake({ companyId, wakeId, now }) {
+    async failDeferredWake({ wakeId, now }) {
       const rows = await tx
         .update(agentWakeupRequests)
         .set({
@@ -328,7 +319,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
         .where(
           and(
             eq(agentWakeupRequests.id, wakeId),
-            eq(agentWakeupRequests.companyId, companyId),
             eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
           ),
         )
@@ -336,8 +326,8 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return rows.length > 0;
     },
 
-    async getPauseHoldFacts({ companyId, issueId, wakeAgentId, deferredContextSeed, requestedByActorType, requestedByActorId }) {
-      const activePauseHold = await treeControlSvc.getActivePauseHoldGate(companyId, issueId);
+    async getPauseHoldFacts({ issueId, wakeAgentId, deferredContextSeed, requestedByActorType, requestedByActorId }) {
+      const activePauseHold = await treeControlSvc.getActivePauseHoldGate(issueId);
       if (!activePauseHold) {
         return {
           activePauseHold: false,
@@ -350,7 +340,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
         };
       }
       const treeHoldInteractionWake = await isVerifiedIssueTreeControlInteractionWake(tx, {
-        companyId,
         issueId,
         agentId: wakeAgentId,
         contextSnapshot: deferredContextSeed,
@@ -368,30 +357,30 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       };
     },
 
-    async getCommentSelfAuthorship({ companyId, issueId, finishingRunId, commentIds }) {
+    async getCommentSelfAuthorship({ issueId, finishingRunId, commentIds }) {
       const rows = await tx
         .select({ createdByRunId: issueComments.createdByRunId })
         .from(issueComments)
-        .where(and(eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId), inArray(issueComments.id, commentIds)));
+        .where(and(eq(issueComments.issueId, issueId), inArray(issueComments.id, commentIds)));
       return { allSelfAuthored: rows.length > 0 && rows.every((row) => row.createdByRunId === finishingRunId) };
     },
 
-    async isCompletedDelegationMention({ companyId, issueId, finishingRunId, wakeAgentId, commentIds }) {
+    async isCompletedDelegationMention({ issueId, finishingRunId, wakeAgentId, commentIds }) {
       if (
-        run.companyId !== companyId || run.id !== finishingRunId ||
+        (run.id !== finishingRunId) ||
         readNonEmptyString(parseObject(run.contextSnapshot).issueId) !== issueId
       ) return false;
       const uniqueCommentIds = [...new Set(commentIds)];
       if (uniqueCommentIds.length === 0) return false;
       const parent = await tx.select({ status: issues.status, assigneeAgentId: issues.assigneeAgentId, identifier: issues.identifier })
-        .from(issues).where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+        .from(issues).where(eq(issues.id, issueId))
         .then((rows) => rows[0]);
       if (parent?.status !== "done" || parent.assigneeAgentId !== run.agentId) return false;
 
       const comments = await tx.select({ body: issueComments.body, createdByRunId: issueComments.createdByRunId,
         authorAgentId: issueComments.authorAgentId })
         .from(issueComments).where(and(
-          eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId),
+          eq(issueComments.issueId, issueId),
           inArray(issueComments.id, uniqueCommentIds), isNull(issueComments.deletedAt), currentConversationCommentCondition(),
         ));
       if (comments.length !== uniqueCommentIds.length || comments.some((comment) =>
@@ -405,7 +394,7 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       const identifiers = [...new Set(referencesByComment.flat())];
       const children = await tx.select({ identifier: issues.identifier, status: issues.status })
         .from(issues).where(and(
-          eq(issues.companyId, companyId), eq(issues.parentId, issueId),
+          eq(issues.parentId, issueId),
           eq(issues.assigneeAgentId, wakeAgentId), inArray(issues.identifier, identifiers),
         ));
       return referencesByComment.every((references) => {
@@ -418,12 +407,12 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return isCompletedOnboardingHandoffWake(tx, input);
     },
 
-    async reopenIssue({ companyId, issueId }) {
-      const updated = await issuesSvc.updateForCompany(issueId, companyId, { status: "todo", executionState: null }, tx);
+    async reopenIssue({ issueId }) {
+      const updated = await issuesSvc.update(issueId, { status: "todo", executionState: null }, tx);
       return updated ? toIssueSnapshot(updated as unknown as IssueRow) : null;
     },
 
-    async claimDeferredWakeForPromotion({ companyId, wakeId, now }) {
+    async claimDeferredWakeForPromotion({ wakeId, now }) {
       const claimed = await tx
         .update(agentWakeupRequests)
         .set({
@@ -437,7 +426,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
         .where(
           and(
             eq(agentWakeupRequests.id, wakeId),
-            eq(agentWakeupRequests.companyId, companyId),
             eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
           ),
         )
@@ -449,7 +437,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       const newRun = await tx
         .insert(heartbeatRuns)
         .values({
-          companyId: input.deferredAgent.companyId,
           agentId: input.deferredAgent.id,
           invocationSource: input.source,
           triggerDetail: input.triggerDetail,
@@ -476,7 +463,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
         .where(
           and(
             eq(agentWakeupRequests.id, input.wakeId),
-            eq(agentWakeupRequests.companyId, input.companyId),
             isNull(agentWakeupRequests.runId),
           ),
         );
@@ -496,7 +482,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
         .where(
           and(
             eq(issues.id, input.issue.id),
-            eq(issues.companyId, input.companyId),
             eq(issues.assigneeAgentId, input.deferredAgent.id),
             isNull(issues.executionRunId),
           ),
@@ -505,13 +490,12 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return toRunSummary(newRun);
     },
 
-    async hasExistingExecutionPath({ companyId, issueId, excludeRunId, agentId }) {
+    async hasExistingExecutionPath({ issueId, excludeRunId, agentId }) {
       const row = await tx
         .select({ id: heartbeatRuns.id })
         .from(heartbeatRuns)
         .where(
           and(
-            eq(heartbeatRuns.companyId, companyId),
             inArray(heartbeatRuns.status, [...EXECUTION_PATH_HEARTBEAT_RUN_STATUSES]),
             sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
             sql`${heartbeatRuns.id} <> ${excludeRunId}`,
@@ -523,17 +507,15 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return row !== null;
     },
 
-    async hasExplicitBlockerPath({ companyId, issueId }) {
+    async hasExplicitBlockerPath({ issueId }) {
       const row = await tx
         .select({ issueId: issueRelations.issueId })
         .from(issueRelations)
         .innerJoin(issues, eq(issueRelations.issueId, issues.id))
         .where(
           and(
-            eq(issueRelations.companyId, companyId),
             eq(issueRelations.relatedIssueId, issueId),
             eq(issueRelations.type, "blocks"),
-            eq(issues.companyId, companyId),
             notInArray(issues.status, ["done", "cancelled"]),
             isNull(issues.hiddenAt),
           ),
@@ -543,12 +525,12 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       return row !== null;
     },
 
-    async isAutomaticRecoverySuppressedByPauseHold({ companyId, issueId }) {
-      return isAutomaticRecoverySuppressedByPauseHold(tx, companyId, issueId, treeControlSvc);
+    async isAutomaticRecoverySuppressedByPauseHold({ issueId }) {
+      return isAutomaticRecoverySuppressedByPauseHold(tx, issueId, treeControlSvc);
     },
 
-    async isImmediateRecoverySourceBlocked({ companyId, runId }) {
-      if (companyId !== run.companyId || runId !== run.id) {
+    async isImmediateRecoverySourceBlocked({ runId }) {
+      if (runId !== run.id) {
         throw new Error(
           "wake-queue: recovery source does not match the locked execution",
         );
@@ -560,7 +542,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
             .where(
               and(
                 eq(chatActions.id, run.wakeupRequestId),
-                eq(chatActions.companyId, run.companyId),
                 inArray(chatActions.kind, ["inbound_wakeup", "failed_run_retry"]),
               ),
             )
@@ -574,12 +555,11 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       );
     },
 
-    async queueReviewParticipantRecoveryRun({ companyId, issue, finishingRun, recoveryAgent, sessionBefore, now }) {
+    async queueReviewParticipantRecoveryRun({ issue, finishingRun, recoveryAgent, sessionBefore, now }) {
       const executionState = parseIssueExecutionState(issue.executionState);
       const wakeupRequest = await tx
         .insert(agentWakeupRequests)
         .values({
-          companyId,
           agentId: recoveryAgent.id,
           source: "automation",
           triggerDetail: "system",
@@ -605,7 +585,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       const queuedRun = await tx
         .insert(heartbeatRuns)
         .values({
-          companyId,
           agentId: recoveryAgent.id,
           invocationSource: "automation",
           triggerDetail: "system",
@@ -636,7 +615,7 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       await tx
         .update(agentWakeupRequests)
         .set({ runId: queuedRun.id, updatedAt: now })
-        .where(and(eq(agentWakeupRequests.id, wakeupRequest.id), eq(agentWakeupRequests.companyId, companyId)));
+        .where(eq(agentWakeupRequests.id, wakeupRequest.id));
 
       await tx
         .update(issues)
@@ -646,26 +625,15 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
           executionLockedAt: now,
           updatedAt: now,
         })
-        .where(and(eq(issues.id, issue.id), eq(issues.companyId, companyId)));
+        .where(eq(issues.id, issue.id));
 
       return toRunSummary(queuedRun);
     },
 
-    async queueImmediateRecoveryRun({
-      companyId,
-      issue,
-      finishingRun,
-      recoveryAgent,
-      reason,
-      contextSnapshot,
-      responsibleUserId,
-      sessionBefore,
-      now,
-    }) {
+    async queueImmediateRecoveryRun({ issue, finishingRun, recoveryAgent, reason, contextSnapshot, responsibleUserId, sessionBefore, now }) {
       const wakeupRequest = await tx
         .insert(agentWakeupRequests)
         .values({
-          companyId,
           agentId: recoveryAgent.id,
           source: "automation",
           triggerDetail: "system",
@@ -682,7 +650,6 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       const queuedRun = await tx
         .insert(heartbeatRuns)
         .values({
-          companyId,
           agentId: recoveryAgent.id,
           invocationSource: "automation",
           triggerDetail: "system",
@@ -700,7 +667,7 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
       await tx
         .update(agentWakeupRequests)
         .set({ runId: queuedRun.id, updatedAt: now })
-        .where(and(eq(agentWakeupRequests.id, wakeupRequest.id), eq(agentWakeupRequests.companyId, companyId)));
+        .where(eq(agentWakeupRequests.id, wakeupRequest.id));
 
       await tx
         .update(issues)
@@ -710,7 +677,7 @@ function buildTransaction(tx: Db, deps: WakeQueuePostgresAdapterDeps, db: Db, ru
           executionLockedAt: now,
           updatedAt: now,
         })
-        .where(and(eq(issues.id, issue.id), eq(issues.companyId, companyId)));
+        .where(eq(issues.id, issue.id));
 
       return toRunSummary(queuedRun);
     },
@@ -730,7 +697,6 @@ async function recordNativeTerminalRecoveryIfNeeded(tx: Db, run: HeartbeatRunRow
     .from(issueRecoveryActions)
     .where(
       and(
-        eq(issueRecoveryActions.companyId, issue.companyId),
         eq(issueRecoveryActions.sourceIssueId, issue.id),
         or(
           inArray(issueRecoveryActions.status, ["active", "escalated"]),
@@ -745,7 +711,7 @@ async function recordNativeTerminalRecoveryIfNeeded(tx: Db, run: HeartbeatRunRow
     if (projected) {
       nativeFailureBlock = { runId: run.id, statusVersion: projected.statusVersion };
       await tx.insert(activityLog).values({
-        companyId: issue.companyId, actorType: "system", actorId: "execution-recovery",
+        actorType: "system", actorId: "execution-recovery",
         action: "issue.updated", entityType: "issue", entityId: issue.id, runId: run.id,
         details: { status: "blocked", previousStatus: issue.status, reason: "native_continuation_requires_reconciliation" },
       });
@@ -757,7 +723,7 @@ async function recordNativeTerminalRecoveryIfNeeded(tx: Db, run: HeartbeatRunRow
     for (const action of existing) {
       await tx.update(issueRecoveryActions).set({
         evidence: { ...action.evidence, nativeFailureBlock }, updatedAt: now,
-      }).where(and(eq(issueRecoveryActions.id, action.id), eq(issueRecoveryActions.companyId, issue.companyId)));
+      }).where(eq(issueRecoveryActions.id, action.id));
     }
   }
   if (!existing.length) {
@@ -774,13 +740,11 @@ async function recordNativeTerminalRecoveryIfNeeded(tx: Db, run: HeartbeatRunRow
       })
       .where(
         and(
-          eq(nativeRunFinalizations.companyId, issue.companyId),
           eq(nativeRunFinalizations.runId, run.id),
           isNull(nativeRunFinalizations.resultId),
         ),
       );
     await issueRecoveryActionService(tx).upsertSourceScoped({
-      companyId: issue.companyId,
       sourceIssueId: issue.id,
       kind: "active_run_watchdog",
       ownerType: "board",
@@ -803,18 +767,18 @@ async function recordNativeTerminalRecoveryIfNeeded(tx: Db, run: HeartbeatRunRow
  * `heartbeat.ts` calls this through `createWakeQueue`'s own wrapper; it
  * never builds a `TransactionScope` itself.
  */
-export function createAdmissionTransactionScope(companyId: string, tx: Db): TransactionScope {
-  return TransactionScope.create(companyId, tx);
+export function createAdmissionTransactionScope(tx: Db): TransactionScope {
+  return TransactionScope.create(tx);
 }
 
-function requireAdmissionTx(scope: TransactionScope | null | undefined, companyId: string): Db {
-  return requireTransactionScopeTx(scope, companyId) as Db;
+function requireAdmissionTx(scope: TransactionScope | null | undefined): Db {
+  return requireTransactionScopeTx(scope) as Db;
 }
 
 export function createWakeAdmissionReader(): WakeAdmissionReader {
   return {
     async matchesActiveWakeActor(scope, input) {
-      const tx = requireAdmissionTx(scope, input.companyId);
+      const tx = requireAdmissionTx(scope);
       if (!input.wakeupRequestId) return false;
       const actor = await tx
         .select({
@@ -823,10 +787,7 @@ export function createWakeAdmissionReader(): WakeAdmissionReader {
         })
         .from(agentWakeupRequests)
         .where(
-          and(
-            eq(agentWakeupRequests.companyId, input.companyId),
-            eq(agentWakeupRequests.id, input.wakeupRequestId),
-          ),
+          eq(agentWakeupRequests.id, input.wakeupRequestId),
         )
         .limit(1)
         .then((rows) => rows[0] ?? null);
@@ -838,22 +799,14 @@ export function createWakeAdmissionReader(): WakeAdmissionReader {
     },
     async isSameExecutionAgent(
       scope,
-      {
-        companyId,
-        activeExecutionRunAgentId,
-        issueExecutionAgentNameKey,
-        agentNameKey,
-      },
+      { activeExecutionRunAgentId, issueExecutionAgentNameKey, agentNameKey },
     ) {
-      const tx = requireAdmissionTx(scope, companyId);
+      const tx = requireAdmissionTx(scope);
       const executionAgent = await tx
         .select({ name: agents.name })
         .from(agents)
         .where(
-          and(
-            eq(agents.id, activeExecutionRunAgentId),
-            eq(agents.companyId, companyId),
-          ),
+          eq(agents.id, activeExecutionRunAgentId),
         )
         .then((rows) => rows[0] ?? null);
       const executionAgentNameKey =
@@ -866,15 +819,14 @@ export function createWakeAdmissionReader(): WakeAdmissionReader {
 
     async findExistingDeferredWake(
       scope,
-      { companyId, agentId, issueId, durableActor },
+      { agentId, issueId, durableActor },
     ) {
-      const tx = requireAdmissionTx(scope, companyId);
+      const tx = requireAdmissionTx(scope);
       const row = await tx
         .select()
         .from(agentWakeupRequests)
         .where(
           and(
-            eq(agentWakeupRequests.companyId, companyId),
             eq(agentWakeupRequests.agentId, agentId),
             eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
             sql`${agentWakeupRequests.payload} ->> 'issueId' = ${issueId}`,
@@ -915,16 +867,13 @@ export function createWakeAdmissionReader(): WakeAdmissionReader {
 export function createWakeAdmissionWriter(): WakeAdmissionWriter {
   return {
     async coalesceIntoActiveExecutionRun(scope, input) {
-      const tx = requireAdmissionTx(scope, input.companyId);
+      const tx = requireAdmissionTx(scope);
       const now = new Date();
       const mergedRun = await tx
         .update(heartbeatRuns)
         .set({ contextSnapshot: input.mergedContextSnapshot, updatedAt: now })
         .where(
-          and(
-            eq(heartbeatRuns.id, input.activeExecutionRunId),
-            eq(heartbeatRuns.companyId, input.companyId),
-          ),
+          eq(heartbeatRuns.id, input.activeExecutionRunId),
         )
         .returning()
         .then((rows) => rows[0] ?? null);
@@ -938,7 +887,6 @@ export function createWakeAdmissionWriter(): WakeAdmissionWriter {
       }
       await tx.insert(agentWakeupRequests).values({
         ...input.durableReceipt,
-        companyId: input.companyId,
         agentId: input.agentId,
         source: input.source,
         triggerDetail: input.triggerDetail,
@@ -956,7 +904,7 @@ export function createWakeAdmissionWriter(): WakeAdmissionWriter {
     },
 
     async mergeIntoExistingDeferredWake(scope, input) {
-      const tx = requireAdmissionTx(scope, input.companyId);
+      const tx = requireAdmissionTx(scope);
       const rows = await tx
         .update(agentWakeupRequests)
         .set({
@@ -971,7 +919,6 @@ export function createWakeAdmissionWriter(): WakeAdmissionWriter {
         .where(
           and(
             eq(agentWakeupRequests.id, input.existingDeferredWakeId),
-            eq(agentWakeupRequests.companyId, input.companyId),
             eq(agentWakeupRequests.status, DEFERRED_WAKE_STATUS),
           ),
         )
@@ -987,7 +934,6 @@ export function createWakeAdmissionWriter(): WakeAdmissionWriter {
       if (input.coalescedReceipt) {
         await tx.insert(agentWakeupRequests).values({
           ...input.coalescedReceipt,
-          companyId: input.companyId,
           status: "coalesced",
           coalescedCount: 1,
           finishedAt: new Date(),
@@ -996,10 +942,9 @@ export function createWakeAdmissionWriter(): WakeAdmissionWriter {
     },
 
     async insertNewDeferredWake(scope, input) {
-      const tx = requireAdmissionTx(scope, input.companyId);
+      const tx = requireAdmissionTx(scope);
       await tx.insert(agentWakeupRequests).values({
         ...input.durableReceipt,
-        companyId: input.companyId,
         agentId: input.agentId,
         source: input.source,
         triggerDetail: input.triggerDetail,
@@ -1022,7 +967,7 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
         const run = await tx
           .select()
           .from(heartbeatRuns)
-          .where(and(eq(heartbeatRuns.id, input.runId), eq(heartbeatRuns.companyId, input.companyId)))
+          .where(eq(heartbeatRuns.id, input.runId))
           .then((rows) => rows[0] ?? null);
         if (!run) {
           throw new Error(`wake-queue: run ${input.runId} was not found while releasing issue execution`);
@@ -1037,19 +982,15 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
           contextIssueId
             ? sql`
                 select id from issues
-                where company_id = ${input.companyId}
-                  and (
-                    id = ${contextIssueId}
-                    or execution_run_id = ${run.id}
-                    or checkout_run_id = ${run.id}
-                  )
+                where id = ${contextIssueId}
+                  or execution_run_id = ${run.id}
+                  or checkout_run_id = ${run.id}
                 order by id
                 for update
               `
             : sql`
                 select id from issues
-                where company_id = ${input.companyId}
-                  and (execution_run_id = ${run.id} or checkout_run_id = ${run.id})
+                where execution_run_id = ${run.id} or checkout_run_id = ${run.id}
                 order by id
                 for update
               `,
@@ -1059,12 +1000,9 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.companyId, input.companyId),
-              contextIssueId
-                ? or(eq(issues.id, contextIssueId), eq(issues.executionRunId, run.id), eq(issues.checkoutRunId, run.id))
-                : or(eq(issues.executionRunId, run.id), eq(issues.checkoutRunId, run.id)),
-            ),
+            contextIssueId
+                              ? or(eq(issues.id, contextIssueId), eq(issues.executionRunId, run.id), eq(issues.checkoutRunId, run.id))
+                              : or(eq(issues.executionRunId, run.id), eq(issues.checkoutRunId, run.id)),
           )
           .orderBy(asc(issues.id));
 
@@ -1073,11 +1011,11 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
         await tx
           .update(issues)
           .set({ executionRunId: null, executionAgentNameKey: null, executionLockedAt: null, updatedAt: input.now })
-          .where(and(eq(issues.companyId, input.companyId), eq(issues.executionRunId, run.id)));
+          .where(eq(issues.executionRunId, run.id));
         await tx
           .update(issues)
           .set({ checkoutRunId: null, updatedAt: input.now })
-          .where(and(eq(issues.companyId, input.companyId), eq(issues.checkoutRunId, run.id)));
+          .where(eq(issues.checkoutRunId, run.id));
 
         const issueRow =
           (contextIssueId ? candidateIssues.find((candidate) => candidate.id === contextIssueId) : candidateIssues[0]) ?? null;
@@ -1090,7 +1028,6 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
         const [interruptedQueue] = interruptQueueId && issueRow
           ? await tx.select({ id: agentWakeupRequests.id }).from(agentWakeupRequests).where(and(
               eq(agentWakeupRequests.id, interruptQueueId),
-              eq(agentWakeupRequests.companyId, run.companyId),
               eq(agentWakeupRequests.agentId, run.agentId),
               eq(agentWakeupRequests.status, "deferred_issue_execution"),
               sql`${agentWakeupRequests.payload}->>'issueId' = ${issueRow.id}`,
@@ -1130,7 +1067,6 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
         // finalization/stranded-queue retry under this issue lock. Another
         // agent's review participation retains its separate recovery path.
         const [successor] = await tx.select({ id: heartbeatRuns.id }).from(heartbeatRuns).where(and(
-          eq(heartbeatRuns.companyId, input.companyId),
           eq(heartbeatRuns.agentId, run.agentId),
           sql`${heartbeatRuns.id} <> ${run.id}`,
           or(eq(heartbeatRuns.nativeIssueId, issueRow.id),
@@ -1159,7 +1095,6 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
           run.status === "cancelled" &&
           run.errorCode === "external_chat_continuation" &&
           (await isRetiredExternalChatQuestionSource(tx, {
-            companyId: run.companyId,
             issueId: issueRow.id,
             agentId: run.agentId,
             runId: run.id,
@@ -1179,7 +1114,7 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
         // A release must leave deferred messages intact while execution is held.
         // The finishing conversation may still own its lease until finally cleanup.
         // Allow only bounded retry planning in that case; admission stays gated.
-        const executionBlocker = await getExecutionBlocker(tx, issueRow.companyId, issueRow.id);
+        const executionBlocker = await getExecutionBlocker(tx, issueRow.id);
         const recoveryOnly = Boolean(executionBlocker &&
           executionBlocker.cause === "execution_owner_active" && executionBlocker.runId === run.id &&
           runSnapshot.conversationContinuation && ["failed", "timed_out", "interrupted"].includes(run.status));
@@ -1205,7 +1140,7 @@ export function createPostgresWakeQueueAdapter(db: Db, deps: WakeQueuePostgresAd
           await tx.update(issues).set({ executionRunId: run.id,
             executionAgentNameKey: issueRow.executionAgentNameKey,
             executionLockedAt: issueRow.executionLockedAt,
-          }).where(and(eq(issues.companyId, input.companyId), eq(issues.id, issueRow.id),
+          }).where(and(eq(issues.id, issueRow.id),
             sql`${issues.executionRunId} is null`));
         }
         return { ...result, run: runSnapshot };

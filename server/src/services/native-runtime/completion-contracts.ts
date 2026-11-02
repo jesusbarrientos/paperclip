@@ -123,7 +123,6 @@ export function buildNativeCompletionContract(
 
 export async function ensureNativeCompletionContract(input: {
   db: Db;
-  companyId: string;
   issue: {
     id: string;
     title: string;
@@ -141,17 +140,13 @@ export async function ensureNativeCompletionContract(input: {
   return input.db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${[
       "paperclip:native-completion-contract",
-      input.companyId,
       input.issue.id,
     ].join(":")}, 0))`);
     const policy = resolveNativeCompletionPolicy(input.issue);
     const latest = await tx
       .select()
       .from(completionContracts)
-      .where(and(
-        eq(completionContracts.companyId, input.companyId),
-        eq(completionContracts.issueId, input.issue.id),
-      ))
+      .where(eq(completionContracts.issueId, input.issue.id))
       .orderBy(desc(completionContracts.revision))
       .limit(1)
       .then((rows) => rows[0] ?? null);
@@ -186,7 +181,6 @@ export async function ensureNativeCompletionContract(input: {
       contract,
     });
     const [row] = await tx.insert(completionContracts).values({
-      companyId: input.companyId,
       issueId: input.issue.id,
       revision: nextRevision,
       schemaVersion: NATIVE_COMPLETION_CONTRACT_SCHEMA,

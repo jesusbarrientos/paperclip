@@ -13,7 +13,6 @@ function persistedEventsFor(
   return localIntegrityEventsFor(profile).map((prpEvent) => {
     return {
       id: prpEvent.sourceSeq,
-      companyId: "73000000-0000-4000-8000-000000000001",
       runId: profile.runId,
       agentId: "73000000-0000-4000-8000-000000000201",
       seq: prpEvent.sourceSeq,

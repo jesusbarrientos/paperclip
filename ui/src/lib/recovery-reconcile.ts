@@ -18,18 +18,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
  * are not surfaced to the client and remain the server's call.
  */
 export function canBoardManageRuntime(
-  companyId: string | null | undefined,
   boardAccess: CurrentBoardAccess | undefined,
 ) {
-  if (!companyId || !boardAccess) return false;
+  if (!boardAccess) return false;
   if (boardAccess.source === "local_implicit" || boardAccess.isInstanceAdmin) return true;
-  if (!boardAccess.memberships || boardAccess.memberships.length === 0) {
-    return boardAccess.companyIds.includes(companyId);
-  }
-
-  const membership = boardAccess.memberships.find(
-    (item) => item.companyId === companyId && item.status === "active",
-  );
+  const membership = boardAccess.memberships?.find((item) => item.status === "active");
   if (!membership) return false;
   return membership.membershipRole !== "viewer" && membership.membershipRole !== null;
 }

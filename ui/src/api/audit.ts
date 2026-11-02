@@ -6,7 +6,7 @@ import { api } from "./client";
  *
  * Consumes the unified read API shipped by Phase 2c
  * (`server/src/routes/activity.ts` → `services/agent-action-audit.ts`):
- *   GET /companies/:companyId/audit/agent-actions
+ *   GET /audit/agent-actions
  * The default agent scope is gated server-side by the
  * `audit:view_agent_actions` board permission. The explicit all-actors scope
  * also supports a company-read basic tier with attribution stripped. CSV
@@ -24,7 +24,6 @@ export interface AuditEntitySnippet {
 /** One enriched `activity_log` row from the agent-action audit feed. */
 export interface AuditActionRecord {
   id: string;
-  companyId: string;
   actorType: "agent" | "user" | "system" | "plugin" | null;
   actorId: string | null;
   action: string;
@@ -87,11 +86,11 @@ export const auditApi = {
    * 403 without `audit:view_agent_actions`; `actorScope: "all"` returns a
    * redacted basic tier to ordinary company readers.
    */
-  listAgentActions: (companyId: string, filters: AuditActionFilters = {}) => {
+  listAgentActions: (filters: AuditActionFilters = {}) => {
     const search = buildAuditQuery(filters);
     const qs = search.toString();
     return api.get<AuditActionsResponse>(
-      `/companies/${companyId}/audit/agent-actions${qs ? `?${qs}` : ""}`,
+      `/audit/agent-actions${qs ? `?${qs}` : ""}`,
     );
   },
 
@@ -100,13 +99,12 @@ export const auditApi = {
    * activity row for the export itself (training-data export precedent).
    */
   exportAgentActionsCsv: async (
-    companyId: string,
     filters: Omit<AuditActionFilters, "cursor" | "limit"> = {},
   ): Promise<Blob> => {
     const search = buildAuditQuery(filters);
     const qs = search.toString();
     const res = await fetch(
-      `/api/companies/${companyId}/audit/agent-actions.csv${qs ? `?${qs}` : ""}`,
+      `/api/audit/agent-actions.csv${qs ? `?${qs}` : ""}`,
       { credentials: "include", headers: { Accept: "text/csv" } },
     );
     if (!res.ok) {

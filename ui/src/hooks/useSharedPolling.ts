@@ -10,7 +10,6 @@ import { filterLocalInboxArchivedQueryData } from "../lib/inboxArchiveCache";
 type RefetchInterval = number | false;
 
 export interface SharedPollingQueryOptions {
-  companyId: string | null | undefined;
   resourceKey: string;
   queryKey: QueryKey;
   enabled?: boolean;
@@ -36,31 +35,29 @@ type RegistryEntry = {
   refs: number;
 };
 
-const coordinators = new Map<string, RegistryEntry>();
+let registry: RegistryEntry | null = null;
 
-function acquireCoordinator(companyId: string): SharedPollingCoordinator {
-  const existing = coordinators.get(companyId);
-  if (existing) {
-    existing.refs += 1;
-    return existing.coordinator;
+function acquireCoordinator(): SharedPollingCoordinator {
+  if (registry) {
+    registry.refs += 1;
+    return registry.coordinator;
   }
-  const coordinator = new SharedPollingCoordinator(companyId);
+  const coordinator = new SharedPollingCoordinator();
   coordinator.start();
-  coordinators.set(companyId, { coordinator, refs: 1 });
+  registry = { coordinator, refs: 1 };
   return coordinator;
 }
 
-function releaseCoordinator(companyId: string): void {
-  const existing = coordinators.get(companyId);
-  if (!existing) return;
-  existing.refs -= 1;
-  if (existing.refs > 0) return;
-  existing.coordinator.stop();
-  coordinators.delete(companyId);
+function releaseCoordinator(): void {
+  if (!registry) return;
+  registry.refs -= 1;
+  if (registry.refs > 0) return;
+  registry.coordinator.stop();
+  registry = null;
 }
 
-function resourceKey(companyId: string, key: string, queryKeyHash: string): string {
-  return `${companyId}:${key}:${queryKeyHash}`;
+function resourceKey(key: string, queryKeyHash: string): string {
+  return `${key}:${queryKeyHash}`;
 }
 
 export function applySharedPollingResult<TData>(
@@ -79,7 +76,6 @@ export function applySharedPollingResult<TData>(
 }
 
 export function useSharedPollingQuery<TData>({
-  companyId,
   resourceKey: rawResourceKey,
   queryKey,
   enabled = true,
@@ -87,9 +83,8 @@ export function useSharedPollingQuery<TData>({
   leaderOnly = false,
 }: SharedPollingQueryOptions): SharedPollingQueryState<TData> {
   const queryClient = useQueryClient();
-  const activeCompanyId = enabled && companyId ? companyId : null;
   const queryKeyHash = useMemo(() => JSON.stringify(queryKey), [queryKey]);
-  const fullResourceKey = activeCompanyId ? resourceKey(activeCompanyId, rawResourceKey, queryKeyHash) : null;
+  const fullResourceKey = enabled ? resourceKey(rawResourceKey, queryKeyHash) : null;
   const queryKeyRef = useRef(queryKey);
   const [snapshot, setSnapshot] = useState<SharedPollingSnapshot>({ isLeader: true });
 
@@ -111,12 +106,12 @@ export function useSharedPollingQuery<TData>({
   }, [queryKey, queryKeyHash]);
 
   useEffect(() => {
-    if (!activeCompanyId || !fullResourceKey) {
+    if (!fullResourceKey) {
       applySnapshot({ isLeader: true });
       return;
     }
 
-    const coordinator = acquireCoordinator(activeCompanyId);
+    const coordinator = acquireCoordinator();
     const unsubscribeState = coordinator.subscribe(applySnapshot);
     const unsubscribeResource = coordinator.subscribeResource(fullResourceKey, (message) => {
       applySharedPollingResult(queryClient, queryKeyRef.current, message);
@@ -126,19 +121,18 @@ export function useSharedPollingQuery<TData>({
     return () => {
       unsubscribeResource();
       unsubscribeState();
-      releaseCoordinator(activeCompanyId);
+      releaseCoordinator();
     };
-  }, [activeCompanyId, applySnapshot, fullResourceKey, leaderOnly, queryClient, queryKeyHash]);
+  }, [applySnapshot, fullResourceKey, leaderOnly, queryClient, queryKeyHash]);
 
   const isLeader = !leaderOnly || snapshot.isLeader;
   const queryEnabled = enabled && (!leaderOnly || snapshot.isLeader);
   const coordinatedInterval = leaderOnly && !snapshot.isLeader ? false : refetchInterval;
 
   const publish = useCallback((data: TData | undefined, dataUpdatedAt: number) => {
-    if (!activeCompanyId || !fullResourceKey || data === undefined) return;
-    const entry = coordinators.get(activeCompanyId);
-    entry?.coordinator.publish(fullResourceKey, data, dataUpdatedAt);
-  }, [activeCompanyId, fullResourceKey]);
+    if (!fullResourceKey || data === undefined) return;
+    registry?.coordinator.publish(fullResourceKey, data, dataUpdatedAt);
+  }, [fullResourceKey]);
 
   return useMemo(
     () => ({

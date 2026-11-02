@@ -18,17 +18,14 @@ const providerNames: Record<ChatProvider, string> = {
 };
 
 export function AgentChannelsPanel({
-  companyId,
   agentId,
 }: {
-  companyId: string;
   agentId: string;
 }) {
   const { enabled } = useChatConnectorsEnabled();
   const query = useQuery({
-    queryKey: queryKeys.chatEndpoints.list(companyId),
-    queryFn: () => chatEndpointsApi.list(companyId),
-    enabled: Boolean(companyId),
+    queryKey: queryKeys.chatEndpoints.list(),
+    queryFn: () => chatEndpointsApi.list(),
   });
   const endpoints = (query.data ?? []).filter(
     (endpoint) =>

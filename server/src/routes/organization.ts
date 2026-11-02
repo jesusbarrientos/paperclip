@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { companyService, organizationService } from "../services/index.js";
-import { assertBoardOrAgent, assertCompanyAccess } from "./authz.js";
+import { assertBoardOrAgent, assertOrgAccess } from "./authz.js";
 
 export function organizationRoutes(db: Db) {
   const router = Router();
@@ -15,7 +15,7 @@ export function organizationRoutes(db: Db) {
       res.status(404).json({ error: "Organization not initialized", code: "organization_missing" });
       return;
     }
-    assertCompanyAccess(req, organizationId);
+    assertOrgAccess(req);
     const row = await companies.getById(organizationId);
     if (!row) {
       res.status(404).json({ error: "Organization not initialized", code: "organization_missing" });

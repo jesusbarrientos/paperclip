@@ -28,7 +28,6 @@ function makeThread(
   const anchorState: DocumentAnnotationAnchorState = overrides.anchorState ?? "active";
   return {
     id,
-    companyId: "co-1",
     issueId,
     documentId: "doc-1",
     documentKey,
@@ -61,7 +60,6 @@ function makeThread(
     comments: [
       {
         id: `${id}-c1`,
-        companyId: "co-1",
         threadId: id,
         issueId,
         documentId: "doc-1",

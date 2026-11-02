@@ -79,7 +79,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Coder",
       role: "engineer",
       status: "active",
@@ -91,7 +90,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: failedRunId,
-        companyId,
         agentId,
         status: "failed",
         invocationSource: "manual",
@@ -99,7 +97,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       },
       {
         id: runningRunId,
-        companyId,
         agentId,
         status: "running",
         invocationSource: "manual",
@@ -107,13 +104,13 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       },
     ]);
 
-    return { companyId, agentId, failedRunId, runningRunId };
+    return { agentId, failedRunId, runningRunId };
   }
 
   it.each([true, false])("preserves explicit retry ownership when finalization wins the sweep write (settler: %s)", async withSettler => {
-    const { companyId, agentId, runningRunId, failedRunId } = await seed();
+    const { agentId, runningRunId, failedRunId } = await seed();
     const issueId = randomUUID();
-    await db.insert(issues).values({ id: issueId, companyId, title: "Retry finalization race",
+    await db.insert(issues).values({ id: issueId, title: "Retry finalization race",
       status: "in_progress", assigneeAgentId: agentId, executionRunId: runningRunId });
     await db.update(heartbeatRuns).set({ processPid: 2_000_000_000,
       contextSnapshot: { issueId, explicitUserContinuation: { previousRunId: failedRunId, commentId: randomUUID() } },
@@ -136,11 +133,10 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("clears lock columns when checkoutRunId points at a terminal heartbeat run", async () => {
-    const { companyId, agentId, failedRunId } = await seed();
+    const { agentId, failedRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Stale lock — terminal checkoutRunId",
       // Status off in_progress + checkoutRunId still set → exactly the recurrence shape.
       status: "todo",
@@ -179,11 +175,10 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not clear locks while the referenced run is still running", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Live lock — must be preserved",
       status: "in_progress",
       priority: "high",
@@ -209,7 +204,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not terminalize a session-goal control run solely because its issue is done", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db
       .update(heartbeatRuns)
@@ -224,7 +219,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       .where(eq(heartbeatRuns.id, runningRunId));
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Completed goal awaiting clear",
       status: "done",
       priority: "high",
@@ -248,11 +242,10 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not clear when checkoutRunId is terminal but executionRunId is still running", async () => {
-    const { companyId, agentId, failedRunId, runningRunId } = await seed();
+    const { agentId, failedRunId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Mixed lock — preserve",
       status: "in_progress",
       priority: "high",
@@ -278,11 +271,10 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("is idempotent — second pass finds nothing to clear", async () => {
-    const { companyId, agentId, failedRunId } = await seed();
+    const { agentId, failedRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Idempotency",
       status: "todo",
       priority: "high",
@@ -299,7 +291,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("terminalizes an orphaned running run whose process is gone, then clears the lock", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     // The run recorded a pid, but the process and its sandbox are gone. A pid
     // this large never maps to a live process, so isPidAlive returns false.
     // The issue is not terminal, so only the process-death authority applies.
@@ -310,7 +302,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Orphaned running run — terminalize then clear",
       status: "in_progress",
       priority: "high",
@@ -363,7 +354,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it.each(["in_progress", "done"])("preserves a live legacy controller lease when the issue is %s", async (status) => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     await db.update(heartbeatRuns).set({
       runtimeMode: "legacy", processPid: 2_000_000_000,
       controllerBootId: randomUUID(),
@@ -371,7 +362,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     }).where(eq(heartbeatRuns.id, runningRunId));
     const issueId = randomUUID();
     await db.insert(issues).values({
-      id: issueId, companyId, title: "Remote controller still owns the run", status,
+      id: issueId, title: "Remote controller still owns the run", status,
       assigneeAgentId: agentId, executionRunId: runningRunId, checkoutRunId: runningRunId,
     });
     const result = await recoveryService(db, { enqueueWakeup: vi.fn() }).sweepStaleIssueLocks();
@@ -383,7 +374,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it.each(["renew", "replace", "claim"])("fences a legacy controller %s between the orphan check and terminal write", async (change) => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     const bootId = randomUUID();
     await db.update(heartbeatRuns).set({
       runtimeMode: "legacy", processPid: 2_000_000_000,
@@ -391,7 +382,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       controllerLeaseExpiresAt: new Date(Date.now() - 60_000),
     }).where(eq(heartbeatRuns.id, runningRunId));
     await db.insert(issues).values({
-      id: randomUUID(), companyId, title: "Controller changed during sweep", status: "in_progress",
+      id: randomUUID(), title: "Controller changed during sweep", status: "in_progress",
       assigneeAgentId: agentId, executionRunId: runningRunId, checkoutRunId: runningRunId,
     });
     const result = await recoveryService(db, {
@@ -411,11 +402,10 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("preserves a process-less native run while same-run resumption owns its retry", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Native same-run retry remains live",
       status: "in_progress",
       priority: "high",
@@ -435,7 +425,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       .where(eq(heartbeatRuns.id, runningRunId));
     await db.insert(nativeRunFinalizations).values({
       runId: runningRunId,
-      companyId,
       issueId,
       phase: "retryable_failure",
       attempt: 1,
@@ -458,17 +447,17 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
 
   async function seedPendingNativeResult(phase: string, options: { terminalIssue?: boolean; deferCoordinator?: boolean } = {}) {
     const fixture = await seed();
-    const { companyId, agentId, runningRunId } = fixture;
+    const { agentId, runningRunId } = fixture;
     const issueId = randomUUID();
     const contractId = randomUUID();
     const resultId = randomUUID();
     await db.insert(issues).values({
-      id: issueId, companyId, title: "Workspace finalization fixture",
+      id: issueId, title: "Workspace finalization fixture",
       status: options.terminalIssue ? "done" : "in_progress", assigneeAgentId: agentId,
       executionRunId: runningRunId, checkoutRunId: runningRunId,
     });
     await db.insert(completionContracts).values({
-      id: contractId, companyId, issueId, revision: 1,
+      id: contractId, issueId, revision: 1,
       schemaVersion: "paperclip.completion-contract.v1", policyVersion: "fixture",
       risk: "standard", completionAuthority: "server_arbiter",
       incompleteCriteriaPolicy: "preserve_non_terminal", contractJson: {},
@@ -479,11 +468,11 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       processPid: 2_000_000_000, completionContractId: contractId,
     }).where(eq(heartbeatRuns.id, runningRunId));
     await db.insert(nativeRunResults).values({
-      id: resultId, companyId, issueId, runId: runningRunId, completionContractId: contractId,
+      id: resultId, issueId, runId: runningRunId, completionContractId: contractId,
       serverFingerprint: "fixture-result", schemaStatus: "accepted", resultJson: {}, canonicalSha256: "fixture-result",
     });
     const recordCoordinator = () => db.insert(nativeRunFinalizations).values({
-      runId: runningRunId, companyId, issueId, phase, resultId, attempt: 1,
+      runId: runningRunId, issueId, phase, resultId, attempt: 1,
       nextAttemptAt: new Date(Date.now() + 30_000),
       leaseOwner: "previous-controller", leaseExpiresAt: new Date(Date.now() - 30_000),
     });
@@ -531,11 +520,10 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("preserves a process-less run while its in-process execution is still finalizing", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Native finalization remains live",
       status: "in_progress",
       priority: "high",
@@ -578,7 +566,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     // the in-memory handle and the recorded pid can both persist. The
     // process-death authority misses this case. The issue-terminal authority
     // catches it: the issue reached "done" while the run row stayed "running".
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     // process.pid is the live test process, so isPidAlive returns true.
     await db
       .update(heartbeatRuns)
@@ -587,7 +575,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Reused sandbox stopped — issue done, run still running",
       status: "done",
       priority: "high",
@@ -639,7 +626,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("terminalizes a running run to cancelled when its issue is cancelled (reuse-lease path)", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     await db
       .update(heartbeatRuns)
       .set({ processPid: process.pid })
@@ -647,7 +634,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Reused sandbox stopped — issue cancelled, run still running",
       status: "cancelled",
       priority: "high",
@@ -681,7 +667,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not terminalize a running run whose process is alive and whose issue is not terminal", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     // process.pid is the live test process, so isPidAlive returns true.
     await db
       .update(heartbeatRuns)
@@ -690,7 +676,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Live run — preserve",
       status: "in_progress",
       priority: "high",
@@ -718,7 +703,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not terminalize or clear issue locks when an ownership hold arrives after the sweep snapshot", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db
       .update(heartbeatRuns)
@@ -730,7 +715,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       .where(eq(heartbeatRuns.id, runningRunId));
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Ownership hold races stale issue-lock recovery",
       status: "done",
       priority: "high",
@@ -812,7 +796,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     // A stale lock on a terminal issue and the real lock on an active issue can
     // point at the same running run. The terminal reference alone must not
     // terminalize the run, because the run is still live for the active issue.
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     // process.pid is the live test process, so isPidAlive returns true.
     await db
       .update(heartbeatRuns)
@@ -824,7 +808,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     await db.insert(issues).values([
       {
         id: terminalIssueId,
-        companyId,
         title: "Terminal issue holds a stale lock on the shared run",
         status: "done",
         priority: "high",
@@ -834,7 +817,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       },
       {
         id: activeIssueId,
-        companyId,
         title: "Active issue owns the live shared run",
         status: "in_progress",
         priority: "high",
@@ -872,7 +854,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     // fallback in terminalizeOrphanedRunningRun could read that terminal status
     // and terminalize the run. An active issue still owns the run, so the sweep
     // must suppress the fallback and keep the run live.
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     // process.pid is the live test process, so isPidAlive returns true.
     await db
       .update(heartbeatRuns)
@@ -890,7 +872,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     await db.insert(issues).values([
       {
         id: terminalIssueId,
-        companyId,
         title: "Terminal issue named in the run context snapshot",
         status: "done",
         priority: "high",
@@ -900,7 +881,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       },
       {
         id: activeIssueId,
-        companyId,
         title: "Active issue owns the live shared run",
         status: "in_progress",
         priority: "high",
@@ -934,7 +914,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("still clears the lock when the audit write fails after terminalization", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { agentId, runningRunId } = await seed();
     // The run recorded a pid that never maps to a live process, so the sweep
     // decides to terminalize it. The issue is not terminal, so the
     // process-death authority drives the terminalization here.
@@ -945,7 +925,6 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Audit write fails — still clear the lock",
       status: "in_progress",
       priority: "high",

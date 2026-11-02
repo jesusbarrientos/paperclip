@@ -15,7 +15,6 @@ export const lowTrustOutputPromotionTargetSchema = z.object({
 
 export const lowTrustBoundarySchema = z.object({
   mode: z.literal(LOW_TRUST_REVIEW_PRESET),
-  companyId: z.string().guid().optional(),
   projectIds: z.array(z.string().guid()).optional(),
   rootIssueId: z.string().guid().optional(),
   issueIds: z.array(z.string().guid()).optional(),

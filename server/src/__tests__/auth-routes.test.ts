@@ -231,7 +231,7 @@ describe("auth routes", () => {
 
   it.each([
     { type: "none", source: "none" },
-    { type: "agent", agentId: "agent-1", companyId: "company-1", source: "agent_key" },
+    { type: "agent", agentId: "agent-1", source: "agent_key" },
   ] satisfies Express.Request["actor"][])("withholds Sentry settings from a $type actor", async (actor) => {
     vi.stubEnv("SENTRY_ENVIRONMENT", "staging");
     vi.stubEnv("SENTRY_DSN_FRONTEND", "https://public@o0.ingest.sentry.io/1");

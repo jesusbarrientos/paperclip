@@ -10,7 +10,6 @@ export const chatDiscordCommandOwners = pgTable(
   "chat_discord_command_owners",
   {
     applicationId: text("application_id").primaryKey(),
-    companyId: uuid("company_id").notNull(),
     endpointId: uuid("endpoint_id").notNull(),
     actionId: uuid("action_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })

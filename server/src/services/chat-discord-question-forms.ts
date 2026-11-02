@@ -62,7 +62,6 @@ function correctionId(
   return `pcfr:${createHash("sha256")
     .update(
       JSON.stringify([
-        scope.companyId,
         scope.endpointId,
         submitActionId,
         owner.principalId,

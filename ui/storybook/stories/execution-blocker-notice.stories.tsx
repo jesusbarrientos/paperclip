@@ -12,7 +12,7 @@ const meta = {
   component: ExecutionBlockerNotice,
   decorators: [Story => <QueryClientProvider client={client}><div className="max-w-2xl"><Story /></div></QueryClientProvider>],
   args: {
-    companyId: "storybook-company", issueId: "storybook-recovery", onRetried: () => {},
+    issueId: "storybook-recovery", onRetried: () => {},
     blocker: {
       recoveryActionId: "recovery", runId: "stopped-run", agentId: "agent",
       cause: "legacy_execution_requires_reconciliation",

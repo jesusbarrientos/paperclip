@@ -5,7 +5,7 @@ import { ZodError, type ZodSchema } from "zod";
 import { forbidden, HttpError, unprocessable } from "../errors.js";
 import { accessService } from "../services/access.js";
 import { companySkillPolicyService, type SkillPolicyPrincipal } from "../services/company-skill-policy.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getActorInfo } from "./authz.js";
 
 export function companySkillPolicyRoutes(db: Db) {
   const router = Router();
@@ -30,25 +30,22 @@ export function companySkillPolicyRoutes(db: Db) {
     };
   }
 
-  function assertSkillPolicyCompanyAccess(req: Request, companyId: string) {
+  function assertSkillPolicyCompanyAccess(req: Request) {
     if (req.actor.type === "none") {
       throw new HttpError(401, "Authentication required", { code: "skill_authentication_required" });
     }
-    if (req.actor.type === "agent" && req.actor.companyId !== companyId) {
-      throw forbidden("Agent key cannot access another company", { code: "skill_company_boundary_denied" });
-    }
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
   }
 
-  async function assertCanAdministerPolicy(req: Request, companyId: string) {
-    assertSkillPolicyCompanyAccess(req, companyId);
+  async function assertCanAdministerPolicy(req: Request) {
+    assertSkillPolicyCompanyAccess(req);
     if (req.actor.type === "board") {
       if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
-      if (await access.canUser(companyId, req.actor.userId, "users:manage_permissions")) return;
+      if (await access.canUser(req.actor.userId, "users:manage_permissions")) return;
     } else if (
       req.actor.type === "agent"
       && req.actor.agentId
-      && await access.hasPermission(companyId, "agent", req.actor.agentId, "users:manage_permissions")
+      && await access.hasPermission("agent", req.actor.agentId, "users:manage_permissions")
     ) {
       return;
     }
@@ -58,9 +55,9 @@ export function companySkillPolicyRoutes(db: Db) {
     });
   }
 
-  async function currentPrincipal(req: Request, companyId: string): Promise<SkillPolicyPrincipal> {
+  async function currentPrincipal(req: Request): Promise<SkillPolicyPrincipal> {
     if (req.actor.type === "agent" && req.actor.agentId) {
-      return policies.resolveAgentPrincipal(companyId, req.actor.agentId);
+      return policies.resolveAgentPrincipal(req.actor.agentId);
     }
     if (req.actor.type === "board") {
       return { type: "board", id: req.actor.userId ?? "board", role: "board" };
@@ -68,22 +65,19 @@ export function companySkillPolicyRoutes(db: Db) {
     throw forbidden("Authenticated company actor required", { code: "skill_authentication_required" });
   }
 
-  router.get("/companies/:companyId/skill-policy", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertSkillPolicyCompanyAccess(req, companyId);
-    res.json(await policies.get(companyId));
+  router.get("/skill-policy", async (req, res) => {
+    assertSkillPolicyCompanyAccess(req);
+    res.json(await policies.get());
   });
 
   router.put(
-    "/companies/:companyId/skill-policy",
+    "/skill-policy",
     validatePolicyBody(replaceSkillPolicySchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await assertCanAdministerPolicy(req, companyId);
+      await assertCanAdministerPolicy(req);
       const actor = getActorInfo(req);
       const { expectedRevision, ...policy } = req.body;
       res.json(await policies.replace({
-        companyId,
         expectedRevision,
         policy,
         activity: {
@@ -96,12 +90,10 @@ export function companySkillPolicyRoutes(db: Db) {
     },
   );
 
-  router.delete("/companies/:companyId/skill-policy", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertCanAdministerPolicy(req, companyId);
+  router.delete("/skill-policy", async (req, res) => {
+    await assertCanAdministerPolicy(req);
     const actor = getActorInfo(req);
     res.json(await policies.reset({
-      companyId,
       activity: {
         actorType: actor.actorType,
         actorId: actor.actorId,
@@ -112,20 +104,18 @@ export function companySkillPolicyRoutes(db: Db) {
   });
 
   router.post(
-    "/companies/:companyId/skill-policy/evaluate",
+    "/skill-policy/evaluate",
     validatePolicyBody(evaluateSkillPolicySchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertSkillPolicyCompanyAccess(req, companyId);
+      assertSkillPolicyCompanyAccess(req);
       let principal: SkillPolicyPrincipal;
       if (req.body.principal) {
-        await assertCanAdministerPolicy(req, companyId);
-        principal = await policies.resolveAgentPrincipal(companyId, req.body.principal.agentId);
+        await assertCanAdministerPolicy(req);
+        principal = await policies.resolveAgentPrincipal(req.body.principal.agentId);
       } else {
-        principal = await currentPrincipal(req, companyId);
+        principal = await currentPrincipal(req);
       }
       res.json(await policies.evaluate({
-        companyId,
         principal,
         action: req.body.action,
         resource: req.body.resource,

@@ -30,14 +30,13 @@ describe("local disk storage provider", () => {
     const service = createStorageService(createLocalDiskStorageProvider(root));
     const content = Buffer.from("hello image bytes", "utf8");
     const stored = await service.putFile({
-      companyId: "company-1",
       namespace: "issues/issue-1",
       originalFilename: "demo.png",
       contentType: "image/png",
       body: content,
     });
 
-    const fetched = await service.getObject("company-1", stored.objectKey);
+    const fetched = await service.getObject(stored.objectKey);
     const fetchedBody = await readStreamToBuffer(fetched.stream);
 
     expect(fetchedBody.toString("utf8")).toBe("hello image bytes");
@@ -50,10 +49,10 @@ describe("local disk storage provider", () => {
     const service = createStorageService(createLocalDiskStorageProvider(root));
     const bytes = Buffer.from("streamed response");
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const stored = await service.putFile({ companyId: "company-1", namespace: "runner-api", originalFilename: "response.txt",
+    const stored = await service.putFile({ namespace: "runner-api", originalFilename: "response.txt",
       contentType: "text/plain", body: Readable.from([bytes.subarray(0, 4), bytes.subarray(4)]), byteSize: bytes.length, sha256 });
     expect(stored).toMatchObject({ byteSize: bytes.length, sha256 });
-    expect(await readStreamToBuffer((await service.getObject("company-1", stored.objectKey)).stream)).toEqual(bytes);
+    expect(await readStreamToBuffer((await service.getObject(stored.objectKey)).stream)).toEqual(bytes);
   });
 
   it("removes partial local uploads when their source fails", async () => {
@@ -61,8 +60,8 @@ describe("local disk storage provider", () => {
     tempRoots.push(root);
     const provider = createLocalDiskStorageProvider(root);
     const body = Readable.from((async function* () { yield Buffer.from("partial"); throw new Error("source failed"); })());
-    await expect(provider.putObject({ objectKey: "company-1/failed", contentType: "text/plain", contentLength: 20, body })).rejects.toThrow("source failed");
-    expect(await fs.readdir(path.join(root, "company-1"))).toEqual([]);
+    await expect(provider.putObject({ objectKey: "uploads/failed", contentType: "text/plain", contentLength: 20, body })).rejects.toThrow("source failed");
+    expect(await fs.readdir(path.join(root, "uploads"))).toEqual([]);
   });
 
   it("streams only requested byte ranges", async () => {
@@ -71,34 +70,17 @@ describe("local disk storage provider", () => {
 
     const service = createStorageService(createLocalDiskStorageProvider(root));
     const stored = await service.putFile({
-      companyId: "company-1",
       namespace: "issues/issue-1",
       originalFilename: "demo.mp4",
       contentType: "video/mp4",
       body: Buffer.from("0123456789", "utf8"),
     });
 
-    const fetched = await service.getObject("company-1", stored.objectKey, { range: { start: 2, end: 5 } });
+    const fetched = await service.getObject(stored.objectKey, { range: { start: 2, end: 5 } });
     const fetchedBody = await readStreamToBuffer(fetched.stream);
 
     expect(fetchedBody.toString("utf8")).toBe("2345");
     expect(fetched.contentLength).toBe(4);
-  });
-
-  it("blocks cross-company object access", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-storage-"));
-    tempRoots.push(root);
-
-    const service = createStorageService(createLocalDiskStorageProvider(root));
-    const stored = await service.putFile({
-      companyId: "company-a",
-      namespace: "issues/issue-1",
-      originalFilename: "demo.png",
-      contentType: "image/png",
-      body: Buffer.from("hello", "utf8"),
-    });
-
-    await expect(service.getObject("company-b", stored.objectKey)).rejects.toMatchObject({ status: 403 });
   });
 
   it("delete is idempotent", async () => {
@@ -107,15 +89,14 @@ describe("local disk storage provider", () => {
 
     const service = createStorageService(createLocalDiskStorageProvider(root));
     const stored = await service.putFile({
-      companyId: "company-1",
       namespace: "issues/issue-1",
       originalFilename: "demo.png",
       contentType: "image/png",
       body: Buffer.from("hello", "utf8"),
     });
 
-    await service.deleteObject("company-1", stored.objectKey);
-    await service.deleteObject("company-1", stored.objectKey);
-    await expect(service.getObject("company-1", stored.objectKey)).rejects.toMatchObject({ status: 404 });
+    await service.deleteObject(stored.objectKey);
+    await service.deleteObject(stored.objectKey);
+    await expect(service.getObject(stored.objectKey)).rejects.toMatchObject({ status: 404 });
   });
 });

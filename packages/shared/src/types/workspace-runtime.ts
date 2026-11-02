@@ -261,7 +261,6 @@ export interface WorkspaceOverviewResponse {
 
 export interface ExecutionWorkspace {
   id: string;
-  companyId: string;
   projectId: string;
   projectWorkspaceId: string | null;
   sourceIssueId: string | null;
@@ -291,7 +290,6 @@ export interface ExecutionWorkspace {
 
 export interface WorkspaceRuntimeService {
   id: string;
-  companyId: string;
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;
@@ -336,7 +334,6 @@ export interface WorkspaceRealizationPathAlias {
 export interface WorkspaceRealizationRequest {
   version: 1;
   adapterType: string;
-  companyId: string;
   environmentId: string;
   executionWorkspaceId: string | null;
   issueId: string | null;

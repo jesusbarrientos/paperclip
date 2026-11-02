@@ -14,7 +14,6 @@ import {
 } from "./chat-discord-native-commands.js";
 
 const scope = {
-  companyId: "11111111-1111-4111-8111-111111111111",
   endpointId: "22222222-2222-4222-8222-222222222222",
   applicationId: "123456789012345678",
   guildId: "1457808928258658549",
@@ -63,7 +62,6 @@ function callback(rawOverrides: Record<string, unknown> = {}) {
 function registrationAction() {
   const prepared = createDiscordCommandRegistration(scope);
   return {
-    companyId: scope.companyId,
     endpointId: scope.endpointId,
     conversationId: null,
     kind: "discord_command_registration",
@@ -266,12 +264,6 @@ describe("Discord native command service authority parser", () => {
       parseDiscordNativeCommand(callback({ id: "777777777777777778" }), scope)
         ?.digest,
     ).not.toBe(first.digest);
-    expect(
-      parseDiscordNativeCommand(callback(), {
-        ...scope,
-        companyId: "33333333-3333-4333-8333-333333333333",
-      })?.digest,
-    ).not.toBe(first.digest);
   });
 
   it("keeps a guild root distinct from an existing native task thread", () => {
@@ -295,7 +287,6 @@ describe("Discord native command service authority parser", () => {
     for (const changed of [
       { ...row, status: "processing" },
       { ...row, endpointId: "33333333-3333-4333-8333-333333333333" },
-      { ...row, companyId: "33333333-3333-4333-8333-333333333333" },
       { ...row, kind: "ordinary_action" },
       { ...row, conversationId: "33333333-3333-4333-8333-333333333333" },
       {
@@ -341,12 +332,12 @@ describe("Discord native command service authority parser", () => {
     const invocation = parseDiscordNativeCommand(callback(), scope)!;
     const target = {
       conversationId: scope.endpointId,
-      issueId: scope.companyId,
+      issueId: "11111111-1111-4111-8111-111111111111",
       sessionGeneration: 1,
     };
     const row = {
       ...scope,
-      principalId: scope.companyId,
+      principalId: "11111111-1111-4111-8111-111111111111",
       conversationId: target.conversationId,
       kind: "discord_native_command",
       providerActionId: `discord-native-command:${interactionId}`,
@@ -364,14 +355,13 @@ describe("Discord native command service authority parser", () => {
       },
     };
     expect(parseDiscordNativeCommandReceipt(row, invocation, scope)).toEqual({
-      principalId: scope.companyId,
+      principalId: "11111111-1111-4111-8111-111111111111",
       runtimeFence: row.payload.runtimeFence,
       target,
       result: row.result,
     });
     for (const changed of [
       { ...row, status: "received" },
-      { ...row, companyId: scope.endpointId },
       { ...row, principalId: "" },
       { ...row, conversationId: null },
       { ...row, payload: { ...row.payload, extra: true } },

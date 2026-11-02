@@ -5,10 +5,10 @@ import { loginMcpDevice, mcpAccessToken, mcpResource, mcpRpc } from "../client/m
 export function registerMcpCommands(program: Command) {
   const mcp = program.command("mcp").description("Connect an assistant to Paperclip as a consenting human");
   mcp.command("login").requiredOption("--device", "Authorize in a browser without a callback listener")
-    .requiredOption("--url <url>", "Canonical Paperclip MCP URL").option("--company <id>", "Restrict consent to this organization")
-    .action(async (options: { url: string; company?: string }) => {
-      const result = await loginMcpDevice(options.url, options.company);
-      console.log(`Connected to ${result.resource}\nOrganization: ${result.companyId}`);
+    .requiredOption("--url <url>", "Canonical Paperclip MCP URL")
+    .action(async (options: { url: string }) => {
+      const result = await loginMcpDevice(options.url);
+      console.log(`Connected to ${result.resource}`);
     });
   mcp.command("proxy").description("Expose the authorized Paperclip tools over local MCP stdio")
     .requiredOption("--url <url>", "The exact MCP URL used during login")

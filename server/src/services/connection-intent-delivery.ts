@@ -71,14 +71,9 @@ export function connectionIntentDeliveryService(db: Db, heartbeat: Pick<Heartbea
   }) {
     const publications: ActivityPublication[] = [];
     const restored = await db.transaction(async (tx) => {
-      const [issue] = await tx.select().from(issues).where(and(
-        eq(issues.id, loaded.issue.id), eq(issues.companyId, loaded.issue.companyId),
-      )).for("update");
+      const [issue] = await tx.select().from(issues).where(eq(issues.id, loaded.issue.id)).for("update");
       if (!issue || issue.status !== "blocked" || issue.assigneeAgentId !== loaded.issue.assigneeAgentId) return null;
-      const [latest] = await tx.select().from(heartbeatRuns).where(and(
-        eq(heartbeatRuns.companyId, issue.companyId),
-        sql`coalesce(${heartbeatRuns.contextSnapshot}->>'issueId', ${heartbeatRuns.contextSnapshot}->>'taskId') = ${issue.id}`,
-      )).orderBy(desc(heartbeatRuns.createdAt)).limit(1);
+      const [latest] = await tx.select().from(heartbeatRuns).where(sql`coalesce(${heartbeatRuns.contextSnapshot}->>'issueId', ${heartbeatRuns.contextSnapshot}->>'taskId') = ${issue.id}`).orderBy(desc(heartbeatRuns.createdAt)).limit(1);
       const gap = latest?.resultJson?.configurationIncomplete as { reason?: string } | undefined;
       if (latest?.id !== loaded.interaction.sourceRunId || latest.status !== "failed"
         || latest.errorCode !== "configuration_incomplete" || gap?.reason !== "ai_connection_unavailable") return null;
@@ -86,22 +81,22 @@ export function connectionIntentDeliveryService(db: Db, heartbeat: Pick<Heartbea
       // Their existing Try again path owns that authorization and delivery.
       const [restrictedChat] = await tx.select({ id: chatConversations.id }).from(chatConversations)
         .innerJoin(chatEndpoints, eq(chatEndpoints.id, chatConversations.endpointId))
-        .where(and(eq(chatConversations.companyId, issue.companyId), eq(chatConversations.issueId, issue.id),
+        .where(and(eq(chatConversations.issueId, issue.id),
           eq(chatEndpoints.externalExecutionPolicy, "restricted"))).limit(1);
       if (restrictedChat) return null;
       const recoveries = issueRecoveryActionService(db);
-      const recovery = await recoveries.getActiveForIssue(issue.companyId, issue.id, tx);
+      const recovery = await recoveries.getActiveForIssue(issue.id, tx);
       if (!recovery || recovery.cause !== "configuration_incomplete" || recovery.evidence.latestRunId !== latest.id) return null;
       const actorId = loaded.interaction.resolvedByUserId ?? loaded.interaction.addresseeUserId!;
       const updated = await issueService(db).update(issue.id, {
-        status: "in_progress", actorUserId: actorId, companyGuard: issue.companyId,
+        status: "in_progress", actorUserId: actorId,
       }, tx, publications);
-      await recoveries.resolveActiveForIssue({ companyId: issue.companyId, sourceIssueId: issue.id,
+      await recoveries.resolveActiveForIssue({ sourceIssueId: issue.id,
         actionId: recovery.id, status: "resolved", outcome: "restored", resolutionNote: "AI connection restored by the responsible user." }, tx);
       return updated;
     });
     for (const publication of publications) publishActivity(publication);
-    if (restored) await logActivity(db, { companyId: restored.companyId, actorType: "user",
+    if (restored) await logActivity(db, { actorType: "user",
       actorId: loaded.interaction.resolvedByUserId ?? loaded.interaction.addresseeUserId!,
       action: "issue.updated", entityType: "issue", entityId: restored.id,
       details: { status: restored.status, _previous: { status: "blocked" }, source: "ai_connection_restored", interactionId: loaded.interaction.id } });
@@ -119,7 +114,7 @@ export function connectionIntentDeliveryService(db: Db, heartbeat: Pick<Heartbea
     if (!claimed) return;
     const [loaded] = await db.select({ interaction: issueThreadInteractions, issue: issues })
       .from(issueThreadInteractions).innerJoin(issues, eq(issues.id, issueThreadInteractions.issueId))
-      .where(and(eq(issueThreadInteractions.id, interactionId), eq(issueThreadInteractions.companyId, claimed.companyId), eq(issues.companyId, claimed.companyId)));
+      .where(eq(issueThreadInteractions.id, interactionId));
     const interaction = loaded?.interaction;
     const payload = interaction?.payload as { requestingAgentId?: string; serviceSlug?: string; purpose?: "ai" } | undefined;
     if (!loaded || !interaction || !["accepted", "rejected"].includes(interaction.status)
@@ -139,8 +134,7 @@ export function connectionIntentDeliveryService(db: Db, heartbeat: Pick<Heartbea
       }
     }
     if (interaction.status === "accepted") {
-      const ready = await connectionIntentService(db).usableConnectionForAgent({ companyId: claimed.companyId,
-        agentId: payload!.requestingAgentId!, responsibleUserId: userId!, serviceSlug: payload!.serviceSlug!, purpose: payload!.purpose });
+      const ready = await connectionIntentService(db).usableConnectionForAgent({ agentId: payload!.requestingAgentId!, responsibleUserId: userId!, serviceSlug: payload!.serviceSlug!, purpose: payload!.purpose });
       if (!ready) return;
     }
     if (interaction.status === "accepted" && payload?.purpose === "ai" && loaded.issue.status === "blocked") {
@@ -150,7 +144,6 @@ export function connectionIntentDeliveryService(db: Db, heartbeat: Pick<Heartbea
     }
     if (!["in_progress", "in_review"].includes(loaded.issue.status)) return;
     const durableWake = () => db.select({ id: agentWakeupRequests.id }).from(agentWakeupRequests).where(and(
-      eq(agentWakeupRequests.companyId, claimed.companyId),
       eq(agentWakeupRequests.idempotencyKey, `connection-intent:${interactionId}:${interaction.status}`),
       notInArray(agentWakeupRequests.status, ["skipped", "failed", "cancelled"]),
     )).limit(1);

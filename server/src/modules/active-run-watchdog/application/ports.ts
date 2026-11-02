@@ -12,7 +12,6 @@ import type {
 } from "./types.js";
 
 export type FindCandidateSilentRunsInput = {
-  companyId?: string;
   suspicionBefore: Date;
   issueCreatedAtGte?: Date | null;
 };
@@ -31,7 +30,6 @@ export type FindLatestSameRunTerminalEvidenceInput = {
 
 export type RunningAgentSnapshot = {
   id: string;
-  companyId: string;
   adapterType: string;
 };
 
@@ -52,16 +50,15 @@ export type RunningAgentSnapshot = {
  */
 export interface WatchdogRunReader {
   findCandidateSilentRuns(input: FindCandidateSilentRunsInput): Promise<RunSnapshot[]>;
-  findRunForCompany(companyId: string, runId: string): Promise<RunSnapshot | null>;
-  findLatestDecision(companyId: string, runId: string, now: Date): Promise<FindLatestDecisionResult>;
-  findOpenStaleRunEvaluation(companyId: string, runId: string): Promise<EvaluationIssueSnapshot | null>;
+  findRunForCompany(runId: string): Promise<RunSnapshot | null>;
+  findLatestDecision(runId: string, now: Date): Promise<FindLatestDecisionResult>;
+  findOpenStaleRunEvaluation(runId: string): Promise<EvaluationIssueSnapshot | null>;
   findLatestSameRunTerminalEvidence(
-    companyId: string,
     input: FindLatestSameRunTerminalEvidenceInput,
   ): Promise<TerminalEvidence | null>;
-  findSourceIssue(companyId: string, issueId: string): Promise<SourceIssueSnapshot | null>;
-  findRunningAgent(companyId: string, agentId: string): Promise<RunningAgentSnapshot | null>;
-  findEvaluationIssueById(companyId: string, issueId: string): Promise<EvaluationIssueSnapshot | null>;
+  findSourceIssue(issueId: string): Promise<SourceIssueSnapshot | null>;
+  findRunningAgent(agentId: string): Promise<RunningAgentSnapshot | null>;
+  findEvaluationIssueById(issueId: string): Promise<EvaluationIssueSnapshot | null>;
 }
 
 /**
@@ -72,8 +69,8 @@ export interface WatchdogRunReader {
  * update inside one transaction.
  */
 export interface WatchdogWriter {
-  recordDecision(companyId: string, input: RecordDecisionInput): Promise<WatchdogDecisionRecord>;
-  foldSourceResolvedRun(companyId: string, input: FoldSourceResolvedRunInput): Promise<FoldOutcome>;
+  recordDecision(input: RecordDecisionInput): Promise<WatchdogDecisionRecord>;
+  foldSourceResolvedRun(input: FoldSourceResolvedRunInput): Promise<FoldOutcome>;
 }
 
 /** Controls the local operating-system process backing a run. */

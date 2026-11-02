@@ -8,7 +8,6 @@ import type {
 import { api } from "./client";
 
 export interface SummarySlotSelector {
-  companyId: string;
   scopeKind: SummarySlotScopeKind;
   scopeId?: string | null;
   slotKey: SummarySlotKey;
@@ -19,7 +18,7 @@ function summarySlotPath(selector: SummarySlotSelector, suffix = "") {
   if (selector.scopeId) params.set("scopeId", selector.scopeId);
   const query = params.toString();
   return [
-    `/companies/${selector.companyId}/summary-slots/${selector.scopeKind}/${selector.slotKey}`,
+    `/summary-slots/${selector.scopeKind}/${selector.slotKey}`,
     suffix,
     query ? `?${query}` : "",
   ].join("");

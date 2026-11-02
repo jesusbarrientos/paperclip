@@ -29,7 +29,6 @@ export async function slackExplicitPublicationDuplicate(
     .where(
       and(
         eq(issueComments.id, publication.commentId),
-        eq(issueComments.companyId, publication.companyId),
         eq(issueComments.issueId, publication.issueId),
       ),
     );
@@ -38,10 +37,7 @@ export async function slackExplicitPublicationDuplicate(
     .select()
     .from(chatConversations)
     .where(
-      and(
-        eq(chatConversations.id, publication.conversationId),
-        eq(chatConversations.companyId, publication.companyId),
-      ),
+      eq(chatConversations.id, publication.conversationId),
     );
   if (!conversation) return null;
   const sends = await db
@@ -49,7 +45,6 @@ export async function slackExplicitPublicationDuplicate(
     .from(chatActions)
     .where(
       and(
-        eq(chatActions.companyId, publication.companyId),
         eq(chatActions.endpointId, publication.endpointId),
         eq(chatActions.conversationId, publication.conversationId),
         eq(chatActions.kind, "slack_tool_write"),

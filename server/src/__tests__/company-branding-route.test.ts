@@ -57,6 +57,10 @@ vi.mock("../services/index.js", () => ({
   logActivity: mockLogActivity,
 }));
 
+vi.mock("../services/organization.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1", requireId: async () => "company-1" }),
+}));
+
 function createCompany() {
   const now = new Date("2026-03-19T02:00:00.000Z");
   return {
@@ -87,12 +91,12 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api/companies", companyRoutes({} as any));
+  app.use("/api/organization", companyRoutes({} as any));
   app.use(errorHandler);
   return app;
 }
 
-describe("PATCH /api/companies/:companyId/branding", () => {
+describe("PATCH /api/organization/branding", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../routes/companies.js");
@@ -104,19 +108,17 @@ describe("PATCH /api/companies/:companyId/branding", () => {
   it("rejects non-CEO agent callers", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "engineer",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/branding")
+      .patch("/api/organization/branding")
       .send({ logoAssetId: "11111111-1111-4111-8111-111111111111" });
 
     expect(res.status).toBe(403);
@@ -127,19 +129,17 @@ describe("PATCH /api/companies/:companyId/branding", () => {
   it("rejects non-CEO agent callers before validating branding body shape", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "engineer",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/branding")
+      .patch("/api/organization/branding")
       .send({ status: "archived" });
 
     expect(res.status).toBe(403);
@@ -151,20 +151,18 @@ describe("PATCH /api/companies/:companyId/branding", () => {
     const company = createCompany();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "ceo",
     });
     mockCompanyService.update.mockResolvedValue(company);
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/branding")
+      .patch("/api/organization/branding")
       .send({
         logoAssetId: "11111111-1111-4111-8111-111111111111",
       });
@@ -177,7 +175,6 @@ describe("PATCH /api/companies/:companyId/branding", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
         actorType: "agent",
         actorId: "agent-1",
         agentId: "agent-1",
@@ -204,7 +201,7 @@ describe("PATCH /api/companies/:companyId/branding", () => {
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/branding")
+      .patch("/api/organization/branding")
       .send({ description: null, logoAssetId: null });
 
     expect(res.status).toBe(200);
@@ -219,7 +216,7 @@ describe("PATCH /api/companies/:companyId/branding", () => {
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/branding")
+      .patch("/api/organization/branding")
       .send({
         logoAssetId: "11111111-1111-4111-8111-111111111111",
         brandColor: "#123456",
@@ -238,7 +235,7 @@ describe("PATCH /api/companies/:companyId/branding", () => {
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/branding")
+      .patch("/api/organization/branding")
       .send({
         logoAssetId: "11111111-1111-4111-8111-111111111111",
         status: "archived",
@@ -250,7 +247,7 @@ describe("PATCH /api/companies/:companyId/branding", () => {
   });
 });
 
-describe("PATCH /api/companies/:companyId", () => {
+describe("PATCH /api/organization", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../routes/companies.js");
@@ -259,22 +256,20 @@ describe("PATCH /api/companies/:companyId", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects non-CEO agent callers before loading the company or validating settings body shape", async () => {
+  it("rejects non-CEO agent callers before loading the organization or validating settings body shape", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "engineer",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1")
+      .patch("/api/organization")
       .send({ status: "archived" });
 
     expect(res.status).toBe(403);
@@ -287,7 +282,6 @@ describe("PATCH /api/companies/:companyId", () => {
     const company = createCompany();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "ceo",
     });
     mockCompanyService.getById.mockResolvedValue(company);
@@ -298,13 +292,12 @@ describe("PATCH /api/companies/:companyId", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1")
+      .patch("/api/organization")
       .send({ name: "New Name" });
 
     expect(res.status).toBe(200);
@@ -318,20 +311,18 @@ describe("PATCH /api/companies/:companyId", () => {
     const company = createCompany();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "ceo",
     });
     mockCompanyService.getById.mockResolvedValue(company);
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1")
+      .patch("/api/organization")
       .send({
         status: "archived",
         budgetMonthlyCents: 1000,
@@ -347,7 +338,7 @@ describe("PATCH /api/companies/:companyId", () => {
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
-  it("keeps full company settings updates board-only", async () => {
+  it("keeps full organization settings updates board-only", async () => {
     const company = createCompany();
     mockCompanyService.getById.mockResolvedValue(company);
     mockCompanyService.update.mockResolvedValue({
@@ -361,7 +352,7 @@ describe("PATCH /api/companies/:companyId", () => {
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1")
+      .patch("/api/organization")
       .send({ status: "paused" });
 
     expect(res.status).toBe(200);

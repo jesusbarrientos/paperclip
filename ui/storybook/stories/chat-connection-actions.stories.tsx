@@ -4,7 +4,7 @@ import { ConnectorCard } from "@/pages/apps/Browse";
 import type { ChatEndpoint } from "@/api/chatEndpoints";
 
 const endpoint: ChatEndpoint = {
-  id: "slack-active", companyId: "demo", provider: "slack", status: "active",
+  id: "slack-active", provider: "slack", status: "active",
   assignedAgentId: "ceo", assignedAgentName: "CEO", providerAccountLabel: "Paperclip",
   allowUnlinkedPeople: false,
 };

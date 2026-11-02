@@ -8,7 +8,6 @@ import {
 function runtimeService(overrides: Partial<WorkspaceRuntimeService> = {}): WorkspaceRuntimeService {
   return {
     id: "runtime-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: null,
     executionWorkspaceId: "ews-1",
@@ -41,7 +40,6 @@ function runtimeService(overrides: Partial<WorkspaceRuntimeService> = {}): Works
 function operation(overrides: Partial<WorkspaceOperation> = {}): WorkspaceOperation {
   return {
     id: "op-1",
-    companyId: "company-1",
     executionWorkspaceId: "ews-1",
     heartbeatRunId: null,
     issueId: null,
@@ -155,7 +153,6 @@ describe("resolveWorkspaceAccessState", () => {
           seedMode: "full",
           instanceId: "instance-a",
           executionWorkspaceId: "ews-1",
-          companyId: "company-1",
           failurePhase: null,
         },
       },
@@ -292,7 +289,6 @@ describe("resolveWorkspaceAccessState", () => {
           seedMode: null,
           instanceId: "instance-a",
           executionWorkspaceId: "ews-1",
-          companyId: "company-1",
           failurePhase: "clone_data_missing",
         },
       },
@@ -319,7 +315,6 @@ describe("resolveWorkspaceAccessState", () => {
           seedMode: "minimal",
           instanceId: "instance-a",
           executionWorkspaceId: "ews-1",
-          companyId: "company-1",
           failurePhase: "database_unreachable",
         },
       },
@@ -410,7 +405,6 @@ describe("describeWorkspaceReadinessCause", () => {
           seedMode: "minimal",
           instanceId: "i",
           executionWorkspaceId: "e",
-          companyId: "company-1",
           failurePhase: "cloned_membership_missing",
         },
       }),

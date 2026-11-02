@@ -37,7 +37,6 @@ import { pluginsApi } from "@/api/plugins";
 import { ApiError } from "@/api/client";
 import { useToastActions, type ToastInput } from "@/context/ToastContext";
 import { useSidebar } from "@/context/SidebarContext";
-import { isGlobalPath, normalizeCompanyPrefix } from "@/lib/company-routes";
 import { normalizeRememberedInstanceSettingsPath } from "@/lib/instance-settings";
 
 // ---------------------------------------------------------------------------
@@ -102,8 +101,6 @@ export interface HostLocation {
 // ---------------------------------------------------------------------------
 
 export interface PluginHostContext {
-  companyId: string | null;
-  companyPrefix: string | null;
   projectId: string | null;
   entityId: string | null;
   entityType: string | null;
@@ -277,11 +274,6 @@ function sameOriginPathFromHref(href: string): string | null {
   }
 }
 
-function hasCompanyPrefix(pathname: string, companyPrefix: string): boolean {
-  const [firstSegment] = pathname.split("/").filter(Boolean);
-  return firstSegment?.toUpperCase() === normalizeCompanyPrefix(companyPrefix);
-}
-
 function isLegacyInstanceSettingsPath(pathname: string): boolean {
   return (
     pathname === "/instance" ||
@@ -292,35 +284,15 @@ function isLegacyInstanceSettingsPath(pathname: string): boolean {
   );
 }
 
-/**
- * Resolve a plugin-provided Paperclip path to the active company scope.
- *
- * This intentionally handles plugin page roots such as `/wiki`, which cannot
- * be listed in the host router's static board-route table ahead of time.
- */
-export function resolveHostNavigationHref(
-  to: string,
-  companyPrefix: string | null | undefined,
-): string {
+export function resolveHostNavigationHref(to: string): string {
   const sameOriginPath = sameOriginPathFromHref(to);
   if (sameOriginPath === null) return to;
 
   const { pathname, search, hash } = splitPath(sameOriginPath);
   if (isLegacyInstanceSettingsPath(pathname)) {
-    const canonicalPath = normalizeRememberedInstanceSettingsPath(`${pathname}${search}${hash}`);
-    if (!companyPrefix) return canonicalPath;
-    return `/${normalizeCompanyPrefix(companyPrefix)}${canonicalPath}`;
+    return normalizeRememberedInstanceSettingsPath(`${pathname}${search}${hash}`);
   }
-
-  if (!pathname.startsWith("/") || isGlobalPath(pathname) || !companyPrefix) {
-    return sameOriginPath;
-  }
-
-  if (hasCompanyPrefix(pathname, companyPrefix)) {
-    return sameOriginPath;
-  }
-
-  return `/${normalizeCompanyPrefix(companyPrefix)}${pathname}${search}${hash}`;
+  return sameOriginPath;
 }
 
 function isPlainLeftClick(event: ReactMouseEvent<HTMLAnchorElement>): boolean {
@@ -359,7 +331,6 @@ export function usePluginData<T = unknown>(
   params?: Record<string, unknown>,
 ): PluginDataResult<T> {
   const { pluginId, hostContext } = usePluginBridgeContext();
-  const companyId = hostContext.companyId;
   const renderEnvironmentSnapshot = serializeRenderEnvironment(hostContext.renderEnvironment);
   const renderEnvironmentKey = serializeRenderEnvironmentSnapshot(renderEnvironmentSnapshot);
 
@@ -384,7 +355,6 @@ export function usePluginData<T = unknown>(
           pluginId,
           key,
           params,
-          companyId,
           renderEnvironmentSnapshot,
         )
         .then((response) => {
@@ -420,7 +390,7 @@ export function usePluginData<T = unknown>(
       if (retryTimer) clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pluginId, key, paramsKey, refreshCounter, companyId, renderEnvironmentKey]);
+  }, [pluginId, key, paramsKey, refreshCounter, renderEnvironmentKey]);
 
   const refresh = useCallback(() => {
     setRefreshCounter((c) => c + 1);
@@ -454,7 +424,6 @@ export function usePluginAction(key: string): PluginActionFn {
   return useCallback(
     async (params?: Record<string, unknown>): Promise<unknown> => {
       const { pluginId, hostContext } = contextRef.current;
-      const companyId = hostContext.companyId;
       const renderEnvironment = serializeRenderEnvironment(hostContext.renderEnvironment);
 
       try {
@@ -462,7 +431,6 @@ export function usePluginAction(key: string): PluginActionFn {
           pluginId,
           key,
           params,
-          companyId,
           renderEnvironment,
         );
         return response.data;
@@ -481,7 +449,7 @@ export function usePluginAction(key: string): PluginActionFn {
 /**
  * Concrete implementation of `useHostContext()`.
  *
- * Returns the current host context (company, project, entity, user)
+ * Returns the current host context (project, entity, user)
  * from the enclosing `PluginBridgeContext.Provider`.
  */
 export function useHostContext(): PluginHostContext {
@@ -494,15 +462,9 @@ export function useHostContext(): PluginHostContext {
 // ---------------------------------------------------------------------------
 
 export function useHostNavigation(): HostNavigation {
-  const { hostContext } = usePluginBridgeContext();
   const routerNavigate = useRouterNavigate();
   const { isMobile, setSidebarOpen } = useSidebar();
-  const companyPrefix = hostContext.companyPrefix;
-
-  const resolveHref = useCallback(
-    (to: string) => resolveHostNavigationHref(to, companyPrefix),
-    [companyPrefix],
-  );
+  const resolveHref = resolveHostNavigationHref;
 
   const navigate = useCallback(
     (to: string, options?: HostNavigationOptions) => {
@@ -591,13 +553,11 @@ export interface PluginStreamResult<T = unknown> {
 
 export function usePluginStream<T = unknown>(
   channel: string,
-  options?: { companyId?: string },
 ): PluginStreamResult<T> {
-  const { pluginId, hostContext } = usePluginBridgeContext();
-  const effectiveCompanyId = options?.companyId ?? hostContext.companyId ?? undefined;
+  const { pluginId } = usePluginBridgeContext();
   const [events, setEvents] = useState<T[]>([]);
   const [lastEvent, setLastEvent] = useState<T | null>(null);
-  const [connecting, setConnecting] = useState<boolean>(Boolean(effectiveCompanyId));
+  const [connecting, setConnecting] = useState<boolean>(true);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
@@ -614,14 +574,8 @@ export function usePluginStream<T = unknown>(
     setLastEvent(null);
     setError(null);
 
-    if (!effectiveCompanyId) {
-      close();
-      return;
-    }
-
-    const params = new URLSearchParams({ companyId: effectiveCompanyId });
     const source = new EventSource(
-      `/api/plugins/${encodeURIComponent(pluginId)}/bridge/stream/${encodeURIComponent(channel)}?${params.toString()}`,
+      `/api/plugins/${encodeURIComponent(pluginId)}/bridge/stream/${encodeURIComponent(channel)}`,
       { withCredentials: true },
     );
     sourceRef.current = source;
@@ -669,7 +623,7 @@ export function usePluginStream<T = unknown>(
         sourceRef.current = null;
       }
     };
-  }, [channel, close, effectiveCompanyId, pluginId]);
+  }, [channel, pluginId]);
 
   return { events, lastEvent, connecting, connected, error, close };
 }

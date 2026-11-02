@@ -79,7 +79,6 @@ export const READ_CURRENT_WAKE_COMMENTS_TOOL_DEFINITION = Object.freeze({
 
 export type CurrentWakeCommentsBinding = {
   schema: typeof CURRENT_WAKE_COMMENTS_BINDING_SCHEMA;
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -228,7 +227,6 @@ function attachmentImportNotice(
 }
 
 function bindingDigest(input: {
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -238,7 +236,6 @@ function bindingDigest(input: {
 }) {
   return sha256({
     schema: CURRENT_WAKE_COMMENTS_BINDING_SCHEMA,
-    companyId: input.companyId,
     issueId: input.issueId,
     runId: input.runId,
     agentId: input.agentId,
@@ -256,7 +253,6 @@ function bindingDigest(input: {
 export async function resolveCurrentWakeCommentsBinding(
   db: Db,
   input: {
-    companyId: string;
     issueId: string;
     runId: string;
     agentId: string;
@@ -271,12 +267,11 @@ export async function resolveCurrentWakeCommentsBinding(
     .from(heartbeatRuns)
     .innerJoin(
       issues,
-      and(eq(issues.id, input.issueId), eq(issues.companyId, input.companyId)),
+      eq(issues.id, input.issueId),
     )
     .where(
       and(
         eq(heartbeatRuns.id, input.runId),
-        eq(heartbeatRuns.companyId, input.companyId),
         eq(heartbeatRuns.agentId, input.agentId),
         eq(heartbeatRuns.nativeIssueId, input.issueId),
       ),
@@ -326,7 +321,6 @@ export async function resolveCurrentWakeCommentsBinding(
   });
   return {
     schema: CURRENT_WAKE_COMMENTS_BINDING_SCHEMA,
-    companyId: input.companyId,
     issueId: input.issueId,
     runId: input.runId,
     agentId: input.agentId,
@@ -418,7 +412,6 @@ async function currentWakeCommentsSnapshot(
     .from(issueComments)
     .where(
       and(
-        eq(issueComments.companyId, binding.companyId),
         eq(issueComments.issueId, binding.issueId),
         inArray(issueComments.id, [...binding.commentIds]),
       ),
@@ -437,14 +430,10 @@ async function currentWakeCommentsSnapshot(
     .from(issueAttachments)
     .innerJoin(
       assets,
-      and(
-        eq(assets.id, issueAttachments.assetId),
-        eq(assets.companyId, binding.companyId),
-      ),
+      eq(assets.id, issueAttachments.assetId),
     )
     .where(
       and(
-        eq(issueAttachments.companyId, binding.companyId),
         eq(issueAttachments.issueId, binding.issueId),
         inArray(issueAttachments.issueCommentId, [...binding.commentIds]),
       ),
@@ -524,7 +513,6 @@ async function currentWakeCommentsSnapshot(
     };
   });
   const comments = await createRunSecretRedactionRegistry(db).redactForIssue(
-    binding.companyId,
     binding.issueId,
     unredacted,
   );
@@ -631,15 +619,11 @@ export async function readCurrentWakeComments(
       .from(heartbeatRuns)
       .innerJoin(
         issues,
-        and(
-          eq(issues.id, binding.issueId),
-          eq(issues.companyId, binding.companyId),
-        ),
+        eq(issues.id, binding.issueId),
       )
       .where(
         and(
           eq(heartbeatRuns.id, binding.runId),
-          eq(heartbeatRuns.companyId, binding.companyId),
           eq(heartbeatRuns.agentId, binding.agentId),
           eq(heartbeatRuns.nativeIssueId, binding.issueId),
         ),
@@ -659,7 +643,6 @@ export async function readCurrentWakeComments(
     const currentBinding = await resolveCurrentWakeCommentsBinding(
       tx as unknown as Db,
       {
-        companyId: binding.companyId,
         issueId: binding.issueId,
         runId: binding.runId,
         agentId: binding.agentId,
@@ -743,7 +726,6 @@ export async function readCurrentWakeComments(
 export async function assertCurrentWakeCommentsRead(
   db: Db,
   input: {
-    companyId: string;
     issueId: string;
     runId: string;
     agentId: string;
@@ -761,15 +743,11 @@ export async function assertCurrentWakeCommentsRead(
       .from(heartbeatRuns)
       .innerJoin(
         issues,
-        and(
-          eq(issues.id, input.issueId),
-          eq(issues.companyId, input.companyId),
-        ),
+        eq(issues.id, input.issueId),
       )
       .where(
         and(
           eq(heartbeatRuns.id, input.runId),
-          eq(heartbeatRuns.companyId, input.companyId),
           eq(heartbeatRuns.agentId, input.agentId),
           eq(heartbeatRuns.nativeIssueId, input.issueId),
           eq(heartbeatRuns.status, "running"),
@@ -794,7 +772,6 @@ export async function assertCurrentWakeCommentsRead(
     const currentBinding = await resolveCurrentWakeCommentsBinding(
       tx as unknown as Db,
       {
-        companyId: input.companyId,
         issueId: input.issueId,
         runId: input.runId,
         agentId: input.agentId,

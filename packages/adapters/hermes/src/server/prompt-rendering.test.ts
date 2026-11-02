@@ -6,8 +6,7 @@ function baseContext(overrides: Record<string, unknown> = {}) {
   return {
     agent: {
       id: "agent-1",
-      name: "Hermes Engineer",
-      companyId: "company-1",
+      name: "Hermes Engineer"
     },
     runId: "run-1",
     config: {},

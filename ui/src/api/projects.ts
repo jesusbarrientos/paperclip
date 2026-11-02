@@ -9,64 +9,56 @@ import type {
 import { api } from "./client";
 import { sanitizeWorkspaceRuntimeControlTarget } from "./workspace-runtime-control";
 
-function withCompanyScope(path: string, companyId?: string) {
-  if (!companyId) return path;
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}companyId=${encodeURIComponent(companyId)}`;
-}
-
-function projectPath(id: string, companyId?: string, suffix = "") {
-  return withCompanyScope(`/projects/${encodeURIComponent(id)}${suffix}`, companyId);
+function projectPath(id: string, suffix = "") {
+  return `/projects/${encodeURIComponent(id)}${suffix}`;
 }
 
 export const projectsApi = {
-  repositoryOptions: (companyId: string) => api.get<ProjectRepositoryOptions>(`/companies/${companyId}/project-repositories`),
-  setRepositories: (id: string, repositoryIds: string[]) => api.put<Project>(projectPath(id, undefined, "/repositories"), { repositoryIds }),
-  list: (companyId: string, opts: { includeArchived?: boolean } = {}) => {
+  repositoryOptions: () => api.get<ProjectRepositoryOptions>(`/project-repositories`),
+  setRepositories: (id: string, repositoryIds: string[]) => api.put<Project>(projectPath(id, "/repositories"), { repositoryIds }),
+  list: (opts: { includeArchived?: boolean } = {}) => {
     const params = new URLSearchParams();
     if (opts.includeArchived) params.set("includeArchived", "true");
     const query = params.toString();
-    return api.get<Project[]>("/companies/" + encodeURIComponent(companyId) + "/projects" + (query ? "?" + query : ""));
+    return api.get<Project[]>("/projects" + (query ? "?" + query : ""));
   },
-  get: (id: string, companyId?: string) => api.get<Project>(projectPath(id, companyId)),
-  create: (companyId: string, data: Record<string, unknown>) =>
-    api.post<Project>(`/companies/${companyId}/projects`, data),
-  update: (id: string, data: Record<string, unknown>, companyId?: string) =>
-    api.patch<Project>(projectPath(id, companyId), data),
-  listClonedRepositories: (projectId: string, companyId?: string) =>
-    api.get<ProjectClonedRepository[]>(projectPath(projectId, companyId, "/cloned-repositories")),
-  listWorkspaces: (projectId: string, companyId?: string) =>
-    api.get<ProjectWorkspace[]>(projectPath(projectId, companyId, "/workspaces")),
-  createWorkspace: (projectId: string, data: Record<string, unknown>, companyId?: string) =>
-    api.post<ProjectWorkspace>(projectPath(projectId, companyId, "/workspaces"), data),
-  updateWorkspace: (projectId: string, workspaceId: string, data: Record<string, unknown>, companyId?: string) =>
+  get: (id: string) => api.get<Project>(projectPath(id)),
+  create: (data: Record<string, unknown>) =>
+    api.post<Project>(`/projects`, data),
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch<Project>(projectPath(id), data),
+  listClonedRepositories: (projectId: string) =>
+    api.get<ProjectClonedRepository[]>(projectPath(projectId, "/cloned-repositories")),
+  listWorkspaces: (projectId: string) =>
+    api.get<ProjectWorkspace[]>(projectPath(projectId, "/workspaces")),
+  createWorkspace: (projectId: string, data: Record<string, unknown>) =>
+    api.post<ProjectWorkspace>(projectPath(projectId, "/workspaces"), data),
+  updateWorkspace: (projectId: string, workspaceId: string, data: Record<string, unknown>) =>
     api.patch<ProjectWorkspace>(
-      projectPath(projectId, companyId, `/workspaces/${encodeURIComponent(workspaceId)}`),
+      projectPath(projectId, `/workspaces/${encodeURIComponent(workspaceId)}`),
       data,
     ),
   controlWorkspaceRuntimeServices: (
     projectId: string,
     workspaceId: string,
     action: "start" | "stop" | "restart",
-    companyId?: string,
     target: WorkspaceRuntimeControlTarget = {},
   ) =>
     api.post<{ workspace: ProjectWorkspace; operation: WorkspaceOperation }>(
-      projectPath(projectId, companyId, `/workspaces/${encodeURIComponent(workspaceId)}/runtime-services/${action}`),
+      projectPath(projectId, `/workspaces/${encodeURIComponent(workspaceId)}/runtime-services/${action}`),
       sanitizeWorkspaceRuntimeControlTarget(target),
     ),
   controlWorkspaceCommands: (
     projectId: string,
     workspaceId: string,
     action: "start" | "stop" | "restart" | "run",
-    companyId?: string,
     target: WorkspaceRuntimeControlTarget = {},
   ) =>
     api.post<{ workspace: ProjectWorkspace; operation: WorkspaceOperation }>(
-      projectPath(projectId, companyId, `/workspaces/${encodeURIComponent(workspaceId)}/runtime-commands/${action}`),
+      projectPath(projectId, `/workspaces/${encodeURIComponent(workspaceId)}/runtime-commands/${action}`),
       sanitizeWorkspaceRuntimeControlTarget(target),
     ),
-  removeWorkspace: (projectId: string, workspaceId: string, companyId?: string) =>
-    api.delete<ProjectWorkspace>(projectPath(projectId, companyId, `/workspaces/${encodeURIComponent(workspaceId)}`)),
-  remove: (id: string, companyId?: string) => api.delete<Project>(projectPath(id, companyId)),
+  removeWorkspace: (projectId: string, workspaceId: string) =>
+    api.delete<ProjectWorkspace>(projectPath(projectId, `/workspaces/${encodeURIComponent(workspaceId)}`)),
+  remove: (id: string) => api.delete<Project>(projectPath(id)),
 };

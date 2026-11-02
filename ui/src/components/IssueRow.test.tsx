@@ -43,7 +43,6 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-1",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,
@@ -720,7 +719,6 @@ describe("IssueRow", () => {
         scheduledRetry,
         activeRecoveryAction: {
           id: "action-1",
-          companyId: "company-1",
           sourceIssueId: "issue-1",
           recoveryIssueId: null,
           kind: "deliberate_wait_without_target",

@@ -40,11 +40,11 @@ export function ManagedAiConnectionDetails({
   const runs = useQuery({
     queryKey: ["ai-connection-active-runs", connection.id],
     queryFn: () =>
-      aiConnectionsApi.activeRuns(connection.companyId, connection.id),
+      aiConnectionsApi.activeRuns(connection.id),
   });
   const accounts = useQuery({
-    queryKey: ["ai-connections", connection.companyId],
-    queryFn: () => aiConnectionsApi.list(connection.companyId),
+    queryKey: ["ai-connections"],
+    queryFn: () => aiConnectionsApi.list(),
   });
   const grants = useQuery({
     queryKey: ["ai-connection-grants", connection.id],
@@ -53,7 +53,7 @@ export function ManagedAiConnectionDetails({
   const refresh = () => client.invalidateQueries();
   const makeDefault = useMutation({
     mutationFn: (id: string) =>
-      aiConnectionsApi.setDefault(connection.companyId, id),
+      aiConnectionsApi.setDefault(id),
     onSuccess: refresh,
   });
   const revoke = useMutation({

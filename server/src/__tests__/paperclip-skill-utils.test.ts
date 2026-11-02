@@ -272,11 +272,11 @@ describe("paperclip skill utils", () => {
 
     expect(skillBody).toContain("Generated Artifacts and Work Products");
     expect(skillBody).toContain("references/artifacts.md");
-    expect(skillBody).not.toContain("/api/companies/$PAPERCLIP_COMPANY_ID/issues/$PAPERCLIP_TASK_ID/attachments");
+    expect(skillBody).not.toContain("/api/issues/$PAPERCLIP_TASK_ID/attachments");
     expect(referenceBody).toContain("Generated Artifacts and Work Products");
     expect(referenceBody).toContain("scripts/paperclip-upload-artifact.sh");
     expect(referenceBody).toContain("POST");
-    expect(referenceBody).toContain("/api/companies/$PAPERCLIP_COMPANY_ID/issues/$PAPERCLIP_TASK_ID/attachments");
+    expect(referenceBody).toContain("/api/issues/$PAPERCLIP_TASK_ID/attachments");
     expect(referenceBody).toContain("/api/issues/$PAPERCLIP_TASK_ID/work-products");
     expect(referenceBody).toContain('--chat-comment "Here is the requested image."');
     expect(referenceBody).toContain("not proof of external");
@@ -449,7 +449,6 @@ describe("paperclip skill utils", () => {
     });
     const operationIdentity = [
       "http://paperclip.invalid/api",
-      "company-1",
       "issue-1",
       "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
       "result.txt",

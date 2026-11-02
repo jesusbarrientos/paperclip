@@ -50,17 +50,14 @@ export function toolActionDeliveryService(
       if (!source) return false;
       // Separate from the issue row lock used by wakeup, which runs its own transaction.
       const [lock] = await tx.execute<{ acquired: boolean }>(
-        sql`select pg_try_advisory_xact_lock(hashtext(${source.companyId}), hashtext(${`tool-reviews:${source.issueId}`})) as acquired`,
+        sql`select pg_try_advisory_xact_lock(hashtext('tool-reviews'), hashtext(${source.issueId})) as acquired`,
       );
       if (!lock?.acquired) return false;
       const [issue] = await tx
         .select()
         .from(issues)
         .where(
-          and(
-            eq(issues.id, source.issueId),
-            eq(issues.companyId, source.companyId),
-          ),
+          eq(issues.id, source.issueId),
         );
       if (!issue || ["done", "cancelled"].includes(issue.status)) {
         await tx
@@ -69,7 +66,6 @@ export function toolActionDeliveryService(
           .where(
             and(
               eq(toolActionDeliveries.issueId, source.issueId),
-              eq(toolActionDeliveries.companyId, source.companyId),
               isNull(toolActionDeliveries.deliveredAt),
             ),
           );
@@ -79,11 +75,9 @@ export function toolActionDeliveryService(
       // Outcomes belong to the originating assignee. Retire them after a
       // reassignment rather than repeatedly scanning or waking the new agent.
       await tx.update(toolActionDeliveries).set({ deliveredAt: new Date() }).where(and(
-        eq(toolActionDeliveries.companyId, source.companyId),
         eq(toolActionDeliveries.issueId, issue.id),
         isNull(toolActionDeliveries.deliveredAt),
         inArray(toolActionDeliveries.actionRequestId, tx.select({ id: toolActionRequests.id }).from(toolActionRequests).where(and(
-          eq(toolActionRequests.companyId, source.companyId),
           eq(toolActionRequests.issueId, issue.id),
           or(isNull(toolActionRequests.requestedByAgentId), ne(toolActionRequests.requestedByAgentId, issue.assigneeAgentId)),
           inArray(toolActionRequests.status, terminalStatuses),
@@ -93,10 +87,7 @@ export function toolActionDeliveryService(
         .select()
         .from(agents)
         .where(
-          and(
-            eq(agents.id, issue.assigneeAgentId),
-            eq(agents.companyId, source.companyId),
-          ),
+          eq(agents.id, issue.assigneeAgentId),
         );
       if (
         !agent ||
@@ -108,7 +99,6 @@ export function toolActionDeliveryService(
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, source.companyId),
             eq(issueThreadInteractions.issueId, issue.id),
             eq(issueThreadInteractions.status, "pending"),
           ),
@@ -128,7 +118,6 @@ export function toolActionDeliveryService(
           toolActionRequests,
           and(
             eq(toolActionRequests.id, toolActionDeliveries.actionRequestId),
-            eq(toolActionRequests.companyId, source.companyId),
             eq(toolActionRequests.issueId, issue.id),
             eq(toolActionRequests.requestedByAgentId, agent.id),
           ),
@@ -137,7 +126,6 @@ export function toolActionDeliveryService(
           toolInvocations,
           and(
             eq(toolInvocations.id, toolActionRequests.invocationId),
-            eq(toolInvocations.companyId, source.companyId),
             eq(toolInvocations.issueId, issue.id),
             eq(toolInvocations.agentId, agent.id),
           ),
@@ -147,13 +135,11 @@ export function toolActionDeliveryService(
           and(
             eq(issueThreadInteractions.id, toolActionDeliveries.interactionId),
             eq(issueThreadInteractions.id, toolActionRequests.interactionId),
-            eq(issueThreadInteractions.companyId, source.companyId),
             eq(issueThreadInteractions.issueId, issue.id),
           ),
         )
         .where(
           and(
-            eq(toolActionDeliveries.companyId, source.companyId),
             eq(toolActionDeliveries.issueId, issue.id),
             isNull(toolActionDeliveries.deliveredAt),
             inArray(toolActionRequests.status, terminalStatuses),
@@ -180,7 +166,6 @@ export function toolActionDeliveryService(
           .from(heartbeatRuns)
           .where(
             and(
-              eq(heartbeatRuns.companyId, source.companyId),
               inArray(heartbeatRuns.id, sourceRunIds),
               inArray(heartbeatRuns.status, ["queued", "running"]),
             ),
@@ -200,7 +185,6 @@ export function toolActionDeliveryService(
             .from(agentWakeupRequests)
             .where(
               and(
-                eq(agentWakeupRequests.companyId, source.companyId),
                 eq(agentWakeupRequests.idempotencyKey, idempotencyKey),
                 notInArray(agentWakeupRequests.status, [
                   "skipped",
@@ -345,24 +329,19 @@ export function toolActionDeliveryService(
   }
   return {
     deliver,
-    async deliverForRun(input: { companyId: string; runId: string }) {
+    async deliverForRun(input: { runId: string }) {
       // A review can settle before its source run yields. Retry that run's
       // receipts as soon as execution cleanup finishes; the periodic sweep
       // remains the recovery path if this callback is interrupted.
       const pending = await db
         .select({ id: toolActionDeliveries.actionRequestId })
         .from(toolActionDeliveries)
-        .innerJoin(toolActionRequests, and(
-          eq(toolActionRequests.id, toolActionDeliveries.actionRequestId),
-          eq(toolActionRequests.companyId, input.companyId),
-        ))
+        .innerJoin(toolActionRequests, eq(toolActionRequests.id, toolActionDeliveries.actionRequestId))
         .innerJoin(toolInvocations, and(
           eq(toolInvocations.id, toolActionRequests.invocationId),
-          eq(toolInvocations.companyId, input.companyId),
           eq(toolInvocations.runId, input.runId),
         ))
         .where(and(
-          eq(toolActionDeliveries.companyId, input.companyId),
           isNull(toolActionDeliveries.deliveredAt),
           inArray(toolActionRequests.status, terminalStatuses),
         ));

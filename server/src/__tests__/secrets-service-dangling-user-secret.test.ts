@@ -82,7 +82,7 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
     return companyId;
   }
 
-  async function seedCompanyMember(companyId: string, userId: string) {
+  async function seedCompanyMember(userId: string) {
     await db.insert(companyMemberships).values({
       principalType: "user",
       principalId: userId,
@@ -95,16 +95,16 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
 
   it("save path (syncEnvBindingsForTarget) names the env variable, the agent id, and the deleted definition key", async () => {
     const companyId = await seedCompany();
-    await seedCompanyMember(companyId, "user-1");
+    await seedCompanyMember("user-1");
     const svc = secretService(db);
-    const definition = await svc.createUserSecretDefinition(companyId, {
+    const definition = await svc.createUserSecretDefinition({
       key: "github_token",
       name: "GitHub token",
       provider: "local_encrypted",
     });
 
     // Delete the definition, then keep an agent config that still references it.
-    await svc.removeUserSecretDefinition(companyId, definition.id);
+    await svc.removeUserSecretDefinition(definition.id);
 
     const agentId = randomUUID();
     const envValue = {
@@ -117,7 +117,7 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
     };
 
     await expect(
-      svc.syncEnvBindingsForTarget(companyId, { targetType: "agent", targetId: agentId }, envValue),
+      svc.syncEnvBindingsForTarget({ targetType: "agent", targetId: agentId }, envValue),
     ).rejects.toMatchObject({
       status: 404,
       message: expect.stringContaining("User secret definition not found"),
@@ -125,7 +125,7 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
 
     // The message must name the env variable, the agent id, and the definition key.
     const error = await svc
-      .syncEnvBindingsForTarget(companyId, { targetType: "agent", targetId: agentId }, envValue)
+      .syncEnvBindingsForTarget({ targetType: "agent", targetId: agentId }, envValue)
       .catch((caught: unknown) => caught as Error);
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toContain('environment variable "GH_TOKEN"');
@@ -135,26 +135,25 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
 
   it("Test path (resolveUserSecretValue) names the env variable, the agent id, and the deleted definition key without leaking the value", async () => {
     const companyId = await seedCompany();
-    await seedCompanyMember(companyId, "user-1");
+    await seedCompanyMember("user-1");
     const svc = secretService(db);
-    const definition = await svc.createUserSecretDefinition(companyId, {
+    const definition = await svc.createUserSecretDefinition({
       key: "github_token",
       name: "GitHub token",
       provider: "local_encrypted",
     });
     const secretValue = "ghp_super_secret_value";
-    await svc.createCurrentUserSecretValue(companyId, "user-1", {
+    await svc.createCurrentUserSecretValue("user-1", {
       definitionId: definition.id,
       value: secretValue,
     });
 
     // Delete the definition after the value exists. The binding now dangles.
-    await svc.removeUserSecretDefinition(companyId, definition.id);
+    await svc.removeUserSecretDefinition(definition.id);
 
     const agentId = randomUUID();
     const error = await svc
       .resolveUserSecretValue(
-        companyId,
         { definitionKey: "github_token", responsibleUserId: "user-1", required: true },
         {
           consumerType: "agent",
@@ -177,11 +176,10 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
 
   it("optional binding still resolves to null when the definition is missing (enrichment keeps the 404 status)", async () => {
     const companyId = await seedCompany();
-    await seedCompanyMember(companyId, "user-1");
+    await seedCompanyMember("user-1");
     const svc = secretService(db);
 
     const resolved = await svc.resolveUserSecretValue(
-      companyId,
       { definitionKey: "never_created", responsibleUserId: "user-1", required: false },
       { consumerType: "agent", consumerId: randomUUID(), configPath: "env.GH_TOKEN" },
     );

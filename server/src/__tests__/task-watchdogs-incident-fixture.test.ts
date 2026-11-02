@@ -6,6 +6,7 @@ describe("historical watchdog confirmation incident fixture", () => {
   it("reproduces the material stop fingerprint", () => {
     const materialPayload = JSON.stringify({
       version: incident.stopSnapshot.version,
+      // Recorded before the single-organization change, when the fingerprint still hashed companyId.
       companyId: incident.companyId,
       watchedIssueId: incident.watchdogRun.watchedIssueId,
       materialLeaves: incident.stopSnapshot.materialLeaves,

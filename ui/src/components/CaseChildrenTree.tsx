@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { Link, useCaseHref } from "@/lib/router";
+import { Link, caseHref } from "@/lib/router";
 import type { CaseSummary } from "@/api/cases";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ export function CaseChildrenTree({
   children: CaseRelationRow[];
   maxVisible?: number;
 }) {
-  const caseHref = useCaseHref();
   const [expanded, setExpanded] = useState(false);
   if (children.length === 0) {
     return <p className="text-xs text-muted-foreground">No child cases.</p>;

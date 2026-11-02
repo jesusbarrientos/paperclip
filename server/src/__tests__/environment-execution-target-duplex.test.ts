@@ -84,7 +84,6 @@ function makeFakeWorkerManager() {
 
 const PLUGIN_LEASE: EnvironmentLease = {
   id: "lease-1",
-  companyId: "company-1",
   providerLeaseId: "provider-lease-1",
   metadata: {
     sandboxProviderPlugin: true,
@@ -139,7 +138,6 @@ describe("sandbox driver duplex channel wiring", () => {
     expect(manager.getWorker).toHaveBeenCalledWith("test.plugin");
     expect(worker.openDuplexChannel).toHaveBeenCalledWith({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "provider-lease-1",
       command: "bridge-callback",
@@ -173,7 +171,6 @@ describe("sandbox driver duplex channel wiring", () => {
     const service = environmentRuntimeService({} as never, { pluginWorkerManager: manager });
     const nonPluginLease = {
       id: "lease-2",
-      companyId: "company-1",
       providerLeaseId: "provider-lease-2",
       metadata: { pluginId: "test.plugin", provider: "daytona" },
     } as unknown as EnvironmentLease;
@@ -334,7 +331,6 @@ async function buildSandboxRunner(input: {
 
   const target = await resolveEnvironmentExecutionTarget({
     db: {} as never,
-    companyId: "company-1",
     adapterType: "codex_local",
     environment: { id: "env-1", driver: "sandbox", config: { provider: "daytona" } },
     leaseId: "lease-1",

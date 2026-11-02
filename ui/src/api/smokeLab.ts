@@ -38,31 +38,31 @@ export interface SmokeLabRunDetailResponse {
   steps: SmokeRunStep[];
 }
 
-const base = (companyId: string) => `/companies/${companyId}/smoke-lab`;
+const base = () => `/smoke-lab`;
 
 export const smokeLabApi = {
-  listServices: (companyId: string) =>
-    api.get<SmokeLabServicesResponse>(`${base(companyId)}/services`),
-  startServices: (companyId: string) =>
-    api.post<SmokeLabServicesResponse>(`${base(companyId)}/services/start`, {}),
-  stopServices: (companyId: string) =>
-    api.post<SmokeLabServicesResponse>(`${base(companyId)}/services/stop`, {}),
-  installFixtures: (companyId: string) =>
-    api.post<SmokeLabInstallFixturesResponse>(`${base(companyId)}/install-fixtures`, {}),
-  reset: (companyId: string) =>
-    api.post<{ reset: boolean }>(`${base(companyId)}/reset`, {}),
+  listServices: () =>
+    api.get<SmokeLabServicesResponse>(`${base()}/services`),
+  startServices: () =>
+    api.post<SmokeLabServicesResponse>(`${base()}/services/start`, {}),
+  stopServices: () =>
+    api.post<SmokeLabServicesResponse>(`${base()}/services/stop`, {}),
+  installFixtures: () =>
+    api.post<SmokeLabInstallFixturesResponse>(`${base()}/install-fixtures`, {}),
+  reset: () =>
+    api.post<{ reset: boolean }>(`${base()}/reset`, {}),
 
-  listRuns: (companyId: string) =>
-    api.get<SmokeLabRunsResponse>(`${base(companyId)}/runs`),
-  getRun: (companyId: string, runId: string) =>
-    api.get<SmokeLabRunDetailResponse>(`${base(companyId)}/runs/${runId}`),
-  createRun: (companyId: string, input: CreateSmokeRun) =>
-    api.post<{ run: SmokeRun }>(`${base(companyId)}/runs`, input),
-  updateRun: (companyId: string, runId: string, input: UpdateSmokeRun) =>
-    api.patch<{ run: SmokeRun }>(`${base(companyId)}/runs/${runId}`, input),
-  recordStep: (companyId: string, runId: string, input: RecordSmokeRunStep) =>
+  listRuns: () =>
+    api.get<SmokeLabRunsResponse>(`${base()}/runs`),
+  getRun: (runId: string) =>
+    api.get<SmokeLabRunDetailResponse>(`${base()}/runs/${runId}`),
+  createRun: (input: CreateSmokeRun) =>
+    api.post<{ run: SmokeRun }>(`${base()}/runs`, input),
+  updateRun: (runId: string, input: UpdateSmokeRun) =>
+    api.patch<{ run: SmokeRun }>(`${base()}/runs/${runId}`, input),
+  recordStep: (runId: string, input: RecordSmokeRunStep) =>
     api.post<{ step: SmokeRunStep; summary: Record<string, unknown> }>(
-      `${base(companyId)}/runs/${runId}/steps`,
+      `${base()}/runs/${runId}/steps`,
       input,
     ),
 };

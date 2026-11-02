@@ -19,14 +19,13 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { authUsers, companies, companyMemberships, issues } from "@paperclipai/db";
+import { authUsers, companyMemberships, issues } from "@paperclipai/db";
 import type {
   WorkspaceReadiness,
   WorkspaceReadinessState,
   WorkspaceSeedReadinessState,
 } from "@paperclipai/shared";
 import {
-  resolveWorkspaceHandoffLocalCompanyId,
   resolveWorkspaceHandoffLocalKey,
   resolveWorkspaceHandoffLocalWorkspaceId,
 } from "../auth/workspace-login-handoff.js";
@@ -185,11 +184,6 @@ export async function resolveWorkspaceReadiness(deps: WorkspaceReadinessDeps): P
   const seed = readSeedManifestSummary(resolveWorkspaceSeedMarkerDir(env));
   const instanceId = resolvePaperclipInstanceId();
   const executionWorkspaceId = resolveWorkspaceHandoffLocalWorkspaceId(env);
-  // The company this workspace's board represents. Both product probes below are
-  // scoped to it: "some company in the clone has issues" and "some user has some
-  // membership" can both be true while the company the operator is opening is
-  // missing or has no members, which is a workspace that must not report ready.
-  const companyId = resolveWorkspaceHandoffLocalCompanyId(env);
   const handoffKeyPresent = Boolean(resolveWorkspaceHandoffLocalKey(env));
   const handoffUserId = deps.handoffSubject?.userId.trim() || null;
   const handoffUserEmail = deps.handoffSubject?.email.trim().toLowerCase() || null;
@@ -208,15 +202,13 @@ export async function resolveWorkspaceReadiness(deps: WorkspaceReadinessDeps): P
       probeFailurePhase = "database_unreachable";
     }
 
-    if (databaseReady && companyId) {
+    if (databaseReady) {
       try {
-        // One representative cloned company/issue pair proves the restore carried
-        // product rows, not just an empty migrated schema.
+        // One representative cloned issue proves the restore carried product
+        // rows, not just an empty migrated schema.
         const clonedRows = await deps.db
-          .select({ companyId: companies.id })
-          .from(companies)
-          .innerJoin(issues, eq(issues.companyId, companies.id))
-          .where(eq(companies.id, companyId))
+          .select({ id: issues.id })
+          .from(issues)
           .limit(1)
           .then((rows) => rows.length);
         cloneDataReady = clonedRows > 0;
@@ -228,7 +220,7 @@ export async function resolveWorkspaceReadiness(deps: WorkspaceReadinessDeps): P
 
       try {
         // The handoff can only sign in a user who survived the clone with an
-        // active membership *in this workspace's company*, so readiness asserts
+        // active membership, so readiness asserts
         // that identity exists here rather than discovering it at click time.
         // Existence, not a count: this runs on every protected health request and
         // counting the whole join would scale with instance size for an answer
@@ -262,10 +254,8 @@ export async function resolveWorkspaceReadiness(deps: WorkspaceReadinessDeps): P
   const authHandoffReady = Boolean(
     handoffKeyPresent
     && executionWorkspaceId
-    && companyId
     && clonedAdminPresent,
   );
-  if (!companyId) probeFailurePhase ??= "workspace_company_not_configured";
   if (!executionWorkspaceId) probeFailurePhase ??= "workspace_identity_not_configured";
   if (!handoffKeyPresent) probeFailurePhase ??= "auth_handoff_not_configured";
 
@@ -287,7 +277,6 @@ export async function resolveWorkspaceReadiness(deps: WorkspaceReadinessDeps): P
     seedMode: seed.mode,
     instanceId,
     executionWorkspaceId,
-    companyId,
     // A seed-recorded failure phase is more specific than anything this probe
     // can infer, so it wins.
     failurePhase: seed.failurePhase ?? (state === "ready" ? null : probeFailurePhase),

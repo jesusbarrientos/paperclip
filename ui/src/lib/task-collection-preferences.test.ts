@@ -30,14 +30,13 @@ const normalizeColumns = (value: unknown): Column[] => Array.isArray(value)
   : columns;
 
 describe("task collection preferences", () => {
-  it("migrates legacy view and column keys into a versioned company scope", () => {
+  it("migrates legacy view and column keys into a versioned scope", () => {
     const storage = new MemoryStorage();
     storage.setItem("legacy:view", JSON.stringify({ sort: "created", filters: ["active"] }));
     storage.setItem("legacy:columns", JSON.stringify(["status", "id"]));
 
     const loaded = loadTaskCollectionPreferences<ViewState, Column>({
       storage,
-      companyId: "company-a",
       collectionKey: "tasks",
       legacyViewStorageKey: "legacy:view",
       legacyColumnsStorageKey: "legacy:columns",
@@ -54,38 +53,15 @@ describe("task collection preferences", () => {
       source: "legacy",
     });
     const current = storage.getItem(taskCollectionPreferencesStorageKey({
-      companyId: "company-a",
       collectionKey: "tasks",
     }));
-    expect(JSON.parse(current ?? "{}")).toMatchObject({ version: 1, companyId: "company-a", collectionKey: "tasks" });
-  });
-
-  it("keeps preferences isolated between companies", () => {
-    const storage = new MemoryStorage();
-    saveTaskCollectionPreferences<ViewState, Column>(
-      { companyId: "company-a", collectionKey: "tasks" },
-      { viewState: { sort: "created", filters: [] }, columns: ["id"] },
-      storage,
-    );
-
-    const companyB = loadTaskCollectionPreferences<ViewState, Column>({
-      storage,
-      companyId: "company-b",
-      collectionKey: "tasks",
-      defaultViewState: defaults,
-      defaultColumns: columns,
-      normalizeViewState,
-      normalizeColumns,
-    });
-    expect(companyB.viewState).toEqual(defaults);
-    expect(companyB.columns).toEqual(columns);
+    expect(JSON.parse(current ?? "{}")).toMatchObject({ version: 1, collectionKey: "tasks" });
   });
 
   it("dual-writes legacy keys for compatibility", () => {
     const storage = new MemoryStorage();
     saveTaskCollectionPreferences<ViewState, Column>(
       {
-        companyId: "company-a",
         collectionKey: "tasks",
         legacyViewStorageKey: "legacy:view",
         legacyColumnsStorageKey: "legacy:columns",

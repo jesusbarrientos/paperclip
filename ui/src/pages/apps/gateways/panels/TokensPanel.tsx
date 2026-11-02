@@ -75,11 +75,9 @@ function ExpiryValue({ token }: { token: ToolMcpGatewayToken }) {
 }
 
 export function TokensPanel({
-  companyId,
   gateway,
   onTokenCreated,
 }: {
-  companyId: string;
   gateway: ToolMcpGatewayWithTokens;
   onTokenCreated?: (token: ToolMcpGatewayTokenCreated) => void;
 }) {
@@ -96,7 +94,7 @@ export function TokensPanel({
   const [revokeName, setRevokeName] = useState("");
   const [confirmToken, setConfirmToken] = useState<{ id: string; name: string } | null>(null);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: gatewaysQueryKey(companyId) });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: gatewaysQueryKey() });
   const tokens = useMemo(
     () => [...gateway.tokens].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [gateway.tokens],
@@ -110,7 +108,7 @@ export function TokensPanel({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      toolsApi.createGatewayToken(companyId, gateway.id, {
+      toolsApi.createGatewayToken(gateway.id, {
         name: name.trim(),
         clientLabel: name.trim(),
         ownerNote: ownerNote.trim(),
@@ -141,7 +139,7 @@ export function TokensPanel({
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (tokenId: string) => toolsApi.revokeGatewayToken(companyId, tokenId),
+    mutationFn: (tokenId: string) => toolsApi.revokeGatewayToken(tokenId),
     onSuccess: async (token) => {
       setConfirmToken(null);
       setRevokeName("");

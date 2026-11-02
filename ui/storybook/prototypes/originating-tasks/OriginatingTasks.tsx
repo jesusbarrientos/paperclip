@@ -80,7 +80,7 @@ export const taskCandidates = [
 // unrelated tasks merely because the same agent created them.
 export function tasksForSource(candidates: Issue[]): Issue[] {
   return [...new Map(candidates.filter((item) =>
-    item.companyId === sourceTask.companyId && !item.hiddenAt && item.id !== sourceTask.id &&
+    !item.hiddenAt && item.id !== sourceTask.id &&
     (item.parentId === sourceTask.id || (item.originRunId && runSources.get(item.originRunId) === sourceTask.id)),
   ).map((item) => [item.id, item])).values()];
 }
@@ -98,12 +98,12 @@ export function scenarioTasks(scenario: Scenario) {
 export function SeedData({ children }: { children: React.ReactNode }) {
   const client = useQueryClient();
   const [ready] = useState(() => {
-    client.setQueryData(queryKeys.companies.all, { companies: storybookCompanies, unauthorized: false });
+    client.setQueryData(queryKeys.organization, storybookCompanies[0]);
     client.setQueryData(queryKeys.auth.session, storybookAuthSession);
-    client.setQueryData(queryKeys.agents.list(sourceTask.companyId), storybookAgents);
-    client.setQueryData(queryKeys.projects.list(sourceTask.companyId), storybookProjects);
-    client.setQueryData(queryKeys.issues.list(sourceTask.companyId), [sourceTask, ...taskCandidates]);
-    client.setQueryData(queryKeys.issues.labels(sourceTask.companyId), []);
+    client.setQueryData(queryKeys.agents.list(), storybookAgents);
+    client.setQueryData(queryKeys.projects.list(), storybookProjects);
+    client.setQueryData(queryKeys.issues.list(), [sourceTask, ...taskCandidates]);
+    client.setQueryData(queryKeys.issues.labels(), []);
     client.setQueryData(queryKeys.instance.experimentalSettings, { enableStreamlinedUi: true, enableIsolatedWorkspaces: false });
     client.setQueryData(queryKeys.issues.documents(sourceTask.id), []);
     client.setQueryData(queryKeys.issues.runs(sourceTask.id), []);
@@ -126,8 +126,8 @@ export function TasksPanel({ items, ancestors = [] }: { items: Issue[]; ancestor
 const plan = "## Rollout plan\n\n1. Complete scoping and the API surface.\n2. Finish UI polish and verify the release.\n3. Track filter persistence and navigation documentation in their owning projects.\n\n### Acceptance\n\nThe board can inspect every task created during this work, including tasks outside this hierarchy.";
 
 const baseComments: IssueComment[] = [
-  { id: "origin-comment-1", companyId: sourceTask.companyId, issueId: sourceTask.id, authorAgentId: null, authorUserId: "user-board", authorType: "user", body: sourceTask.description!, presentation: null, metadata: null, createdAt: new Date("2026-09-11T13:00:00Z"), updatedAt: new Date("2026-09-11T13:00:00Z") },
-  { id: "origin-comment-2", companyId: sourceTask.companyId, issueId: sourceTask.id, authorAgentId: "agent-codex", authorUserId: null, authorType: "agent", body: "Scoping and the API surface are complete. UI polish is in progress; release verification is waiting on it.\n\nI also found two follow-ups: filter persistence and navigation docs. I created those in their owning projects so we can track them without changing the rollout hierarchy.", presentation: null, metadata: null, createdAt: new Date("2026-09-11T14:00:00Z"), updatedAt: new Date("2026-09-11T14:00:00Z") },
+  { id: "origin-comment-1", issueId: sourceTask.id, authorAgentId: null, authorUserId: "user-board", authorType: "user", body: sourceTask.description!, presentation: null, metadata: null, createdAt: new Date("2026-09-11T13:00:00Z"), updatedAt: new Date("2026-09-11T13:00:00Z") },
+  { id: "origin-comment-2", issueId: sourceTask.id, authorAgentId: "agent-codex", authorUserId: null, authorType: "agent", body: "Scoping and the API surface are complete. UI polish is in progress; release verification is waiting on it.\n\nI also found two follow-ups: filter persistence and navigation docs. I created those in their owning projects so we can track them without changing the rollout hierarchy.", presentation: null, metadata: null, createdAt: new Date("2026-09-11T14:00:00Z"), updatedAt: new Date("2026-09-11T14:00:00Z") },
 ];
 
 
@@ -161,10 +161,10 @@ function TaskPageData({ children, scenario, withAncestors }: { children: React.R
     }
     client.setQueryData(queryKeys.health, { status: "ok", deploymentMode: "local_trusted", bootstrapStatus: "ready" });
     client.setQueryData(queryKeys.access.currentBoardAccess, { companyIds: [] });
-    client.setQueryData(queryKeys.issues.listCreatedFromIssue(sourceTask.companyId, sourceTask.id), taskCandidates.filter((row) => row.originRunId && runSources.get(row.originRunId) === sourceTask.id));
-    client.setQueryData(queryKeys.issues.listByDescendantRoot(sourceTask.companyId, sourceTask.id), taskCandidates.filter((row) => row.parentId === sourceTask.id));
+    client.setQueryData(queryKeys.issues.listCreatedFromIssue(sourceTask.id), taskCandidates.filter((row) => row.originRunId && runSources.get(row.originRunId) === sourceTask.id));
+    client.setQueryData(queryKeys.issues.listByDescendantRoot(sourceTask.id), taskCandidates.filter((row) => row.parentId === sourceTask.id));
     const userId = storybookAuthSession.user.id;
-    writeTaskSidePanelState(userId, sourceTask.companyId, sourceTask.id, {
+    writeTaskSidePanelState(userId, sourceTask.id, {
       state: {
         tabs: [taskPanelPropertiesTab(), ...(scenario !== "arrival" ? [taskPanelSubtasksTab()] : []), taskPanelDocumentTab("plan", "Plan"), taskPanelArtifactsTab()],
         activeTabId: scenario === "arrival" ? "document:plan" : "subtasks",
@@ -208,7 +208,7 @@ function TaskPageData({ children, scenario, withAncestors }: { children: React.R
         if (["interactions", "attachments", "work-products", "live-runs", "runs", "feedback-votes", "activity", "approvals", "references"].includes(resource)) return Response.json([]);
         return Response.json({ error: `Not simulated: ${resource}` }, { status: 404 });
       }
-      if (url.pathname === `/api/companies/${sourceTask.companyId}/issues`) {
+      if (url.pathname === `/api/issues`) {
         const parent = url.searchParams.get("descendantOf") ?? url.searchParams.get("parentId");
         const projectId = url.searchParams.get("projectId");
         const createdFrom = url.searchParams.get("createdFromIssueId");
@@ -246,11 +246,11 @@ export function OriginatingTasksReview({ scenario = "mixed", fullPage = true, na
     <TaskPageData scenario={scenario} withAncestors={withAncestors}>
       {scenario === "arrival" && <div className="flex items-center gap-3 border-b border-border p-2 text-xs"><span>Story control</span><Button size="sm" variant="outline" disabled={items.length > 0} onClick={() => setItems(scenarioTasks("other").slice(0, 1))}>Simulate task creation</Button></div>}
       <Routes>
-        <Route path="/:companyPrefix" element={<Layout />}>
+        <Route path="/" element={<Layout />}>
           <Route path="issues/:issueId" element={<TaskRoute tasksTab={baseline || scenario === "mixed" ? undefined : tasksTab} />} />
           <Route path="projects/:projectId/*" element={<ProjectDetail />} />
         </Route>
-        <Route path="*" element={<Navigate to={`/PAP/issues/${sourceTask.identifier}`} replace />} />
+        <Route path="*" element={<Navigate to={`/issues/${sourceTask.identifier}`} replace />} />
       </Routes>
     </TaskPageData>
   );

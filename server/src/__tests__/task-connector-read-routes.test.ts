@@ -7,14 +7,12 @@ import { chatChannelRoutes } from "../routes/chat-channels.js";
 import { emailRoutes } from "../routes/email.js";
 import type { ChatChannelService } from "../services/chat-channels.js";
 import type { EmailChannelService } from "../services/email-channels.js";
-
-const companyId = "11111111-1111-4111-8111-111111111111";
 const issueId = "22222222-2222-4222-8222-222222222222";
 const boardActor: Express.Request["actor"] = {
   type: "board",
   source: "session",
   userId: "test-board-user",
-  companyIds: [companyId],
+  memberships: [{ membershipRole: "operator", status: "active" }],
 };
 const chat = { getIssueBinding: vi.fn(), get: vi.fn() };
 const email = { authorizeRead: vi.fn(), thread: vi.fn() };
@@ -48,7 +46,7 @@ describe("task connector read routes", () => {
       const server = app();
       const encodedId = encodeURIComponent(invalidId);
       await request(server).get(`/api/issues/${encodedId}/chat-binding`).expect(400);
-      await request(server).get(`/api/companies/${companyId}/email/tasks/${encodedId}`).expect(400);
+      await request(server).get(`/api/email/tasks/${encodedId}`).expect(400);
       expect(chat.getIssueBinding).not.toHaveBeenCalled();
       expect(email.authorizeRead).not.toHaveBeenCalled();
       expect(email.thread).not.toHaveBeenCalled();
@@ -58,36 +56,36 @@ describe("task connector read routes", () => {
   it("retains normal task reads and email authorization", async () => {
     const server = app();
     await request(server).get(`/api/issues/${issueId}/chat-binding`).expect(200, "null");
-    await request(server).get(`/api/companies/${companyId}/email/tasks/${issueId}`).expect(200, "null");
+    await request(server).get(`/api/email/tasks/${issueId}`).expect(200, "null");
     expect(chat.getIssueBinding).toHaveBeenCalledWith(issueId);
-    expect(email.authorizeRead).toHaveBeenCalledWith(companyId, issueId, {
+    expect(email.authorizeRead).toHaveBeenCalledWith(issueId, {
       userId: boardActor.userId,
       localImplicit: false,
     });
-    expect(email.thread).toHaveBeenCalledWith(companyId, issueId);
+    expect(email.thread).toHaveBeenCalledWith(issueId);
   });
 
   it.each([issueId, `chat:${issueId}`])("retains authentication checks for %s", async (id) => {
     const server = app({ type: "none", source: "none" });
     await request(server).get(`/api/issues/${id}/chat-binding`).expect(403);
-    await request(server).get(`/api/companies/${companyId}/email/tasks/${id}`).expect(401);
+    await request(server).get(`/api/email/tasks/${id}`).expect(401);
     expect(chat.getIssueBinding).not.toHaveBeenCalled();
     expect(email.authorizeRead).not.toHaveBeenCalled();
     expect(email.thread).not.toHaveBeenCalled();
   });
 
-  it("retains company isolation for task bindings", async () => {
+  it("hides task bindings from board users without an organization membership", async () => {
     const binding = { endpointId: "test-endpoint" };
     chat.getIssueBinding.mockResolvedValue(binding);
-    chat.get.mockResolvedValue({ companyId });
+    chat.get.mockResolvedValue({ });
     await request(app()).get(`/api/issues/${issueId}/chat-binding`).expect(200, binding);
-    chat.get.mockResolvedValue({ companyId: "other-company" });
-    await request(app()).get(`/api/issues/${issueId}/chat-binding`).expect(404);
+    await request(app({ ...boardActor, memberships: [] }))
+      .get(`/api/issues/${issueId}/chat-binding`).expect(404);
   });
 
-  it.each([issueId, `chat:${issueId}`])("retains company isolation for email task %s", async (id) => {
-    await request(app({ ...boardActor, companyIds: [] }))
-      .get(`/api/companies/${companyId}/email/tasks/${id}`).expect(403);
+  it.each([issueId, `chat:${issueId}`])("rejects email task %s for board users without an organization membership", async (id) => {
+    await request(app({ ...boardActor, memberships: [] }))
+      .get(`/api/email/tasks/${id}`).expect(403);
     expect(email.authorizeRead).not.toHaveBeenCalled();
     expect(email.thread).not.toHaveBeenCalled();
   });

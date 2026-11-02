@@ -19,7 +19,7 @@ The host plugin installer runs `npm install` into the managed plugin directory, 
 Configure Novita from `Instance Settings -> Environments`, not from the plugin's plugin page.
 
 - Put the Novita API key on the sandbox environment itself.
-- When you save an environment, Paperclip stores pasted API keys as company secrets.
+- When you save an environment, Paperclip stores pasted API keys as Paperclip secrets.
 - `NOVITA_API_KEY` remains an optional host-level fallback when an environment omits the key.
 
 ## Local development

@@ -2,7 +2,6 @@ export const COMPANY_SEARCH_RATE_LIMIT_WINDOW_MS = 60_000;
 export const COMPANY_SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;
 
 export type CompanySearchRateLimitActor = {
-  companyId: string;
   actorType: "agent" | "board";
   actorId: string;
 };
@@ -29,7 +28,7 @@ export function createCompanySearchRateLimiter(options: {
   const hitsByKey = new Map<string, number[]>();
 
   function key(actor: CompanySearchRateLimitActor) {
-    return `${actor.companyId}:${actor.actorType}:${actor.actorId}`;
+    return `${actor.actorType}:${actor.actorId}`;
   }
 
   return {

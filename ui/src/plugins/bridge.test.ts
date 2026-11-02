@@ -52,34 +52,27 @@ function act(callback: () => void) {
 }
 
 describe("plugin host navigation", () => {
-  it("resolves plugin page routes into the active company prefix", () => {
-    expect(resolveHostNavigationHref("/wiki", "PAP")).toBe("/PAP/wiki");
-    expect(resolveHostNavigationHref("/wiki?tab=browse#page", "pap")).toBe(
-      "/PAP/wiki?tab=browse#page",
-    );
+  it("leaves board paths as they are", () => {
+    expect(resolveHostNavigationHref("/wiki")).toBe("/wiki");
+    expect(resolveHostNavigationHref("/wiki?tab=browse#page")).toBe("/wiki?tab=browse#page");
   });
 
-  it("does not double-prefix active company paths or global host paths", () => {
-    expect(resolveHostNavigationHref("/PAP/wiki", "PAP")).toBe("/PAP/wiki");
-    expect(resolveHostNavigationHref("/pap/wiki", "PAP")).toBe("/pap/wiki");
-  });
-
-  it("rewrites legacy instance settings paths into the active company settings scope", () => {
-    expect(resolveHostNavigationHref("/instance/settings/plugins", "PAP")).toBe(
-      "/PAP/company/settings/instance/plugins",
+  it("rewrites legacy instance settings paths into the instance settings scope", () => {
+    expect(resolveHostNavigationHref("/instance/settings/plugins")).toBe(
+      "/organization/settings/instance/plugins",
     );
-    expect(resolveHostNavigationHref("/settings/experimental?x=1#auto", "pap")).toBe(
-      "/PAP/company/settings/instance/experimental?x=1#auto",
+    expect(resolveHostNavigationHref("/settings/experimental?x=1#auto")).toBe(
+      "/organization/settings/instance/experimental?x=1#auto",
     );
   });
 
   it("intercepts only same-origin plain left-click navigation", () => {
-    expect(shouldHandleHostNavigationClick(clickEvent(), "/PAP/wiki")).toBe(true);
+    expect(shouldHandleHostNavigationClick(clickEvent(), "/wiki")).toBe(true);
     expect(
-      shouldHandleHostNavigationClick(clickEvent({ ctrlKey: true }), "/PAP/wiki"),
+      shouldHandleHostNavigationClick(clickEvent({ ctrlKey: true }), "/wiki"),
     ).toBe(false);
     expect(
-      shouldHandleHostNavigationClick(clickEvent(), "/PAP/wiki", "_blank"),
+      shouldHandleHostNavigationClick(clickEvent(), "/wiki", "_blank"),
     ).toBe(false);
     expect(
       shouldHandleHostNavigationClick(clickEvent(), "https://example.com/wiki"),
@@ -95,8 +88,6 @@ describe("useHostNavigation mobile drawer behavior", () => {
     return {
       pluginId: "test-plugin",
       hostContext: {
-        companyId: "co",
-        companyPrefix: "PAP",
         projectId: null,
         entityId: null,
         entityType: null,
@@ -148,7 +139,7 @@ describe("useHostNavigation mobile drawer behavior", () => {
       root.render(
         React.createElement(
           MemoryRouter,
-          { initialEntries: ["/PAP/wiki"] },
+          { initialEntries: ["/wiki"] },
           React.createElement(
             SidebarProvider,
             null,
@@ -192,7 +183,7 @@ describe("useHostNavigation mobile drawer behavior", () => {
       root.render(
         React.createElement(
           MemoryRouter,
-          { initialEntries: ["/PAP/wiki"] },
+          { initialEntries: ["/wiki"] },
           React.createElement(
             SidebarProvider,
             null,

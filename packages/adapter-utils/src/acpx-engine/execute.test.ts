@@ -202,8 +202,7 @@ async function runExecutor(
   const result = await execute({
     runId: "run-1",
     agent: {
-      id: "agent-1",
-      companyId: "company-1",
+      id: "agent-1"
     },
       runtime: options.runtime ?? {},
       config,
@@ -490,7 +489,7 @@ describe("shared ACPX engine runtime behavior", () => {
     });
     const first = await execute({
       runId: "run-process-identity-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context,
@@ -511,7 +510,7 @@ describe("shared ACPX engine runtime behavior", () => {
     });
     const second = await execute({
       runId: "run-process-identity-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context,
@@ -718,7 +717,7 @@ describe("shared ACPX engine runtime behavior", () => {
       result: { text: `Completed action ${index}` },
     }));
     const continuation = {
-      version: 1, companyId: "company-1", issueId: "issue-1",
+      version: 1, issueId: "issue-1",
       trigger: { reason: "issue_commented", interactionId: null, sourceRunId: null },
       originCommentIds: [messages[49]!.id], objective: "Preserve all context", messages,
       interactionOutcomes: [], unresolvedInteractionIds: [], completedWork: null,
@@ -988,8 +987,7 @@ describe("shared ACPX engine runtime behavior", () => {
     const result = await execute({
       runId: "run-streaming-text-delta",
       agent: {
-        id: "agent-1",
-        companyId: "company-1",
+        id: "agent-1"
       },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
@@ -1078,7 +1076,7 @@ describe("shared ACPX engine runtime behavior", () => {
 
     const result = await execute({
       runId: "run-default-traits-pin",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -1177,7 +1175,7 @@ describe("shared ACPX engine runtime behavior", () => {
 
     const result = await execute({
       runId: "run-summary-last-segment",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -1246,7 +1244,7 @@ describe("shared ACPX engine runtime behavior", () => {
 
     const result = await execute({
       runId: "run-summary-statusless-tool-call",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -1333,7 +1331,7 @@ describe("shared ACPX engine runtime behavior", () => {
 
     const result = await execute({
       runId: "run-tool-call-coalesce",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -1419,8 +1417,7 @@ describe("shared ACPX engine runtime behavior", () => {
     const result = await execute({
       runId: "run-usage-capture",
       agent: {
-        id: "agent-1",
-        companyId: "company-1",
+        id: "agent-1"
       },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
@@ -1483,8 +1480,7 @@ describe("shared ACPX engine runtime behavior", () => {
     const result = await execute({
       runId: "run-usage-event-fallback",
       agent: {
-        id: "agent-1",
-        companyId: "company-1",
+        id: "agent-1"
       },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
@@ -1613,8 +1609,7 @@ describe("shared ACPX engine runtime behavior", () => {
       paperclipHome,
       "instances",
       paperclipInstanceId,
-      "companies",
-      "company-1",
+      "organization",
       "codex-home",
     );
     await fs.mkdir(sourceCodexHome, { recursive: true });
@@ -1661,7 +1656,7 @@ describe("shared ACPX engine runtime behavior", () => {
       const sourceAuth = path.join(sourceCodexHome, "auth.json");
       await fs.writeFile(sourceAuth, JSON.stringify({ tokens: "host-login" }), "utf8");
       const managedHome = path.join(
-        paperclipHome, "instances", "test-instance", "companies", "company-1",
+        paperclipHome, "instances", "test-instance", "organization",
         "acp-engine", "agents", "agent-1", "codex-home",
       );
       await fs.mkdir(managedHome, { recursive: true });
@@ -1720,8 +1715,7 @@ describe("shared ACPX engine runtime behavior", () => {
             paperclipHome,
             "instances",
             "default",
-            "companies",
-            "company-1",
+            "organization",
             "grok-home",
           ),
         }),
@@ -2282,7 +2276,7 @@ describe("shared ACPX engine runtime behavior", () => {
 
     const result = await execute({
       runId: "run-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -2457,7 +2451,7 @@ describe("shared ACPX engine runtime behavior", () => {
     try {
       const result = await execute({
         runId: "run-nes-close-1",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
         context: {},
@@ -2499,7 +2493,7 @@ describe("shared ACPX engine runtime behavior", () => {
     };
     const first = await execute({
       runId: "run-warm-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -2508,7 +2502,7 @@ describe("shared ACPX engine runtime behavior", () => {
     } as never);
     const second = await execute({
       runId: "run-warm-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -2542,7 +2536,7 @@ describe("shared ACPX engine runtime behavior", () => {
       delete process.env.PAPERCLIP_API_KEY;
       const result = await execute({
         runId: "run-1",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js" },
         context: {},
@@ -2682,7 +2676,7 @@ describe("shared ACPX engine runtime behavior", () => {
       });
       const result = await execute({
         runId: `run-${agent}`,
-        agent: { id: `agent-${agent}`, companyId: "company-1" },
+        agent: { id: `agent-${agent}` },
         runtime: {},
         config:
           agent === "custom"
@@ -3081,7 +3075,7 @@ describe("gemini ACP flag selection", () => {
 
     const result = await execute({
       runId: "run-timeout-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -3119,7 +3113,7 @@ describe("ACP activity diagnostics", () => {
         return { events: (async function* () {})(), result: Promise.resolve({ status: "failed", error: new Error("turn failed") }), cancel: async () => {} };
       } }) as never,
     });
-    const result = await execute({ runId: "invalid-definition", agent: { id: "agent-1", companyId: "company-1" }, runtime: {},
+    const result = await execute({ runId: "invalid-definition", agent: { id: "agent-1" }, runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state"), cwd, env: { SECRET: "128" } },
       context: {}, onMeta: async () => {}, onLog: async () => {} } as never);
     expect(result).toMatchObject({ errorCode: "provider_tool_definition_invalid", errorFamily: "configuration" });
@@ -3160,7 +3154,7 @@ describe("ACP activity diagnostics", () => {
         }) as never,
       });
       const result = await execute({
-        runId: "activity-run", agent: { id: "agent-1", companyId: "company-1" }, runtime: {},
+        runId: "activity-run", agent: { id: "agent-1" }, runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state"), cwd },
         context: {}, onMeta: async () => {},
         onLog: async (_stream: string, text: string) => {
@@ -3496,7 +3490,7 @@ describe("ACPX engine remote sandbox staging seam (PR 1: workspace + cwd)", () =
     await expect(
       execute({
         runId: "run-bridge-fail",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
         context: {},
@@ -3534,7 +3528,7 @@ describe("ACPX engine remote sandbox staging seam (PR 1: workspace + cwd)", () =
       createRuntime: () => buildRuntime(undefined, (input) => ensureInputs.push(input)) as never,
     });
     const base = {
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       config: {
         agent: "custom",
         agentCommand: "node ./fake-acp.js",
@@ -3649,7 +3643,6 @@ describe("ACPX engine remote managed-home seam (PR 2: per-adapter home seed)", (
     const context = captured as unknown as Record<string, unknown>;
     // Only generic, adapter-agnostic inputs cross the boundary...
     expect(context.acpxAgent).toBe("custom");
-    expect(context.companyId).toBe("company-1");
     expect(context.runId).toBe("run-1");
     expect(context.workspaceLocalDir).toBe(localCwd);
     expect(context.executionTarget).toMatchObject({ kind: "remote", transport: "sandbox" });
@@ -4190,7 +4183,7 @@ describe("ACPX engine remote session-lifecycle re-staging (PR 3: stage once / re
     env?: Record<string, string>;
   }) {
     return {
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       config: {
         agent: "custom",
         agentCommand: "node ./fake-acp.js",
@@ -5211,7 +5204,7 @@ describe("ACPX engine sandbox-start spans (opt-in root + child parenting)", () =
 
     const result = await execute({
       runId: "run-getter",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "codex",
@@ -5540,7 +5533,7 @@ describe("ACPX engine sandbox-start spans (opt-in root + child parenting)", () =
 
     const result = await execute({
       runId: "run-handshake-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
       context: {},
@@ -5689,7 +5682,7 @@ describe("ACPX engine sandbox-start spans (opt-in root + child parenting)", () =
 
     const result = await execute({
       runId: "run-e2e-tree",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "codex",
@@ -5791,7 +5784,7 @@ describe("ACPX engine sandbox-start spans (opt-in root + child parenting)", () =
 
     const result = await execute({
       runId: "run-sync-back-span",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "codex",
@@ -5899,7 +5892,7 @@ describe("ACPX engine sandbox-start spans (opt-in root + child parenting)", () =
 
     const result = await execute({
       runId: "run-e2e-http",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "codex",
@@ -6096,7 +6089,7 @@ describe("ACPX engine per-step startup timing (run.startup.step events)", () => 
     };
     const first = await execute({
       runId: "run-warm-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -6109,7 +6102,7 @@ describe("ACPX engine per-step startup timing (run.startup.step events)", () => 
     // acp.handshake event whose outcome is not `skipped`.
     await execute({
       runId: "run-warm-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: (first as { sessionParams?: unknown }).sessionParams },
       config,
       context: {},
@@ -6185,7 +6178,7 @@ describe("ACPX engine run lifecycle corrections (F1: settle every failure after 
     });
     const result = await execute({
       runId: "run-create-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -6222,7 +6215,7 @@ describe("ACPX engine run lifecycle corrections (F1: settle every failure after 
 
     const result = await execute({
       runId: "run-create-fail-remote",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
       context: {},
@@ -6275,7 +6268,7 @@ describe("ACPX engine run lifecycle corrections (F1: settle every failure after 
 
     const result = await execute({
       runId: "run-prepare-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context,
@@ -6328,7 +6321,7 @@ describe("ACPX engine run lifecycle corrections (F1: settle every failure after 
 
       await execute({
         runId: `run-span-${scenario.name.replace(/\s+/g, "-")}`,
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
         context: {},
@@ -6395,7 +6388,7 @@ describe("ACPX engine run lifecycle corrections (F2: close the runtime for every
 
     const first = await execute({
       runId: "warm-handshake-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -6413,7 +6406,7 @@ describe("ACPX engine run lifecycle corrections (F2: close the runtime for every
     // while persisting process identity.
     const second = await execute({
       runId: "warm-handshake-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -6451,7 +6444,7 @@ describe("ACPX engine run lifecycle corrections (F2: close the runtime for every
 
     const result = await execute({
       runId: "missing-handle",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -6505,7 +6498,7 @@ describe("ACPX engine run lifecycle corrections (F2: close the runtime for every
 
     const first = await execute({
       runId: "warm-timer-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -6523,7 +6516,7 @@ describe("ACPX engine run lifecycle corrections (F2: close the runtime for every
     // while persisting process identity; runtime #2 closes.
     const second = await execute({
       runId: "warm-timer-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -6541,7 +6534,7 @@ describe("ACPX engine run lifecycle corrections (F2: close the runtime for every
     // A later heartbeat also finds no warm entry and constructs a fresh runtime.
     const third = await execute({
       runId: "warm-timer-3",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -6641,7 +6634,7 @@ describe("ACPX engine run lifecycle corrections (F3: one teardown error policy)"
     overrides: Record<string, unknown> = {},
   ) {
     return {
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
       context: {},
@@ -6969,7 +6962,7 @@ describe("ACPX engine run lifecycle corrections (F3: one teardown error policy)"
 
         await execute({
           runId: `flush-${scenario.name}`,
-          agent: { id: "agent-1", companyId: "company-1" },
+          agent: { id: "agent-1" },
           runtime: {},
           config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
           context: scenario.context,
@@ -7214,7 +7207,7 @@ describe("ACPX engine sandbox bridge run-disposition seam (fail-closed)", () => 
     });
     return await execute({
       runId: "run-duplex-seam",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -7610,7 +7603,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       vi.useFakeTimers();
       const resultPromise = execute({
         runId: "run-handshake-timeout",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},
@@ -7656,7 +7649,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       vi.useFakeTimers();
       const resultPromise = execute({
         runId: "run-no-promotion",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},
@@ -7719,7 +7712,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       });
       const resultPromise = execute({
         runId: "run-fence-close",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},
@@ -7782,7 +7775,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       vi.useFakeTimers();
       const resultPromise = execute({
         runId: "run-discard-reuse",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: {
           agent: "custom",
@@ -7831,7 +7824,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
 
     const result = await execute({
       runId: "run-session-mismatch",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -7882,7 +7875,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       });
       const resultPromise = execute({
         runId: "run-late-rejection",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},
@@ -7946,7 +7939,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       vi.useFakeTimers();
       const resultPromise = execute({
         runId: "run-guard-timeout",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
         context: {},
@@ -8042,7 +8035,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
     // timers. The loss is ordered up front, before `ensureSession` ever runs.
     const resultPromise = execute({
       runId: "run-guard-transport-lost",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
       context: {},
@@ -8104,7 +8097,7 @@ describe("ACPX startup handshake guard and late-completion fence", () => {
       });
       const resultPromise = execute({
         runId: "run-late-close-rejection",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},

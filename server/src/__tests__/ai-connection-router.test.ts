@@ -29,7 +29,7 @@ import { membershipUpsert } from "./helpers/reset-organization.js";
 let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
 let db: ReturnType<typeof createDb>;
 let home: string;
-const companyId = randomUUID(), otherCompanyId = randomUUID(), agentId = randomUUID(), secondAgentId = randomUUID(), pluginId = randomUUID();
+const agentId = randomUUID(), secondAgentId = randomUUID(), pluginId = randomUUID();
 const pluginKey = "fixture.ai-router";
 const manifest: PaperclipPluginManifestV1 = { id: pluginKey, apiVersion: 1, version: "0.1.0", displayName: "Fixture router", description: "Fixture", author: "Tests", categories: ["connector"], capabilities: ["ai.connections.route"], aiConnectionRouter: { name: "AI connection pool", description: "Use saved connections" }, entrypoints: { worker: "worker.js" } };
 let members: AiConnectionPoolMember[];
@@ -42,19 +42,19 @@ const proposal = vi.fn(async (_id: string, _method: string, request: AiConnectio
 const worker = { isRunning: () => true, call: proposal } as unknown as PluginWorkerManager;
 const defaultProposal = proposal.getMockImplementation()!;
 const service = () => aiConnectionRouterService(db, worker);
-const resolve = (poolId: string, taskKey: string, extra = {}) => service().resolve({ companyId, poolId, agentId, userId: "alice", adapterType: "paperclip_runner", taskKey, ...extra });
-const makePool = async (config = {}) => service().save(pluginKey, { companyId, config: { name: randomUUID(), enabled: true, mode: "round_robin", thresholdPercent: 90, members, ...config } }, "alice");
+const resolve = (poolId: string, taskKey: string, extra = {}) => service().resolve({ poolId, agentId, userId: "alice", adapterType: "paperclip_runner", taskKey, ...extra });
+const makePool = async (config = {}) => service().save(pluginKey, { config: { name: randomUUID(), enabled: true, mode: "round_robin", thresholdPercent: 90, members, ...config } }, "alice");
 beforeAll(async () => {
   home = await mkdtemp(path.join(os.tmpdir(), "paperclip-router-tests-"));
   vi.stubEnv("PAPERCLIP_HOME", home); vi.stubEnv("PAPERCLIP_INSTANCE_ID", "router-fixture");
   database = await startEmbeddedPostgresTestDatabase("paperclip-router-db-"); db = createDb(database.connectionString);
-  await db.insert(companies).values([{ id: companyId, name: "Router fixture", issuePrefix: "RTF" }, { id: otherCompanyId, name: "Other", issuePrefix: "RTO" }]);
-  await db.insert(agents).values([agentId, secondAgentId].map(id => ({ id, companyId, name: "Router agent", adapterType: "paperclip_runner" })));
+  await db.insert(companies).values({ name: "Router fixture", issuePrefix: "RTF" });
+  await db.insert(agents).values([agentId, secondAgentId].map(id => ({ id, name: "Router agent", adapterType: "paperclip_runner" })));
   await db.insert(companyMemberships).values(["alice", "bob"].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
   await db.insert(plugins).values({ id: pluginId, pluginKey, packageName: pluginKey, version: "0.1.0", manifestJson: manifest, status: "ready" });
   const accounts = aiConnectionService(db);
-  const codex = await accounts.save(companyId, "alice", { provider: "openai", method: "api_key", ownership: "personal", name: "Codex", apiKey: "fixture", agentIds: [], allAgents: true }, "fixture-codex");
-  const claude = await accounts.save(companyId, "alice", { provider: "anthropic", method: "subscription", ownership: "personal", name: "Claude", loginSessionId: "fixture", agentIds: [], allAgents: true }, "fixture-claude");
+  const codex = await accounts.save("alice", { provider: "openai", method: "api_key", ownership: "personal", name: "Codex", apiKey: "fixture", agentIds: [], allAgents: true }, "fixture-codex");
+  const claude = await accounts.save("alice", { provider: "anthropic", method: "subscription", ownership: "personal", name: "Claude", loginSessionId: "fixture", agentIds: [], allAgents: true }, "fixture-claude");
   members = [
     { id: randomUUID(), binding: { mode: "delegated", provider: "openai", method: "api_key", ...codex }, profile: { provider: "codex", model: "gpt-5.6-sol", effort: "low" } },
     { id: randomUUID(), binding: { mode: "delegated", provider: "anthropic", method: "subscription", ...claude }, profile: { provider: "acpx", acpxAgent: "claude", model: "claude-sonnet-5" } },
@@ -67,7 +67,7 @@ describe("durable, authorized connection routing", () => {
     expect((await instanceSettingsService(db).getExperimental()).enableAiConnectionRouters).toBe(false);
     expect((await service().catalog())[0]?.availability).toEqual({ available: false, reason: "Ask your instance operator to enable AI connection routing." });
     await expect(makePool()).rejects.toThrow("instance operator");
-    expect(await service().selectable(companyId, "alice")).toEqual([]);
+    expect(await service().selectable("alice")).toEqual([]);
     await instanceSettingsService(db).updateExperimental({ enableAiConnectionRouters: true });
   });
   it("registers native connectors only for declared installed routers", async () => {
@@ -85,55 +85,52 @@ describe("durable, authorized connection routing", () => {
   it("native connector removal retains durable pins and ordinary updates cannot bypass pool revisions", async () => {
     const pool = await makePool(); const selected = await resolve(pool.id, "catalog-removal");
     const app = express(); app.use(express.json());
-    app.use((req, _res, next) => { req.actor = { type: "board", userId: "alice", source: "local_implicit", companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "owner" }] } as typeof req.actor; next(); });
+    app.use((req, _res, next) => { req.actor = { type: "board", userId: "alice", source: "local_implicit", memberships: [{ status: "active", membershipRole: "owner" }] } as typeof req.actor; next(); });
     app.use("/api", toolAccessRoutes(db)); app.use("/api", aiConnectionRoutes(db)); app.use(errorHandler);
     expect((await request(app).patch(`/api/tool-connections/${pool.id}`).send({ name: "Bypass" })).status).toBe(400);
     expect((await request(app).delete(`/api/tool-connections/${pool.id}`)).status).toBe(400);
-    expect((await request(app).delete(`/api/companies/${companyId}/ai-connection-pools/${pool.id}`).send({ expectedRevision: pool.revision + 1 })).status).toBe(409);
-    expect((await request(app).delete(`/api/companies/${companyId}/ai-connection-pools/${pool.id}`).send({ expectedRevision: pool.revision })).status).toBe(200);
-    expect((await service().list(companyId)).some(row => row.id === pool.id)).toBe(false);
+    expect((await request(app).delete(`/api/ai-connection-pools/${pool.id}`).send({ expectedRevision: pool.revision + 1 })).status).toBe(409);
+    expect((await request(app).delete(`/api/ai-connection-pools/${pool.id}`).send({ expectedRevision: pool.revision })).status).toBe(200);
+    expect((await service().list()).some(row => row.id === pool.id)).toBe(false);
     expect(await db.select().from(aiConnectionTaskPins).where(eq(aiConnectionTaskPins.poolId, pool.id))).toHaveLength(1);
     expect(await resolve(pool.id, "catalog-removal", { persisted: selected })).toEqual(selected);
     expect((await db.select().from(toolConnections).where(eq(toolConnections.id, members[0]!.binding.connectionId)))[0]?.status).toBe("active");
   });
   it("requires company connection management authority on pool configuration routes", async () => {
     const app = express(); app.use(express.json());
-    let actor = { type: "board", userId: "alice", source: "session", companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "owner" }] };
+    let actor = { type: "board", userId: "alice", source: "session", memberships: [{ status: "active", membershipRole: "owner" }] };
     app.use((req, _res, next) => { req.actor = actor as typeof req.actor; next(); }); app.use("/api", aiConnectionRoutes(db)); app.use(errorHandler);
-    const pool = await makePool(); const url = `/api/companies/${companyId}/ai-connection-pools`;
+    const pool = await makePool(); const url = `/api/ai-connection-pools`;
     expect((await request(app).get(url)).status).toBe(200);
-    expect((await request(app).get(`/api/companies/${otherCompanyId}/ai-connection-pools`)).status).toBe(403);
-    expect((await request(app).delete(`/api/companies/${otherCompanyId}/ai-connection-pools/${pool.id}`).send({ expectedRevision: pool.revision })).status).toBe(403);
-    actor = { ...actor, memberships: [{ companyId, status: "active", membershipRole: "viewer" }] };
+    actor = { ...actor, memberships: [{ status: "active", membershipRole: "viewer" }] };
     expect((await request(app).get(url)).status).toBe(403);
     expect((await request(app).post(url).send({ pluginKey, config: pool })).status).toBe(403);
     expect((await request(app).get(`${url}/${pool.id}/inspection`)).status).toBe(403);
     expect((await request(app).delete(`${url}/${pool.id}`).send({ expectedRevision: pool.revision })).status).toBe(403);
-    actor = { type: "agent", agentId, companyId, source: "agent_jwt" } as unknown as typeof actor;
+    actor = { type: "agent", agentId, source: "agent_jwt" } as unknown as typeof actor;
     expect((await request(app).get(url)).status).toBe(403);
     expect((await request(app).delete(`${url}/${pool.id}`).send({ expectedRevision: pool.revision })).status).toBe(403);
-    actor = { type: "board", userId: "alice", source: "session", companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "owner" }] };
+    actor = { type: "board", userId: "alice", source: "session", memberships: [{ status: "active", membershipRole: "owner" }] };
     expect((await request(app).delete(`${url}/${pool.id}`).send({ expectedRevision: pool.revision + 1 })).status).toBe(409);
     expect((await request(app).delete(`${url}/${pool.id}`).send({ expectedRevision: pool.revision })).status).toBe(200);
     expect((await request(app).get(url)).body.some((entry: { id: string }) => entry.id === pool.id)).toBe(false);
   });
   it("deletes pools without erasing pins, cursors, or admitted recovery evidence", async () => {
     const pool = await makePool(); const selected = await resolve(pool.id, "retained");
-    await expect(service().remove(otherCompanyId, pool.id, pool.revision, "alice")).rejects.toThrow("not found");
-    await expect(service().remove(companyId, pool.id, pool.revision + 1, "alice")).rejects.toThrow("reload before deleting");
-    await service().remove(companyId, pool.id, pool.revision, "alice");
-    expect((await service().list(companyId)).some(entry => entry.id === pool.id)).toBe(false);
-    expect((await service().selectable(companyId, "alice")).some(entry => entry.id === pool.id)).toBe(false);
+    await expect(service().remove(pool.id, pool.revision + 1, "alice")).rejects.toThrow("reload before deleting");
+    await service().remove(pool.id, pool.revision, "alice");
+    expect((await service().list()).some(entry => entry.id === pool.id)).toBe(false);
+    expect((await service().selectable("alice")).some(entry => entry.id === pool.id)).toBe(false);
     expect(await db.select().from(aiConnectionTaskPins).where(eq(aiConnectionTaskPins.poolId, pool.id))).toHaveLength(1);
     const [cursor] = await db.select().from(aiConnectionRouterCursors).where(eq(aiConnectionRouterCursors.poolId, pool.id)); expect(cursor?.version).toBe(1);
     await expect(resolve(pool.id, "new")).rejects.toThrow("choose another AI connection");
     expect(await resolve(pool.id, "retained", { persisted: selected })).toEqual(selected);
     const { name, enabled, mode, thresholdPercent, members: savedMembers } = pool;
-    await expect(service().save(pluginKey, { companyId, id: pool.id, expectedRevision: pool.revision + 1, config: { name, enabled, mode, thresholdPercent, members: savedMembers } }, "alice")).rejects.toThrow("not found");
+    await expect(service().save(pluginKey, { id: pool.id, expectedRevision: pool.revision + 1, config: { name, enabled, mode, thresholdPercent, members: savedMembers } }, "alice")).rejects.toThrow("not found");
   });
   it("does not commit a selection when its pool is deleted during a proposal", async () => {
     const pool = await makePool();
-    proposal.mockImplementationOnce(async () => { await service().remove(companyId, pool.id, pool.revision, "alice"); return { kind: "selected", memberId: members[0]!.id }; });
+    proposal.mockImplementationOnce(async () => { await service().remove(pool.id, pool.revision, "alice"); return { kind: "selected", memberId: members[0]!.id }; });
     await expect(resolve(pool.id, "deleted-during-selection")).rejects.toThrow("choose another AI connection");
     expect(await db.select().from(aiConnectionTaskPins).where(eq(aiConnectionTaskPins.poolId, pool.id))).toHaveLength(0);
     const [cursor] = await db.select().from(aiConnectionRouterCursors).where(eq(aiConnectionRouterCursors.poolId, pool.id)); expect(cursor?.version).toBe(0);
@@ -142,7 +139,7 @@ describe("durable, authorized connection routing", () => {
     const pool = await makePool();
     await instanceSettingsService(db).updateExperimental({ enableAiConnectionRouters: false });
     await db.update(plugins).set({ status: "disabled" }).where(eq(plugins.id, pluginId));
-    try { await expect(service().remove(companyId, pool.id, pool.revision, "alice")).resolves.toEqual({ ok: true }); }
+    try { await expect(service().remove(pool.id, pool.revision, "alice")).resolves.toEqual({ ok: true }); }
     finally { await instanceSettingsService(db).updateExperimental({ enableAiConnectionRouters: true }); await db.update(plugins).set({ status: "ready" }).where(eq(plugins.id, pluginId)); }
   });
   it("rotates new tasks across qualified backends and retains pins on turns, resets and service restart", async () => {
@@ -150,7 +147,7 @@ describe("durable, authorized connection routing", () => {
     expect((await resolve(pool.id, "one")).memberId).toBe(members[0]!.id);
     expect((await resolve(pool.id, "two")).memberId).toBe(members[1]!.id);
     expect((await resolve(pool.id, "one", { overrides: { model: "claude-sonnet-5", modelReasoningEffort: "high" } })).memberId).toBe(members[0]!.id);
-    expect((await aiConnectionRouterService(db, worker).resolve({ companyId, poolId: pool.id, agentId, userId: "alice", adapterType: "paperclip_runner", taskKey: "one" })).memberId).toBe(members[0]!.id);
+    expect((await aiConnectionRouterService(db, worker).resolve({ poolId: pool.id, agentId, userId: "alice", adapterType: "paperclip_runner", taskKey: "one" })).memberId).toBe(members[0]!.id);
     const [cursor] = await db.select().from(aiConnectionRouterCursors).where(eq(aiConnectionRouterCursors.poolId, pool.id)); expect(cursor?.version).toBe(2);
   });
   it("commits one allocation for duplicate starts and serializes concurrent tasks", async () => {
@@ -173,8 +170,8 @@ describe("durable, authorized connection routing", () => {
   });
   it("rechecks config revisions after a proposal and preserves removed member snapshots", async () => {
     const pool = await makePool(); const old = await resolve(pool.id, "existing");
-    const saved = await service().save(pluginKey, { companyId, id: pool.id, expectedRevision: pool.revision, config: { name: "Edited", enabled: true, mode: "round_robin", thresholdPercent: 90, members: [members[1]!] } }, "alice");
-    await expect(service().save(pluginKey, { companyId, id: pool.id, expectedRevision: pool.revision, config: saved }, "alice")).rejects.toThrow();
+    const saved = await service().save(pluginKey, { id: pool.id, expectedRevision: pool.revision, config: { name: "Edited", enabled: true, mode: "round_robin", thresholdPercent: 90, members: [members[1]!] } }, "alice");
+    await expect(service().save(pluginKey, { id: pool.id, expectedRevision: pool.revision, config: saved }, "alice")).rejects.toThrow();
     expect((await resolve(pool.id, "existing")).binding).toEqual(old.binding);
     expect((await resolve(pool.id, "future")).memberId).toBe(members[1]!.id);
   });
@@ -193,7 +190,7 @@ describe("durable, authorized connection routing", () => {
   it("retries a changed config proposal without advancing the abandoned selection", async () => {
     const pool = await makePool();
     proposal.mockImplementationOnce(async () => {
-      await service().save(pluginKey, { companyId, id: pool.id, expectedRevision: pool.revision, config: { name: pool.name, enabled: true, mode: pool.mode, thresholdPercent: pool.thresholdPercent, members: [members[1]!] } }, "alice");
+      await service().save(pluginKey, { id: pool.id, expectedRevision: pool.revision, config: { name: pool.name, enabled: true, mode: pool.mode, thresholdPercent: pool.thresholdPercent, members: [members[1]!] } }, "alice");
       return { kind: "selected", memberId: members[0]!.id };
     });
     expect((await resolve(pool.id, "revision-conflict")).memberId).toBe(members[1]!.id);
@@ -217,9 +214,8 @@ describe("durable, authorized connection routing", () => {
     await expect(resolve(pool.id, "foreign-session", { requireExisting: true, existingGrantId: randomUUID() })).rejects.toThrow("Reset");
     expect((await resolve(pool.id, "foreign-session")).memberId).toBe(members[0]!.id);
   });
-  it("rejects cross-company access and unauthorized plugin proposals", async () => {
+  it("rejects unauthorized plugin proposals", async () => {
     const pool = await makePool();
-    await expect(resolve(pool.id, "foreign", { companyId: otherCompanyId })).rejects.toThrow();
     proposal.mockResolvedValueOnce({ kind: "selected", memberId: randomUUID() });
     await expect(resolve(pool.id, "bad-proposal")).rejects.toThrow("unauthorized");
     expect(await db.select().from(aiConnectionTaskPins).where(eq(aiConnectionTaskPins.poolId, pool.id))).toHaveLength(0);
@@ -236,10 +232,10 @@ describe("durable, authorized connection routing", () => {
     try {
       const pure = await makePool(); await resolve(pure.id, "pure"); expect(spy).not.toHaveBeenCalled();
       const aware = await makePool({ mode: "usage_aware", members: [members[1]!] }); await resolve(aware.id, "aware"); expect(spy).toHaveBeenCalledTimes(1); await resolve(aware.id, "aware"); expect(spy).toHaveBeenCalledTimes(1);
-      expect((await service().inspect(companyId, aware.id, "alice"))[members[1]!.id]?.checkedAt).not.toBeNull();
+      expect((await service().inspect(aware.id, "alice"))[members[1]!.id]?.checkedAt).not.toBeNull();
       const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, members[1]!.binding.grantId)); const ref = grant!.credentialSecretRefs.find(ref => ref.configPath === "ai.credential")!;
       await secretService(db).rotate(ref.secretId, { value: "fixture-refreshed", preserveAiSessionEpoch: true }, { userId: "alice" });
-      expect((await service().inspect(companyId, aware.id, "alice"))[members[1]!.id]?.checkedAt).toBeNull();
+      expect((await service().inspect(aware.id, "alice"))[members[1]!.id]?.checkedAt).toBeNull();
       await resolve(aware.id, "aware"); expect(spy).toHaveBeenCalledTimes(2);
       proposal.mockResolvedValueOnce({ kind: "exhausted", retryAt: new Date(Date.now() + 60_000).toISOString(), skipped: {} });
       await expect(resolve(aware.id, "aware")).rejects.toBeInstanceOf(AiConnectionPoolExhausted);
@@ -281,12 +277,12 @@ describe("durable, authorized connection routing", () => {
   it("persists run-key affinity before policy calls and reuses it across allocation recovery", async () => {
     await instanceSettingsService(db).updateExperimental({ enableAiConnectionRouters: true, enableWorktreeRunExecution: true });
     const pool = await makePool({ members: [members[1]!] });
-    const [agent] = await db.insert(agents).values({ companyId, name: "Run-key fixture", adapterType: "claude_local", adapterConfig: { cwd: home, engine: "cli" }, runtimeConfig: { aiConnection: { mode: "router", connectionId: pool.id }, heartbeat: { enabled: false } } }).returning();
+    const [agent] = await db.insert(agents).values({ name: "Run-key fixture", adapterType: "claude_local", adapterConfig: { cwd: home, engine: "cli" }, runtimeConfig: { aiConnection: { mode: "router", connectionId: pool.id }, heartbeat: { enabled: false } } }).returning();
     let affinity: string | undefined;
     const execute = vi.fn(); registerServerAdapter({ ...getServerAdapter("claude_local"), execute });
     const heartbeat = heartbeatService(db, { pluginWorkerManager: worker, runtimeEnv: {} });
     proposal.mockImplementationOnce(async (_id, _method, request) => {
-      const [run] = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agent!.id), eq(heartbeatRuns.status, "running")));
+      const [run] = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, agent!.id), eq(heartbeatRuns.status, "running")));
       expect(run?.contextSnapshot?.aiRouterTaskKey).toBe(run?.id);
       expect(request.taskKey).toBe(run?.id);
       affinity = run!.id;
@@ -301,7 +297,7 @@ describe("durable, authorized connection routing", () => {
       expect(execute).not.toHaveBeenCalled();
       const input = { agentId: agent!.id, adapterType: "claude_local" };
       const committed = await resolve(pool.id, affinity!, input);
-      expect(await aiConnectionRouterService(db, worker).resolve({ companyId, poolId: pool.id, agentId: agent!.id, userId: "alice", adapterType: "claude_local", taskKey: affinity! })).toEqual(committed);
+      expect(await aiConnectionRouterService(db, worker).resolve({ poolId: pool.id, agentId: agent!.id, userId: "alice", adapterType: "claude_local", taskKey: affinity! })).toEqual(committed);
       const [cursor] = await db.select().from(aiConnectionRouterCursors).where(eq(aiConnectionRouterCursors.poolId, pool.id)); expect(cursor?.version).toBe(1);
       expect(await db.select().from(aiConnectionTaskPins).where(eq(aiConnectionTaskPins.poolId, pool.id))).toHaveLength(1);
     } finally { proposal.mockReset(); proposal.mockImplementation(defaultProposal); unregisterServerAdapter("claude_local"); await heartbeat.drainActiveRunExecutions(); }
@@ -309,10 +305,10 @@ describe("durable, authorized connection routing", () => {
   it("defers a pinned task before provider work and schedules a retry with its affinity intact", async () => {
     await instanceSettingsService(db).updateExperimental({ enableAiConnectionRouters: true, enableWorktreeRunExecution: true });
     const pool = await makePool({ members: [members[1]!] });
-    const [agent] = await db.insert(agents).values({ companyId, name: "Quota fixture", adapterType: "claude_local", adapterConfig: { cwd: home, engine: "cli" }, runtimeConfig: { aiConnection: { mode: "router", connectionId: pool.id }, heartbeat: { enabled: false } } }).returning();
-    const [issue] = await db.insert(issues).values({ companyId, title: "Quota fixture", status: "todo", assigneeAgentId: agent!.id, responsibleUserId: "alice", createdByUserId: "alice" }).returning();
+    const [agent] = await db.insert(agents).values({ name: "Quota fixture", adapterType: "claude_local", adapterConfig: { cwd: home, engine: "cli" }, runtimeConfig: { aiConnection: { mode: "router", connectionId: pool.id }, heartbeat: { enabled: false } } }).returning();
+    const [issue] = await db.insert(issues).values({ title: "Quota fixture", status: "todo", assigneeAgentId: agent!.id, responsibleUserId: "alice", createdByUserId: "alice" }).returning();
     const pinned = await resolve(pool.id, issue!.id, { agentId: agent!.id, adapterType: "claude_local" });
-    await service().save(pluginKey, { companyId, id: pool.id, expectedRevision: pool.revision, config: { name: pool.name, enabled: true, mode: "usage_aware", thresholdPercent: 90, members: [members[1]!] } }, "alice");
+    await service().save(pluginKey, { id: pool.id, expectedRevision: pool.revision, config: { name: pool.name, enabled: true, mode: "usage_aware", thresholdPercent: 90, members: [members[1]!] } }, "alice");
     const execute = vi.fn(); registerServerAdapter({ ...getServerAdapter("claude_local"), execute });
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ five_hour: { utilization: 100 } })));
     proposal.mockResolvedValueOnce({ kind: "exhausted", retryAt: new Date(Date.now() + 60_000).toISOString(), skipped: { [members[1]!.id]: "Exhausted" } });
@@ -334,11 +330,11 @@ describe("durable, authorized connection routing", () => {
   }, 30_000);
   it("repairs the failed pool account without replacing the pool or adopting the configured provider", async () => {
     const pool = await makePool({ members: [members[1]!] });
-    const [agent] = await db.insert(agents).values({ companyId, name: "Pool repair", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" }, runtimeConfig: { aiConnection: { mode: "router", connectionId: pool.id } } }).returning();
-    const [issue] = await db.insert(issues).values({ companyId, title: "Pool repair", status: "in_progress", assigneeAgentId: agent!.id, responsibleUserId: "alice", createdByUserId: "alice" }).returning();
+    const [agent] = await db.insert(agents).values({ name: "Pool repair", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" }, runtimeConfig: { aiConnection: { mode: "router", connectionId: pool.id } } }).returning();
+    const [issue] = await db.insert(issues).values({ title: "Pool repair", status: "in_progress", assigneeAgentId: agent!.id, responsibleUserId: "alice", createdByUserId: "alice" }).returning();
     const selection = await resolve(pool.id, issue!.id, { agentId: agent!.id });
-    const runtime = await prepareManagedAiRuntime(db, { companyId, agentId: agent!.id, responsibleUserId: "alice", adapterType: "paperclip_runner", config: selection.runtimeConfig, binding: selection.binding });
-    const [run] = await db.insert(heartbeatRuns).values({ companyId, agentId: agent!.id, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: "alice", startedAt: new Date(), contextSnapshot: { issueId: issue!.id, aiRouterTaskKey: issue!.id, aiRouterSelection: selection, aiConnection: { ...runtime!.attribution, identity: runtime!.identity } } }).returning();
+    const runtime = await prepareManagedAiRuntime(db, { agentId: agent!.id, responsibleUserId: "alice", adapterType: "paperclip_runner", config: selection.runtimeConfig, binding: selection.binding });
+    const [run] = await db.insert(heartbeatRuns).values({ agentId: agent!.id, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: "alice", startedAt: new Date(), contextSnapshot: { issueId: issue!.id, aiRouterTaskKey: issue!.id, aiRouterSelection: selection, aiConnection: { ...runtime!.attribution, identity: runtime!.identity } } }).returning();
     try {
       const intents = connectionIntentService(db);
       const card = await intents.requestForRunAuthFailure(run!.id);
@@ -369,11 +365,11 @@ describe("durable, authorized connection routing", () => {
     finally { await db.update(plugins).set({ status: "ready" }).where(eq(plugins.id, pluginId)); }
   });
   it("resumes a responsible-user session through a delegated pool using real managed account configurations", async () => {
-    await aiConnectionService(db).setDefault(companyId, "alice", members[0]!.binding.grantId!);
+    await aiConnectionService(db).setDefault("alice", members[0]!.binding.grantId!);
     const pool = await makePool({ members: [members[0]!] });
     const selected = await resolve(pool.id, "managed-mode-adoption", { requireExisting: true, existingGrantId: members[0]!.binding.grantId });
     const directBinding = { mode: "responsible_user" as const, provider: "openai" as const, method: "api_key" as const };
-    const prepare = { companyId, agentId, responsibleUserId: "alice", adapterType: "paperclip_runner", config: selected.runtimeConfig };
+    const prepare = { agentId, responsibleUserId: "alice", adapterType: "paperclip_runner", config: selected.runtimeConfig };
     const before = await prepareManagedAiRuntime(db, { ...prepare, binding: directBinding });
     const after = await prepareManagedAiRuntime(db, { ...prepare, binding: selected.binding });
     try {
@@ -390,7 +386,7 @@ describe("durable, authorized connection routing", () => {
     } finally { await before.cleanup(); await after.cleanup(); }
   });
   it("keeps session identity and fingerprints stable on authenticated refresh, but changes them on manual replacement", async () => {
-    const input = { companyId, agentId, responsibleUserId: "alice", adapterType: "paperclip_runner", binding: members[0]!.binding, config: { provider: "codex", model: "gpt-5.6-sol" } };
+    const input = { agentId, responsibleUserId: "alice", adapterType: "paperclip_runner", binding: members[0]!.binding, config: { provider: "codex", model: "gpt-5.6-sol" } };
     const first = await prepareManagedAiRuntime(db, input);
     const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, members[0]!.binding.grantId)); const ref = grant!.credentialSecretRefs.find(ref => ref.configPath === "ai.credential")!;
     try {
@@ -399,7 +395,7 @@ describe("durable, authorized connection routing", () => {
       try { expect(refreshed.identity).not.toBe(first.identity); expect(refreshed.sessionIdentity).toBe(first.sessionIdentity); expect(managedAiSessionFingerprintConfig(refreshed.config, refreshed.home)).toEqual(managedAiSessionFingerprintConfig(first.config, first.home)); } finally { await refreshed.cleanup(); }
       await secretService(db).rotate(ref.secretId, { value: "fixture-replacement" }, { userId: "alice" });
       const replaced = await prepareManagedAiRuntime(db, input); try { expect(replaced.sessionIdentity).not.toBe(first.sessionIdentity); } finally { await replaced.cleanup(); }
-      const [secret] = await db.select().from(companySecrets).where(and(eq(companySecrets.companyId, companyId), eq(companySecrets.id, ref.secretId))); expect(secret!.aiSessionEpoch).toBeGreaterThan(0);
+      const [secret] = await db.select().from(companySecrets).where(eq(companySecrets.id, ref.secretId)); expect(secret!.aiSessionEpoch).toBeGreaterThan(0);
     } finally { await first.cleanup(); }
   });
 });

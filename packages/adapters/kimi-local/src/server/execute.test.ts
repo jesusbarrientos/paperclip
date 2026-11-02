@@ -50,7 +50,6 @@ function makeContext(root: string, overrides: Partial<AdapterExecutionContext> =
     runId: "run-1",
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "Kimi Agent",
       adapterType: "kimi_local",
       adapterConfig: {},

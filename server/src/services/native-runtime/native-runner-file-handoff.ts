@@ -39,7 +39,6 @@ import { getNativeReviewAssignment, readNativeReviewAssignmentContext } from "./
 export type RemoteWorkspaceFileReader = (input: Pick<NativeRunnerFileHandoffInput, "contentRef" | "byteSize" | "sha256">) => Promise<Buffer>;
 
 export interface NativeRunnerFileHandoffBinding {
-  readonly companyId: string;
   readonly issueId: string;
   readonly runId: string;
   readonly agentId: string;
@@ -603,7 +602,6 @@ async function scrubNativeRunnerStagingResidue(
 
 async function readBoundedStorageObject(input: {
   readonly storage: StorageService;
-  readonly companyId: string;
   readonly objectKey: string;
   readonly expectedByteSize: number;
   readonly expectedSha256: string;
@@ -615,7 +613,6 @@ async function readBoundedStorageObject(input: {
     throw new Error("paperclip_runner_attachment_staging_size_denied");
   }
   const object = await input.storage.getObject(
-    input.companyId,
     input.objectKey,
   );
   const chunks: Buffer[] = [];
@@ -804,7 +801,7 @@ export async function stageNativeRunnerWakeAttachments(input: {
   readonly db: Db;
   readonly binding: Pick<
     NativeRunnerFileHandoffBinding,
-    | "companyId"
+
     | "issueId"
     | "runId"
     | "agentId"
@@ -822,31 +819,22 @@ export async function stageNativeRunnerWakeAttachments(input: {
     .from(heartbeatRuns)
     .innerJoin(
       issues,
-      and(
-        eq(issues.id, heartbeatRuns.nativeIssueId),
-        eq(issues.companyId, heartbeatRuns.companyId),
-      ),
+      eq(issues.id, heartbeatRuns.nativeIssueId),
     )
     .innerJoin(
       agents,
-      and(
-        eq(agents.id, heartbeatRuns.agentId),
-        eq(agents.companyId, heartbeatRuns.companyId),
-      ),
+      eq(agents.id, heartbeatRuns.agentId),
     )
     .where(
       and(
         eq(heartbeatRuns.id, input.binding.runId),
-        eq(heartbeatRuns.companyId, input.binding.companyId),
         eq(heartbeatRuns.agentId, input.binding.agentId),
         eq(heartbeatRuns.nativeIssueId, input.binding.issueId),
         eq(heartbeatRuns.runtimeMode, "native"),
         inArray(heartbeatRuns.status, ["queued", "running"]),
         eq(issues.id, input.binding.issueId),
-        eq(issues.companyId, input.binding.companyId),
         eq(issues.executionRunId, input.binding.runId),
-        eq(agents.id, input.binding.agentId),
-        eq(agents.companyId, input.binding.companyId),
+        eq(agents.id, input.binding.agentId)
       ),
     )
     .limit(1);
@@ -861,7 +849,6 @@ export async function stageNativeRunnerWakeAttachments(input: {
   const reviewContext = readNativeReviewAssignmentContext(run.contextSnapshot);
   const nativeReview = reviewContext
     ? await getNativeReviewAssignment(input.db, {
-        companyId: input.binding.companyId,
         issueId: input.binding.issueId,
         agentId: input.binding.agentId,
         contextSnapshot: reviewContext,
@@ -937,14 +924,10 @@ export async function stageNativeRunnerWakeAttachments(input: {
     .from(issueAttachments)
     .innerJoin(
       assets,
-      and(
-        eq(assets.id, issueAttachments.assetId),
-        eq(assets.companyId, input.binding.companyId),
-      ),
+      eq(assets.id, issueAttachments.assetId),
     )
     .where(
       and(
-        eq(issueAttachments.companyId, input.binding.companyId),
         eq(issueAttachments.issueId, input.binding.issueId),
         inArray(
           issueAttachments.id,
@@ -1002,7 +985,6 @@ export async function stageNativeRunnerWakeAttachments(input: {
       try {
         const body = await readBoundedStorageObject({
           storage,
-          companyId: input.binding.companyId,
           objectKey: row.objectKey,
           expectedByteSize: row.byteSize,
           expectedSha256: row.sha256,
@@ -1088,32 +1070,23 @@ async function assertCurrentBinding(
     .from(heartbeatRuns)
     .innerJoin(
       issues,
-      and(
-        eq(issues.id, heartbeatRuns.nativeIssueId),
-        eq(issues.companyId, heartbeatRuns.companyId),
-      ),
+      eq(issues.id, heartbeatRuns.nativeIssueId),
     )
     .innerJoin(
       agents,
-      and(
-        eq(agents.id, heartbeatRuns.agentId),
-        eq(agents.companyId, heartbeatRuns.companyId),
-      ),
+      eq(agents.id, heartbeatRuns.agentId),
     )
     .where(
       and(
         eq(heartbeatRuns.id, binding.runId),
-        eq(heartbeatRuns.companyId, binding.companyId),
         eq(heartbeatRuns.agentId, binding.agentId),
         eq(heartbeatRuns.nativeIssueId, binding.issueId),
         eq(heartbeatRuns.runtimeMode, "native"),
         eq(heartbeatRuns.status, "running"),
         eq(issues.id, binding.issueId),
-        eq(issues.companyId, binding.companyId),
         eq(issues.assigneeAgentId, binding.agentId),
         eq(issues.executionRunId, binding.runId),
-        eq(agents.id, binding.agentId),
-        eq(agents.companyId, binding.companyId),
+        eq(agents.id, binding.agentId)
       ),
     )
     .for("update")
@@ -1150,15 +1123,11 @@ export async function prepareNativeRunnerFileHandoff(input: {
     .from(issueAttachments)
     .innerJoin(
       assets,
-      and(
-        eq(assets.id, issueAttachments.assetId),
-        eq(assets.companyId, input.binding.companyId),
-      ),
+      eq(assets.id, issueAttachments.assetId),
     )
     .leftJoin(
       issueWorkProducts,
       and(
-        eq(issueWorkProducts.companyId, input.binding.companyId),
         eq(issueWorkProducts.issueId, input.binding.issueId),
         eq(issueWorkProducts.type, "artifact"),
         eq(issueWorkProducts.provider, "paperclip"),
@@ -1168,7 +1137,6 @@ export async function prepareNativeRunnerFileHandoff(input: {
     )
     .where(
       and(
-        eq(issueAttachments.companyId, input.binding.companyId),
         eq(issueAttachments.issueId, input.binding.issueId),
         eq(issueAttachments.originatingRunId, input.binding.runId),
         eq(assets.createdByAgentId, input.binding.agentId),
@@ -1191,7 +1159,6 @@ export async function prepareNativeRunnerFileHandoff(input: {
       .where(
         and(
           eq(issueComments.id, existing.commentId),
-          eq(issueComments.companyId, input.binding.companyId),
           eq(issueComments.issueId, input.binding.issueId),
           eq(issueComments.authorType, "agent"),
           eq(issueComments.authorAgentId, input.binding.agentId),
@@ -1228,7 +1195,6 @@ export async function prepareNativeRunnerFileHandoff(input: {
 
   const storage = input.storage ?? getStorageService();
   const stored = await storage.putFile({
-    companyId: input.binding.companyId,
     namespace: `issues/${input.binding.issueId}`,
     originalFilename: verified.filename,
     contentType: verified.contentType,
@@ -1265,7 +1231,6 @@ export async function prepareNativeRunnerFileHandoff(input: {
       .where(
         and(
           eq(issueWorkProducts.id, attachment.artifactWorkProductId),
-          eq(issueWorkProducts.companyId, input.binding.companyId),
           eq(issueWorkProducts.issueId, input.binding.issueId),
           eq(issueWorkProducts.createdByRunId, input.binding.runId),
         ),
@@ -1296,12 +1261,12 @@ export async function prepareNativeRunnerFileHandoff(input: {
         scheduledWakeIds: [],
       },
       rollbackDefinitePreCommitFailure: async () => {
-        await storage.deleteObject(input.binding.companyId, stored.objectKey);
+        await storage.deleteObject(stored.objectKey);
       },
     };
   } catch (error) {
     await storage
-      .deleteObject(input.binding.companyId, stored.objectKey)
+      .deleteObject(stored.objectKey)
       .catch(() => undefined);
     throw error;
   }

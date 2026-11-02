@@ -15,7 +15,7 @@ A case has:
 
 - `identifier`: server-assigned display id such as `PAP-C42`
 - `caseType`: skill-owned type such as `blog_post`, `image_assets`, or `incident`
-- `key`: optional deterministic upsert key inside `(companyId, caseType)`
+- `key`: optional deterministic upsert key inside `caseType`
 - `title` and optional `summary`
 - `status`: `draft`, `in_progress`, `in_review`, `approved`, `done`, or `cancelled`
 - `fields`: JSON object owned by the skill using the case
@@ -23,12 +23,12 @@ A case has:
 - documents, attachments, issue links, labels, and events
 
 Use deterministic `caseType` + `key` when a skill may be retried. Repeating
-`POST /api/companies/:companyId/cases` with the same `caseType` and `key`
+`POST /api/cases` with the same `caseType` and `key`
 upserts the same case instead of creating a duplicate.
 
 ## Upsert Semantics
 
-`POST /api/companies/:companyId/cases` creates or upserts a case.
+`POST /api/cases` creates or upserts a case.
 
 Request:
 
@@ -75,7 +75,7 @@ GET /api/cases/PAP-C42
 List cases for a company:
 
 ```http
-GET /api/companies/:companyId/cases?type=blog_post&status=active&q=launch
+GET /api/cases?type=blog_post&status=active&q=launch
 ```
 
 Useful filters:
@@ -224,7 +224,7 @@ Terminal statuses are `done` and `cancelled`; setting either records
 Create or upsert the parent blog post:
 
 ```http
-POST /api/companies/:companyId/cases
+POST /api/cases
 Content-Type: application/json
 
 {
@@ -257,7 +257,7 @@ Content-Type: application/json
 Create the child image-assets case:
 
 ```http
-POST /api/companies/:companyId/cases
+POST /api/cases
 Content-Type: application/json
 
 {

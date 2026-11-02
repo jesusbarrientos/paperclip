@@ -81,7 +81,6 @@ export interface IssueAncestor {
 
 export interface IssueLabel {
   id: string;
-  companyId: string;
   name: string;
   color: string;
   createdAt: Date;
@@ -97,7 +96,6 @@ export type DocumentFormat = "markdown";
 
 export interface IssueDocumentSummary {
   id: string;
-  companyId: string;
   issueId: string;
   key: string;
   title: string | null;
@@ -122,7 +120,6 @@ export interface IssueDocument extends IssueDocumentSummary {
 
 export interface DocumentRevision {
   id: string;
-  companyId: string;
   documentId: string;
   issueId: string;
   key: string;
@@ -172,7 +169,6 @@ export interface AcceptedPlanDecompositionChild {
 
 export interface AcceptedPlanDecomposition {
   id: string;
-  companyId: string;
   sourceIssueId: string;
   acceptedPlanRevisionId: string;
   acceptedInteractionId: string | null;
@@ -545,7 +541,6 @@ export interface IssueRecoveryAction {
     workspaceOperationId: string | null;
   } | null;
   id: string;
-  companyId: string;
   sourceIssueId: string;
   recoveryIssueId: string | null;
   kind: IssueRecoveryActionKind;
@@ -616,7 +611,6 @@ export interface IssueRetryNowResponse {
 
 export interface IssueRelation {
   id: string;
-  companyId: string;
   issueId: string;
   relatedIssueId: string;
   type: "blocks";
@@ -724,7 +718,6 @@ export interface IssueExecutionState {
 
 export interface IssueExecutionDecision {
   id: string;
-  companyId: string;
   issueId: string;
   stageId: string;
   stageType: IssueExecutionStageType;
@@ -741,7 +734,6 @@ export type IssueWatchdogStatus = "active" | "disabled";
 
 export interface IssueWatchdogSummary {
   id: string;
-  companyId: string;
   issueId: string;
   watchdogAgentId: string;
   instructions: string | null;
@@ -787,7 +779,6 @@ export interface Issue {
     triggerDetail: string | null; startedAt: Date | string | null; finishedAt: Date | string | null;
     createdAt: Date | string; execution?: ExecutionProjection } | null;
   id: string;
-  companyId: string;
   projectId: string | null;
   projectWorkspaceId: string | null;
   goalId: string | null;
@@ -879,7 +870,7 @@ export type CompactIssue = Pick<
   Issue,
   | "externalConversationState"
   | "id"
-  | "companyId"
+
   | "projectId"
   | "projectWorkspaceId"
   | "goalId"
@@ -952,7 +943,6 @@ export interface IssueComment {
   clientRequestId?: string | null;
   conversationSessionGeneration?: number | null;
   id: string;
-  companyId: string;
   issueId: string;
   authorType: IssueCommentAuthorType;
   authorAgentId: string | null;
@@ -1513,7 +1503,6 @@ export interface RequestItemVerdictsResult {
 
 export interface IssueThreadInteractionBase extends IssueThreadInteractionActorFields {
   id: string;
-  companyId: string;
   issueId: string;
   kind: IssueThreadInteractionKind;
   idempotencyKey?: string | null;
@@ -1606,7 +1595,6 @@ export type IssueThreadInteractionResult =
 
 export interface IssueAttachment {
   id: string;
-  companyId: string;
   issueId: string;
   issueCommentId: string | null;
   /** Immutable run attribution recorded when an agent uploads the attachment. */

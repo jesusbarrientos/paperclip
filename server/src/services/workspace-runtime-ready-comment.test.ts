@@ -33,7 +33,6 @@ function runtimeService(
 ): RuntimeServiceRef {
   return {
     id: "service-id",
-    companyId: "company-id",
     projectId: "project-id",
     projectWorkspaceId: "project-workspace-id",
     executionWorkspaceId: "execution-workspace-id",

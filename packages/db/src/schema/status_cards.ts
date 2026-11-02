@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import type { CompanySearchQuery, StatusCardRefreshPolicy } from "@paperclipai/shared";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { documents } from "./documents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
@@ -28,7 +27,6 @@ export const statusCards = pgTable(
   "status_cards",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     createdByUserId: text("created_by_user_id"),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
     title: text("title"),
@@ -64,8 +62,8 @@ export const statusCards = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyArchivedIdx: index("status_cards_company_archived_idx").on(table.companyId, table.archivedAt),
-    companyNextEvalIdx: index("status_cards_company_next_eval_idx").on(table.companyId, table.nextEvalAt),
+    companyArchivedIdx: index("status_cards_company_archived_idx").on(table.archivedAt),
+    companyNextEvalIdx: index("status_cards_company_next_eval_idx").on(table.nextEvalAt),
   }),
 );
 

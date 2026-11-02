@@ -15,7 +15,7 @@ const CWD = "/paperclip-workspace";
 const MARKER = `${CWD}/.paperclip-runtime/.paperclip-createos-lease`;
 
 function metadataMatches(params: PluginEnvironmentDriverBaseParams, metadata?: Record<string, unknown>): boolean {
-  return metadata?.provider === "createos" && metadata.companyId === params.companyId &&
+  return metadata?.provider === "createos" &&
     metadata.environmentId === params.environmentId && metadata.apiUrl === parseConfig(params.config).apiUrl;
 }
 
@@ -37,8 +37,7 @@ async function acquire(params: PluginEnvironmentAcquireLeaseParams): Promise<Plu
     return {
       providerLeaseId: sandbox.id,
       metadata: {
-        provider: "createos", apiUrl: config.apiUrl,
-        companyId: params.companyId, environmentId: params.environmentId,
+        provider: "createos", apiUrl: config.apiUrl, environmentId: params.environmentId,
         remoteCwd: CWD, shellCommand: "bash", marker,
         shape: config.shape, rootfs: config.rootfs, region: config.region,
         reuseLease: config.reuseLease,
@@ -63,7 +62,7 @@ export function createPlugin() {
   function key(params: PluginEnvironmentDriverBaseParams, id: string): string {
     const config = parseConfig(params.config);
     const account = createHash("sha256").update(resolveApiKey(config)).digest("hex");
-    return JSON.stringify([params.companyId, params.environmentId, config.apiUrl, account, id]);
+    return JSON.stringify([params.environmentId, config.apiUrl, account, id]);
   }
 
   async function stopActive(scope: string) {

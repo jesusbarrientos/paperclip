@@ -10,16 +10,14 @@ import type { EmailPublicationSummary } from "@paperclipai/shared";
 // Email actions belong to the agent's task conversation. Only surface mail
 // without a task comment yet and delivery outcomes that need attention here.
 export function EmailTaskActivity({
-  companyId,
   issueId,
 }: {
-  companyId: string;
   issueId: string;
 }) {
   const cache = useQueryClient();
-  const threadKey = ["email-thread", companyId, issueId];
-  const queryEnabled = Boolean(companyId && issueId) && !issueId.startsWith("chat:");
-  const thread = useEmailThread(companyId, issueId);
+  const threadKey = ["email-thread", issueId];
+  const queryEnabled = Boolean(issueId) && !issueId.startsWith("chat:");
+  const thread = useEmailThread(issueId);
   if (!queryEnabled) return null;
   const data = thread.data;
   const messages = data?.messages.filter((m) => !m.commentId) ?? [];
@@ -47,7 +45,6 @@ export function EmailTaskActivity({
       {publications.map((p) => (
         <EmailDelivery
           key={p.id}
-          companyId={companyId}
           publication={p}
           onResolved={() => {
             void cache.invalidateQueries({ queryKey: threadKey });
@@ -59,18 +56,16 @@ export function EmailTaskActivity({
 }
 
 function EmailDelivery({
-  companyId,
   publication: p,
   onResolved,
 }: {
-  companyId: string;
   publication: EmailPublicationSummary;
   onResolved: () => void;
 }) {
   const [messageId, setMessageId] = useState("");
   const resolve = useMutation({
     mutationFn: (outcome: "sent" | "failed") =>
-      emailApi.resolve(companyId, p.id, outcome, messageId || undefined),
+      emailApi.resolve(p.id, outcome, messageId || undefined),
     onSuccess: onResolved,
   });
   return (

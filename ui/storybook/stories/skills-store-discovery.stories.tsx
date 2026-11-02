@@ -5,7 +5,7 @@ import {
   type DiscoveryCard,
   type DiscoveryCategory,
   type DiscoveryTab,
-} from "@/pages/CompanySkills";
+} from "@/pages/OrganizationSkills";
 
 type DiscoverySort = "agents" | "stars" | "forks" | "recent" | "alphabetical";
 const STORY_NOW = new Date("2026-08-31T12:00:00Z").getTime();

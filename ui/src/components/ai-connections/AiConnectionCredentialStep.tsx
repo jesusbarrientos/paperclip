@@ -14,7 +14,6 @@ import { resolveAdapterTestEnvironmentId, resolveLocalDefaultEnvironmentId, reso
 import { resolveForcedKubernetesEnvironment } from "@/lib/forced-kubernetes-environment";
 
 type Props = {
-  companyId: string;
   provider: AiProvider;
   initialMethod?: AiAuthMethod;
   fixedMethod?: boolean;
@@ -36,12 +35,12 @@ export function AiConnectionCredentialStep(props: Props) {
   return <SubscriptionConnectionStep {...props} />;
 }
 
-function SubscriptionConnectionStep({ companyId, provider, initialMethod, fixedMethod, connectionId, name: initialName, hideName, nameForMethod, ownership, agentIds, allAgents, environmentId: suppliedEnvironmentId, onComplete, onCancel }: Props) {
+function SubscriptionConnectionStep({ provider, initialMethod, fixedMethod, connectionId, name: initialName, hideName, nameForMethod, ownership, agentIds, allAgents, environmentId: suppliedEnvironmentId, onComplete, onCancel }: Props) {
   const [name, setName] = useState(initialName);
   const [chosenEnvironment, setChosenEnvironment] = useState<string>();
   const client = useQueryClient();
-  const envs = useQuery({ queryKey: queryKeys.environments.list(companyId), queryFn: () => environmentsApi.list(companyId) });
-  const caps = useQuery({ queryKey: queryKeys.environments.capabilities(companyId), queryFn: () => environmentsApi.capabilities(companyId) });
+  const envs = useQuery({ queryKey: queryKeys.environments.list(), queryFn: () => environmentsApi.list() });
+  const caps = useQuery({ queryKey: queryKeys.environments.capabilities(), queryFn: () => environmentsApi.capabilities() });
   const settings = useQuery({ queryKey: queryKeys.instance.settings, queryFn: instanceSettingsApi.get });
   const experimental = useQuery({ queryKey: queryKeys.instance.experimentalSettings, queryFn: instanceSettingsApi.getExperimental });
   const general = useQuery({ queryKey: queryKeys.instance.generalSettings, queryFn: instanceSettingsApi.getGeneral });
@@ -84,7 +83,6 @@ function SubscriptionConnectionStep({ companyId, provider, initialMethod, fixedM
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {loading ? <p role="status" className="text-sm text-muted-foreground">Preparing sign-in…</p> : <AgentProviderConnection
       key={environmentId ?? "local"}
-      companyId={companyId}
       adapterType={provider === "anthropic" ? "claude_local" : provider === "xai" ? "grok_local" : "codex_local"}
       environmentId={environmentId}
       canLogin={canLogin}
@@ -92,18 +90,18 @@ function SubscriptionConnectionStep({ companyId, provider, initialMethod, fixedM
       onBack={onCancel}
       onConnected={() => {}}
       testConnection={async () => false}
-      managedAccount={{ intent, nameForMethod, initialMethod, fixedMethod: fixedMethod ?? Boolean(connectionId), disabled: loading || Boolean(error) || !name.trim(), onComplete: (result) => { void client.invalidateQueries({ queryKey: ["ai-connections", companyId] }); onComplete(result); } }}
+      managedAccount={{ intent, nameForMethod, initialMethod, fixedMethod: fixedMethod ?? Boolean(connectionId), disabled: loading || Boolean(error) || !name.trim(), onComplete: (result) => { void client.invalidateQueries({ queryKey: ["ai-connections"] }); onComplete(result); } }}
     />}
   </div>;
 }
 
-function ApiKeyConnectionStep({ companyId, provider, connectionId, name: initialName, hideName, nameForMethod, ownership, agentIds, allAgents, onComplete, onCancel }: Props) {
+function ApiKeyConnectionStep({ provider, connectionId, name: initialName, hideName, nameForMethod, ownership, agentIds, allAgents, onComplete, onCancel }: Props) {
   const [name, setName] = useState(initialName);
   const [apiKey, setApiKey] = useState("");
   const client = useQueryClient();
   const save = useMutation({
-    mutationFn: () => aiConnectionsApi.create(companyId, { provider, method: "api_key", name: connectionId ? name : nameForMethod?.("api_key") ?? name, ownership, agentIds, allAgents, connectionId, apiKey }),
-    onSuccess: (result) => { void client.invalidateQueries({ queryKey: ["ai-connections", companyId] }); onComplete({ ...result, method: "api_key" }); },
+    mutationFn: () => aiConnectionsApi.create({ provider, method: "api_key", name: connectionId ? name : nameForMethod?.("api_key") ?? name, ownership, agentIds, allAgents, connectionId, apiKey }),
+    onSuccess: (result) => { void client.invalidateQueries({ queryKey: ["ai-connections"] }); onComplete({ ...result, method: "api_key" }); },
     onSettled: () => setApiKey(""),
   });
   return <div className="mx-auto w-full min-w-0 max-w-xl space-y-4">

@@ -7,11 +7,11 @@ Operational contract for the hosted `aws_secrets_manager` secret provider used b
 - Hosted provider for Paperclip-managed company and user-scoped secrets when Paperclip Cloud runs on AWS.
 - Source of truth for secret values is AWS Secrets Manager, not Postgres.
 - Paperclip stores only metadata needed for ownership, bindings, version selection, audit, and runtime resolution.
-- AWS provider bootstrap credentials are deployment/runtime credentials, not Paperclip-managed company secrets.
+- AWS provider bootstrap credentials are deployment/runtime credentials, not Paperclip-managed organization secrets.
 - Remote import for existing AWS secrets is metadata-only. Preview/import uses
   AWS inventory metadata and creates Paperclip external references; it does not
   copy plaintext into Paperclip.
-- Per-company AWS provider vaults (named instances of `aws_secrets_manager`
+- Organization AWS provider vaults (named instances of `aws_secrets_manager`
   with their own region, namespace, prefix, KMS key id, and tags) are managed
   in the board UI under `Company Settings → Secrets → Provider vaults`. See
   [Provider Vaults](../docs/deploy/secrets.md#provider-vaults) for the operator
@@ -108,7 +108,7 @@ PAPERCLIP_SECRETS_AWS_DELETE_RECOVERY_DAYS=30
 Naming convention for Paperclip-managed secrets:
 
 ```text
-paperclip/{deploymentId}/{companyId}/{secretKey}
+paperclip/{deploymentId}/{secretKey}
 ```
 
 Tag set for Paperclip-managed secrets:
@@ -116,12 +116,11 @@ Tag set for Paperclip-managed secrets:
 - `paperclip:managed-by=paperclip`
 - `paperclip:provider-owner=<owner tag>`
 - `paperclip:deployment-id=<deployment id>`
-- `paperclip:company-id=<company id>`
 - `paperclip:secret-key=<secret key>`
 - `paperclip:environment=<environment tag>`
 
 When the user-secret service creates Paperclip-managed AWS values, keep them
-under the same deployment/company namespace. The secret-key segment should be
+under the same deployment namespace (a deployment serves one organization). The secret-key segment should be
 non-sensitive and collision-safe for the user-secret value, normally derived
 from the definition key plus an opaque credential-owner subject. Do not put
 emails, personal names, OAuth scopes, ticket identifiers, or plaintext
@@ -131,7 +130,7 @@ For operator-owned external references, prefer a separate approved prefix such
 as:
 
 ```text
-paperclip-ext/<environment>/<company-id>/user-secrets/<definition-key>/<opaque-owner-id>
+paperclip-ext/<environment>/user-secrets/<definition-key>/<opaque-owner-id>
 ```
 
 Paperclip stores the external ref and provider version as metadata. Treat those
@@ -145,7 +144,7 @@ Launch posture:
 
 - One Paperclip app role per deployment.
 - One deployment-scoped KMS key per deployment at launch.
-- Future per-company KMS keys remain compatible because Paperclip stores provider refs and version metadata separately from values.
+- Future per-organization KMS keys remain compatible because Paperclip stores provider refs and version metadata separately from values.
 
 Minimum IAM boundary:
 
@@ -261,7 +260,7 @@ Safe scoping guidance:
 
 Paperclip also blocks importing refs under its own managed namespace as
 external references. Use the Paperclip-managed flow for
-`paperclip/{deploymentId}/{companyId}/{secretKey}` resources.
+`paperclip/{deploymentId}/{secretKey}` resources.
 
 ## Existing AWS Secrets
 
@@ -269,10 +268,10 @@ V1 keeps existing AWS Secrets Manager entries as **linked external references**,
 Paperclip-managed resources.
 
 Use the Paperclip-managed flow when Paperclip should create and rotate the value. The AWS
-secret name is derived from deployment and company scope:
+secret name is derived from deployment scope:
 
 ```text
-paperclip/{deploymentId}/{companyId}/{secretKey}
+paperclip/{deploymentId}/{secretKey}
 ```
 
 Use the external-reference flow when the secret already exists at an operator-owned path such
@@ -369,7 +368,7 @@ Remote import-specific actions:
 
 Potential incidents:
 
-- Cross-company access caused by IAM scoping drift.
+- Cross-deployment access caused by IAM scoping drift.
 - KMS policy drift causing decrypt failures or over-broad access.
 - Suspected secret exposure in logs, transcripts, or downstream agent output.
 
@@ -399,7 +398,7 @@ Prerequisites:
 Suggested smoke:
 
 1. Create a test secret through the Paperclip board or API under a throwaway company.
-2. Confirm the resulting AWS secret name matches `paperclip/{deploymentId}/{companyId}/{secretKey}`.
+2. Confirm the resulting AWS secret name matches `paperclip/{deploymentId}/{secretKey}`.
 3. Rotate the secret once and confirm a new `providerVersionRef` appears in Paperclip metadata.
 4. Resolve the secret through a bound runtime path, not by adding a general-purpose reveal endpoint.
 5. Delete the throwaway secret and confirm AWS schedules deletion with the configured recovery window.

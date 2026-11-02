@@ -73,9 +73,9 @@ vi.mock("../api/agents", () => ({
   agentsApi: mockAgentsApi,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 
@@ -266,7 +266,6 @@ function makeRemoteImportPreview(
 function makeCompanySecret(overrides: Partial<CompanySecret> = {}): CompanySecret {
   return {
     id: "secret-openai",
-    companyId: "company-1",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -295,7 +294,6 @@ function makeCompanySecret(overrides: Partial<CompanySecret> = {}): CompanySecre
 function makeUserSecretDefinition(overrides: Partial<UserSecretDefinition> = {}): UserSecretDefinition {
   return {
     id: "def-github",
-    companyId: "company-1",
     key: "PERSONAL_GH_TOKEN",
     name: "Personal GitHub token",
     description: "Used when the responsible user's own repos must be reached.",
@@ -498,7 +496,7 @@ describe("Secrets page layout", () => {
     await flushReact();
 
     expect(document.body.textContent).toContain("Import from AWS Secrets Manager");
-    expect(mockSecretsApi.remoteImportPreview).toHaveBeenCalledWith("company-1", {
+    expect(mockSecretsApi.remoteImportPreview).toHaveBeenCalledWith({
       providerConfigId: "vault-aws",
       query: null,
       nextToken: null,
@@ -575,7 +573,6 @@ describe("Secrets page layout", () => {
       bindings: [
         {
           id: "binding-agent",
-          companyId: "company-1",
           secretId: "secret-openai",
           targetType: "agent",
           targetId: "agent-1",
@@ -656,7 +653,7 @@ describe("Secrets page layout", () => {
 
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={["/company/settings/secrets?secret=secret-openai"]}>
+        <MemoryRouter initialEntries={["/organization/settings/secrets?secret=secret-openai"]}>
           <QueryClientProvider client={queryClient}>
             <Secrets />
           </QueryClientProvider>
@@ -701,7 +698,7 @@ describe("Secrets page layout", () => {
 
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={["/company/settings/secrets?secret=secret-neon"]}>
+        <MemoryRouter initialEntries={["/organization/settings/secrets?secret=secret-neon"]}>
           <QueryClientProvider client={queryClient}>
             <Secrets />
           </QueryClientProvider>
@@ -790,8 +787,8 @@ describe("Secrets page layout", () => {
     expect(cardView?.className).toContain("@min-[40rem]:hidden");
     expect(cardView?.className).not.toContain("md:hidden");
 
-    expect(mockSecretsApi.list).toHaveBeenCalledWith("company-1");
-    expect(mockSecretsApi.listUserSecretDefinitions).toHaveBeenCalledWith("company-1");
+    expect(mockSecretsApi.list).toHaveBeenCalledWith();
+    expect(mockSecretsApi.listUserSecretDefinitions).toHaveBeenCalledWith();
 
     await act(async () => {
       root.unmount();
@@ -877,7 +874,7 @@ describe("Secrets page layout", () => {
     });
     await flushReact();
 
-    expect(mockSecretsApi.createUserSecretDefinition).toHaveBeenCalledWith("company-1", {
+    expect(mockSecretsApi.createUserSecretDefinition).toHaveBeenCalledWith({
       name: "Personal GitHub token",
       description: null,
       usageGuidance: "Create a fine-grained PAT with repo read access.",
@@ -1195,7 +1192,7 @@ describe("Secrets page layout", () => {
     await flushReact();
     await flushReact();
 
-    expect(mockSecretsApi.providerConfigDiscoveryPreview).toHaveBeenCalledWith("company-1", {
+    expect(mockSecretsApi.providerConfigDiscoveryPreview).toHaveBeenCalledWith({
       provider: "aws_secrets_manager",
       config: {
         region: "us-east-1",
@@ -1523,7 +1520,6 @@ describe("Secrets page layout", () => {
         },
         replaceAdapterConfig: true,
       },
-      "company-1",
     );
 
     const revokeButton = document.body.querySelector(
@@ -1539,7 +1535,6 @@ describe("Secrets page layout", () => {
     expect(mockAgentsApi.update).toHaveBeenCalledWith(
       "agent-reviewer",
       { adapterConfig: { env: {} }, replaceAdapterConfig: true },
-      "company-1",
     );
 
     await act(async () => {
@@ -1747,7 +1742,6 @@ describe("Secrets folder view (PAP-14698)", () => {
     await flushReact();
 
     expect(mockSecretsApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ name: "dev/github/oauth/clientsecret/deeper" }),
     );
 
@@ -1863,7 +1857,6 @@ describe("Secrets folder view (PAP-14698)", () => {
     await flushReact();
 
     expect(mockSecretsApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ name: "dev/github/oauth/clientsecret/deeper" }),
     );
 

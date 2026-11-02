@@ -107,21 +107,21 @@ describe("buildNativeRuntimeContext", () => {
     });
     const context = await buildNativeRuntimeContext({
       db: {} as Db,
-      agent: { id: "agent-1", companyId: "company-1", name: "Reviewer", adapterType: "paperclip_runner", adapterConfig: { instructionsBundleMode: "managed" } },
+      agent: { id: "agent-1", name: "Reviewer", adapterType: "paperclip_runner", adapterConfig: { instructionsBundleMode: "managed" } },
       runId: "run-1", runtimeConfig: {}, runtimeSkillEntries: [],
     });
     expect(await readFile(path.join(context.instructions.bundle.rootPath, context.instructions.entryPath), "utf8"))
       .toBe("Saved canonical instructions\n");
     expect(await readFile(path.join(context.instructions.bundle.rootPath, "reference.md"), "utf8"))
       .toBe("Sibling reference\n");
-    expect(serviceMocks.readCommittedForRuntime).toHaveBeenCalledWith({ companyId: "company-1", agentId: "agent-1" });
+    expect(serviceMocks.readCommittedForRuntime).toHaveBeenCalledWith({ agentId: "agent-1" });
   });
 
   it("does not substitute canonical managed instructions into an external bundle", async () => {
     serviceMocks.exportFiles.mockResolvedValue({ entryFile: "AGENTS.md", files: { "AGENTS.md": "External instructions\n" } });
     const context = await buildNativeRuntimeContext({
       db: {} as Db,
-      agent: { id: "agent-1", companyId: "company-1", name: "Reviewer", adapterConfig: { instructionsBundleMode: "external" } },
+      agent: { id: "agent-1", name: "Reviewer", adapterConfig: { instructionsBundleMode: "external" } },
       runId: "run-1", runtimeConfig: {}, runtimeSkillEntries: [],
     });
     expect(await readFile(path.join(context.instructions.bundle.rootPath, context.instructions.entryPath), "utf8"))
@@ -139,7 +139,7 @@ describe("buildNativeRuntimeContext", () => {
     await writeFile(path.join(workingRoot, "instructions/CHARter.md"), "Original instructions.\n");
     const context = await buildNativeRuntimeContext({
       db: {} as Db,
-      agent: { id: "agent-1", companyId: "company-1", name: "Reviewer", adapterType: "paperclip_runner", adapterConfig: {} },
+      agent: { id: "agent-1", name: "Reviewer", adapterType: "paperclip_runner", adapterConfig: {} },
       runId: "run-1",
       runtimeConfig: {},
       runtimeSkillEntries: [],
@@ -178,7 +178,6 @@ describe("buildNativeRuntimeContext", () => {
         db: {} as Db,
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Reviewer",
           adapterType: "paperclip_runner",
           adapterConfig: {},
@@ -233,7 +232,6 @@ describe("buildNativeRuntimeContext", () => {
       db: {} as Db,
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Reviewer",
         adapterType: "paperclip_runner",
         adapterConfig: {},
@@ -272,7 +270,6 @@ describe("buildNativeRuntimeContext", () => {
       db: {} as Db,
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Reviewer",
         adapterType: "paperclip_runner",
         adapterConfig: {},
@@ -286,7 +283,7 @@ describe("buildNativeRuntimeContext", () => {
     const repeated = await buildNativeRuntimeContext(input);
 
     expect(serviceMocks.exportFiles).toHaveBeenCalledWith(input.agent, { rejectSymlinks: true });
-    expect(serviceMocks.getEffectiveProfilesForAgent).toHaveBeenCalledWith("company-1", "agent-1");
+    expect(serviceMocks.getEffectiveProfilesForAgent).toHaveBeenCalledWith("agent-1");
     expect(context.instructions.entryPath).toBe("AGENTS.md");
     expect(await readFile(path.join(context.instructions.bundle.rootPath, "AGENTS.md"), "utf8"))
       .toBe("Follow the agent instructions.\n");
@@ -323,7 +320,6 @@ describe("buildNativeRuntimeContext", () => {
       db: {} as Db,
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Reviewer",
         adapterType: "paperclip_runner",
         adapterConfig: {},
@@ -381,7 +377,7 @@ it("pins both permitted GitHub tool catalogs even when another user’s health p
   });
   const limit = vi.fn(async () => [{ responsibleUserId: "A", activeIdentityContextId: "context-A" }]);
   const db = { select: () => ({ from: () => ({ where: () => ({ limit }) }) }) } as unknown as Db;
-  const snapshot = await resolveNativeRuntimeMcpSnapshot({ db, agent: { id: "agent-1", companyId: "company-1" }, runId: "run-1" });
+  const snapshot = await resolveNativeRuntimeMcpSnapshot({ db, agent: { id: "agent-1" }, runId: "run-1" });
   const expected = createHash("sha256").update(JSON.stringify({
     version: 1, agentId: "agent-1", connections: ["github-A", "github-B"],
     tools: ["github-A-get_me", "github-B-get_me"],
@@ -400,9 +396,9 @@ it("pins channel tools only when the current task run is bound to that bot", asy
     }],
     allowedTools: [{ id: "bot-read-pr", connectionId: "bot-connection" }],
   });
-  const input = { db: {} as Db, agent: { id: "agent-1", companyId: "company-1" }, runId: "run-1" };
+  const input = { db: {} as Db, agent: { id: "agent-1" }, runId: "run-1" };
   expect((await resolveNativeRuntimeMcpSnapshot(input)).bindingId).toBeNull();
   serviceMocks.githubBotConnectionIdsForRun.mockResolvedValue(new Set(["bot-connection"]));
   expect((await resolveNativeRuntimeMcpSnapshot(input)).bindingId).toBe("native-mcp:run-1");
-  expect(serviceMocks.githubBotConnectionIdsForRun).toHaveBeenLastCalledWith(input.db, "company-1", "agent-1", "run-1");
+  expect(serviceMocks.githubBotConnectionIdsForRun).toHaveBeenLastCalledWith(input.db, "agent-1", "run-1");
 });

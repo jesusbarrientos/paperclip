@@ -8,8 +8,7 @@ import { agentApiKeys, agents, companyMemberships, instanceUserRoles } from "@pa
 import type { DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "../middleware/logger.js";
-import { subscribeCompanyLiveEvents } from "../services/live-events.js";
-import { organizationService } from "../services/organization.js";
+import { subscribeLiveEvents } from "../services/live-events.js";
 
 interface WsSocket {
   readyState: number;
@@ -42,7 +41,6 @@ const { WebSocket, WebSocketServer } = require("ws") as {
 };
 
 interface UpgradeContext {
-  companyId: string;
   actorType: "board" | "agent";
   actorId: string;
 }
@@ -50,8 +48,6 @@ interface UpgradeContext {
 /** Cloud-proxied browser identity resolved from trusted x-paperclip-cloud-* headers. */
 export interface CloudUpgradeActor {
   userId: string;
-  /** Companies this actor may subscribe to (primary stack company + real memberships). */
-  companyIds: string[];
 }
 
 interface IncomingMessageWithContext extends IncomingMessage {
@@ -90,15 +86,8 @@ function rejectUpgrade(socket: Duplex, statusLine: string, message: string) {
   }
 }
 
-function parseCompanyId(pathname: string) {
-  const match = pathname.match(/^\/api\/companies\/([^/]+)\/events\/ws$/);
-  if (!match) return null;
-
-  try {
-    return decodeURIComponent(match[1] ?? "");
-  } catch {
-    return null;
-  }
+function isLiveEventsPath(pathname: string) {
+  return pathname === "/api/events/ws";
 }
 
 function parseBearerToken(rawAuth: string | string[] | undefined) {
@@ -125,7 +114,6 @@ function headersFromIncomingMessage(req: IncomingMessage): Headers {
 async function authorizeUpgrade(
   db: Db,
   req: IncomingMessage,
-  companyId: string,
   url: URL,
   opts: {
     deploymentMode: DeploymentMode;
@@ -141,7 +129,6 @@ async function authorizeUpgrade(
   if (!token) {
     if (opts.deploymentMode === "local_trusted") {
       return {
-        companyId,
         actorType: "board",
         actorId: "board",
       };
@@ -151,15 +138,12 @@ async function authorizeUpgrade(
     // x-paperclip-cloud-* headers, never a local Better Auth session — the
     // session fallback below can only 403 them, which left the live-events
     // socket permanently unreachable behind the Cloud front door. A resolved
-    // cloud actor is authoritative: authorize against its membership scope.
-    // Absent/invalid cloud headers fall through to the session path, so
-    // self-hosted behavior is unchanged.
+    // cloud actor is authoritative. Absent/invalid cloud headers fall through
+    // to the session path, so self-hosted behavior is unchanged.
     if (opts.resolveCloudActor) {
       const cloudActor = await opts.resolveCloudActor(req);
       if (cloudActor) {
-        if (!cloudActor.companyIds.includes(companyId)) return null;
         return {
-          companyId,
           actorType: "board",
           actorId: cloudActor.userId,
         };
@@ -174,7 +158,7 @@ async function authorizeUpgrade(
     const userId = session?.user?.id;
     if (!userId) return null;
 
-    const [roleRow, memberships, organizationId] = await Promise.all([
+    const [roleRow, memberships] = await Promise.all([
       db
         .select({ id: instanceUserRoles.id })
         .from(instanceUserRoles)
@@ -190,14 +174,11 @@ async function authorizeUpgrade(
             eq(companyMemberships.status, "active"),
           ),
         ),
-      organizationService(db).findId(),
     ]);
 
-    const hasCompanyMembership = memberships.length > 0 && organizationId === companyId;
-    if (!roleRow && !hasCompanyMembership) return null;
+    if (!roleRow && memberships.length === 0) return null;
 
     return {
-      companyId,
       actorType: "board",
       actorId: userId,
     };
@@ -212,11 +193,11 @@ async function authorizeUpgrade(
 
   if (!key) return null;
   const keyAgent = await db
-    .select({ companyId: agents.companyId })
+    .select({ id: agents.id })
     .from(agents)
     .where(eq(agents.id, key.agentId))
     .then((rows) => rows[0] ?? null);
-  if (!keyAgent || keyAgent.companyId !== companyId) {
+  if (!keyAgent) {
     return null;
   }
 
@@ -226,7 +207,6 @@ async function authorizeUpgrade(
     .where(eq(agentApiKeys.id, key.id));
 
   return {
-    companyId,
     actorType: "agent",
     actorId: key.agentId,
   };
@@ -268,7 +248,7 @@ export function setupLiveEventsWebSocketServer(
       return;
     }
 
-    const unsubscribe = subscribeCompanyLiveEvents(context.companyId, (event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify(event));
     });
@@ -288,7 +268,7 @@ export function setupLiveEventsWebSocketServer(
     });
 
     socket.on("error", (err: Error) => {
-      logger.warn({ err, companyId: context.companyId }, "live websocket client error");
+      logger.warn({ err }, "live websocket client error");
     });
   });
 
@@ -318,13 +298,12 @@ export function setupLiveEventsWebSocketServer(
     }
 
     const url = new URL(req.url, "http://localhost");
-    const companyId = parseCompanyId(url.pathname);
-    if (!companyId) {
+    if (!isLiveEventsPath(url.pathname)) {
       closeUpgradeSocket(socket);
       return;
     }
 
-    void authorizeUpgrade(db, req, companyId, url, {
+    void authorizeUpgrade(db, req, url, {
       deploymentMode: opts.deploymentMode,
       resolveSessionFromHeaders: opts.resolveSessionFromHeaders,
       resolveCloudActor: opts.resolveCloudActor,

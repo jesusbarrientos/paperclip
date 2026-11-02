@@ -326,7 +326,7 @@ function startInput(options?: {
   const expose = options?.expose === undefined ? DECLARED_EXPOSE : options.expose;
   return {
     invocationId: "runtime-exposure-test",
-    actor: { id: null, name: "Paperclip", companyId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    actor: { id: null, name: "Paperclip" },
     issue: null,
     workspace: {
       baseCwd: process.cwd(),

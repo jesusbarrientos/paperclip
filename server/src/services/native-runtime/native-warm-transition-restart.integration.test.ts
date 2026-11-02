@@ -96,7 +96,7 @@ const seam = vi.hoisted(() => ({
   ),
   transport: vi.fn((_options: TransportOptions) => ({ transport: {} })),
   register: vi.fn(
-    (_input: { companyId: string; runId: string; authority: unknown }) => ({
+    (_input: { runId: string; authority: unknown }) => ({
       connection: {
         mode: "connect",
         connectUrl: "ws://127.0.0.1/test-owned-route",
@@ -131,7 +131,6 @@ import { readRunnerdArtifactBinding } from "../../vendor/paperclip-runner/index.
 
 function executionFor(
   fixture: Fixture,
-  companyId: string,
   agentId: string,
   issueId: string,
   current: boolean,
@@ -143,7 +142,6 @@ function executionFor(
     schema: "paperclip.native-execution-input.v1",
     provider: { kind: "codex", model: null },
     binding: {
-      companyId,
       agentId,
       issueId,
       runId: identity.runId,
@@ -291,14 +289,12 @@ generated(
         process.env.PAPERCLIP_RUNNER_BINARY = fixture.artifact.path;
         const priorExecution = executionFor(
           fixture,
-          companyId,
           agentId,
           issueId,
           false,
         );
         const currentExecution = executionFor(
           fixture,
-          companyId,
           agentId,
           issueId,
           true,
@@ -307,7 +303,6 @@ generated(
           fixture.oldIdentity.environmentLeaseId === fixture.oldIdentity.runId;
         const stateKey = nativeSha256({
           schema: "paperclip.native-session-scope.v2",
-          companyId,
           agentId,
           workspace: transient
             ? { kind: "transient", ...currentExecution.workspace }
@@ -343,7 +338,6 @@ generated(
         companyCreated = true;
         await db.insert(agents).values({
           id: agentId,
-          companyId,
           name: "Fixture owner",
           role: "engineer",
           status: "active",
@@ -354,7 +348,6 @@ generated(
         });
         await db.insert(issues).values({
           id: issueId,
-          companyId,
           identifier: "WARM-1",
           title: "Generated handoff",
           status: "in_progress",
@@ -374,7 +367,6 @@ generated(
             sessionId: fixture.thread.id,
             providerSessionId: fixture.thread.sessionId,
             identity: {
-              companyId,
               agentId,
               issueId,
               runId: fixture.oldIdentity.runId,
@@ -385,7 +377,6 @@ generated(
         };
         const previous = {
           id: fixture.oldIdentity.runId,
-          companyId,
           agentId,
           nativeSessionId: fixture.oldIdentity.normalizedSessionId,
           runnerProfileJson: oldProfile,
@@ -404,7 +395,6 @@ generated(
           sessionCheckpoint: rebound,
         };
         const common = {
-          companyId,
           agentId,
           runtimeMode: "native",
           nativeIssueId: issueId,
@@ -435,7 +425,6 @@ generated(
           .where(eq(issues.id, issueId));
         await db.insert(nativeRunFinalizations).values({
           runId: fixture.newIdentity.runId,
-          companyId,
           issueId,
           phase: "observed",
         });
@@ -496,7 +485,6 @@ generated(
         if (fault === "unsettled_archive")
           await db.insert(nativeRunFinalizations).values({
             runId: fixture.oldIdentity.runId,
-            companyId,
             issueId,
             phase: "committed",
             recoveryHistory: [
@@ -515,7 +503,6 @@ generated(
             join(root, "cleanup-activation.json"),
             JSON.stringify({
               schema: "paperclip.native_cleanup_activation.v1",
-              companyId,
               issueId,
               runId: fixture.oldIdentity.runId,
               requestId: `native-cleanup:${randomUUID()}`,
@@ -695,12 +682,11 @@ generated(
             await options.controlPlaneRegistration({}, fixture.newIdentity);
             expect(
               seam.register.mock.calls.map(([input]) => ({
-                companyId: input.companyId,
                 runId: input.runId,
               })),
             ).toEqual([
-              { companyId, runId: fixture.oldIdentity.runId },
-              { companyId, runId: fixture.newIdentity.runId },
+              { runId: fixture.oldIdentity.runId },
+              { runId: fixture.newIdentity.runId },
             ]);
             if (fault !== "claim_changed_before_bootstrap")
               await options.authorizeWarmTransitionRecovery!(
@@ -713,7 +699,6 @@ generated(
               if (fault === "unsettled_archive_before_spawn")
                 await db.insert(nativeRunFinalizations).values({
                   runId: fixture.oldIdentity.runId,
-                  companyId,
                   issueId,
                   phase: "committed",
                   recoveryHistory: [
@@ -732,7 +717,6 @@ generated(
                   join(root, "cleanup-activation.json"),
                   JSON.stringify({
                     schema: "paperclip.native_cleanup_activation.v1",
-                    companyId,
                     issueId,
                     runId: fixture.oldIdentity.runId,
                     requestId: `native-cleanup:${randomUUID()}`,
@@ -818,16 +802,14 @@ generated(
               .update(issues)
               .set({ executionRunId: null })
               .where(
-                and(eq(issues.id, issueId), eq(issues.companyId, companyId)),
+                eq(issues.id, issueId),
               );
             await db
-              .delete(nativeRunFinalizations)
-              .where(eq(nativeRunFinalizations.companyId, companyId));
+              .delete(nativeRunFinalizations);
             await db
-              .delete(heartbeatRuns)
-              .where(eq(heartbeatRuns.companyId, companyId));
-            await db.delete(issues).where(eq(issues.companyId, companyId));
-            await db.delete(agents).where(eq(agents.companyId, companyId));
+              .delete(heartbeatRuns);
+            await db.delete(issues);
+            await db.delete(agents);
             await db.delete(companies).where(eq(companies.id, companyId));
           }
         } catch (cleanupError) {

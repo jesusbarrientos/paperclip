@@ -50,7 +50,6 @@ const folderResult: FolderListResult = {
   folders: [
     {
       id: "folder-reporting",
-      companyId: "company-1",
       kind: "routine",
       parentId: null,
       name: "Reporting",

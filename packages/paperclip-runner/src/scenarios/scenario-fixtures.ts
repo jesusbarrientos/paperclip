@@ -32,7 +32,6 @@ function at(offsetSeconds: number): string {
 
 function task(overrides: Partial<CapabilityFixtureTask> & { id: string; identifier: string; title: string }): CapabilityFixtureTask {
   return {
-    companyId: COMPANY_ID,
     description: null,
     status: "todo",
     priority: "medium",
@@ -87,7 +86,6 @@ export function capabilityScenarioFixture(entry: CapabilityScenarioIndexEntry): 
     actors: [
       {
         id: ACTOR_ID,
-        companyId: COMPANY_ID,
         name: ROLE_NAMES[entry.actorRole] ?? ROLE_NAMES.engineer!,
         role: entry.actorRole,
         status: "active",
@@ -136,7 +134,6 @@ function applySeedKind(
       seed.approvals = [
         {
           id: refs.approvalId,
-          companyId: COMPANY_ID,
           taskIds: [TASK_ID],
           type: "mcp_tool_access",
           status: "pending",
@@ -155,7 +152,6 @@ function applySeedKind(
       seed.approvals = [
         {
           id: refs.approvalId,
-          companyId: COMPANY_ID,
           taskIds: [TASK_ID],
           type: "spend_authorisation",
           status: "pending",
@@ -334,7 +330,6 @@ function addPeerActor(seed: CapabilityFixtureSeed): void {
     ...(seed.actors ?? []),
     {
       id: PEER_ACTOR_ID,
-      companyId: COMPANY_ID,
       name: "Mock Teammate",
       role: "engineer",
       status: "active",

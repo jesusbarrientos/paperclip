@@ -34,17 +34,17 @@ describe("toDesiredSkillPayload", () => {
 
 it("removes a connector from editable library rows when its automatic assignment arrives", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-  const agent = { id: "agent-1", companyId: "company-1", adapterType: "codex_local", adapterConfig: {} } as Agent;
+  const agent = { id: "agent-1", adapterType: "codex_local", adapterConfig: {} } as Agent;
   const key = "paperclipai/paperclip/agentmail";
   const snapshot = { adapterType: "codex_local", supported: true, mode: "ephemeral", desiredSkills: [], entries: [], warnings: [] };
   client.setQueryData(queryKeys.agents.skills(agent.id), snapshot);
-  client.setQueryData(queryKeys.companySkills.list(agent.companyId), [{ id: "skill-1", key, name: "agentmail", categories: [], sourceKind: "bundled", sourceType: "bundled" }]);
+  client.setQueryData(queryKeys.companySkills.list(), [{ id: "skill-1", key, name: "agentmail", categories: [], sourceKind: "bundled", sourceType: "bundled" }]);
   client.setQueryData(queryKeys.instance.experimentalSettings, { enableBetaSkills: false });
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   try {
-    flushSync(() => root.render(createElement(QueryClientProvider, { client }, createElement(TooltipProvider, { children: createElement(AgentSkillsTab, { agent, companyId: agent.companyId }) }))));
+    flushSync(() => root.render(createElement(QueryClientProvider, { client }, createElement(TooltipProvider, { children: createElement(AgentSkillsTab, { agent }) }))));
     expect(container.querySelector(`[data-skill="${key}"][data-variant="available"]`)).not.toBeNull();
     client.setQueryData(queryKeys.agents.skills(agent.id), { ...snapshot, desiredSkills: [key], entries: [{ key, runtimeName: "agentmail", desired: true, managed: true, readOnly: true, state: "configured" }] });
     await vi.waitFor(() => {

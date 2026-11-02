@@ -30,7 +30,7 @@ export type WorkspaceHandoffClonedIdentity = {
 export type WorkspaceHandoffExchangeDeps = {
   /** Resolve the cloned user by the id the ticket names, scoped to its company. */
   findClonedIdentity: (
-    input: { userId: string; companyId: string },
+    input: { userId: string; },
   ) => Promise<WorkspaceHandoffClonedIdentity | null>;
   /**
    * Record the nonce, returning false when it was already recorded.
@@ -81,7 +81,6 @@ export async function exchangeWorkspaceHandoffTicket(input: {
   expected: {
     instanceId: string | null;
     executionWorkspaceId: string | null;
-    companyId: string | null;
     origin: string | null;
   };
   deps: WorkspaceHandoffExchangeDeps;
@@ -96,7 +95,7 @@ export async function exchangeWorkspaceHandoffTicket(input: {
   if (!verification.ok) return { ok: false, reason: verification.reason, payload: null };
   const payload = verification.payload;
 
-  const identity = await input.deps.findClonedIdentity({ userId: payload.sub, companyId: payload.cid });
+  const identity = await input.deps.findClonedIdentity({ userId: payload.sub });
   if (!identity) return { ok: false, reason: "unknown_user", payload };
   // The email is bound into the signature, so a mismatch means the clone drifted
   // from the source instance (a reused id after a reseed), not a forged ticket.

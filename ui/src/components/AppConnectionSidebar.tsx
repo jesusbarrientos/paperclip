@@ -4,7 +4,6 @@ import { aiConnectionRouterPluginKey, aiConnectionRouterSlug, humanizeConnection
 import type { ToolApplication, ToolConnection } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { toolsApi } from "@/api/tools";
-import { useCompany } from "@/context/CompanyContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { queryKeys } from "@/lib/queryKeys";
 import {
@@ -30,7 +29,6 @@ type AppDetailSidebarProps =
   | { kind: "application"; applicationId: string };
 
 export function AppDetailSidebar(props: AppDetailSidebarProps) {
-  const { selectedCompanyId } = useCompany();
   const { isMobile, setSidebarOpen } = useSidebar();
 
   const connectionQuery = useQuery({
@@ -39,24 +37,21 @@ export function AppDetailSidebar(props: AppDetailSidebarProps) {
     enabled: props.kind === "connection" && !!props.connectionId,
   });
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: props.kind === "application" && !!selectedCompanyId,
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
+    enabled: props.kind === "application",
   });
   const galleryQuery = useQuery({
-    queryKey: queryKeys.apps.gallery(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGallery(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.apps.gallery(),
+    queryFn: () => toolsApi.listGallery(),
   });
   const attentionQuery = useQuery({
-    queryKey: queryKeys.apps.attention(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listAppsAttention(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.apps.attention(),
+    queryFn: () => toolsApi.listAppsAttention(),
     refetchInterval: 30_000,
   });
 

@@ -31,8 +31,8 @@ const mockCompanySkillService = vi.hoisted(() => ({
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config })),
+  normalizeAdapterConfigForPersistence: vi.fn(async (config: Record<string, unknown>) => config),
+  resolveAdapterConfigForRuntime: vi.fn(async (config: Record<string, unknown>) => ({ config })),
   syncEnvBindingsForTarget: vi.fn(),
 }));
 
@@ -184,21 +184,18 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
     next();
   });
+  const organizationRows = [{ id: "company-1", requireBoardApprovalForNewAgents: false }];
   const db = {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        where: vi.fn(async () => [
-          {
-            id: "company-1",
-            requireBoardApprovalForNewAgents: false,
-          },
-        ]),
+        where: vi.fn(async () => organizationRows),
+        limit: vi.fn(async () => organizationRows),
+        then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(organizationRows).then(resolve),
       })),
     })),
   };
@@ -265,20 +262,17 @@ describe("agent routes adapter validation", () => {
     mockInstanceSettingsService.getExperimental.mockResolvedValue({ enableNativeRunner: false });
     mockManagedAgentProfileService.requireQualified.mockResolvedValue({
       id: "managed-primary",
-      companyId: "company-1",
       enabled: true,
     });
     mockRemoteAgentProfileService.requireQualified.mockResolvedValue({
       id: "agentcore-primary",
-      companyId: "company-1",
       enabled: true,
     });
     mockAgentInstructionsService.materializeManagedBundle.mockImplementation(async (agent: { adapterConfig: unknown }) => ({
       adapterConfig: agent.adapterConfig,
     }));
-    mockAgentService.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    mockAgentService.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: String(input.id ?? "11111111-1111-4111-8111-111111111111"),
-      companyId: "company-1",
       name: String(input.name ?? "Agent"),
       urlKey: "agent",
       role: String(input.role ?? "general"),
@@ -302,7 +296,6 @@ describe("agent routes adapter validation", () => {
     }));
     mockAgentService.getById.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       name: "Codex",
       urlKey: "codex",
       role: "engineer",
@@ -345,14 +338,14 @@ describe("agent routes adapter validation", () => {
     try {
       const app = await createApp();
       for (const [provider, adapter] of [["acpx", "claude_local"], ["codex", "codex_local"], ["opencode", "opencode_local"]]) {
-        const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/companies/company-1/adapters/paperclip_runner/models?provider=${provider}`));
+        const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/adapters/paperclip_runner/models?provider=${provider}`));
         expect(res.status).toBe(200);
         expect(res.body).toEqual([{ id: adapter, label: adapter }]);
-        const refreshed = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/companies/company-1/adapters/paperclip_runner/models?provider=${provider}&refresh=true`));
+        const refreshed = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/adapters/paperclip_runner/models?provider=${provider}&refresh=true`));
         expect(refreshed.status).toBe(200);
         expect(refreshed.body).toEqual([{ id: `${adapter}-fresh`, label: adapter }]);
       }
-      const invalid = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/companies/company-1/adapters/paperclip_runner/models?provider=acpx_codex"));
+      const invalid = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/adapters/paperclip_runner/models?provider=acpx_codex"));
       expect(invalid.status).toBe(422);
     } finally { list.mockRestore(); refresh.mockRestore(); }
   });
@@ -364,7 +357,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "External Agent",
           adapterType: "external_test",
@@ -379,7 +372,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Codex Agent",
           adapterType: "codex_local",
@@ -388,7 +381,7 @@ describe("agent routes adapter validation", () => {
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    const createInput = mockAgentService.create.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const createInput = mockAgentService.create.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const adapterConfig = createInput.adapterConfig as Record<string, unknown>;
     const env = (adapterConfig.env as Record<string, unknown> | undefined) ?? {};
     expect(env.OPENAI_API_KEY).toBeUndefined();
@@ -422,7 +415,6 @@ describe("agent routes adapter validation", () => {
     const agentId = "11111111-1111-4111-8111-111111111111";
     mockAgentService.getById.mockResolvedValue({
       id: agentId,
-      companyId: "company-1",
       name: "Claude",
       urlKey: "claude",
       role: "engineer",
@@ -485,7 +477,7 @@ describe("agent routes adapter validation", () => {
     const adapterConfig = patch.adapterConfig as Record<string, unknown>;
     const env = adapterConfig.env as Record<string, unknown>;
     expect(env.OPENAI_API_KEY).toBe("sk-test-key");
-    expect(String(env.CODEX_HOME)).toContain(`/companies/company-1/agents/${agentId}/codex-home`);
+    expect(String(env.CODEX_HOME)).toContain(`/organization/agents/${agentId}/codex-home`);
   });
 
   it("allows codex_local agents to share the host Codex home", async () => {
@@ -493,7 +485,7 @@ describe("agent routes adapter validation", () => {
     const sharedHome = path.join(os.homedir(), ".codex");
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Shared Codex",
           adapterType: "codex_local",
@@ -506,7 +498,7 @@ describe("agent routes adapter validation", () => {
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    const createInput = mockAgentService.create.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const createInput = mockAgentService.create.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const adapterConfig = createInput.adapterConfig as Record<string, unknown>;
     const env = adapterConfig.env as Record<string, unknown>;
     expect(env.CODEX_HOME).toBe(sharedHome);
@@ -516,7 +508,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Keyed Codex",
           adapterType: "codex_local",
@@ -529,12 +521,12 @@ describe("agent routes adapter validation", () => {
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    const createInput = mockAgentService.create.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const createInput = mockAgentService.create.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const agentId = String(createInput.id);
     const adapterConfig = createInput.adapterConfig as Record<string, unknown>;
     const env = adapterConfig.env as Record<string, unknown>;
     expect(env.OPENAI_API_KEY).toBe("sk-test-key");
-    expect(String(env.CODEX_HOME)).toContain(`/companies/company-1/agents/${agentId}/codex-home`);
+    expect(String(env.CODEX_HOME)).toContain(`/organization/agents/${agentId}/codex-home`);
   });
 
   it("restores a saved agent's redacted CODEX_HOME before testing its adapter", async () => {
@@ -551,7 +543,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({
           agentId,
           adapterConfig: { env: { CODEX_HOME: { type: "plain", value: "***REDACTED***" } } },
@@ -560,7 +552,6 @@ describe("agent routes adapter validation", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockSecretService.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(
-      "company-1",
       { env: { CODEX_HOME: storedHome } },
       expect.objectContaining({ adapterType: "external_test" }),
     );
@@ -572,7 +563,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({
           agentId: "11111111-1111-4111-8111-111111111111",
           adapterConfig: { env: { CODEX_HOME: { type: "plain", value: "***REDACTED***" } } },
@@ -587,7 +578,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Missing Adapter",
           adapterType: missingAdapterType,
@@ -610,7 +601,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({ name: "Disabled Harness", adapterType: "external_test" }),
     );
 
@@ -664,7 +655,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({ name: "Enabled Harness", adapterType: "external_test" }),
     );
 
@@ -675,7 +666,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({ name: "Native Codex", adapterType: "paperclip_runner" }),
     );
 
@@ -689,7 +680,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Native Codex",
           adapterType: "paperclip_runner",
@@ -704,7 +695,6 @@ describe("agent routes adapter validation", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         adapterConfig: expect.objectContaining({
           provider: "codex",
@@ -814,7 +804,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const createResponse = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Native OpenCode",
           adapterType: "paperclip_runner",
@@ -826,7 +816,7 @@ describe("agent routes adapter validation", () => {
     );
     const hireResponse = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agent-hires")
+        .post("/api/agent-hires")
         .send({
           name: "Native ACPX",
           adapterType: "paperclip_runner",
@@ -839,7 +829,7 @@ describe("agent routes adapter validation", () => {
     );
     const managedResponse = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agents")
+        .post("/api/agents")
         .send({
           name: "Native Claude Managed",
           adapterType: "paperclip_runner",
@@ -852,7 +842,7 @@ describe("agent routes adapter validation", () => {
     );
     const agentCoreResponse = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/agent-hires")
+        .post("/api/agent-hires")
         .send({
           name: "Native AgentCore",
           adapterType: "paperclip_runner",
@@ -870,11 +860,9 @@ describe("agent routes adapter validation", () => {
     expect(agentCoreResponse.status, JSON.stringify(agentCoreResponse.body)).toBe(201);
     expect(mockAgentService.create).toHaveBeenCalledTimes(4);
     expect(mockManagedAgentProfileService.requireQualified).toHaveBeenCalledWith(
-      "company-1",
       "managed-primary",
     );
     expect(mockRemoteAgentProfileService.requireQualified).toHaveBeenCalledWith(
-      "company-1",
       "agentcore-primary",
       "aws_bedrock_agentcore_harness",
     );
@@ -945,7 +933,7 @@ describe("agent routes adapter validation", () => {
 
       const response = await requestApp(app, (baseUrl) =>
         request(baseUrl)
-          .post("/api/companies/company-1/agents")
+          .post("/api/agents")
           .send({
             name: "Invalid Managed Selection",
             adapterType: "paperclip_runner",
@@ -955,7 +943,6 @@ describe("agent routes adapter validation", () => {
 
       expect(response.status, JSON.stringify(response.body)).toBe(expectedStatus);
       expect(profileService.requireQualified).toHaveBeenCalledWith(
-        "company-1",
         service === "managed"
           ? adapterConfig.managedProfileId
           : adapterConfig.agentCoreProfileId,

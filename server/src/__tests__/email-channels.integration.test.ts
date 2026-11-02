@@ -20,7 +20,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
-import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
+import { captureEmptyTablesReset, membershipUpsert } from "./helpers/reset-organization.js";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   createDb,
@@ -85,10 +85,12 @@ describe("AgentMail durable email pipeline", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    resetTables = await captureEmptyTablesReset(db);
   }, 60_000);
 
+  let resetTables: () => Promise<void>;
   beforeEach(async () => {
-    await resetOrganizationState(db);
+    await resetTables();
   });
   afterEach(async () => {
     for (const service of services.splice(0)) await service.shutdown();
@@ -112,7 +114,7 @@ describe("AgentMail durable email pipeline", () => {
   });
   it("installs one connector skill and provider tools only for the assigned agent", async () => {
     const f = await fixture();
-    const binding = { companyId: f.companyId, agentId: f.agentId };
+    const binding = { agentId: f.agentId };
     const assignments = await resolveConnectorAssignments(db, binding);
     expect(assignments).toHaveLength(1);
     expect(assignments[0].resources[0].id).toBe(f.endpointId);
@@ -142,7 +144,6 @@ describe("AgentMail durable email pipeline", () => {
     ]);
     expect(authority.definitions().some((tool) => tool.name === "task_email")).toBe(false);
     expect(await resolveConnectorAssignments(db, { ...binding, agentId: randomUUID() })).toEqual([]);
-    expect(await resolveConnectorAssignments(db, { ...binding, companyId: randomUUID() })).toEqual([]);
     const disconnected = await applyConnectorSkills(configured, configured.paperclipRuntimeSkills, []);
     expect(disconnected.paperclipRuntimeSkills).toEqual([]);
     expect(disconnected.paperclipConnectorSkillDigest).toBeNull();
@@ -158,10 +159,10 @@ describe("AgentMail durable email pipeline", () => {
   it("deduplicates multiple inboxes into one skill and changes the runtime bundle on reassignment", async () => {
     const first = await fixture();
     const second = await fixture();
-    const binding = { companyId: first.companyId, agentId: first.agentId };
+    const binding = { agentId: first.agentId };
     const before = await applyConnectorSkills({}, [], await resolveConnectorAssignments(db, binding));
     await second.service.control(second.endpointId, "remove", { userId: "email-board" });
-    const extra = await second.service.setup(first.companyId, {
+    const extra = await second.service.setup({
       assignedAgentId: first.agentId, apiKey: "test-key", inboxId: second.address,
       receiveMode: "websocket", idempotencyKey: randomUUID(),
     }, { userId: "email-board" });
@@ -181,19 +182,12 @@ describe("AgentMail durable email pipeline", () => {
 
   it("keeps AgentMail available with chat disabled and removes contributions when credential access is revoked", async () => {
     const f = await fixture();
-    const binding = { companyId: f.companyId, agentId: f.agentId };
+    const binding = { agentId: f.agentId };
     await instanceSettingsService(db).updateExperimental({ enableChatConnectors: false });
     expect((await resolveConnectorAssignments(db, binding)).map(item => item.key)).toEqual(["agentmail"]);
     const endpoint = await f.service.getEndpoint(f.endpointId);
     await db.update(toolConnections).set({ enabled: false }).where(eq(toolConnections.id, endpoint.connectionId));
     expect(await resolveConnectorAssignments(db, binding)).toEqual([]);
-  });
-
-  it("can replay the additive email migration without losing existing data", async () => {
-    const migration = readFileSync(new URL("../../../packages/db/src/migrations/0272_light_kate_bishop.sql", import.meta.url), "utf8");
-    await db.execute(sql.raw(migration));
-    await db.execute(sql.raw(migration));
-    expect(await db.select().from(authUsers).where(eq(authUsers.id, "email-board"))).toHaveLength(1);
   });
 
   async function fixture(mode: "websocket" | "webhook" = "webhook", storage?: StorageService) {
@@ -215,7 +209,6 @@ describe("AgentMail durable email pipeline", () => {
     }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Email agent",
       role: "engineer",
       status: "idle",
@@ -309,7 +302,6 @@ describe("AgentMail durable email pipeline", () => {
     });
     services.push(service);
     await service.setup(
-      companyId,
       {
         assignedAgentId: agentId,
         apiKey: "test-key",
@@ -346,7 +338,7 @@ describe("AgentMail durable email pipeline", () => {
       await service.tick();
     }
     return {
-      companyId,
+      organizationId: companyId,
       agentId,
       endpointId,
       address,
@@ -370,6 +362,7 @@ describe("AgentMail durable email pipeline", () => {
       setWebhookError: (status: number) => { webhookError = status; },
     };
   }
+
   it("admits signed webhooks through the durable queue and rejects a valid signature for another inbox", async () => {
     const f = await fixture();
     const endpoint = await f.service.getEndpoint(f.endpointId);
@@ -398,7 +391,7 @@ describe("AgentMail durable email pipeline", () => {
     await f.service.tick();
     expect(f.wakeup).toHaveBeenCalledTimes(1);
     expect(
-      await db.select().from(issues).where(eq(issues.companyId, f.companyId)),
+      await db.select().from(issues),
     ).toHaveLength(1);
   });
   it("deduplicates events/messages, keeps identical subjects separate, and never grants sender board identity", async () => {
@@ -408,24 +401,21 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(m);
     const tasks = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, f.companyId));
+      .from(issues);
     expect(tasks).toHaveLength(1);
     expect(tasks[0].assigneeAgentId).toBe(f.agentId);
     expect(tasks[0].createdByUserId).toBeNull();
     expect(
       await db
         .select()
-        .from(emailMessages)
-        .where(eq(emailMessages.companyId, f.companyId)),
+        .from(emailMessages),
     ).toHaveLength(1);
     expect(f.wakeup).toHaveBeenCalledTimes(1);
     await f.receive(f.message());
     expect(
       await db
         .select()
-        .from(chatConversations)
-        .where(eq(chatConversations.companyId, f.companyId)),
+        .from(chatConversations),
     ).toHaveLength(2);
     expect(f.sends).toHaveLength(0);
   });
@@ -438,10 +428,9 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(f.message("new", "thread"));
     const [c] = await db
       .select()
-      .from(chatConversations)
-      .where(eq(chatConversations.companyId, f.companyId));
+      .from(chatConversations);
     expect(
-      (await f.service.thread(f.companyId, c.issueId))?.messages,
+      (await f.service.thread(c.issueId))?.messages,
     ).toHaveLength(2);
     await f.receive(old);
     expect(f.wakeup).toHaveBeenCalledTimes(1);
@@ -452,7 +441,7 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(f.message("cancelled-reply", "thread"));
     expect(f.wakeup).toHaveBeenCalledTimes(2);
     expect(
-      (await f.service.thread(f.companyId, c.issueId))?.messages,
+      (await f.service.thread(c.issueId))?.messages,
     ).toHaveLength(4);
   });
   it("filters spam and automatic conversations and escapes remote Markdown images", async () => {
@@ -471,14 +460,13 @@ describe("AgentMail durable email pipeline", () => {
     );
     const comments = await db
       .select()
-      .from(issueComments)
-      .where(eq(issueComments.companyId, f.companyId));
+      .from(issueComments);
     expect(comments).toHaveLength(1);
     expect(comments[0].body).toContain("\\!\\[tracker\\]");
   });
   it("persists an email child and immutable intent before sending and deduplicates retries", async () => {
     const f = await fixture();
-    const parent = await issueService(db).create(f.companyId, {
+    const parent = await issueService(db).create({
       title: "Parent",
       status: "todo",
       assigneeAgentId: f.agentId,
@@ -492,7 +480,7 @@ describe("AgentMail durable email pipeline", () => {
       text: "Deliberate send",
       idempotencyKey: randomUUID(),
     });
-    const queued = await f.service.queueSend(f.companyId, input, {
+    const queued = await f.service.queueSend(input, {
       userId: "email-board",
     });
     expect(f.sends).toHaveLength(0);
@@ -501,11 +489,10 @@ describe("AgentMail durable email pipeline", () => {
       parent.id,
     );
     expect(
-      await f.service.queueSend(f.companyId, input, { userId: "email-board" }),
+      await f.service.queueSend(input, { userId: "email-board" }),
     ).toEqual(queued);
     await expect(
       f.service.queueSend(
-        f.companyId,
         { ...input, text: "Changed" },
         { userId: "email-board" },
       ),
@@ -514,11 +501,11 @@ describe("AgentMail durable email pipeline", () => {
     await f.service.tick();
     expect(f.sends).toHaveLength(1);
     expect(f.sends[0].key).toBe(input.idempotencyKey);
-    expect((await f.service.publication(queued.id, f.companyId)).outcome).toBe(
+    expect((await f.service.publication(queued.id)).outcome).toBe(
       "sent",
     );
     expect(
-      (await f.service.thread(f.companyId, queued.issueId))?.messages,
+      (await f.service.thread(queued.issueId))?.messages,
     ).toHaveLength(1);
     expect(f.wakeup).not.toHaveBeenCalled();
     const sent = f.messages.get(`sent-${input.idempotencyKey}`)!;
@@ -526,7 +513,7 @@ describe("AgentMail durable email pipeline", () => {
     // A reply imports the sent message again as thread context. That must not
     // erase the delivery failure explanation or downgrade the receipt.
     await f.receive(f.message("reply-after-bounce", sent.thread_id));
-    expect(await f.service.publication(queued.id, f.companyId)).toMatchObject({
+    expect(await f.service.publication(queued.id)).toMatchObject({
       outcome: "failed",
       error: "AgentMail reported message.bounced",
     });
@@ -551,33 +538,33 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(mail);
     await f.receive(mail);
     const [binding] = await db.select().from(chatConversations).where(eq(chatConversations.endpointId, f.endpointId));
-    const thread = await f.service.thread(f.companyId, binding.issueId);
+    const thread = await f.service.thread(binding.issueId);
     expect(thread!.messages[0].attachmentIds).toHaveLength(1);
     expect(download).toHaveBeenCalledTimes(1);
     const attachmentId = thread!.messages[0].attachmentIds[0];
     const attachment = await issueService(db).getAttachmentById(attachmentId);
-    expect(attachment).toMatchObject({ companyId: f.companyId, issueId: binding.issueId, byteSize: 12, originalFilename: "context.txt" });
+    expect(attachment).toMatchObject({ issueId: binding.issueId, byteSize: 12, originalFilename: "context.txt" });
     const input = emailSendSchema.parse({ endpointId: f.endpointId, parentIssueId: binding.issueId,
       to: ["recipient@example.test"], subject: "Stored attachment", text: "Context attached",
       attachmentIds: [attachmentId], idempotencyKey: randomUUID() });
-    const wrongTask = await issueService(db).create(f.companyId, { title: "Other task", status: "todo", assigneeAgentId: f.agentId });
-    await expect(f.service.queueSend(f.companyId, { ...input, parentIssueId: wrongTask.id }, { userId: "email-board" }))
+    const wrongTask = await issueService(db).create({ title: "Other task", status: "todo", assigneeAgentId: f.agentId });
+    await expect(f.service.queueSend({ ...input, parentIssueId: wrongTask.id }, { userId: "email-board" }))
       .rejects.toThrow("attachments must belong to the source task");
-    const queued = await f.service.queueSend(f.companyId, input, { userId: "email-board" });
+    const queued = await f.service.queueSend(input, { userId: "email-board" });
     await f.service.tick();
-    expect(await f.service.publication(queued.id, f.companyId)).toMatchObject({ outcome: "sent", error: null });
+    expect(await f.service.publication(queued.id)).toMatchObject({ outcome: "sent", error: null });
     expect(f.sends).toHaveLength(1);
     expect(f.sends[0].body.attachments).toEqual([{ filename: "context.txt", content_type: "text/plain", content: Buffer.from("mail context").toString("base64") }]);
-    const changed = await f.service.queueSend(f.companyId, { ...input, idempotencyKey: randomUUID() }, { userId: "email-board" });
+    const changed = await f.service.queueSend({ ...input, idempotencyKey: randomUUID() }, { userId: "email-board" });
     objects.set(attachment!.objectKey, Buffer.from("changed data"));
     await f.service.tick();
-    expect((await f.service.publication(changed.id, f.companyId)).outcome).toBe("failed");
+    expect((await f.service.publication(changed.id)).outcome).toBe("failed");
     expect(f.sends).toHaveLength(1);
   });
   it("retries transient sends with the same key and stops beyond the idempotency window", async () => {
     const f = await fixture();
     f.setSendError(503);
-    const parent = await issueService(db).create(f.companyId, {
+    const parent = await issueService(db).create({
       title: "Parent",
       status: "todo",
       assigneeAgentId: f.agentId,
@@ -590,10 +577,10 @@ describe("AgentMail durable email pipeline", () => {
       text: "Send",
       idempotencyKey: randomUUID(),
     });
-    await f.service.queueSend(f.companyId, input, { userId: "email-board" });
+    await f.service.queueSend(input, { userId: "email-board" });
     await f.service.tick();
     expect(
-      (await f.service.publication(input.idempotencyKey, f.companyId)).outcome,
+      (await f.service.publication(input.idempotencyKey)).outcome,
     ).toBe("uncertain");
     await db
       .update(chatPublications)
@@ -614,9 +601,9 @@ describe("AgentMail durable email pipeline", () => {
     await f.service.tick();
     expect(f.sends).toHaveLength(2);
   });
-  it("isolates companies and inboxes, and revoked board membership fails queued sends without calling the provider", async () => {
+  it("isolates inboxes, and revoked board membership fails queued sends without calling the provider", async () => {
     const f = await fixture();
-    const parent = await issueService(db).create(f.companyId, {
+    const parent = await issueService(db).create({
       title: "Parent",
       status: "todo",
       assigneeAgentId: f.agentId,
@@ -629,9 +616,6 @@ describe("AgentMail durable email pipeline", () => {
       text: "Send",
       idempotencyKey: randomUUID(),
     });
-    await expect(
-      f.service.queueSend(randomUUID(), input, { userId: "email-board" }),
-    ).rejects.toThrow("Email inbox not found");
     await expect(
       f.service.admit(await f.service.getEndpoint(f.endpointId), {
         event_type: "message.received",
@@ -639,24 +623,24 @@ describe("AgentMail durable email pipeline", () => {
       }),
     ).rejects.toThrow(/different inbox/);
     await expect(
-      f.service.queueSend(f.companyId, input, {
+      f.service.queueSend(input, {
         agentId: randomUUID(),
         runId: randomUUID(),
       }),
     ).rejects.toThrow(/assigned agent/);
-    await f.service.queueSend(f.companyId, input, { userId: "email-board" });
+    await f.service.queueSend(input, { userId: "email-board" });
     await db
       .update(companyMemberships)
       .set({ status: "suspended" });
     await f.service.tick();
     expect(f.sends).toHaveLength(0);
     expect(
-      (await f.service.publication(input.idempotencyKey, f.companyId)).outcome,
+      (await f.service.publication(input.idempotencyKey)).outcome,
     ).toBe("failed");
   });
   it("updates delivery receipts once without creating another task or wake", async () => {
     const f = await fixture();
-    const parent = await issueService(db).create(f.companyId, {
+    const parent = await issueService(db).create({
       title: "Parent",
       status: "todo",
       assigneeAgentId: f.agentId,
@@ -669,21 +653,21 @@ describe("AgentMail durable email pipeline", () => {
       text: "Send",
       idempotencyKey: randomUUID(),
     });
-    const queued = await f.service.queueSend(f.companyId, input, {
+    const queued = await f.service.queueSend(input, {
       userId: "email-board",
     });
     await f.service.tick();
     const sent = f.messages.get(`sent-${input.idempotencyKey}`)!;
     await f.receive(sent, "message.delivered");
     await f.receive(sent, "message.sent");
-    expect((await f.service.publication(queued.id, f.companyId)).outcome).toBe(
+    expect((await f.service.publication(queued.id)).outcome).toBe(
       "delivered",
     );
     expect(
-      (await f.service.thread(f.companyId, queued.issueId))?.messages,
+      (await f.service.thread(queued.issueId))?.messages,
     ).toHaveLength(1);
     expect(
-      await db.select().from(issues).where(eq(issues.companyId, f.companyId)),
+      await db.select().from(issues),
     ).toHaveLength(2);
     expect(f.wakeup).not.toHaveBeenCalled();
   });
@@ -702,7 +686,7 @@ describe("AgentMail durable email pipeline", () => {
     await f.service.tick();
     await f.service.tick();
     expect(
-      await db.select().from(issues).where(eq(issues.companyId, f.companyId)),
+      await db.select().from(issues),
     ).toHaveLength(1);
     expect(f.wakeup).toHaveBeenCalledTimes(1);
   });
@@ -719,8 +703,7 @@ describe("AgentMail durable email pipeline", () => {
     expect(
       await db
         .select()
-        .from(emailMessages)
-        .where(eq(emailMessages.companyId, f.companyId)),
+        .from(emailMessages),
     ).toHaveLength(1);
   });
 
@@ -731,7 +714,7 @@ describe("AgentMail durable email pipeline", () => {
       fetch: f.fetcher,
     });
     services.push(second);
-    const parent = await issueService(db).create(f.companyId, {
+    const parent = await issueService(db).create({
       title: "Parent",
       status: "todo",
       assigneeAgentId: f.agentId,
@@ -744,7 +727,7 @@ describe("AgentMail durable email pipeline", () => {
       text: "Send",
       idempotencyKey: randomUUID(),
     });
-    const queued = await f.service.queueSend(f.companyId, input, {
+    const queued = await f.service.queueSend(input, {
       userId: "email-board",
     });
     f.setBeforeSendResponse(async (sent) => {
@@ -767,10 +750,9 @@ describe("AgentMail durable email pipeline", () => {
     expect(
       await db
         .select()
-        .from(chatConversations)
-        .where(eq(chatConversations.companyId, f.companyId)),
+        .from(chatConversations),
     ).toHaveLength(1);
-    const thread = await f.service.thread(f.companyId, queued.issueId);
+    const thread = await f.service.thread(queued.issueId);
     expect(thread?.messages).toHaveLength(2);
     expect(thread?.publications[0].outcome).toBe("sent");
     expect(f.wakeup).toHaveBeenCalledTimes(1);
@@ -793,7 +775,7 @@ describe("AgentMail durable email pipeline", () => {
     expect(finished.state).toBe("processed");
     expect(finished.normalizedEvent).toMatchObject({ wakePending: false });
     expect(await db.select().from(emailMessages).where(eq(emailMessages.endpointId, f.endpointId))).toHaveLength(1);
-    expect(await db.select().from(issueComments).where(eq(issueComments.companyId, f.companyId))).toHaveLength(1);
+    expect(await db.select().from(issueComments)).toHaveLength(1);
   });
 
   it("removes a newly registered webhook when setup cannot persist its identity", async () => {
@@ -807,7 +789,7 @@ describe("AgentMail durable email pipeline", () => {
       FOR EACH ROW WHEN (NEW.webhook_id IS NOT NULL) EXECUTE FUNCTION fail_email_webhook_write();
     `));
     try {
-      await expect(f.service.setup(f.companyId, {
+      await expect(f.service.setup({
         assignedAgentId: f.agentId, apiKey: "test-key", inboxId: f.address,
         receiveMode: "webhook", idempotencyKey: f.endpointId,
       }, { userId: "email-board" })).rejects.toThrow();
@@ -878,12 +860,10 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(f.message());
     const [conversation] = await db
       .select()
-      .from(chatConversations)
-      .where(eq(chatConversations.companyId, f.companyId));
+      .from(chatConversations);
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: f.companyId,
       agentId: f.agentId,
       status: "running",
       runtimeMode: "native",
@@ -895,7 +875,6 @@ describe("AgentMail durable email pipeline", () => {
       .set({ executionRunId: runId })
       .where(eq(issues.id, conversation.issueId));
     const binding = {
-      companyId: f.companyId,
       agentId: f.agentId,
       runId,
       issueId: conversation.issueId,
@@ -934,7 +913,7 @@ describe("AgentMail durable email pipeline", () => {
       .where(eq(agents.id, f.agentId));
     await f.service.tick();
     expect(f.sends).toHaveLength(0);
-    expect((await f.service.publication(queued.id, f.companyId)).outcome).toBe(
+    expect((await f.service.publication(queued.id)).outcome).toBe(
       "failed",
     );
   });
@@ -983,21 +962,20 @@ describe("AgentMail durable email pipeline", () => {
     const f = await fixture();
     const svc = emailConnectionService(db, f.fetcher);
     const actor = { userId: "email-board" };
-    const own = await svc.connect(f.companyId, { apiKey: "private-key", grantKind: "user", allAgents: false,
+    const own = await svc.connect({ apiKey: "private-key", grantKind: "user", allAgents: false,
       agentIds: [], idempotencyKey: randomUUID() }, actor);
-    const shared = await svc.connect(f.companyId, { apiKey: "shared-key", grantKind: "organization", allAgents: false,
+    const shared = await svc.connect({ apiKey: "shared-key", grantKind: "organization", allAgents: false,
       agentIds: [], idempotencyKey: randomUUID() }, actor);
-    const other = await svc.connect(f.companyId, { apiKey: "other-user-key", grantKind: "user", allAgents: false,
+    const other = await svc.connect({ apiKey: "other-user-key", grantKind: "user", allAgents: false,
       agentIds: [], idempotencyKey: randomUUID() }, { userId: "different-user" });
-    const choices = await svc.listCredentials(f.companyId, actor);
+    const choices = await svc.listCredentials(actor);
     expect(choices.map(option => option.id).sort()).toEqual([own.id, shared.id].sort());
     expect(JSON.stringify(choices)).not.toMatch(/private-key|shared-key|other-user-key|secretId|api_key_hash/);
     expect(choices[0]).toMatchObject({ scope: "inbox", inboxId: f.address });
-    expect((await svc.listCredentials(randomUUID(), actor))).toEqual([]);
     await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.connectionId, own.id));
     await db.update(toolConnections).set({ config: { provider: "different", emailCredential: true } }).where(eq(toolConnections.id, shared.id));
-    expect(await svc.listCredentials(f.companyId, actor)).toEqual([]);
-    expect((await svc.listCredentials(f.companyId, { userId: "different-user" })).map(option => option.id)).toEqual([other.id]);
+    expect(await svc.listCredentials(actor)).toEqual([]);
+    expect((await svc.listCredentials({ userId: "different-user" })).map(option => option.id)).toEqual([other.id]);
   });
 
   it("bounds legacy saved-key discovery and checks slow keys concurrently", async () => {
@@ -1006,7 +984,7 @@ describe("AgentMail durable email pipeline", () => {
     const svc = emailConnectionService(db, f.fetcher);
     const ids = [];
     for (let i = 0; i < 2; i++) {
-      const row = await svc.connect(f.companyId, { apiKey: `legacy-key-${i}`, grantKind: "organization", allAgents: false,
+      const row = await svc.connect({ apiKey: `legacy-key-${i}`, grantKind: "organization", allAgents: false,
         agentIds: [], idempotencyKey: randomUUID() }, actor);
       ids.push(row.id);
       await db.update(toolConnections).set({ config: { provider: "agentmail", emailCredential: true } }).where(eq(toolConnections.id, row.id));
@@ -1023,7 +1001,7 @@ describe("AgentMail durable email pipeline", () => {
         });
       } finally { concurrent--; }
     });
-    const choices = await emailConnectionService(db, slowFetch).listCredentials(f.companyId, actor);
+    const choices = await emailConnectionService(db, slowFetch).listCredentials(actor);
     expect(choices.map(option => option.id).sort()).toEqual(ids.sort());
     expect(choices.every(option => option.scope === "unavailable")).toBe(true);
     expect(peak).toBe(2);
@@ -1042,17 +1020,17 @@ describe("AgentMail durable email pipeline", () => {
       idempotencyKey: randomUUID(),
     };
     const concurrent = await Promise.all([
-      svc.connect(f.companyId, input, actor),
-      svc.connect(f.companyId, input, actor),
+      svc.connect(input, actor),
+      svc.connect(input, actor),
     ]);
     const connection = concurrent[0];
     expect(concurrent[1].id).toBe(connection.id);
     expect(JSON.stringify(connection)).not.toContain(input.apiKey);
-    expect((await svc.connect(f.companyId, input, actor)).id).toBe(
+    expect((await svc.connect(input, actor)).id).toBe(
       connection.id,
     );
     expect(
-      (await svc.credential(f.companyId, connection.id, actor)).value,
+      (await svc.credential(connection.id, actor)).value,
     ).toBe(input.apiKey);
     const grants = await db
       .select()
@@ -1064,16 +1042,15 @@ describe("AgentMail durable email pipeline", () => {
       subjectUserId: "email-board",
     });
     await expect(
-      svc.credential(f.companyId, connection.id, { userId: "different-user" }),
+      svc.credential(connection.id, { userId: "different-user" }),
     ).rejects.toThrow(/access/);
     await expect(
       svc.credential(randomUUID(), connection.id, actor),
     ).rejects.toThrow(/not found/);
     await f.service.control(f.endpointId, "remove", actor);
     // Credential permission alone must not install skills or tools.
-    expect(await resolveConnectorAssignments(db, { companyId: f.companyId, agentId: f.agentId })).toEqual([]);
+    expect(await resolveConnectorAssignments(db, { agentId: f.agentId })).toEqual([]);
     const endpoint = await f.service.setup(
-      f.companyId,
       {
         assignedAgentId: f.agentId,
         credentialConnectionId: connection.id,
@@ -1084,28 +1061,28 @@ describe("AgentMail durable email pipeline", () => {
       actor,
     );
     expect(endpoint.address).toBe(f.address);
-    expect(await resolveConnectorAssignments(db, { companyId: f.companyId, agentId: f.agentId })).toHaveLength(1);
+    expect(await resolveConnectorAssignments(db, { agentId: f.agentId })).toHaveLength(1);
     const installs = await db
       .select()
       .from(toolConnectionInstalls)
       .where(eq(toolConnectionInstalls.connectionId, connection.id));
     expect(installs.some((i) => i.targetId === f.agentId)).toBe(true);
     await expect(
-      svc.assertAgentAccess(f.companyId, connection.id, f.agentId),
+      svc.assertAgentAccess(connection.id, f.agentId),
     ).resolves.toBeUndefined();
     await db
       .delete(toolConnectionInstalls)
       .where(eq(toolConnectionInstalls.connectionId, connection.id));
     await expect(
-      svc.assertAgentAccess(f.companyId, connection.id, f.agentId),
+      svc.assertAgentAccess(connection.id, f.agentId),
     ).rejects.toThrow(/no longer has access/);
-    expect(await resolveConnectorAssignments(db, { companyId: f.companyId, agentId: f.agentId })).toEqual([]);
+    expect(await resolveConnectorAssignments(db, { agentId: f.agentId })).toEqual([]);
     await db
       .update(connectionGrants)
       .set({ status: "revoked" })
       .where(eq(connectionGrants.connectionId, connection.id));
     await expect(
-      svc.credential(f.companyId, connection.id, actor),
+      svc.credential(connection.id, actor),
     ).rejects.toThrow(/revoked/);
   });
 
@@ -1114,27 +1091,27 @@ describe("AgentMail durable email pipeline", () => {
     const actor = { userId: "email-board" };
     await f.service.control(f.endpointId, "remove", actor);
     const selectedAgentId = randomUUID();
-    await db.insert(agents).values({ id: selectedAgentId, companyId: f.companyId, name: "Final email agent",
+    await db.insert(agents).values({ id: selectedAgentId, name: "Final email agent",
       role: "engineer", status: "idle", adapterType: "process", permissions: {} });
     await db.insert(principalPermissionGrants).values({ principalType: "user",
       principalId: actor.userId, permissionKey: "tools:manage_connections" });
-    expect(await accessService(db).hasPermission(f.companyId, "user", actor.userId, "tools:manage_connections")).toBe(true);
-    expect(await accessService(db).hasPermission(f.companyId, "user", actor.userId, "agent_config:update")).toBe(false);
+    expect(await accessService(db).hasPermission("user", actor.userId, "tools:manage_connections")).toBe(true);
+    expect(await accessService(db).hasPermission("user", actor.userId, "agent_config:update")).toBe(false);
     const requestId = randomUUID();
     const svc = emailConnectionService(db, f.fetcher);
-    const connection = await svc.connect(f.companyId, { apiKey: "test-key", grantKind: "organization",
+    const connection = await svc.connect({ apiKey: "test-key", grantKind: "organization",
       allAgents: false, agentIds: [f.agentId], idempotencyKey: kind === "new" ? requestId : randomUUID() }, actor);
     const server = express();
     server.use(express.json());
     server.use((req, _res, next) => {
-      req.actor = { type: "board", source: "session", userId: actor.userId, companyIds: [f.companyId] };
+      req.actor = { type: "board", source: "session", userId: actor.userId, memberships: [{ membershipRole: "operator", status: "active" }] };
       next();
     });
     server.use("/api", emailRoutes(db, f.service));
     server.use(errorHandler);
     const input = { assignedAgentId: selectedAgentId, credentialConnectionId: connection.id,
       inboxId: f.address, receiveMode: "websocket", idempotencyKey: requestId };
-    const route = `/api/companies/${f.companyId}/email/inboxes`;
+    const route = `/api/email/inboxes`;
     // Keep one listener for this journey instead of racing ephemeral listeners
     // against Node's HTTP keep-alive socket reuse between requests.
     const http = server.listen(0, "127.0.0.1");
@@ -1145,9 +1122,8 @@ describe("AgentMail durable email pipeline", () => {
       await request(http).post(route).send(input).expect(201);
       const installs = await db.select().from(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, connection.id));
       expect(installs.map(i => i.targetId).sort()).toEqual((kind === "new" ? [selectedAgentId] : [f.agentId, selectedAgentId]).sort());
-      await expect(svc.assertAgentAccess(f.companyId, connection.id, selectedAgentId)).resolves.toBeUndefined();
-      if (kind === "new") await expect(svc.assertAgentAccess(f.companyId, connection.id, f.agentId)).rejects.toThrow(/no longer has access/);
-      await request(http).post(`/api/companies/${randomUUID()}/email/inboxes`).send(input).expect(404);
+      await expect(svc.assertAgentAccess(connection.id, selectedAgentId)).resolves.toBeUndefined();
+      if (kind === "new") await expect(svc.assertAgentAccess(connection.id, f.agentId)).rejects.toThrow(/no longer has access/);
     } finally {
       await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
     }
@@ -1161,10 +1137,10 @@ describe("AgentMail durable email pipeline", () => {
     const actor = { userId: "email-board" };
     await f.service.control(f.endpointId, "remove", actor);
     const selectedAgentId = randomUUID(), otherAgentId = randomUUID();
-    await db.insert(agents).values([selectedAgentId, otherAgentId].map(id => ({ id, companyId: f.companyId,
+    await db.insert(agents).values([selectedAgentId, otherAgentId].map(id => ({ id,
       name: "Email agent", role: "engineer", status: "idle", adapterType: "process", permissions: {} })));
     const requestId = randomUUID();
-    const connection = await emailConnectionService(db, f.fetcher).connect(f.companyId, {
+    const connection = await emailConnectionService(db, f.fetcher).connect({
       apiKey: "test-key", grantKind: "organization", allAgents: false, agentIds: [f.agentId], idempotencyKey: requestId,
     }, actor);
     const input = { assignedAgentId: selectedAgentId, credentialConnectionId: connection.id,
@@ -1174,19 +1150,19 @@ describe("AgentMail durable email pipeline", () => {
       vi.mocked(f.fetcher).mockImplementation(async (url, init) =>
         decodeURIComponent(new URL(String(url)).pathname) === `/v0/inboxes/${f.address}`
           ? new Response(null, { status: 403 }) : provider(url, init));
-      await expect(f.service.setup(f.companyId, input, actor)).rejects.toThrow();
+      await expect(f.service.setup(input, actor)).rejects.toThrow();
       vi.mocked(f.fetcher).mockImplementation(provider);
     }
     const requestedInstalls = scope === "company"
-      ? [{ targetType: "company" as const, targetId: f.companyId }]
+      ? [{ targetType: "company" as const, targetId: f.organizationId }]
       : [f.agentId, otherAgentId].map(targetId => ({ targetType: "agent" as const, targetId }));
     await toolAccessService(db).putConnectionInstalls(connection.id, { installs: requestedInstalls }, { actorType: "user", actorId: actor.userId });
     const before = await db.select().from(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, connection.id));
-    const result = await f.service.setup(f.companyId, input, actor);
+    const result = await f.service.setup(input, actor);
     expect(result.status).toBe("active");
     const after = await db.select().from(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, connection.id));
     for (const install of before) expect(after).toContainEqual(install);
-    expect(after.map(i => i.targetId).sort()).toEqual((scope === "company" ? [f.companyId] : [f.agentId, otherAgentId, selectedAgentId]).sort());
+    expect(after.map(i => i.targetId).sort()).toEqual((scope === "company" ? [f.organizationId] : [f.agentId, otherAgentId, selectedAgentId]).sort());
   });
 
   it.each(["create_inbox", "create_inbox_key", "address_taken"] as const)("reports a provider rejection during %s and resumes the same setup after correction", async (failedOperation) => {
@@ -1216,7 +1192,7 @@ describe("AgentMail durable email pipeline", () => {
       }
       return provider(url, init);
     });
-    const account = await emailConnectionService(db, f.fetcher).connect(f.companyId, {
+    const account = await emailConnectionService(db, f.fetcher).connect({
       apiKey: "organization-test-key", grantKind: "organization", allAgents: false,
       agentIds: [f.agentId], idempotencyKey: randomUUID(),
     }, { userId: "email-board" });
@@ -1231,7 +1207,7 @@ describe("AgentMail durable email pipeline", () => {
     const id = randomUUID();
     const input = { assignedAgentId: f.agentId, credentialConnectionId: account.id,
       username: "ralph", domain: "agentmail.to", receiveMode: "websocket", idempotencyKey: id };
-    const route = `/api/companies/${f.companyId}/email/inboxes`;
+    const route = `/api/email/inboxes`;
     const failure = await request(server).post(route).send(input).expect(failedOperation === "address_taken" ? 409 : 422);
     expect(failure.body.error).toContain(failedOperation === "address_taken" ? "already in use" : "AgentMail did not allow Paperclip");
     expect(failure.body.details).toMatchObject({ providerStatus: 403, operation: failedOperation === "address_taken" ? "create_inbox" : failedOperation });
@@ -1245,9 +1221,7 @@ describe("AgentMail durable email pipeline", () => {
     expect(connected.body).toMatchObject({ id, status: "active", address: f.address });
     await request(server).post(route).send(input).expect(201);
     expect(createdInboxes).toBe(1);
-    const endpoints = await db.select().from(chatEndpoints).where(and(
-      eq(chatEndpoints.companyId, f.companyId), ne(chatEndpoints.status, "archived"),
-    ));
+    const endpoints = await db.select().from(chatEndpoints).where(ne(chatEndpoints.status, "archived"));
     expect(endpoints.map(endpoint => endpoint.id)).toEqual([id]);
   });
 
@@ -1271,25 +1245,25 @@ describe("AgentMail durable email pipeline", () => {
       }
       return provider(url, init);
     });
-    const issue = await issueService(db).create(f.companyId, { title: "Acquire an email address", assigneeAgentId: f.agentId, status: "in_progress" });
+    const issue = await issueService(db).create({ title: "Acquire an email address", assigneeAgentId: f.agentId, status: "in_progress" });
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: f.agentId,
       status: "running", responsibleUserId: "email-board", contextSnapshot: { issueId: issue.id } });
-    const claims = { sub: f.agentId, company_id: f.companyId, run_id: runId, responsible_user_id: "email-board" };
+    const claims = { sub: f.agentId, run_id: runId, responsible_user_id: "email-board" };
     const intents = connectionIntentService(db);
     const requested = await intents.request(claims, "agentmail");
     const id = requested.interactionId!;
-    const account = await emailConnectionService(db, f.fetcher).connect(f.companyId, {
+    const account = await emailConnectionService(db, f.fetcher).connect({
       apiKey: scope === "organization" ? "organization-test-key" : "test-key", grantKind: "organization", allAgents: false, agentIds: [f.agentId], idempotencyKey: id,
     }, actor);
     expect((await intents.setupOptions(id)).emailSetup).toEqual({ credentialConnectionId: account.id, readyConnectionId: null });
     expect((await intents.search(claims, "agentmail")).results[0].state).not.toBe("ready");
     await expect(intents.complete(id, account.id, "email-board", { canManageOrganizationGrant: true })).rejects.toThrow(/active inbox/);
-    const inbox = await f.service.setup(f.companyId, { assignedAgentId: f.agentId,
+    const inbox = await f.service.setup({ assignedAgentId: f.agentId,
       credentialConnectionId: account.id, receiveMode: "websocket", idempotencyKey: id }, actor);
     expect(createdInboxes).toEqual(scope === "organization"
       ? [{ display_name: "Email agent", client_id: `paperclip-${id}` }] : []);
-    const retry = await f.service.setup(f.companyId, { assignedAgentId: f.agentId,
+    const retry = await f.service.setup({ assignedAgentId: f.agentId,
       credentialConnectionId: account.id, receiveMode: "websocket", idempotencyKey: id }, actor);
     expect(retry.connectionId).toBe(inbox.connectionId);
     expect(createdInboxes).toHaveLength(scope === "organization" ? 1 : 0);
@@ -1297,7 +1271,7 @@ describe("AgentMail durable email pipeline", () => {
     await expect(intents.complete(id, inbox.connectionId, "someone-else", { canManageOrganizationGrant: true })).rejects.toThrow(/addressed user/);
     await expect(intents.complete(id, inbox.connectionId, "email-board")).rejects.toThrow(/connection-management/);
     const otherAgentId = randomUUID();
-    await db.insert(agents).values({ id: otherAgentId, companyId: f.companyId, name: "Other agent", role: "engineer", status: "idle", adapterType: "process", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
+    await db.insert(agents).values({ id: otherAgentId, name: "Other agent", role: "engineer", status: "idle", adapterType: "process", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
     await db.update(chatEndpoints).set({ assignedAgentId: otherAgentId }).where(eq(chatEndpoints.id, id));
     await expect(intents.complete(id, inbox.connectionId, "email-board", { canManageOrganizationGrant: true })).rejects.toThrow(/active inbox/);
     await db.update(chatEndpoints).set({ assignedAgentId: f.agentId, status: "paused" }).where(eq(chatEndpoints.id, id));
@@ -1319,7 +1293,7 @@ describe("AgentMail durable email pipeline", () => {
 
   it("checks AgentMail account and inbox health without local stdio or MCP discovery", async () => {
     const f = await fixture();
-    const connection = await emailConnectionService(db, f.fetcher).connect(f.companyId, {
+    const connection = await emailConnectionService(db, f.fetcher).connect({
       apiKey: "private-scoped-credential", grantKind: "user", allAgents: false,
       agentIds: [f.agentId], idempotencyKey: randomUUID(),
     }, { userId: "email-board" });
@@ -1337,7 +1311,7 @@ describe("AgentMail durable email pipeline", () => {
     expect(fetcher.mock.calls.every(([url]) => String(url).endsWith("/auth/me"))).toBe(true);
     fetcher.mockResolvedValue(new Response("unauthorized", { status: 401 }));
     await expect(tools.checkHealth(connection.id)).rejects.toThrow(/AgentMail request failed \(401\)/);
-    expect((await tools.getConnection(connection.id, f.companyId))?.healthStatus).not.toBe("ok");
+    expect((await tools.getConnection(connection.id))?.healthStatus).not.toBe("ok");
   });
 
   it("retries email tasks through normal recovery instead of restricted chat replay", async () => {
@@ -1345,14 +1319,12 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(f.message());
     const [task] = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, f.companyId));
+      .from(issues);
     await db
       .update(issues)
       .set({ status: "blocked" })
       .where(eq(issues.id, task.id));
     const recovery = await issueRecoveryActionService(db).upsertSourceScoped({
-      companyId: f.companyId,
       sourceIssueId: task.id,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -1395,7 +1367,6 @@ describe("AgentMail durable email pipeline", () => {
       .where(eq(agents.id, f.agentId));
     await expect(
       f.service.setup(
-        f.companyId,
         {
           assignedAgentId: f.agentId,
           apiKey: "test-key",
@@ -1407,7 +1378,7 @@ describe("AgentMail durable email pipeline", () => {
     ).rejects.toThrow(/boundary/);
     const [project] = await db
       .insert(projects)
-      .values({ companyId: f.companyId, name: "Email work" })
+      .values({ name: "Email work" })
       .returning();
     await db
       .update(agents)
@@ -1418,7 +1389,6 @@ describe("AgentMail durable email pipeline", () => {
             trustPreset: "low_trust_review",
             trustBoundary: {
               mode: "low_trust_review",
-              companyId: f.companyId,
               projectIds: [project.id],
             },
           },
@@ -1427,7 +1397,6 @@ describe("AgentMail durable email pipeline", () => {
       .where(eq(agents.id, f.agentId));
     await expect(
       f.service.setup(
-        f.companyId,
         {
           assignedAgentId: f.agentId,
           apiKey: "test-key",
@@ -1441,19 +1410,18 @@ describe("AgentMail durable email pipeline", () => {
     await f.receive(f.message());
     const [task] = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, f.companyId));
+      .from(issues);
     expect(task.projectId).toBe(project.id);
     expect(task.executionWorkspaceSettings?.mode).toBe("isolated_workspace");
     await expect(
-      f.service.authorizeRead(f.companyId, task.id, { agentId: f.agentId }),
+      f.service.authorizeRead(task.id, { agentId: f.agentId }),
     ).resolves.toBeUndefined();
-    const outside = await issueService(db).create(f.companyId, {
+    const outside = await issueService(db).create({
       title: "Outside email scope",
       status: "backlog",
     });
     await expect(
-      f.service.authorizeRead(f.companyId, outside.id, { agentId: f.agentId }),
+      f.service.authorizeRead(outside.id, { agentId: f.agentId }),
     ).rejects.toThrow();
   });
 });

@@ -11,14 +11,12 @@ import {
 } from "lucide-react";
 import { BreadcrumbBar } from "@/components/BreadcrumbBar";
 import { CommandPalette } from "@/components/CommandPalette";
-import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { KeyboardShortcutsCheatsheetContent } from "@/components/KeyboardShortcutsCheatsheet";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { PageTabBar } from "@/components/PageTabBar";
 import { Sidebar } from "@/components/Sidebar";
 import { PluginLauncherProvider } from "@/plugins/launchers";
 import { SidebarAccountMenu } from "@/components/SidebarAccountMenu";
-import { SidebarCompanyMenu } from "@/components/SidebarCompanyMenu";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -221,7 +219,7 @@ function CommandEmptySurface() {
 function NavigationLayoutStories() {
   return (
     <div className="paperclip-story">
-      <RouteSetter to="/PAP/projects/board-ui/issues" />
+      <RouteSetter to="/projects/board-ui/issues" />
       <main className="paperclip-story__inner max-w-[1320px] space-y-6">
         <section className="paperclip-story__frame p-6">
           <div className="flex flex-wrap items-start justify-between gap-5">
@@ -248,7 +246,7 @@ function NavigationLayoutStories() {
           </div>
         </Section>
 
-        <Section eyebrow="Menus" title="Account, company, and switcher menus in open state">
+        <Section eyebrow="Menus" title="Account menu in open state">
           <div className="grid gap-5 xl:grid-cols-3">
             <div className="relative h-[440px] overflow-hidden border border-border bg-background">
               <div className="absolute bottom-0 left-0 w-72">
@@ -258,14 +256,6 @@ function NavigationLayoutStories() {
                   onOpenChange={() => undefined}
                 />
               </div>
-            </div>
-
-            <div className="h-[260px] overflow-hidden border border-border bg-background p-3">
-              <SidebarCompanyMenu open onOpenChange={() => undefined} />
-            </div>
-
-            <div className="h-[320px] overflow-hidden border border-border bg-background p-4">
-              <CompanySwitcher open onOpenChange={() => undefined} />
             </div>
           </div>
         </Section>
@@ -370,7 +360,7 @@ function SidebarIconAlignmentHarness() {
   return (
     <PluginLauncherProvider>
       <div className="paperclip-story">
-        <RouteSetter to="/PAP/projects/board-ui/issues" />
+        <RouteSetter to="/projects/board-ui/issues" />
         <div className="flex min-h-[760px] items-start justify-center bg-muted/30 p-8">
           <div
             data-testid="sidebar-align-frame"

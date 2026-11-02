@@ -58,7 +58,6 @@ test("Hermes adapter exposes bundled Paperclip task bridge skill", async () => {
   const snapshot = await adapter.listSkills?.({
     adapterType: "hermes_local",
     agentId: "11111111-1111-4111-8111-111111111111",
-    companyId: "22222222-2222-4222-8222-222222222222",
     config: {},
   });
 
@@ -75,7 +74,6 @@ test("Hermes keeps the operational Paperclip skill linked after an empty replace
     const snapshot = await adapter.syncSkills?.({
       adapterType: "hermes_local",
       agentId: "11111111-1111-4111-8111-111111111111",
-      companyId: "22222222-2222-4222-8222-222222222222",
       config: {
         env: { HOME: home },
         paperclipRuntimeSkills: [{
@@ -108,7 +106,6 @@ test("Hermes rejects a conflicting operational skill target", async () => {
     await expect(adapter.syncSkills?.({
       adapterType: "hermes_local",
       agentId: "11111111-1111-4111-8111-111111111111",
-      companyId: "22222222-2222-4222-8222-222222222222",
       config: {
         env: { HOME: home },
         paperclipRuntimeSkills: [{
@@ -140,7 +137,6 @@ test("Hermes rejects a live symlink owned by another operational skill", async (
     await expect(adapter.syncSkills?.({
       adapterType: "hermes_local",
       agentId: "11111111-1111-4111-8111-111111111111",
-      companyId: "22222222-2222-4222-8222-222222222222",
       config: {
         env: { HOME: home },
         paperclipRuntimeSkills: [{

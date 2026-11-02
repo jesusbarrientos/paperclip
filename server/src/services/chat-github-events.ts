@@ -90,10 +90,7 @@ export async function githubAutomaticAdmission(
     .select()
     .from(chatGitHubConfigurations)
     .where(
-      and(
-        eq(chatGitHubConfigurations.companyId, endpoint.companyId),
-        eq(chatGitHubConfigurations.endpointId, endpoint.id),
-      ),
+      eq(chatGitHubConfigurations.endpointId, endpoint.id),
     );
   if (!saved) return null;
   const [resource] = await db
@@ -101,7 +98,6 @@ export async function githubAutomaticAdmission(
     .from(chatEndpointResources)
     .where(
       and(
-        eq(chatEndpointResources.companyId, endpoint.companyId),
         eq(chatEndpointResources.endpointId, endpoint.id),
         eq(
           chatEndpointResources.providerResourceId,
@@ -121,7 +117,6 @@ export async function githubAutomaticAdmission(
     )
     .where(
       and(
-        eq(chatExternalPrincipals.companyId, endpoint.companyId),
         eq(chatExternalPrincipals.provider, "github"),
         eq(chatExternalPrincipals.externalId, context.author.id),
         eq(chatIdentityLinks.endpointId, endpoint.id),
@@ -188,7 +183,6 @@ export async function githubPreviousAssessment(
     .from(chatGitHubReviews)
     .where(
       and(
-        eq(chatGitHubReviews.companyId, endpoint.companyId),
         eq(chatGitHubReviews.endpointId, endpoint.id),
         eq(chatGitHubReviews.repositoryId, repositoryId),
         eq(chatGitHubReviews.pullNumber, pullNumber),

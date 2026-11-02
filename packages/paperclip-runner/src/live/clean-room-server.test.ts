@@ -366,7 +366,8 @@ function fakeTransportFactory(state: FakeProviderState): CapabilityLiveTransport
 interface CleanRoomPayload {
   sessionId: string;
   surface: string;
-  identity: { token: string; companyId: string; actorId: string; taskId: string; identifier: string };
+  identity: { token: string;
+ actorId: string; taskId: string; identifier: string };
   limits: { maxTurns: number; maxMessageBytes: number };
   view: CapabilityIssueThreadSnapshot;
   configuration: {
@@ -950,7 +951,6 @@ describe("Capability clean-room chat server", () => {
 
     const reset = await call("/api/capability/ui/reset", { sessionId: opened.sessionId });
     expect(reset.sessionId).not.toBe(opened.sessionId);
-    expect(reset.identity.companyId).not.toBe(opened.identity.companyId);
     expect(reset.identity.actorId).not.toBe(opened.identity.actorId);
     expect(reset.identity.taskId).not.toBe(opened.identity.taskId);
     expect(reset.view.turns).toEqual([]);

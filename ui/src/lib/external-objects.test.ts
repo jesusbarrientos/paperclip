@@ -70,14 +70,14 @@ describe("fetchIssueExternalObjectSummariesInBatches", () => {
       { length: EXTERNAL_OBJECT_SUMMARY_BATCH_SIZE * 2 + 3 },
       (_entry, index) => `issue-${index}`,
     );
-    vi.mocked(externalObjectsApi.getIssueSummaries).mockImplementation(async (_companyId, ids) => ({
+    vi.mocked(externalObjectsApi.getIssueSummaries).mockImplementation(async (ids) => ({
       summaries: Object.fromEntries(ids.map((id) => [id, { ...emptySummary, total: id.endsWith("-0") ? 1 : 0 }])),
     }));
 
-    const result = await fetchIssueExternalObjectSummariesInBatches("company-1", issueIds);
+    const result = await fetchIssueExternalObjectSummariesInBatches(issueIds);
 
     expect(externalObjectsApi.getIssueSummaries).toHaveBeenCalledTimes(3);
-    expect(vi.mocked(externalObjectsApi.getIssueSummaries).mock.calls.map((call) => call[1].length)).toEqual([
+    expect(vi.mocked(externalObjectsApi.getIssueSummaries).mock.calls.map((call) => call[0].length)).toEqual([
       EXTERNAL_OBJECT_SUMMARY_BATCH_SIZE,
       EXTERNAL_OBJECT_SUMMARY_BATCH_SIZE,
       3,

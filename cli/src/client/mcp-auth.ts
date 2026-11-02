@@ -10,7 +10,7 @@ import { resolvePaperclipHomeDir } from "../config/home.js";
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
 type Json = Record<string, unknown>;
 export interface McpCredential {
-  resource: string; issuer: string; clientId: string; companyId: string;
+  resource: string; issuer: string; clientId: string;
   accessToken: string; refreshToken?: string; expiresAt: number;
 }
 export function mcpResource(raw: string) {
@@ -32,7 +32,7 @@ async function readCredential(file: string): Promise<McpCredential | null> {
     let value: McpCredential;
     try { value = JSON.parse(await handle.readFile("utf8")); }
     catch { throw new Error("Invalid MCP credential file. Sign in again."); }
-    if (!value || typeof value !== "object" || ![value.resource, value.issuer, value.clientId, value.companyId, value.accessToken].every(v => typeof v === "string" && v.length > 0)
+    if (!value || typeof value !== "object" || ![value.resource, value.issuer, value.clientId, value.accessToken].every(v => typeof v === "string" && v.length > 0)
       || !Number.isFinite(value.expiresAt) || (value.refreshToken !== undefined && typeof value.refreshToken !== "string")) throw new Error("Invalid MCP credential file. Sign in again.");
     return value;
   } finally { await handle.close(); }
@@ -145,13 +145,13 @@ export async function mcpRpc(resource: string, token: string, method: string, pa
   return data.result as Json;
 }
 
-export async function loginMcpDevice(raw: string, companyId?: string, notify: (message: string) => void = console.error) {
+export async function loginMcpDevice(raw: string, notify: (message: string) => void = console.error) {
   const resource = mcpResource(raw);
   const issuer = await discovery(resource);
   const registration = await jsonRequest(issuer + "/mcp/oauth/register", { client_name: "Paperclip CLI (device)", redirect_uris: [], grant_types: [deviceGrant, "refresh_token"], response_types: [], token_endpoint_auth_method: "none" });
   if (!registration.ok || typeof registration.data.client_id !== "string") throw new Error("Could not register the Paperclip device client.");
   const clientId = registration.data.client_id;
-  const authorization = await jsonRequest(issuer + "/mcp/oauth/device_authorization", { client_id: clientId, resource, scope: PUBLIC_MCP_SCOPES.join(" "), ...(companyId ? { company_id: companyId } : {}) });
+  const authorization = await jsonRequest(issuer + "/mcp/oauth/device_authorization", { client_id: clientId, resource, scope: PUBLIC_MCP_SCOPES.join(" ") });
   const device = authorization.data;
   if (!authorization.ok || typeof device.device_code !== "string" || typeof device.user_code !== "string"
     || device.verification_uri !== issuer + "/mcp-device" || typeof device.expires_in !== "number") throw new Error("Could not start device authorization.");
@@ -167,14 +167,12 @@ export async function loginMcpDevice(raw: string, companyId?: string, notify: (m
       if (result.data.error === "slow_down") { interval += 5; continue; }
       throw new Error(result.data.error === "access_denied" ? "Connection declined. No access was granted." : "Device authorization expired or failed. Start login again.");
     }
-    const credential = tokens(result.data, { resource, issuer, clientId, companyId: companyId ?? "" });
+    const credential = tokens(result.data, { resource, issuer, clientId });
     const identity = await mcpRpc(resource, credential.accessToken, "tools/call", { name: "paperclip_connection", arguments: {} });
-    const connected = identity.structuredContent as Json | undefined;
-    if (identity.isError || typeof connected?.companyId !== "string" || (companyId && connected.companyId !== companyId)) throw new Error("The approved organization did not match. Reconnect before doing work.");
-    credential.companyId = connected.companyId;
+    if (identity.isError) throw new Error("Paperclip did not confirm the connection. Reconnect before doing work.");
     const file = credentialPath(resource);
     await replaceMcpCredential(file, credential, notify);
-    return { resource, companyId: credential.companyId };
+    return { resource };
   }
   throw new Error("Device authorization expired. Start login again.");
 }

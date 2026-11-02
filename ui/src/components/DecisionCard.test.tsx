@@ -32,7 +32,7 @@ vi.mock("@/lib/router", () => ({
   Link: ({ to, children, className }: { to: string; children: ReactNode; className?: string }) => (
     <a href={to} className={className}>{children}</a>
   ),
-  useCaseHref: () => () => "#",
+  caseHref: () => "#",
 }));
 
 const ISSUES: Record<string, DecisionIssueRef> = {
@@ -47,7 +47,6 @@ const resolveIssue = (id: string): DecisionIssueRef | null => ISSUES[id] ?? null
 function mkDecision(overrides: Partial<Decision> = {}): Decision {
   return {
     id: "decision-1",
-    companyId: "c1",
     bundleId: null,
     originAgentId: "agent-gardener",
     originIssueId: "issue-origin",

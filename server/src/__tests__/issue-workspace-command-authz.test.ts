@@ -55,7 +55,7 @@ const mockRoutineService = vi.hoisted(() => ({
 
 const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
   then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-    Promise.resolve([{ companyId: "company-1", agentId: "agent-1", contextSnapshot: null }]).then(
+    Promise.resolve([{ agentId: "agent-1", contextSnapshot: null }]).then(
       onFulfilled,
       onRejected,
     ),
@@ -170,7 +170,6 @@ async function createApp(actor: Record<string, unknown>) {
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "issue-1",
-    companyId: "company-1",
     status: "todo",
     priority: "medium",
     projectId: null,
@@ -227,7 +226,6 @@ describe("issue workspace command authorization", () => {
     mockAccessService.hasPermission.mockResolvedValue(true);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       permissions: null,
     });
     mockExecutionWorkspaceService.getById.mockResolvedValue(null);
@@ -256,7 +254,7 @@ describe("issue workspace command authorization", () => {
     mockDbSelectFrom.mockImplementation(() => ({ where: mockDbSelectWhere }));
     mockDbSelectWhere.mockImplementation(() => ({
       then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-        Promise.resolve([{ companyId: "company-1", agentId: "agent-1", contextSnapshot: null }]).then(
+        Promise.resolve([{ agentId: "agent-1", contextSnapshot: null }]).then(
           onFulfilled,
           onRejected,
         ),
@@ -267,13 +265,12 @@ describe("issue workspace command authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post("/api/companies/company-1/issues")
+      .post("/api/issues")
       .send({
         title: "Exploit",
         executionWorkspaceSettings: {
@@ -294,7 +291,6 @@ describe("issue workspace command authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     });

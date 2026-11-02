@@ -57,6 +57,6 @@ describe("published hiring and human-input examples", () => {
       .map((match) => `${match[1]} ${match[2].replace(/:[A-Za-z][A-Za-z0-9_]*|\{[^}]+\}/g, "{}")}`));
     expect(Object.keys(runnerApiReference).filter((key) => !documentedOperations.has(key))).toEqual([]);
     expect(runnerApiReference["PATCH /api/issues/issue-101"]).toBeUndefined();
-    expect(runnerApiReference["POST /api/companies/company-1/imports/preview"]).toBeUndefined();
+    expect(runnerApiReference["POST /api/imports/preview"]).toBeUndefined();
   });
 });

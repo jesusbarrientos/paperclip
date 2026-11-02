@@ -21,14 +21,14 @@ const mockParams = vi.hoisted(() => ({ applicationId: "app-1", tab: "permissions
 
 vi.mock("@/api/tools", () => ({
   toolsApi: {
-    listApplications: (companyId: string) => listApplicationsMock(companyId),
-    listConnections: (companyId: string) => listConnectionsMock(companyId),
-    listGallery: (companyId: string) => listGalleryMock(companyId),
+    listApplications: () => listApplicationsMock(),
+    listConnections: () => listConnectionsMock(),
+    listGallery: () => listGalleryMock(),
     listConnectionGrants: (connectionId: string) => listConnectionGrantsMock(connectionId),
     listConnectionActivity: (connectionId: string, limit: number) =>
       listConnectionActivityMock(connectionId, limit),
-    listActionRequests: (companyId: string, status: string) =>
-      listActionRequestsMock(companyId, status),
+    listActionRequests: (status: string) =>
+      listActionRequestsMock(status),
     updateApplication: (applicationId: string, input: unknown) =>
       updateApplicationMock(applicationId, input),
     approveActionRequest: vi.fn(),
@@ -39,13 +39,13 @@ vi.mock("@/api/tools", () => ({
 
 vi.mock("@/api/access", () => ({
   accessApi: {
-    listUserDirectory: (companyId: string) => listUserDirectoryMock(companyId),
+    listUserDirectory: () => listUserDirectoryMock(),
   },
 }));
 
 vi.mock("@/api/agents", () => ({
   agentsApi: {
-    list: (companyId: string) => mockAgentsList(companyId),
+    list: () => mockAgentsList(),
   },
 }));
 
@@ -61,10 +61,9 @@ vi.mock("@/lib/router", () => ({
   ),
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
 }));
 
@@ -99,7 +98,6 @@ async function flushReact() {
 function application(overrides: Record<string, unknown> = {}) {
   return {
     id: "app-1",
-    companyId: "company-1",
     applicationKey: "github",
     name: "GitHub",
     description: "Repository app",
@@ -119,7 +117,6 @@ function application(overrides: Record<string, unknown> = {}) {
 function connection(overrides: Record<string, unknown> = {}) {
   return {
     id: "conn-old",
-    companyId: "company-1",
     applicationId: "app-1",
     name: "GitHub",
     connectionKind: "managed",

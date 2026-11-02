@@ -26,26 +26,33 @@ beforeAll(async () => {
   await db.insert(companies).values({ id: companyId, name: "Audit", issuePrefix: "AUD" });
   await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "owner" }).onConflictDoUpdate(membershipUpsert);
   await db.insert(environments).values({ name: "Local audit", driver: "local" }).onConflictDoNothing();
-  await db.insert(agents).values({ id: agentId, companyId, name: "Unadopted legacy agent", adapterType: "claude_local" });
+  await db.insert(agents).values({ id: agentId, name: "Unadopted legacy agent", adapterType: "claude_local" });
 }, 90000);
 afterAll(async () => { await database?.cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); if (home) await rm(home, { recursive: true, force: true }); });
 
 it("reconnect detaches an indexed credential without changing unadopted legacy agents", async () => {
   const vault = secretService(db), service = aiConnectionService(db);
-  const definition = await vault.createUserSecretDefinition(companyId, { key: "audit_legacy_claude", name: "Legacy key", provider: "local_encrypted" }, { userId: owner });
-  const secret = await vault.createCurrentUserSecretValue(companyId, owner, { definitionId: definition.id, value: "fixture-original" }, { userId: owner });
+  const definition = await vault.createUserSecretDefinition({ key: "audit_legacy_claude", name: "Legacy key", provider: "local_encrypted" }, { userId: owner });
+  const secret = await vault.createCurrentUserSecretValue(owner, { definitionId: definition.id, value: "fixture-original" }, { userId: owner });
   const legacyConfig = { env: { ANTHROPIC_API_KEY: { type: "user_secret_ref", key: definition.key, required: true } } };
   await db.update(agents).set({ adapterConfig: legacyConfig }).where(eq(agents.id, agentId));
-  await vault.syncUserSecretDeclarationsForTarget(companyId, { targetType: "agent", targetId: agentId }, [{ definitionKey: definition.key, configPath: "env.ANTHROPIC_API_KEY", envKey: "ANTHROPIC_API_KEY", required: true }]);
+  await vault.syncUserSecretDeclarationsForTarget({ targetType: "agent", targetId: agentId }, [{ definitionKey: definition.key, configPath: "env.ANTHROPIC_API_KEY", envKey: "ANTHROPIC_API_KEY", required: true }]);
   const migration = await readFile(new URL("../../../packages/db/src/migrations/0276_hard_mandroid.sql", import.meta.url), "utf8");
-  await db.execute(sql.raw(migration.slice(migration.indexOf("DO $$", migration.indexOf("-- Only declared")))));
-  const connection = (await service.list(companyId, owner)).find(c => c.name === secret.name)!;
-  const input = { companyId, agentId, responsibleUserId: owner, adapterType: "claude_local", binding: { provider: "anthropic", method: "api_key", mode: "delegated", connectionId: connection.id, grantId: connection.grantId } as const, config: {}, allowLegacyValidation: true };
+  const adoption = migration.slice(migration.indexOf("DO $$", migration.indexOf("-- Only declared")))
+    .replace(/s\.company_id, /, "")
+    .replace(/[ad]\.company_id = s\.company_id AND /g, "")
+    .replace(/company_id = candidate\.company_id\s+AND /, "")
+    .replace(/\(company_id,/g, "(")
+    .replace(/,company_id,/g, ",")
+    .replace(/candidate\.company_id,/g, "");
+  await db.execute(sql.raw(adoption));
+  const connection = (await service.list(owner)).find(c => c.name === secret.name)!;
+  const input = { agentId, responsibleUserId: owner, adapterType: "claude_local", binding: { provider: "anthropic", method: "api_key", mode: "delegated", connectionId: connection.id, grantId: connection.grantId } as const, config: {}, allowLegacyValidation: true };
   const before = await prepareManagedAiRuntime(db, input);
   await before.cleanup();
-  const resolve = () => vault.resolveUserSecretValue(companyId, { definitionId: definition.id, responsibleUserId: owner, required: true, version: "latest" }, { companyId, responsibleUserId: owner, actorType: "system" });
+  const resolve = () => vault.resolveUserSecretValue({ definitionId: definition.id, responsibleUserId: owner, required: true, version: "latest" }, { responsibleUserId: owner, actorType: "system" });
   expect((await resolve())?.value).toBe("fixture-original");
-  await service.save(companyId, owner, { provider: "anthropic", method: "api_key", name: connection.name, ownership: "personal", agentIds: [], allAgents: true, connectionId: connection.id, apiKey: "fixture-new-account" }, "fixture-new-account");
+  await service.save(owner, { provider: "anthropic", method: "api_key", name: connection.name, ownership: "personal", agentIds: [], allAgents: true, connectionId: connection.id, apiKey: "fixture-new-account" }, "fixture-new-account");
   expect((await resolve())?.value).toBe("fixture-original");
   const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, connection.grantId));
   expect(grant.credentialSecretRefs[0].secretId).not.toBe(secret.id);
@@ -59,9 +66,9 @@ it("reconnect detaches an indexed credential without changing unadopted legacy a
     expect(after.sessionIdentity).not.toBe(before.sessionIdentity);
     expect(managedAiSessionFingerprintConfig(after.config, after.home)).not.toEqual(managedAiSessionFingerprintConfig(before.config, before.home));
   } finally { await after.cleanup(); }
-  const selected = await service.select({ companyId, agentId, userId: owner, adapterType: "claude_local", binding: { provider: "anthropic", method: "api_key", mode: "responsible_user" } });
+  const selected = await service.select({ agentId, userId: owner, adapterType: "claude_local", binding: { provider: "anthropic", method: "api_key", mode: "responsible_user" } });
   expect(await service.credential(selected)).toBe("fixture-new-account");
-  await service.save(companyId, owner, { provider: "anthropic", method: "api_key", name: connection.name, ownership: "personal", agentIds: [], allAgents: true, connectionId: connection.id, apiKey: "fixture-second" }, "fixture-second");
+  await service.save(owner, { provider: "anthropic", method: "api_key", name: connection.name, ownership: "personal", agentIds: [], allAgents: true, connectionId: connection.id, apiKey: "fixture-second" }, "fixture-second");
   expect((await resolve())?.value).toBe("fixture-original");
   const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
   expect(agent.runtimeConfig.aiConnection).toBeUndefined();
@@ -80,33 +87,32 @@ it("isolates sign-in and refresh from the host, survives restart, and completes 
   vi.stubEnv("CODEX_HOME", hostHome);
   vi.stubGlobal("fetch", vi.fn(async () => new Response("{}")));
   const login = localAiLoginService(db);
-  const attempt = await login.start(companyId, owner, loginIntent());
+  const attempt = await login.start(owner, loginIntent());
   const directory = directoryFor(attempt.sessionId);
-  expect(await localAiLoginService(db).start(companyId, owner, loginIntent())).toEqual(attempt);
+  expect(await localAiLoginService(db).start(owner, loginIntent())).toEqual(attempt);
   expect(attempt.command).toContain(`(export CODEX_HOME='${directory}' && mkdir -p "$CODEX_HOME" && codex`);
   expect(await readFile(path.join(directory, "config.toml"), "utf8")).toContain('cli_auth_credentials_store = "file"');
-  expect(await login.check(companyId, owner, loginIntent(), attempt.sessionId)).toEqual({ status: "sign_in_required" });
+  expect(await login.check(owner, loginIntent(), attempt.sessionId)).toEqual({ status: "sign_in_required" });
   // Resuming a valid attempt also repairs a missing directory without changing its ID.
   await rm(directory, { recursive: true });
-  expect(await login.start(companyId, owner, loginIntent())).toEqual(attempt);
+  expect(await login.start(owner, loginIntent())).toEqual(attempt);
   expect(await readFile(path.join(directory, "config.toml"), "utf8")).toContain('cli_auth_credentials_store = "file"');
   // A valid host login cannot satisfy an unfinished connection-specific login.
-  await expect(login.complete(companyId, owner, attempt.sessionId, loginIntent())).rejects.toThrow("sign-in command shown");
-  expect((await aiConnectionService(db).list(companyId, owner)).filter(c => c.provider === "openai")).toHaveLength(0);
+  await expect(login.complete(owner, attempt.sessionId, loginIntent())).rejects.toThrow("sign-in command shown");
+  expect((await aiConnectionService(db).list(owner)).filter(c => c.provider === "openai")).toHaveLength(0);
   await writeFile(path.join(directory, "auth.json"), auth("independent-login"));
-  expect(await login.check(companyId, owner, loginIntent(), attempt.sessionId)).toEqual({ status: "ready" });
-  expect((await aiConnectionService(db).list(companyId, owner)).filter(c => c.provider === "openai")).toHaveLength(0);
-  await expect(login.check(companyId, "another-owner", loginIntent(), attempt.sessionId)).rejects.toThrow("not found");
-  await expect(login.check(randomUUID(), owner, loginIntent(), attempt.sessionId)).rejects.toThrow("not found");
-  await expect(login.check(companyId, owner, { ...loginIntent(), ownership: "shared" }, attempt.sessionId)).rejects.toThrow("not found");
+  expect(await login.check(owner, loginIntent(), attempt.sessionId)).toEqual({ status: "ready" });
+  expect((await aiConnectionService(db).list(owner)).filter(c => c.provider === "openai")).toHaveLength(0);
+  await expect(login.check("another-owner", loginIntent(), attempt.sessionId)).rejects.toThrow("not found");
+  await expect(login.check(owner, { ...loginIntent(), ownership: "shared" }, attempt.sessionId)).rejects.toThrow("not found");
   // New service instance simulates process restart: all intent is durable.
   const results = await Promise.all([
-    localAiLoginService(db).complete(companyId, owner, attempt.sessionId, loginIntent()),
-    localAiLoginService(db).complete(companyId, owner, attempt.sessionId, loginIntent()),
+    localAiLoginService(db).complete(owner, attempt.sessionId, loginIntent()),
+    localAiLoginService(db).complete(owner, attempt.sessionId, loginIntent()),
   ]);
   expect(results[0]).toEqual(results[1]);
   await expect(readFile(path.join(directory, "auth.json"))).rejects.toHaveProperty("code", "ENOENT");
-  const input = { companyId, agentId, adapterType: "codex_local", responsibleUserId: owner, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { cwd: home, model: "unchanged-model" } };
+  const input = { agentId, adapterType: "codex_local", responsibleUserId: owner, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { cwd: home, model: "unchanged-model" } };
   const run = await prepareManagedAiRuntime(db, input);
   const credentialFile = path.join(String(run.config.env.CODEX_HOME), "auth.json");
   expect(JSON.parse(await readFile(credentialFile, "utf8")).tokens.refresh_token).toBe("refresh-independent-login");
@@ -118,40 +124,39 @@ it("isolates sign-in and refresh from the host, survives restart, and completes 
   expect(next.config.model).toBe(input.config.model);
   await next.cleanup();
   // Cancellation after successful completion must not revoke the saved account.
-  await login.cancel(companyId, owner, attempt.sessionId);
-  expect((await aiConnectionService(db).list(companyId, owner)).find(c => c.id === results[0].connectionId)?.status).toBe("connected");
+  await login.cancel(owner, attempt.sessionId);
+  expect((await aiConnectionService(db).list(owner)).find(c => c.id === results[0].connectionId)?.status).toBe("connected");
   expect((await db.select().from(activityLog).where(eq(activityLog.entityId, attempt.sessionId)))
     .filter(event => event.action === "ai_connection.local_login_cancelled")).toHaveLength(0);
   const reconnectIntent = { ...loginIntent(), connectionId: results[0].connectionId };
-  const reconnect = await login.start(companyId, owner, reconnectIntent);
+  const reconnect = await login.start(owner, reconnectIntent);
   expect(reconnect.sessionId).not.toBe(attempt.sessionId);
   await writeFile(path.join(directoryFor(reconnect.sessionId), "auth.json"), auth("new-login"));
-  expect(await login.complete(companyId, owner, reconnect.sessionId, reconnectIntent)).toEqual(results[0]);
+  expect(await login.complete(owner, reconnect.sessionId, reconnectIntent)).toEqual(results[0]);
   expect(await readFile(path.join(hostHome, "auth.json"), "utf8")).toBe(auth("legacy"));
 });
 
-it("enforces local attempt ownership, company, target, cancellation, and expiry", async () => {
+it("enforces local attempt ownership, target, cancellation, and expiry", async () => {
   const login = localAiLoginService(db);
-  const attempt = await login.start(companyId, owner, loginIntent());
+  const attempt = await login.start(owner, loginIntent());
   const cancellations = async () => (await db.select().from(activityLog).where(eq(activityLog.entityId, attempt.sessionId)))
     .filter(event => event.action === "ai_connection.local_login_cancelled");
-  await expect(login.complete(companyId, "another-owner", attempt.sessionId, loginIntent())).rejects.toThrow("not found");
-  await expect(login.cancel(companyId, "another-owner", attempt.sessionId)).rejects.toThrow("not found");
-  await expect(login.cancel(randomUUID(), owner, attempt.sessionId)).rejects.toThrow("not found");
-  await expect(login.complete(companyId, owner, attempt.sessionId, { ...loginIntent(), ownership: "shared" })).rejects.toThrow("not found");
+  await expect(login.complete("another-owner", attempt.sessionId, loginIntent())).rejects.toThrow("not found");
+  await expect(login.cancel("another-owner", attempt.sessionId)).rejects.toThrow("not found");
+  await expect(login.complete(owner, attempt.sessionId, { ...loginIntent(), ownership: "shared" })).rejects.toThrow("not found");
   expect(await cancellations()).toHaveLength(0);
-  await login.cancel(companyId, owner, attempt.sessionId);
-  await login.cancel(companyId, owner, attempt.sessionId);
+  await login.cancel(owner, attempt.sessionId);
+  await login.cancel(owner, attempt.sessionId);
   expect(await cancellations()).toEqual([expect.objectContaining({
-    companyId, actorType: "user", actorId: owner, entityType: "adapter_auth_session",
+    actorType: "user", actorId: owner, entityType: "adapter_auth_session",
     entityId: attempt.sessionId, details: { provider: "openai" },
   })]);
-  await expect(login.complete(companyId, owner, attempt.sessionId, loginIntent())).rejects.toThrow("cancelled");
-  const retry = await login.start(companyId, owner, loginIntent());
+  await expect(login.complete(owner, attempt.sessionId, loginIntent())).rejects.toThrow("cancelled");
+  const retry = await login.start(owner, loginIntent());
   await writeFile(path.join(directoryFor(retry.sessionId), "auth.json"), auth("abandoned"));
   await db.update(adapterAuthSessions).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(adapterAuthSessions.id, retry.sessionId));
-  await expect(login.complete(companyId, owner, retry.sessionId, loginIntent())).rejects.toThrow("expired");
-  expect(await login.check(companyId, owner, loginIntent(), retry.sessionId)).toEqual({ status: "expired" });
+  await expect(login.complete(owner, retry.sessionId, loginIntent())).rejects.toThrow("expired");
+  expect(await login.check(owner, loginIntent(), retry.sessionId)).toEqual({ status: "expired" });
   await localAiLoginService(db).reapExpired();
   await expect(readFile(path.join(directoryFor(retry.sessionId), "auth.json"))).rejects.toHaveProperty("code", "ENOENT");
   const [row] = await db.select().from(adapterAuthSessions).where(eq(adapterAuthSessions.id, retry.sessionId));
@@ -160,28 +165,28 @@ it("enforces local attempt ownership, company, target, cancellation, and expiry"
 
 it("explicit retry replaces another owned local attempt while ordinary navigation preserves it", async () => {
   const login = localAiLoginService(db);
-  const first = await login.start(companyId, owner, loginIntent());
+  const first = await login.start(owner, loginIntent());
   const restricted = { ...loginIntent(), allAgents: false, agentIds: [agentId] };
-  await expect(login.start(companyId, owner, restricted)).rejects.toThrow("Another sign-in");
-  const retry = await login.start(companyId, owner, restricted, true);
+  await expect(login.start(owner, restricted)).rejects.toThrow("Another sign-in");
+  const retry = await login.start(owner, restricted, true);
   expect(retry.sessionId).not.toBe(first.sessionId);
   const [old] = await db.select().from(adapterAuthSessions).where(eq(adapterAuthSessions.id, first.sessionId));
   expect(old.status).toBe("cancelled");
   await expect(readFile(path.join(directoryFor(first.sessionId), "config.toml"))).rejects.toHaveProperty("code", "ENOENT");
-  expect(await login.start(companyId, owner, restricted)).toEqual(retry);
-  await login.cancel(companyId, owner, retry.sessionId);
+  expect(await login.start(owner, restricted)).toEqual(retry);
+  await login.cancel(owner, retry.sessionId);
 });
 
 it("blocks preview-era copied subscriptions until isolated reconnect, leaving legacy config intact", async () => {
   const service = aiConnectionService(db);
-  const account = (await service.list(companyId, owner)).find(c => c.provider === "openai")!;
+  const account = (await service.list(owner)).find(c => c.provider === "openai")!;
   const [connection] = await db.select().from(toolConnections).where(eq(toolConnections.id, account.id));
   await db.update(toolConnections).set({ config: { ...connection.config, aiIsolatedSubscription: false } }).where(eq(toolConnections.id, account.id));
   await expect(prepareManagedAiRuntime(db, {
-    companyId, agentId, adapterType: "codex_local", responsibleUserId: owner,
+    agentId, adapterType: "codex_local", responsibleUserId: owner,
     binding: { provider: "openai", method: "subscription", mode: "responsible_user" }, config: { cwd: home },
   })).rejects.toThrow("separate sign-in");
-  expect((await service.list(companyId, owner)).find(c => c.id === account.id)?.status).toBe("needs_attention");
+  expect((await service.list(owner)).find(c => c.id === account.id)?.status).toBe("needs_attention");
   const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
   expect(agent.runtimeConfig.aiConnection).toBeUndefined();
   const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, account.grantId));

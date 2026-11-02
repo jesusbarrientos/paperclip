@@ -51,7 +51,8 @@ function readOwner(value: unknown): Owner | null {
  * There is deliberately no wall-clock timeout that can steal a slow export.
  */
 export async function withNativeWorkspaceFinalizationOwnership<T>(
-  input: { db: Db; companyId: string; runId: string },
+  input: { db: Db;
+ runId: string },
   action: (ownership: NativeWorkspaceFinalizationOwnership) => Promise<T>,
 ): Promise<{ acquired: false } | { acquired: true; value: T }> {
   const identity = await currentNativeControllerIdentity();
@@ -59,13 +60,13 @@ export async function withNativeWorkspaceFinalizationOwnership<T>(
     token: randomUUID(), controllerBootId: identity.bootId, hostname: os.hostname(), pid: identity.pid,
     processStartedAt: identity.processStartedAt.toISOString(),
   };
-  const scope = and(eq(heartbeatRuns.id, input.runId), eq(heartbeatRuns.companyId, input.companyId), eq(heartbeatRuns.runtimeMode, "native"));
+  const scope = and(eq(heartbeatRuns.id, input.runId), eq(heartbeatRuns.runtimeMode, "native"));
   const owned = and(scope, sql`${heartbeatRuns.runnerProfileJson}->${OWNER_KEY}->>'token' = ${owner.token}`);
   let claimed = false;
   let actionPromise: Promise<T> | undefined;
   try {
     return await withDedicatedDbConnection(input.db, (dedicated) => dedicated.transaction(async (lock) => {
-      const rows = await lock.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${`native-workspace-finalization:${input.companyId}:${input.runId}`}, 0)) as acquired`);
+      const rows = await lock.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${`native-workspace-finalization:${input.runId}`}, 0)) as acquired`);
       if (rows[0]?.acquired !== true) return { acquired: false } as const;
       // Reads and durable progress use the ordinary pool, not the lock transaction.
       const [run] = await input.db.select({ profile: heartbeatRuns.runnerProfileJson, issueId: heartbeatRuns.nativeIssueId, agentId: heartbeatRuns.agentId }).from(heartbeatRuns).where(scope).limit(1);
@@ -75,7 +76,7 @@ export async function withNativeWorkspaceFinalizationOwnership<T>(
       if (rawPrior != null) {
         const requireStopVerification = async () => {
           if (run.issueId) await issueRecoveryActionService(input.db).upsertSourceScoped({
-            companyId: input.companyId, sourceIssueId: run.issueId,
+            sourceIssueId: run.issueId,
             kind: "active_run_watchdog", ownerType: "board", returnOwnerAgentId: run.agentId,
             cause: "native_workspace_finalization_owner_unverified",
             fingerprint: nativeSha256({ runId: input.runId, owner: rawPrior }),
@@ -100,7 +101,6 @@ export async function withNativeWorkspaceFinalizationOwnership<T>(
           // completed-copyback barrier proves they joined; otherwise board proof
           // is required even on the same host. Both callers reuse this barrier.
           const [completedCopyback] = await input.db.select({ id: workspaceOperations.id }).from(workspaceOperations).where(and(
-            eq(workspaceOperations.companyId, input.companyId),
             eq(workspaceOperations.heartbeatRunId, input.runId),
             eq(workspaceOperations.issueId, run.issueId!),
             eq(workspaceOperations.phase, "workspace_finalize"),

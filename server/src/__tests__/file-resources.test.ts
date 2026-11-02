@@ -32,8 +32,6 @@ const execFileAsync = promisify(execFile);
 let seedGraphSequence = 0;
 
 type TestGraph = {
-  companyId: string;
-  otherCompanyId: string;
   issueId: string;
   otherIssueId: string;
   projectId: string;
@@ -69,7 +67,6 @@ async function seedGraph(db: Db, input: {
   const prefixSuffix = seedGraphSequence.toString(36).toUpperCase().padStart(4, "0");
   const suffix = crypto.randomUUID().slice(0, 8);
   const companyId = crypto.randomUUID();
-  const otherCompanyId = crypto.randomUUID();
   const goalId = crypto.randomUUID();
   const otherGoalId = crypto.randomUUID();
   const projectId = crypto.randomUUID();
@@ -84,21 +81,19 @@ async function seedGraph(db: Db, input: {
 
   await db.insert(companies).values([
     { id: companyId, name: `Company ${suffix}`, issuePrefix: `F${prefixSuffix}` },
-    { id: otherCompanyId, name: `Other ${suffix}`, issuePrefix: `G${prefixSuffix}` },
   ]);
   await db.insert(goals).values([
-    { id: goalId, companyId, title: "Goal", level: "company", status: "active" },
-    { id: otherGoalId, companyId: otherCompanyId, title: "Other goal", level: "company", status: "active" },
+    { id: goalId, title: "Goal", level: "company", status: "active" },
+    { id: otherGoalId, title: "Other goal", level: "company", status: "active" },
   ]);
   await db.insert(projects).values([
-    { id: projectId, companyId, goalId, name: "Project", status: "in_progress" },
-    { id: targetProjectId, companyId, goalId, name: "Target project", status: "in_progress" },
-    { id: otherProjectId, companyId: otherCompanyId, goalId: otherGoalId, name: "Other project", status: "in_progress" },
+    { id: projectId, goalId, name: "Project", status: "in_progress" },
+    { id: targetProjectId, goalId, name: "Target project", status: "in_progress" },
+    { id: otherProjectId, goalId: otherGoalId, name: "Other project", status: "in_progress" },
   ]);
   await db.insert(projectWorkspaces).values([
     {
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary workspace",
       sourceType: input.projectSourceType ?? "local_path",
@@ -107,7 +102,6 @@ async function seedGraph(db: Db, input: {
     },
     {
       id: otherProjectWorkspaceId,
-      companyId: otherCompanyId,
       projectId: otherProjectId,
       name: "Other workspace",
       sourceType: "local_path",
@@ -116,7 +110,6 @@ async function seedGraph(db: Db, input: {
     },
     {
       id: targetProjectWorkspaceId,
-      companyId,
       projectId: targetProjectId,
       name: "Target workspace",
       sourceType: input.targetProjectSourceType ?? "local_path",
@@ -127,7 +120,6 @@ async function seedGraph(db: Db, input: {
   await db.insert(issues).values([
     {
       id: issueId,
-      companyId,
       projectId,
       goalId,
       projectWorkspaceId,
@@ -137,7 +129,6 @@ async function seedGraph(db: Db, input: {
     },
     {
       id: otherIssueId,
-      companyId: otherCompanyId,
       projectId: otherProjectId,
       goalId: otherGoalId,
       projectWorkspaceId: otherProjectWorkspaceId,
@@ -148,7 +139,6 @@ async function seedGraph(db: Db, input: {
   ]);
   await db.insert(executionWorkspaces).values({
     id: executionWorkspaceId,
-    companyId,
     projectId,
     projectWorkspaceId,
     sourceIssueId: issueId,
@@ -163,8 +153,6 @@ async function seedGraph(db: Db, input: {
   await db.update(issues).set({ executionWorkspaceId }).where(eq(issues.id, issueId));
 
   return {
-    companyId,
-    otherCompanyId,
     issueId,
     otherIssueId,
     projectId,
@@ -220,7 +208,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -246,7 +234,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -297,7 +285,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(resolved.capabilities.preview).toBe(true);
   });
 
-  it("auto-discovers unhinted same-company project files when issue workspaces miss", async () => {
+  it("auto-discovers unhinted project files when issue workspaces miss", async () => {
     const { projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
     const targetPath = "docs/reference/skills.md";
@@ -326,7 +314,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(content.content.data).toContain("# Skills reference");
   });
 
-  it("resolves explicit same-company cross-project workspace files and logs target details", async () => {
+  it("resolves explicit cross-project workspace files and logs target details", async () => {
     const { root, projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
     await fs.mkdir(path.join(targetProjectRoot, "docs"), { recursive: true });
@@ -335,7 +323,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -385,7 +373,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -412,7 +400,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(JSON.stringify(res.body)).not.toContain(root);
   });
 
-  it("resolves and lists explicit same-company cross-project workspace folders", async () => {
+  it("resolves and lists explicit cross-project workspace folders", async () => {
     const { root, projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
     const folderPath = "content-os/cases/active/2026-06-06-pap-10199-bundled-skills/";
@@ -424,7 +412,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -469,10 +457,10 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(JSON.stringify(listed.body)).not.toContain("outside.txt");
   });
 
-  it("auto-discovers unhinted same-company project folders when issue workspaces miss", async () => {
+  it("auto-discovers unhinted project folders when issue workspaces miss", async () => {
     const { root, projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
-    const folderPath = "content-os/cases/active/2026-06-06-pap-10199-bundled-skills/";
+    const folderPath = `content-os/cases/active/${crypto.randomUUID()}/`;
     await fs.mkdir(path.join(targetProjectRoot, folderPath), { recursive: true });
     await fs.writeFile(path.join(targetProjectRoot, folderPath, "README.md"), "# Bundled skills\n", "utf8");
     await fs.writeFile(path.join(targetProjectRoot, folderPath, "suggestions.md"), "# Suggestions\n", "utf8");
@@ -480,7 +468,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -514,7 +502,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(JSON.stringify(listed.body)).not.toContain(root);
   });
 
-  it("rejects ambiguous unhinted same-company project file matches", async () => {
+  it("rejects ambiguous unhinted project file matches", async () => {
     const { projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
     const duplicateProjectId = crypto.randomUUID();
@@ -527,13 +515,11 @@ describeEmbeddedPostgres("workspace file resources", () => {
     await fs.writeFile(path.join(duplicateRoot, targetPath), "# Duplicate\n", "utf8");
     await db.insert(projects).values({
       id: duplicateProjectId,
-      companyId: graph.companyId,
       name: "Duplicate target",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: duplicateWorkspaceId,
-      companyId: graph.companyId,
       projectId: duplicateProjectId,
       name: "Duplicate workspace",
       sourceType: "local_path",
@@ -550,44 +536,13 @@ describeEmbeddedPostgres("workspace file resources", () => {
     });
   });
 
-  it("denies explicit cross-company project workspaces", async () => {
-    const { projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
-    const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
-    const app = createApp(db, {
-      type: "board",
-      userId: "board-user",
-      companyIds: [graph.companyId],
-      source: "session",
-      isInstanceAdmin: false,
-    });
-
-    const res = await request(app)
-      .get(`/api/issues/${graph.issueId}/file-resources/resolve`)
-      .query({
-        projectId: graph.otherProjectId,
-        workspaceId: graph.otherProjectWorkspaceId,
-        path: "README.md",
-      });
-
-    expect(res.status).toBe(403);
-    expect(res.body?.details?.code).toBe("cross_company_workspace");
-    const rows = await db.select().from(activityLog).where(eq(activityLog.entityId, graph.issueId));
-    const denied = rows.find((row) => row.action === "issue.file_resource_resolve_denied");
-    expect(denied?.details).toMatchObject({
-      outcome: "denied",
-      projectId: graph.otherProjectId,
-      workspaceId: graph.otherProjectWorkspaceId,
-      denialReason: "cross_company_workspace",
-    });
-  });
-
   it("rejects explicit project/workspace mismatches", async () => {
     const { projectRoot, targetProjectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, targetProjectRoot, executionRoot });
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -676,7 +631,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -714,7 +669,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -759,7 +714,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -801,7 +756,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -847,7 +802,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -880,7 +835,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -910,7 +865,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -939,7 +894,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -965,7 +920,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -995,7 +950,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1037,7 +992,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1050,14 +1005,13 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(listed.body.items).toEqual([]);
   });
 
-  it("blocks agents and cross-company board users before content reads", async () => {
+  it("blocks agents and non-member board users before content reads", async () => {
     const { projectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, executionRoot });
     await fs.writeFile(path.join(projectRoot, "README.md"), "# Secret\n", "utf8");
     const agentId = crypto.randomUUID();
     await db.insert(agents).values({
       id: agentId,
-      companyId: graph.companyId,
       name: "File audit agent",
       role: "engineer",
       adapterType: "process",
@@ -1067,13 +1021,12 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const agentApp = createApp(db, {
       type: "agent",
       agentId,
-      companyId: graph.companyId,
       source: "agent_key",
     });
     const boardApp = createApp(db, {
       type: "board",
       userId: "mallory",
-      companyIds: [graph.otherCompanyId],
+      memberships: [],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1104,7 +1057,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1128,7 +1081,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       {
         type: "board",
         userId: "board-user",
-        companyIds: [graph.companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -1160,7 +1113,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       slowResolveStarted = resolve;
     });
     const resolveLimitedService: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId: graph.companyId })),
+      getIssue: vi.fn(async () => ({ })),
       availability: vi.fn(async () => {
         throw new Error("not used");
       }),
@@ -1194,7 +1147,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       {
         type: "board",
         userId: "board-user",
-        companyIds: [graph.companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -1224,7 +1177,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       slowContentStarted = resolve;
     });
     const contentLimitedService: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId: graph.companyId })),
+      getIssue: vi.fn(async () => ({ })),
       availability: vi.fn(async () => {
         throw new Error("not used");
       }),
@@ -1261,7 +1214,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       {
         type: "board",
         userId: "board-user",
-        companyIds: [graph.companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -1300,7 +1253,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       slowDownloadStarted = resolve;
     });
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId: graph.companyId })),
+      getIssue: vi.fn(async () => ({ })),
       availability: vi.fn(async () => {
         throw new Error("not used");
       }),
@@ -1338,7 +1291,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       {
         type: "board",
         userId: "board-user",
-        companyIds: [graph.companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -1389,7 +1342,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       slowListStarted = resolve;
     });
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId: graph.companyId })),
+      getIssue: vi.fn(async () => ({ })),
       availability: vi.fn(async () => {
         throw new Error("not used");
       }),
@@ -1431,7 +1384,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
       {
         type: "board",
         userId: "board-user",
-        companyIds: [graph.companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -1472,7 +1425,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1554,13 +1507,11 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const extraProjectId = crypto.randomUUID();
     await db.insert(projects).values({
       id: extraProjectId,
-      companyId: graph.companyId,
       name: "Extra project",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: crypto.randomUUID(),
-      companyId: graph.companyId,
       projectId: extraProjectId,
       name: "Extra workspace",
       sourceType: "local_path",
@@ -1571,7 +1522,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const app = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1591,13 +1542,12 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect(JSON.stringify(response.body)).not.toContain(root);
   });
 
-  it("enforces board access, company boundaries, and the 100-query cap", async () => {
+  it("enforces board access, membership, and the 100-query cap", async () => {
     const { projectRoot, executionRoot } = await makeWorkspace();
     const graph = await seedGraph(db, { projectRoot, executionRoot });
     const agentId = crypto.randomUUID();
     await db.insert(agents).values({
       id: agentId,
-      companyId: graph.companyId,
       name: "Availability audit agent",
       role: "engineer",
       adapterType: "process",
@@ -1606,20 +1556,19 @@ describeEmbeddedPostgres("workspace file resources", () => {
     const agentApp = createApp(db, {
       type: "agent",
       agentId,
-      companyId: graph.companyId,
       source: "agent_key",
     });
-    const otherCompanyApp = createApp(db, {
+    const nonMemberApp = createApp(db, {
       type: "board",
       userId: "other-board",
-      companyIds: [graph.otherCompanyId],
+      memberships: [],
       source: "session",
       isInstanceAdmin: false,
     });
     const boardApp = createApp(db, {
       type: "board",
       userId: "board-user",
-      companyIds: [graph.companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1627,7 +1576,7 @@ describeEmbeddedPostgres("workspace file resources", () => {
     expect((await request(agentApp)
       .post(`/api/issues/${graph.issueId}/file-resources/availability`)
       .send({ queries: [{ path: "README.md" }] })).status).toBe(403);
-    expect((await request(otherCompanyApp)
+    expect((await request(nonMemberApp)
       .post(`/api/issues/${graph.issueId}/file-resources/availability`)
       .send({ queries: [{ path: "README.md" }] })).status).toBe(404);
     expect((await request(boardApp)
@@ -1665,7 +1614,7 @@ describeEmbeddedPostgres("file resource route guards", () => {
       slowReadStarted = resolve;
     });
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId })),
+      getIssue: vi.fn(async () => ({ })),
       availability: vi.fn(async () => {
         throw new Error("not used");
       }),
@@ -1699,7 +1648,7 @@ describeEmbeddedPostgres("file resource route guards", () => {
       req.actor = {
         type: "board",
         userId: "board-user",
-        companyIds: [companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       };
@@ -1738,7 +1687,7 @@ describeEmbeddedPostgres("file resource route guards", () => {
       slowAvailabilityStarted = resolve;
     });
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId })),
+      getIssue: vi.fn(async () => ({ })),
       availability: vi.fn(async () => {
         slowAvailabilityStarted?.();
         await slowAvailability;
@@ -1754,7 +1703,7 @@ describeEmbeddedPostgres("file resource route guards", () => {
       {
         type: "board",
         userId: "board-user",
-        companyIds: [companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },

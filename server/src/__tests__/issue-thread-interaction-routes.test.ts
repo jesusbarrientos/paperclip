@@ -15,7 +15,6 @@ const RUN_1 = "d1111111-1111-4111-8111-111111111111";
 const RUN_2 = "d2222222-2222-4222-8222-222222222222";
 const RUN_3 = "d3333333-3333-4333-8333-333333333333";
 const RUN_9 = "d9999999-9999-4999-8999-999999999999";
-const RUN_CROSS_COMPANY = "dccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const RUN_INVALID = "d0000000-0000-4000-8000-000000000000";
 const RUN_LOW_TRUST = "d0000000-0000-4000-8000-000000000001";
 const RUN_TASK_BRIDGE = "d0000000-0000-4000-8000-000000000002";
@@ -65,7 +64,6 @@ const mockResolveTaskWatchdogMutationScope = vi.hoisted(() => vi.fn(async () => 
 const mockResolveCoreTrustPreset = vi.hoisted(() => vi.fn(() => ({ kind: "standard" })));
 const mockRunAttribution = vi.hoisted(() => ({
   value: {
-    companyId: "company-1",
     agentId: "22222222-2222-4222-8222-222222222222",
     responsibleUserId: null,
   } as Record<string, unknown> | null,
@@ -83,7 +81,7 @@ const mockReviewTransition = vi.hoisted(() => ({
 }));
 const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
   then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-    Promise.resolve([{ companyId: "company-1", agentId: CREATED_AGENT_ID, contextSnapshot: null }]).then(
+    Promise.resolve([{ agentId: CREATED_AGENT_ID, contextSnapshot: null }]).then(
       onFulfilled,
       onRejected,
     ),
@@ -115,7 +113,6 @@ const mockDbTransaction = vi.hoisted(() => vi.fn(async (callback: (tx: unknown) 
             then: (resolve: (rows: unknown[]) => unknown) => resolve(run
               ? [{
                   id: run.runId ?? null,
-                  companyId: run.companyId ?? null,
                   agentId: run.agentId ?? null,
                   responsibleUserId: run.responsibleUserId ?? null,
                   contextSnapshot: { issueId: mockCrossIssueInfluence.sourceIssueId },
@@ -172,7 +169,7 @@ function registerModuleMocks() {
       hasPermission: vi.fn(async () => true),
     }),
     agentService: () => ({
-      getById: vi.fn(async () => ({ id: CREATED_AGENT_ID, companyId: "company-1", permissions: null })),
+      getById: vi.fn(async () => ({ id: CREATED_AGENT_ID, permissions: null })),
       resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
         ambiguous: false,
         agent: { id: raw },
@@ -201,7 +198,6 @@ function registerModuleMocks() {
           feedbackDataSharingPreference: "prompt",
         },
       })),
-      listCompanyIds: vi.fn(async () => ["company-1"]),
     }),
     issueApprovalService: () => ({}),
     issueReferenceService: () => ({
@@ -241,7 +237,6 @@ function registerModuleMocks() {
 function createIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    companyId: "company-1",
     status: "in_progress",
     workMode: "standard",
     priority: "medium",
@@ -270,14 +265,12 @@ function loadAppModules() {
 async function createApp(actor: Record<string, unknown> = {
   type: "board",
   userId: "local-board",
-  companyIds: ["company-1"],
   source: "local_implicit",
   isInstanceAdmin: false,
 }, routeOptions: Record<string, unknown> = {}) {
   if (actor.type === "agent") {
     mockRunAttribution.value = {
       runId: actor.runId,
-      companyId: actor.companyId ?? "company-1",
       agentId: actor.agentId,
       responsibleUserId: actor.onBehalfOfUserId ?? null,
     };
@@ -330,7 +323,6 @@ describe("issue thread interaction routes", () => {
     // resetAllMocks() does not reset it. createApp() overwrites it for an
     // agent actor. A board actor leaves whatever value a prior test set here.
     mockRunAttribution.value = {
-      companyId: "company-1",
       agentId: CREATED_AGENT_ID,
       responsibleUserId: null,
     };
@@ -362,7 +354,6 @@ describe("issue thread interaction routes", () => {
     });
     mockInteractionService.withdrawInteraction.mockImplementation((...args) => resolveMockInteraction(args, {
       id: "interaction-withdraw",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "request_confirmation",
       createdByAgentId: CREATED_AGENT_ID,
@@ -375,7 +366,6 @@ describe("issue thread interaction routes", () => {
       async (_issue, _interactionId, _proposalId, execution) => ({
         ...(await mockInteractionService.acceptInteraction.mock.results.at(-1)?.value)?.interaction,
         id: _interactionId,
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -394,7 +384,6 @@ describe("issue thread interaction routes", () => {
     );
     mockInteractionService.create.mockResolvedValue({
       id: "interaction-1",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "suggest_tasks",
       status: "pending",
@@ -413,7 +402,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValue({
       interaction: {
         id: "interaction-1",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "suggest_tasks",
         status: "accepted",
@@ -444,7 +432,6 @@ describe("issue thread interaction routes", () => {
     });
     mockInteractionService.rejectInteraction.mockResolvedValue({
       id: "interaction-1",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "suggest_tasks",
       status: "rejected",
@@ -466,7 +453,6 @@ describe("issue thread interaction routes", () => {
     });
     mockInteractionService.answerQuestions.mockResolvedValue({
       id: "interaction-2",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "answered",
@@ -494,7 +480,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.submitItemVerdicts.mockResolvedValue({
       interaction: {
         id: "interaction-verdicts",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_item_verdicts",
         status: "pending",
@@ -535,7 +520,6 @@ describe("issue thread interaction routes", () => {
     });
     mockInteractionService.cancelQuestions.mockImplementation((...args) => resolveMockInteraction(args, {
       id: "interaction-2",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "cancelled",
@@ -647,7 +631,6 @@ describe("issue thread interaction routes", () => {
   it("wakes the addressed agent when an interaction is created", async () => {
     mockInteractionService.create.mockResolvedValueOnce({
       id: "interaction-addressed",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "pending",
@@ -699,7 +682,6 @@ describe("issue thread interaction routes", () => {
   it("does not route agent attention for a human-only interaction", async () => {
     mockInteractionService.create.mockResolvedValueOnce({
       id: "interaction-human-attention",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "pending",
@@ -850,7 +832,7 @@ describe("issue thread interaction routes", () => {
       addresseeUserId: "paperclip-id:chat-owner", continuationPolicy: "wake_assignee",
       payload: { version: 1, questions: [] },
     });
-    const app = await createApp({ type: "board", userId, source: "cloud_tenant", companyIds: ["company-1"] });
+    const app = await createApp({ type: "board", userId, source: "cloud_tenant", memberships: [{ membershipRole: "member", status: "active" }] });
     const response = await request(app).post(`/api/issues/${ISSUE_ID}/interactions/interaction-2/respond`)
       .send({ answers: [{ questionId: "scope", optionIds: ["phase-1"] }] });
     if (userId === "paperclip-id:chat-owner") {
@@ -868,7 +850,6 @@ describe("issue thread interaction routes", () => {
   it("routes wake-on-accept question answers through the same causal delivery service", async () => {
     mockInteractionService.answerQuestions.mockResolvedValueOnce({
       id: "interaction-2",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "answered",
@@ -976,7 +957,6 @@ describe("issue thread interaction routes", () => {
   it("cancels the bound native run when its question is withdrawn", async () => {
     mockInteractionService.withdrawInteraction.mockImplementationOnce((...args) => resolveMockInteraction(args, {
       id: "interaction-withdraw",
-      companyId: "company-1",
       issueId: ISSUE_ID,
       kind: "ask_user_questions",
       createdByAgentId: CREATED_AGENT_ID,
@@ -1013,7 +993,6 @@ describe("issue thread interaction routes", () => {
   it("keeps a durable withdrawal intent when immediate native cancellation fails", async () => {
     mockInteractionService.withdrawInteraction.mockImplementationOnce((...args) => resolveMockInteraction(args, {
       id: "interaction-withdraw",
-      companyId: "company-1",
       issueId: ISSUE_ID,
       kind: "ask_user_questions",
       createdByAgentId: CREATED_AGENT_ID,
@@ -1050,7 +1029,7 @@ describe("issue thread interaction routes", () => {
       effectiveResolverPolicy: "anyone",
       payload: { version: 1, prompt: "Proceed?" },
     });
-    const app = await createApp({ type: "agent", agentId: CREATED_AGENT_ID, companyId: "company-1", runId: RUN_1 });
+    const app = await createApp({ type: "agent", agentId: CREATED_AGENT_ID, runId: RUN_1 });
     const res = await request(app)
       .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-withdraw/withdraw")
       .send({});
@@ -1060,7 +1039,7 @@ describe("issue thread interaction routes", () => {
 
   it("allows the assignee agent to withdraw without waking itself", async () => {
     mockIssueService.getById.mockResolvedValueOnce(createIssue({ status: "todo" }));
-    const app = await createApp({ type: "agent", agentId: ASSIGNEE_AGENT_ID, companyId: "company-1", runId: RUN_2 });
+    const app = await createApp({ type: "agent", agentId: ASSIGNEE_AGENT_ID, runId: RUN_2 });
     const res = await request(app)
       .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-withdraw/withdraw")
       .send({});
@@ -1069,7 +1048,7 @@ describe("issue thread interaction routes", () => {
   });
 
   it("rejects withdrawal by an unrelated agent", async () => {
-    const app = await createApp({ type: "agent", agentId: "33333333-3333-4333-8333-333333333333", companyId: "company-1", runId: RUN_3 });
+    const app = await createApp({ type: "agent", agentId: "33333333-3333-4333-8333-333333333333", runId: RUN_3 });
     const res = await request(app)
       .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-withdraw/withdraw")
       .send({});
@@ -1081,12 +1060,11 @@ describe("issue thread interaction routes", () => {
     mockResolveTaskWatchdogMutationScope.mockResolvedValue({
       kind: "watchdog",
       watchdogId: "watchdog-1",
-      companyId: "company-1",
       watchedIssueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       watchdogIssueId: null,
       stopFingerprint: "stop-1",
     });
-    const app = await createApp({ type: "agent", agentId: ASSIGNEE_AGENT_ID, companyId: "company-1", runId: RUN_WATCHDOG });
+    const app = await createApp({ type: "agent", agentId: ASSIGNEE_AGENT_ID, runId: RUN_WATCHDOG });
     const res = await request(app)
       .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-withdraw/withdraw")
       .send({});
@@ -1102,7 +1080,7 @@ describe("issue thread interaction routes", () => {
 
   it("rejects withdrawal by low-trust actors", async () => {
     mockResolveCoreTrustPreset.mockReturnValueOnce({ kind: "low_trust_review" });
-    const app = await createApp({ type: "agent", agentId: ASSIGNEE_AGENT_ID, companyId: "company-1", runId: RUN_LOW_TRUST });
+    const app = await createApp({ type: "agent", agentId: ASSIGNEE_AGENT_ID, runId: RUN_LOW_TRUST });
     const res = await request(app)
       .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-withdraw/withdraw")
       .send({});
@@ -1174,7 +1152,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-3",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1227,7 +1204,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-tool-action",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1253,7 +1229,6 @@ describe("issue thread interaction routes", () => {
 
     expect(res.status).toBe(200);
     expect(approveToolActionRequest).toHaveBeenCalledWith({
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       interactionId: "interaction-tool-action",
       actionRequestId: "action-request-1",
@@ -1284,7 +1259,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-tool-action-failed",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1334,7 +1308,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-tool-action-expired",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1443,7 +1416,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-secret-proposal",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1469,7 +1441,6 @@ describe("issue thread interaction routes", () => {
 
     expect(res.status).toBe(200);
     expect(approveSecretProposal).toHaveBeenCalledWith({
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       interactionId: "interaction-secret-proposal",
       proposalId,
@@ -1502,7 +1473,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-secret-proposal-failed",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1589,7 +1559,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-checkbox",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_checkbox_confirmation",
         status: "accepted",
@@ -1669,7 +1638,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-checkbox-empty",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_checkbox_confirmation",
         status: "accepted",
@@ -1734,7 +1702,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-plan",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1825,7 +1792,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-other-plan",
-        companyId: "company-1",
         issueId: ISSUE_ID,
         kind: "request_confirmation",
         status: "accepted",
@@ -1865,7 +1831,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-standard-plan",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1928,7 +1893,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-4",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1996,7 +1960,6 @@ describe("issue thread interaction routes", () => {
   it("does not emit a continuation wake when request confirmations are rejected", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-3",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "request_confirmation",
       status: "rejected",
@@ -2030,7 +1993,6 @@ describe("issue thread interaction routes", () => {
   it("wakes the assignee to revise a rejected plan even when its policy is accept-only", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-rejected-plan",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "request_confirmation",
       status: "rejected",
@@ -2092,7 +2054,6 @@ describe("issue thread interaction routes", () => {
   it("delivers generic confirmation rejection feedback as the next turn message", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-warm-turn",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "request_confirmation",
       status: "rejected",
@@ -2150,7 +2111,6 @@ describe("issue thread interaction routes", () => {
     mockIssueService.getById.mockResolvedValue(issue);
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-native-completion-review",
-      companyId: "company-1",
       issueId: issue.id,
       kind: "request_confirmation",
       status: "rejected",
@@ -2205,7 +2165,6 @@ describe("issue thread interaction routes", () => {
     ]]));
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-last-review-path",
-      companyId: "company-1",
       issueId: issue.id,
       kind: "request_confirmation",
       status: "rejected",
@@ -2243,7 +2202,6 @@ describe("issue thread interaction routes", () => {
   it("wakes with decline instructions when a tool-action confirmation is rejected", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-tool-action-rejected",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "request_confirmation",
       status: "rejected",
@@ -2296,7 +2254,6 @@ describe("issue thread interaction routes", () => {
   it("does not emit an accept-only continuation wake for rejected suggested tasks", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-5",
-      companyId: "company-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "suggest_tasks",
       status: "rejected",
@@ -2330,7 +2287,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: CREATED_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_1,
     });
 
@@ -2365,7 +2321,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2415,7 +2370,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-agent-review",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -2430,7 +2384,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2483,7 +2436,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2528,7 +2480,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2569,7 +2520,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2632,7 +2582,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2670,7 +2619,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2716,7 +2664,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2761,7 +2708,6 @@ describe("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-unrelated",
-        companyId: "company-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -2780,7 +2726,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -2821,7 +2766,6 @@ describe("issue thread interaction routes", () => {
     const addresseeApp = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
     const addressee = await request(addresseeApp)
@@ -2834,7 +2778,6 @@ describe("issue thread interaction routes", () => {
     const unrelatedApp = await createApp({
       type: "agent",
       agentId: UNRELATED_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_3,
     });
     const unrelated = await request(unrelatedApp)
@@ -2868,7 +2811,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: CREATED_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_9,
     });
     const res = await request(app)
@@ -2898,7 +2840,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: CREATED_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_9,
     });
 
@@ -2980,7 +2921,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: CREATED_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_9,
     });
 
@@ -3006,7 +2946,6 @@ describe("issue thread interaction routes", () => {
     const sameRunApp = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
     const sameRun = await request(sameRunApp)
@@ -3018,8 +2957,7 @@ describe("issue thread interaction routes", () => {
     mockIssueService.getById.mockResolvedValueOnce(createIssue({ status: "todo" }));
     const missingRunApp = await createApp({
       type: "agent",
-      agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
+      agentId: ASSIGNEE_AGENT_ID
     });
     const missingRun = await request(missingRunApp)
       .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-2/respond")
@@ -3042,7 +2980,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_INVALID,
     });
     mockRunAttribution.value = null;
@@ -3058,29 +2995,6 @@ describe("issue thread interaction routes", () => {
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
-  it("hides cross-company interactions before resolver evaluation", async () => {
-    mockAccessDecide.mockResolvedValue({
-      allowed: false,
-      action: "issue:read",
-      reason: "deny_company_boundary",
-      explanation: "Denied by company boundary.",
-    });
-    const app = await createApp({
-      type: "agent",
-      agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-2",
-      runId: RUN_CROSS_COMPANY,
-    });
-
-    const res = await request(app)
-      .post("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/interactions/interaction-2/respond")
-      .send({ answers: [] });
-
-    expect(res.status).toBe(404);
-    expect(mockInteractionService.getForIssue).not.toHaveBeenCalled();
-    expect(mockInteractionService.answerQuestions).not.toHaveBeenCalled();
-  });
-
   it("contains task-bridge resolvers at the ordinary issue mutation boundary", async () => {
     mockAccessDecide.mockResolvedValue({
       allowed: false,
@@ -3091,7 +3005,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_TASK_BRIDGE,
       source: "agent_key",
       keyId: "bridge-key",
@@ -3142,7 +3055,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -3183,7 +3095,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 
@@ -3205,14 +3116,12 @@ describe("issue thread interaction routes", () => {
     const actor = {
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     };
 
     mockResolveTaskWatchdogMutationScope.mockResolvedValueOnce({
       kind: "watchdog",
       watchdogId: "watchdog-1",
-      companyId: "company-1",
       watchedIssueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       watchdogIssueId: null,
       stopFingerprint: "stop-1",
@@ -3297,7 +3206,6 @@ describe("issue thread interaction routes", () => {
       const app = await createApp({
         type: "agent",
         agentId: ASSIGNEE_AGENT_ID,
-        companyId: "company-1",
         runId: RUN_2,
       });
 
@@ -3338,7 +3246,6 @@ describe("issue thread interaction routes", () => {
       const app = await createApp({
         type: "agent",
         agentId: ASSIGNEE_AGENT_ID,
-        companyId: "company-1",
         runId: RUN_2,
       });
 
@@ -3370,7 +3277,6 @@ describe("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: ASSIGNEE_AGENT_ID,
-      companyId: "company-1",
       runId: RUN_2,
     });
 

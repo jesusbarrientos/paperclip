@@ -85,12 +85,10 @@ function render(element: ReactElement) {
 function buildItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
   return {
     id: "a1",
-    companyId: "c1",
     sourceKind: "approval",
     subject: {
       kind: "approval",
       id: "approval-1",
-      companyId: "c1",
       title: "Hire agent: Research Analyst",
       identifier: null,
       status: "pending",
@@ -138,7 +136,6 @@ describe("AttentionQueueRow", () => {
     const el = render(
       <AttentionQueueRow
         item={buildItem()}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -160,7 +157,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "issue",
             id: "issue-1",
-            companyId: "c1",
             title: "PR ready for review",
             identifier: null,
             status: "in_review",
@@ -168,7 +164,6 @@ describe("AttentionQueueRow", () => {
             metadata: { reviewAttentionState: "stalled" },
           },
         })}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -190,7 +185,6 @@ describe("AttentionQueueRow", () => {
       subject: {
         kind: "issue",
         id: "issue-1",
-        companyId: "c1",
         title: "PR ready for review",
         identifier: null,
         status: "in_review",
@@ -206,7 +200,6 @@ describe("AttentionQueueRow", () => {
     const el = render(
       <AttentionQueueRow
         item={reviewItemWithPolicy()}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -223,7 +216,6 @@ describe("AttentionQueueRow", () => {
     const el = render(
       <AttentionQueueRow
         item={reviewItemWithPolicy("human_only")}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -239,7 +231,6 @@ describe("AttentionQueueRow", () => {
     const el = render(
       <AttentionQueueRow
         item={reviewItemWithPolicy("not_creator")}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -255,7 +246,6 @@ describe("AttentionQueueRow", () => {
       const el = render(
         <AttentionQueueRow
           item={reviewItemWithPolicy(policy)}
-          companyId="c1"
           expanded
           onToggleExpand={noop}
           onDismiss={noop}
@@ -274,7 +264,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "issue",
             id: "issue-1",
-            companyId: "c1",
             title: "PR ready for review",
             identifier: null,
             status: "in_review",
@@ -282,7 +271,6 @@ describe("AttentionQueueRow", () => {
             metadata: {},
           },
         })}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -298,7 +286,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={item}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={onDismiss}
@@ -316,7 +303,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem()}
-        companyId="c1"
         expanded={false}
         onToggleExpand={onToggleExpand}
         onDismiss={noop}
@@ -336,7 +322,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem()}
-        companyId="c1"
         expanded={false}
         onToggleExpand={onToggleExpand}
         onDismiss={noop}
@@ -354,7 +339,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem()}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -375,7 +359,6 @@ describe("AttentionQueueRow", () => {
         item={buildItem({
           project: { id: "project-1", name: "Alpha", urlKey: "alpha", color: null, icon: "rocket" },
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -394,7 +377,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "issue",
             id: "i1",
-            companyId: "c1",
             title: "Update primary paperclip instance",
             identifier: "PAP-23",
             status: "blocked",
@@ -402,7 +384,6 @@ describe("AttentionQueueRow", () => {
           },
           relatedIssue: null,
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -425,7 +406,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "issue",
             id: "i1",
-            companyId: "c1",
             title: "Update primary paperclip instance",
             identifier: "PAP-23",
             status: "blocked",
@@ -433,7 +413,6 @@ describe("AttentionQueueRow", () => {
           },
           relatedIssue: null,
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -449,7 +428,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem({ relatedIssue: null })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -462,7 +440,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem()}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -482,7 +459,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem()}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -504,7 +480,6 @@ describe("AttentionQueueRow", () => {
             { id: "reject", label: "Reject", description: null },
           ],
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -547,7 +522,6 @@ describe("AttentionQueueRow", () => {
         item={buildItem({
           decisionVerbs: [{ id: "approve", label: "Approve", description: null }],
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={onToggleExpand}
         onDismiss={noop}
@@ -575,7 +549,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "interaction",
             id: "interaction-1",
-            companyId: "c1",
             title: "Plan approval",
             identifier: null,
             status: "pending",
@@ -587,7 +560,6 @@ describe("AttentionQueueRow", () => {
             { id: "reject", label: "Request changes", description: null },
           ],
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={onToggleExpand}
         onDismiss={noop}
@@ -619,7 +591,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "interaction",
             id: "interaction-1",
-            companyId: "c1",
             title: "Plan approval",
             identifier: null,
             status: "pending",
@@ -628,7 +599,6 @@ describe("AttentionQueueRow", () => {
           },
           decisionVerbs: [{ id: "reject", label: "Request changes", description: null }],
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={onToggleExpand}
         onDismiss={noop}
@@ -657,7 +627,6 @@ describe("AttentionQueueRow", () => {
             images: [{ assetId: "asset-1", alt: "Screenshot" }],
           },
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -687,7 +656,6 @@ describe("AttentionQueueRow", () => {
       return (
         <AttentionQueueRow
           item={item}
-          companyId="c1"
           expanded={false}
           onToggleExpand={noop}
           onDismiss={noop}
@@ -705,7 +673,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem({ sourceKind: "failed_run" as AttentionSourceKind, inlineResolvable: false })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -730,7 +697,6 @@ describe("AttentionQueueRow", () => {
             ],
           },
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={onToggleExpand}
         onDismiss={noop}
@@ -751,7 +717,6 @@ describe("AttentionQueueRow", () => {
           relatedIssue: {
             kind: "issue",
             id: "issue-1",
-            companyId: "c1",
             title: "Ship it",
             identifier: "PAP-42",
             status: "in_progress",
@@ -770,7 +735,6 @@ describe("AttentionQueueRow", () => {
             ],
           },
         })}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -797,7 +761,6 @@ describe("AttentionQueueRow", () => {
           subject: {
             kind: "issue",
             id: "issue-1",
-            companyId: "c1",
             title: "Unlinked review",
             identifier: null,
             status: "in_review",
@@ -815,7 +778,6 @@ describe("AttentionQueueRow", () => {
             ],
           },
         })}
-        companyId="c1"
         expanded
         onToggleExpand={noop}
         onDismiss={noop}
@@ -841,7 +803,6 @@ describe("AttentionQueueRow", () => {
       subject: {
         kind: "interaction",
         id: "interaction-1",
-        companyId: "c1",
         title: "Close this confirmation?",
         identifier: null,
         status: "pending",
@@ -868,7 +829,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={interactionItem(openAudience)}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -896,7 +856,6 @@ describe("AttentionQueueRow", () => {
           addresseeAgentId: "agent-codex",
           addresseeName: "CodexCoder",
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -923,7 +882,6 @@ describe("AttentionQueueRow", () => {
           addresseeAgentId: "agent-release",
           addresseeName,
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -940,7 +898,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={interactionItem(null)}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -965,7 +922,6 @@ describe("AttentionQueueRow", () => {
           requestedResolverPolicy: "human_only",
           effectiveResolverPolicy: "human_only",
         })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}
@@ -990,7 +946,6 @@ describe("AttentionQueueRow", () => {
     render(
       <AttentionQueueRow
         item={buildItem({ trainingExampleId: "example-1" })}
-        companyId="c1"
         expanded={false}
         onToggleExpand={noop}
         onDismiss={noop}

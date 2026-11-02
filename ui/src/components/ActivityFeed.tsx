@@ -8,7 +8,6 @@ import { activityApi } from "../api/activity";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
 import { queryKeys } from "../lib/queryKeys";
-import { useCompany } from "../context/CompanyContext";
 import { FeedCard } from "./FeedCard";
 import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
@@ -321,7 +320,6 @@ interface ActivityFeedProps {
 }
 
 export function ActivityFeed({ className }: ActivityFeedProps) {
-  const { selectedCompanyId } = useCompany();
   const [filter, setFilter] = useState<FilterValue>("all");
   const [groupMode, setGroupMode] = useState<GroupMode>("flat");
   const [showAllActivity, setShowAllActivity] = useState(false);
@@ -340,21 +338,19 @@ export function ActivityFeed({ className }: ActivityFeedProps) {
     document.head.appendChild(style);
   }, []);
 
-  // Fetch company-level activity. Poll ~5s when the tab is focused; slow/stop in the
+  // Fetch organization-level activity. Poll ~5s when the tab is focused; slow/stop in the
   // background so restored tabs don't storm the activity endpoint (PAP-12556).
   const activityRefetchInterval = useVisibilityRefetchInterval({ visibleMs: 5000 });
-  const activityQueryKey = queryKeys.activity(selectedCompanyId ?? "");
+  const activityQueryKey = queryKeys.activity();
   const sharedActivity = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "activity",
     queryKey: activityQueryKey,
-    enabled: !!selectedCompanyId,
     refetchInterval: activityRefetchInterval,
     leaderOnly: true,
   });
   const { data: activity, dataUpdatedAt: activityUpdatedAt } = useQuery({
     queryKey: activityQueryKey,
-    queryFn: ({ signal }) => activityApi.list(selectedCompanyId!, undefined, { signal }),
+    queryFn: ({ signal }) => activityApi.list(undefined, { signal }),
     enabled: sharedActivity.enabled,
     refetchInterval: sharedActivity.refetchInterval,
   });
@@ -362,16 +358,14 @@ export function ActivityFeed({ className }: ActivityFeedProps) {
 
   // Fetch agents for name resolution + empty state
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId ?? ""),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   // Fetch issues for name resolution
   const { data: issues } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId ?? ""),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.list(),
+    queryFn: () => issuesApi.list(),
   });
 
   const agentMap = useMemo(() => {

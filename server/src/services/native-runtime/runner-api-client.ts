@@ -29,7 +29,6 @@ export const runnerApiCallSchema = z.object({
 export type RunnerApiCall = z.infer<typeof runnerApiCallSchema>;
 export type RunnerApiFile = z.infer<typeof fileSchema>;
 export interface RunnerApiContext {
-  companyId: string;
   issueId: string;
   issueIdentifier?: string | null;
   runId: string;
@@ -57,7 +56,6 @@ export function validateRunnerApiCall(value: unknown, context: RunnerApiContext)
   const restriction = runnerApiRestriction(operation.method, operation.path);
   if (restriction) throw forbidden(restriction);
   if (!operation.allowedModes.includes(context.workMode)) throw forbidden("call_api permits only reads in Ask and Plan modes; use the permitted dedicated tools");
-  if (input.pathParams?.companyId && input.pathParams.companyId !== context.companyId) throw forbidden("API call belongs to another company");
   const mutation = !["GET", "HEAD", "OPTIONS"].includes(operation.method);
   if (mutation) {
     const issueRoute = /^\/api\/issues\/\{[^}]+\}/.test(operation.path);
@@ -102,7 +100,6 @@ export function runnerApiUrl(operation: RunnerApiOperation, input: RunnerApiCall
   const origin = new URL(apiUrl);
   if (!["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.search || origin.hash) throw new Error("Invalid configured Paperclip API origin");
   const params = { ...input.pathParams };
-  if (operation.path.includes("{companyId}")) params.companyId ??= context.companyId;
   const names = [...operation.path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
   for (const name of Object.keys(params)) if (!names.includes(name)) throw badRequest(`Unknown path parameter: ${name}`);
   const path = operation.path.replace(/\{([^}]+)\}/g, (_, name: string) => {

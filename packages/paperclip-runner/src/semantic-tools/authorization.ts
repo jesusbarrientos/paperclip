@@ -50,15 +50,6 @@ export function decidePaperclipSemanticAuthorization(
       "The authority context belongs to another run.",
     );
   }
-  if (
-    context.actor.companyId !== context.companyId ||
-    context.activeTask.companyId !== context.companyId
-  ) {
-    return deny(
-      "company_mismatch",
-      "The actor and active task must belong to the run company.",
-    );
-  }
   if (context.actor.status !== "active") {
     return deny("actor_inactive", "The run actor is not active.");
   }
@@ -153,11 +144,8 @@ function validAuthorityContext(
   const stableIds = [
     requestedRunId,
     context.runId,
-    context.companyId,
     actor.id,
-    actor.companyId,
     task.id,
-    task.companyId,
     ...(task.assigneeActorId === null ? [] : [task.assigneeActorId]),
     ...(task.executionRunId === null ? [] : [task.executionRunId]),
   ];

@@ -524,7 +524,7 @@ Before creating an issue or external task, the connector MUST check, in order:
 
 1. Active link with the same `(connectorInstanceId, externalTaskId)`.
 2. Paperclip backlink already present on the external task (custom field/comment marker).
-3. External URL/key reference already present on a Paperclip issue in the same company.
+3. External URL/key reference already present on a Paperclip issue in the same instance.
 
 Title-similarity matching MAY be used to *warn* in import UX; it MUST NOT silently merge.
 
@@ -934,12 +934,12 @@ audit-logged.
 
 ## 14. Security and Governance
 
-### 14.1 Company Boundary
+### 14.1 Organization Boundary
 
-Every connector instance binds to exactly one company. Every inbound effect MUST resolve its
-target company from the link/connector instance before any mutation, and MUST NOT cross
-companies. Multi-company installations are separate connector instances with separate credentials
-and state.
+A Paperclip instance serves exactly one organization (company), so every connector instance
+binds to that organization. Every inbound effect MUST resolve its target from the link/connector
+instance before any mutation. Operators who run several companies run several Paperclip
+instances, each with separate connector instances, credentials, and state.
 
 ### 14.2 Credentials and Webhooks
 

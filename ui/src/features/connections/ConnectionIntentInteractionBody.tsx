@@ -13,6 +13,7 @@ import { AgentMailIntentSetup } from "./AgentMailIntentSetup";
 import { connectionIntentsApi } from "@/api/connection-intents";
 import { aiConnectionsApi } from "@/api/ai-connections";
 import { agentsApi } from "@/api/agents";
+import { queryKeys } from "@/lib/queryKeys";
 import { AiConnectionCredentialStep } from "@/components/ai-connections/AiConnectionCredentialStep";
 import { defaultAiConnectionName } from "@/components/ai-connections/model";
 import { AppLogo } from "@/pages/apps/AppLogo";
@@ -66,8 +67,8 @@ export function ConnectionIntentInteractionBody({
   const isEmail = interaction.payload.purpose === "channel" && interaction.payload.serviceSlug === "agentmail";
   const accessRequest = interaction.payload.accessRequest;
   const agentQuery = useQuery({
-    queryKey: ["agents", "detail", interaction.payload.requestingAgentId, interaction.companyId],
-    queryFn: () => agentsApi.get(interaction.payload.requestingAgentId, interaction.companyId),
+    queryKey: queryKeys.agents.detail(interaction.payload.requestingAgentId),
+    queryFn: () => agentsApi.get(interaction.payload.requestingAgentId),
     enabled: Boolean(accessRequest) && isPending,
   });
   const focusTargetId = `connection-intent-focus-target-${interaction.id}`;
@@ -139,7 +140,7 @@ export function ConnectionIntentInteractionBody({
   });
   const adoptMutation = useMutation({
     mutationFn: (connectionId: string) => agentsApi.adoptAiConnection(
-      interaction.payload.requestingAgentId, interaction.id, connectionId, interaction.companyId,
+      interaction.payload.requestingAgentId, interaction.id, connectionId,
     ),
     onSuccess: async (updatedInteraction) => {
       await invalidateTask(updatedInteraction);
@@ -201,9 +202,9 @@ export function ConnectionIntentInteractionBody({
       const previous = setupQuery.data?.aiRepair?.connection;
       if (binding && previous && result.connectionId !== previous.id) {
         if (binding.mode === "responsible_user") {
-          await aiConnectionsApi.setDefault(interaction.companyId, result.grantId);
+          await aiConnectionsApi.setDefault(result.grantId);
         } else {
-          const agent = await agentsApi.get(interaction.payload.requestingAgentId, interaction.companyId);
+          const agent = await agentsApi.get(interaction.payload.requestingAgentId);
           const current = agent.runtimeConfig.aiConnection;
           if (!current || current.mode === "responsible_user" || current.mode === "router" || current.connectionId !== previous.id || current.grantId !== previous.grantId) {
             throw new Error("The agent’s AI connection changed. Reload the task and try again.");
@@ -211,9 +212,9 @@ export function ConnectionIntentInteractionBody({
           if (result.generation !== setupGeneration.current) return;
           await agentsApi.update(agent.id, {
             runtimeConfig: { ...agent.runtimeConfig, aiConnection: { ...binding, method: result.method, connectionId: result.connectionId, grantId: result.grantId } },
-          }, interaction.companyId);
+          });
         }
-        await queryClient.invalidateQueries({ queryKey: ["ai-connections", interaction.companyId] });
+        await queryClient.invalidateQueries({ queryKey: ["ai-connections"] });
       }
       if (result.generation === setupGeneration.current) await finishNewConnection(result);
     },
@@ -394,7 +395,6 @@ export function ConnectionIntentInteractionBody({
         </Button>
       </div>
     : repair ? repair.canReconnect ? <AiConnectionCredentialStep
-        companyId={interaction.companyId}
         provider={repair.connection.provider}
         initialMethod={repair.connection.method}
         fixedMethod={false}
@@ -414,7 +414,6 @@ export function ConnectionIntentInteractionBody({
     : aiConnection && aiConnection.mode !== "responsible_user"
       ? <p role="status" className="text-sm text-muted-foreground">The selected account is no longer available to you. Ask its owner to restore access, or choose an available AI connection in the agent’s settings.</p>
       : aiConnection ? <AiConnectionCredentialStep
-          companyId={interaction.companyId}
           provider={aiConnection.provider}
           name={defaultAiConnectionName(addresseeName ?? addresseeLabel, aiConnection.provider, "subscription")}
           hideName
@@ -466,7 +465,6 @@ export function ConnectionIntentInteractionBody({
           {setupContent}
           <Button type="button" variant="ghost" disabled={declineMutation.isPending} onClick={() => declineMutation.mutate()}>Not now</Button>
         </> : <AgentMailIntentSetup
-          companyId={interaction.companyId}
           agentId={interaction.payload.requestingAgentId}
           requestId={interaction.id}
           savedCredentialId={setupQuery.data?.emailSetup?.credentialConnectionId}

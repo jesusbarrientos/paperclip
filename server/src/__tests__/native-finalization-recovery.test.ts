@@ -31,7 +31,6 @@ import { assertRetainedNativeSourceArchiveSettled } from "../services/native-run
 describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
   let db: ReturnType<typeof createDb>;
-  const companyId = "72000000-0000-4000-8000-000000000001";
   const agentId = "72000000-0000-4000-8000-000000000002";
   const issueId = "72000000-0000-4000-8000-000000000003";
   const contractId = "72000000-0000-4000-8000-000000000004";
@@ -43,17 +42,15 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-recovery-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Native recovery", issuePrefix: "NRC" });
+    await db.insert(companies).values({ name: "Native recovery", issuePrefix: "NRC" });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Recovery agent",
       adapterType: "codex_local",
       status: "running",
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Recover invalid native finalization",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -61,7 +58,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     });
     await db.insert(completionContracts).values({
       id: contractId,
-      companyId,
       issueId,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -80,7 +76,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -93,7 +88,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       contextSnapshot: { issueId },
     });
     const port = new PaperclipControlPlanePort(db, {
-      companyId,
       issueId,
       runId,
       agentId,
@@ -105,7 +99,7 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     });
     await port.openRun({
       ...CONTROL_PLANE_CONFORMANCE_OPEN,
-      identity: { companyId, issueId, runId, agentId, sessionId: runId },
+      identity: { issueId, runId, agentId, sessionId: runId },
       sourceInstanceId: contractId,
     });
     await port.completeRun({
@@ -122,7 +116,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       },
     }).where(eq(nativeRunResults.id, stored.id));
     await db.insert(workspaceOperations).values({
-      companyId,
       heartbeatRunId: runId,
       issueId,
       phase: "workspace_finalize",
@@ -131,7 +124,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
 
     await db.insert(issues).values({
       id: staleIssueId,
-      companyId,
       title: "Retire a stale invalid finalizer",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -139,7 +131,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     });
     await db.insert(completionContracts).values({
       id: staleContractId,
-      companyId,
       issueId: staleIssueId,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -158,7 +149,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: staleRunId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -171,7 +161,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       contextSnapshot: { issueId: staleIssueId },
     });
     const stalePort = new PaperclipControlPlanePort(db, {
-      companyId,
       issueId: staleIssueId,
       runId: staleRunId,
       agentId,
@@ -183,7 +172,7 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     });
     await stalePort.openRun({
       ...CONTROL_PLANE_CONFORMANCE_OPEN,
-      identity: { companyId, issueId: staleIssueId, runId: staleRunId, agentId, sessionId: staleRunId },
+      identity: { issueId: staleIssueId, runId: staleRunId, agentId, sessionId: staleRunId },
       sourceInstanceId: staleContractId,
     });
     await stalePort.completeRun({
@@ -201,7 +190,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       },
     }).where(eq(nativeRunResults.id, staleStored.id));
     await db.insert(workspaceOperations).values({
-      companyId,
       heartbeatRunId: staleRunId,
       issueId: staleIssueId,
       phase: "workspace_finalize",
@@ -257,7 +245,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
     const newerRunId = "72000000-0000-4000-8000-000000000016";
     await db.insert(heartbeatRuns).values({
       id: newerRunId,
-      companyId,
       agentId,
       status: "succeeded",
       runtimeMode: "native",
@@ -267,7 +254,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       contextSnapshot: { issueId: staleIssueId },
     });
     const [newerResult] = await db.insert(nativeRunResults).values({
-      companyId,
       issueId: staleIssueId,
       runId: newerRunId,
       completionContractId: staleContractId,
@@ -278,7 +264,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       canonicalSha256: "newer-result-sha",
     }).returning();
     const [newerAssessment] = await db.insert(workAssessments).values({
-      companyId,
       issueId: staleIssueId,
       runId: newerRunId,
       contractId: staleContractId,
@@ -286,7 +271,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       triggerKind: "native_result",
       triggerRef: newerResult!.id,
       triggerCapability: "server_native_finalizer",
-      triggerActorCompanyId: companyId,
       priorIssueStatus: "in_progress",
       priorStatusVersion: 0,
       policyVersion: "phase6-v3",
@@ -294,7 +278,6 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
       inputDigest: "newer-assessment-digest",
     }).returning();
     const [newerDecision] = await db.insert(statusDecisions).values({
-      companyId,
       issueId: staleIssueId,
       runId: newerRunId,
       assessmentId: newerAssessment!.id,
@@ -366,7 +349,6 @@ describe("retained native cleanup discovery", () => {
       .insert(agents)
       .values({
         id: agentId,
-        companyId,
         name: "Cleanup",
         adapterType: "codex_local",
       });
@@ -375,8 +357,7 @@ describe("retained native cleanup discovery", () => {
     // Remove only this suite's discovery rows; the throwaway database retains
     // its accepted-result fixtures until teardown. No physical cleanup runs.
     await db
-      .delete(nativeRunFinalizations)
-      .where(eq(nativeRunFinalizations.companyId, companyId));
+      .delete(nativeRunFinalizations);
     await reconcileRetainedNativeSessionCleanups(db, {
       cleanup: async ({ runId }) => ({ runId, status: "not_eligible" }),
     });
@@ -401,13 +382,11 @@ describe("retained native cleanup discovery", () => {
       .insert(issues)
       .values({
         id: issueId,
-        companyId,
         title: "Retained session",
         assigneeAgentId: agentId,
       });
     await db.insert(completionContracts).values({
       id: contractId,
-      companyId,
       issueId,
       revision: options.revision ?? 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -422,7 +401,6 @@ describe("retained native cleanup discovery", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       runtimeMode: "native",
       status: "succeeded",
@@ -439,7 +417,6 @@ describe("retained native cleanup discovery", () => {
     const [result] = await db
       .insert(nativeRunResults)
       .values({
-        companyId,
         issueId,
         runId,
         completionContractId: contractId,
@@ -452,13 +429,11 @@ describe("retained native cleanup discovery", () => {
     const [assessment] = await db
       .insert(workAssessments)
       .values({
-        companyId,
         issueId,
         runId,
         contractId,
         resultId: result!.id,
         triggerKind: "native_result",
-        triggerActorCompanyId: companyId,
         priorIssueStatus: "in_progress",
         priorStatusVersion: 0,
         policyVersion: "phase6-v3",
@@ -469,7 +444,6 @@ describe("retained native cleanup discovery", () => {
     const [decision] = await db
       .insert(statusDecisions)
       .values({
-        companyId,
         issueId,
         runId,
         assessmentId: assessment!.id,
@@ -483,7 +457,6 @@ describe("retained native cleanup discovery", () => {
       })
       .returning();
     await db.insert(nativeRunFinalizations).values({
-      companyId,
       issueId,
       runId,
       phase: "committed",
@@ -511,10 +484,9 @@ describe("retained native cleanup discovery", () => {
     });
     const before = await db
       .select()
-      .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, companyId));
+      .from(heartbeatRuns);
     const cleanup = vi.fn(
-      async ({ runId }: { runId: string; companyId: string }) => ({
+      async ({ runId }: { runId: string; }) => ({
         runId,
         status: "not_eligible" as const,
       }),
@@ -524,13 +496,12 @@ describe("retained native cleanup discovery", () => {
       [stale, recovered].sort(),
     );
     expect(
-      cleanup.mock.calls.every(([input]) => input.companyId === companyId),
+      cleanup.mock.calls.every(([input]) => true),
     ).toBe(true);
     expect(
       await db
         .select()
-        .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, companyId)),
+        .from(heartbeatRuns),
     ).toEqual(before);
   });
 
@@ -596,7 +567,7 @@ describe("retained native cleanup discovery", () => {
       status: "not_eligible" as const,
     }));
     await reconcileRetainedNativeSessionCleanups(db, { cleanup });
-    expect(cleanup).toHaveBeenCalledExactlyOnceWith({ companyId, runId });
+    expect(cleanup).toHaveBeenCalledExactlyOnceWith({ runId });
     expect(
       await db
         .select()
@@ -609,7 +580,7 @@ describe("retained native cleanup discovery", () => {
     const runId = await candidate();
     const prepared = {
       kind: "native_cleanup_source_archive", version: 1, phase: "prepared",
-      requestId: "native-cleanup:source-archive", companyId, agentId, runId,
+      requestId: "native-cleanup:source-archive", agentId, runId,
       nativeSessionId: runId, runnerInstanceId: randomUUID(), stateKey: "a".repeat(64),
       archiveName: `${"a".repeat(64)}.identity_indeterminate.cleanup.fixture`,
       rootIdentity: { device: 1, inode: 2, mode: 0o40700 },
@@ -620,7 +591,7 @@ describe("retained native cleanup discovery", () => {
       .where(eq(nativeRunFinalizations.runId, runId));
     const cleanup = vi.fn(async () => ({ runId, status: "not_eligible" as const }));
     await reconcileRetainedNativeSessionCleanups(db, { cleanup });
-    expect(cleanup).toHaveBeenCalledExactlyOnceWith({ companyId, runId });
+    expect(cleanup).toHaveBeenCalledExactlyOnceWith({ runId });
     const [after] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, runId));
     expect(after?.recoveryHistory).toEqual(history);
     expect(after?.phase).toBe("committed");
@@ -630,7 +601,7 @@ describe("retained native cleanup discovery", () => {
     const first = await candidate();
     const [owner] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, first));
     const issueId = owner!.issueId;
-    const scope = { companyId, issueId, stateKey: "d".repeat(64) };
+    const scope = { issueId, stateKey: "d".repeat(64) };
     const prepared = { kind: "native_cleanup_source_archive", version: 1, phase: "prepared",
       stateKey: scope.stateKey, requestId: "native-cleanup:archive", sourceFingerprint: "a".repeat(64) };
     const settled = { kind: "native_cleanup_maintenance", phase: "settled",
@@ -641,7 +612,6 @@ describe("retained native cleanup discovery", () => {
     await setHistory(first, [prepared]);
     await expect(assertRetainedNativeSourceArchiveSettled(db, scope)).rejects.toMatchObject({ code: "native_session_cleanup_quarantined" });
     await assertRetainedNativeSourceArchiveSettled(db, { ...scope, stateKey: "e".repeat(64) });
-    await assertRetainedNativeSourceArchiveSettled(db, { ...scope, companyId: randomUUID() });
     await assertRetainedNativeSourceArchiveSettled(db, { ...scope, issueId: randomUUID() });
     await setHistory(first, [prepared, { ...settled, sourceFingerprint: "b".repeat(64) }]);
     await expect(assertRetainedNativeSourceArchiveSettled(db, scope)).rejects.toMatchObject({ code: "native_session_cleanup_quarantined" });
@@ -732,7 +702,7 @@ describe("retained native cleanup discovery", () => {
       started = resolve;
     });
     const cleanup = vi.fn(
-      async ({ runId }: { runId: string; companyId: string }) => {
+      async ({ runId }: { runId: string; }) => {
         started();
         await held;
         return { runId, status: "not_eligible" as const };
@@ -758,7 +728,7 @@ describe("retained native cleanup discovery", () => {
     const ids = [await candidate(), await candidate()].sort();
     const onError = vi.fn();
     const cleanup = vi.fn(
-      async ({ runId }: { runId: string; companyId: string }) => {
+      async ({ runId }: { runId: string; }) => {
         if (runId === ids[0]) throw new Error("fixture cleanup refused");
         return { runId, status: "operator_required" as const };
       },

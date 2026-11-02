@@ -9,7 +9,6 @@ import {
 } from "./common.js";
 
 interface CompanyOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface JsonPayloadOptions extends CompanyOptions {
@@ -109,17 +108,15 @@ function addCompanyGet(parent: Command, name: string, description: string, path:
     parent
       .command(name)
       .description(description)
-      .option("-C, --company-id <id>", "Company ID")
       .action(async (opts: CompanyOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await ctx.api.get(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`);
+          const ctx = resolveCommandContext(opts);
+          const result = await ctx.api.get(`/api/${path}`);
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -128,12 +125,11 @@ function addBinaryCompanyGet(parent: Command, name: string, description: string,
     parent
       .command(name)
       .description(description)
-      .option("-C, --company-id <id>", "Company ID")
       .option("--out <path>", "Write output to file")
       .action(async (opts: OrgOutputOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const response = await fetch(buildApiUrl(ctx.api.apiBase, `${apiPath`/api/companies/${ctx.companyId}`}/${path}`), {
+          const ctx = resolveCommandContext(opts);
+          const response = await fetch(buildApiUrl(ctx.api.apiBase, `/api/${path}`), {
             headers: ctx.api.apiKey ? { authorization: `Bearer ${ctx.api.apiKey}` } : undefined,
           });
           const bytes = Buffer.from(await response.arrayBuffer());
@@ -148,8 +144,7 @@ function addBinaryCompanyGet(parent: Command, name: string, description: string,
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -158,18 +153,16 @@ function addCompanyPostJson(parent: Command, name: string, description: string, 
     parent
       .command(name)
       .description(description)
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "JSON payload")
       .action(async (opts: JsonPayloadOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await ctx.api.post(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`, parseJson(opts.payloadJson));
+          const ctx = resolveCommandContext(opts);
+          const result = await ctx.api.post(`/api/${path}`, parseJson(opts.payloadJson));
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

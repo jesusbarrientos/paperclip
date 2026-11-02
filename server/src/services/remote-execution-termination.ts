@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { environmentLeases, type Db } from "@paperclipai/db";
 
 type LeaseIdentity = {
-  id: string; companyId: string; heartbeatRunId: string | null;
+  id: string;
+ heartbeatRunId: string | null;
   provider: string | null; providerLeaseId: string | null;
 };
 
@@ -14,7 +15,7 @@ export function remoteTerminationReceipt(lease: LeaseIdentity, value: unknown) {
       !lease.providerLeaseId || receipt?.providerLeaseId !== lease.providerLeaseId ||
       !["stopped", "destroyed"].includes(String(receipt?.state))) return undefined;
   return {
-    schema: "paperclip.remote-termination.v1", companyId: lease.companyId,
+    schema: "paperclip.remote-termination.v1",
     runId: lease.heartbeatRunId, leaseId: lease.id, provider: lease.provider,
     providerLeaseId: lease.providerLeaseId, state: receipt!.state,
     confirmedAt: new Date().toISOString(),
@@ -26,10 +27,9 @@ export function hasRemoteTerminationReceipt(lease: LeaseIdentity & {
   metadata: Record<string, unknown> | null;
 }): boolean {
   const receipt = lease.metadata?.remoteExecutionTermination as Record<string, unknown> | undefined;
-  return Boolean(lease.releasedAt && lease.cleanupStatus === "success" &&
-    ["released", "expired", "failed"].includes(lease.status) && receipt &&
-    receipt.schema === "paperclip.remote-termination.v1" &&
-    receipt.companyId === lease.companyId && receipt.runId === lease.heartbeatRunId &&
+  return Boolean((lease.releasedAt && lease.cleanupStatus === "success" &&
+          ["released", "expired", "failed"].includes(lease.status) && receipt &&
+          receipt.schema === "paperclip.remote-termination.v1") && receipt.runId === lease.heartbeatRunId &&
     receipt.leaseId === lease.id && receipt.provider === lease.provider &&
     remoteTerminationReceipt(lease, receipt));
 }
@@ -39,14 +39,12 @@ export function remoteLeaseCleanupScope(lease: Pick<LeaseIdentity, "provider" | 
     ? JSON.stringify([lease.provider, lease.providerLeaseId]) : undefined;
 }
 
-export async function stoppedRemoteCleanupScopes(db: Db, companyId: string, runId: string) {
-  const leases = await db.select().from(environmentLeases).where(and(
-    eq(environmentLeases.companyId, companyId), eq(environmentLeases.heartbeatRunId, runId),
-  ));
+export async function stoppedRemoteCleanupScopes(db: Db, runId: string) {
+  const leases = await db.select().from(environmentLeases).where(eq(environmentLeases.heartbeatRunId, runId));
   if (leases.length === 0 || !leases.every(hasRemoteTerminationReceipt)) return null;
   return [...new Set(leases.map(lease => remoteLeaseCleanupScope(lease)!))];
 }
 
-export async function remoteExecutionHasStopped(db: Db, companyId: string, runId: string) {
-  return await stoppedRemoteCleanupScopes(db, companyId, runId) !== null;
+export async function remoteExecutionHasStopped(db: Db, runId: string) {
+  return await stoppedRemoteCleanupScopes(db, runId) !== null;
 }

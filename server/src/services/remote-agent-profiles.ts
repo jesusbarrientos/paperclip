@@ -146,51 +146,40 @@ function assertQualifiedRevisionUnchanged(
 }
 
 export function remoteAgentProfileService(db: Db) {
-  async function list(companyId: string, service?: RemoteAgentService) {
+  async function list(service?: RemoteAgentService) {
     return db
       .select()
       .from(remoteAgentProfiles)
-      .where(
-        service
-          ? and(eq(remoteAgentProfiles.companyId, companyId), eq(remoteAgentProfiles.service, service))
-          : eq(remoteAgentProfiles.companyId, companyId),
-      )
+      .where(service ? eq(remoteAgentProfiles.service, service) : undefined)
       .orderBy(asc(remoteAgentProfiles.displayName));
   }
 
-  async function get(companyId: string, profileIdOrKey: string) {
+  async function get(profileIdOrKey: string) {
     const isUuid = UUID_RE.test(profileIdOrKey);
     const rows = await db
       .select()
       .from(remoteAgentProfiles)
-      .where(and(
-        eq(remoteAgentProfiles.companyId, companyId),
-        isUuid
-          ? eq(remoteAgentProfiles.id, profileIdOrKey)
-          : eq(remoteAgentProfiles.profileKey, profileIdOrKey),
-      ))
+      .where(isUuid
+                    ? eq(remoteAgentProfiles.id, profileIdOrKey)
+                    : eq(remoteAgentProfiles.profileKey, profileIdOrKey))
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async function getByProfileKey(companyId: string, profileKey: string) {
+  async function getByProfileKey(profileKey: string) {
     const rows = await db
       .select()
       .from(remoteAgentProfiles)
-      .where(and(
-        eq(remoteAgentProfiles.companyId, companyId),
-        eq(remoteAgentProfiles.profileKey, profileKey),
-      ))
+      .where(eq(remoteAgentProfiles.profileKey, profileKey))
       .limit(1);
     return rows[0] ?? null;
   }
 
   async function requireQualified(
-    companyId: string,
     profileIdOrKey: string,
     service?: RemoteAgentService,
   ) {
-    const profile = await get(companyId, profileIdOrKey);
+    const profile = await get(profileIdOrKey);
     if (!profile || (service && profile.service !== service)) {
       throw notFound("Remote Agent profile not found");
     }
@@ -222,7 +211,7 @@ export function remoteAgentProfileService(db: Db) {
     return profile;
   }
 
-  async function upsert(companyId: string, input: RemoteAgentProfileInput) {
+  async function upsert(input: RemoteAgentProfileInput) {
     if ("credentialSecretId" in (input as unknown as Record<string, unknown>)) {
       throw unprocessable("AWS AgentCore profiles use workload identity, not a credential secret");
     }
@@ -247,7 +236,7 @@ export function remoteAgentProfileService(db: Db) {
       { required: input.enabled },
     );
 
-    const existing = await getByProfileKey(companyId, profileKey);
+    const existing = await getByProfileKey(profileKey);
 
     const qualifiedRevision = qualificationAttested
       ? computeRemoteAgentProfileRevision({
@@ -260,7 +249,6 @@ export function remoteAgentProfileService(db: Db) {
     assertQualifiedRevisionUnchanged(existing, qualifiedRevision);
 
     const values = {
-      companyId,
       profileKey,
       displayName,
       service: input.service,
@@ -279,7 +267,7 @@ export function remoteAgentProfileService(db: Db) {
       .insert(remoteAgentProfiles)
       .values(values)
       .onConflictDoUpdate({
-        target: [remoteAgentProfiles.companyId, remoteAgentProfiles.profileKey],
+        target: [remoteAgentProfiles.profileKey],
         set: values,
       })
       .returning();

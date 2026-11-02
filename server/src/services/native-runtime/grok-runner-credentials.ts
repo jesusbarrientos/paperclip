@@ -7,7 +7,6 @@ import { readLocalAiCredentialFile } from "../local-ai-credential-file.js";
  * selected credential, never an ambient host home or an implicit API key.
  */
 export async function prepareGrokRunnerCredentials(input: {
-  companyId: string;
   environment: NodeJS.ProcessEnv;
   remote: boolean;
   managedHome?: string;
@@ -20,7 +19,7 @@ export async function prepareGrokRunnerCredentials(input: {
   delete environment.XAI_API_KEY;
   // Credential discovery belongs to the controller instance. Agent-supplied
   // PAPERCLIP_HOME/INSTANCE_ID values must not redirect company login reads.
-  const companyHome = resolveManagedGrokHomeDir(process.env, input.companyId);
+  const companyHome = resolveManagedGrokHomeDir(process.env);
   const home = configuredHome ?? (await grokHomeHasUsableAuth(companyHome)
     ? companyHome : input.remote ? companyHome : join(homedir(), ".grok"));
   try {

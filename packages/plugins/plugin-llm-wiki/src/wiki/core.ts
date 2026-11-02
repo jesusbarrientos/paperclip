@@ -202,7 +202,6 @@ export type WikiResourceOption = {
 
 export type WikiSpace = {
   id: string;
-  companyId: string;
   wikiId: string;
   slug: string;
   displayName: string;
@@ -227,18 +226,15 @@ export type WikiSpaceWithFolderStatus = WikiSpace & {
 };
 
 type BootstrapInput = {
-  companyId: string;
   path?: string | null;
 };
 
 type SpaceInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
 };
 
 type CreateSpaceInput = {
-  companyId: string;
   wikiId?: string | null;
   slug?: string | null;
   displayName?: string | null;
@@ -254,7 +250,6 @@ type UpdateSpaceInput = SpaceInput & {
 };
 
 type OperationInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   operationType: "ingest" | "query" | "lint" | "file-as-page" | "index" | "distill" | "backfill";
@@ -271,7 +266,6 @@ type OperationSpaceContext = {
 };
 
 type QuerySessionInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   question: string;
@@ -279,7 +273,6 @@ type QuerySessionInput = {
 };
 
 type CaptureSourceInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   sourceType?: string | null;
@@ -291,7 +284,6 @@ type CaptureSourceInput = {
 };
 
 type PaperclipSourceBundleInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   projectId?: string | null;
@@ -335,7 +327,6 @@ type PaperclipSourceBundle = {
 type PaperclipDistillationRunInput = PaperclipSourceBundleInput;
 
 type PaperclipDistillationOutcomeInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   runId: string;
@@ -349,7 +340,6 @@ type PaperclipDistillationOutcomeInput = {
 };
 
 type PaperclipDistillationWorkItemInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   kind: PaperclipDistillationWorkItemKind;
@@ -368,7 +358,6 @@ type PaperclipProjectPageDistillationInput = PaperclipSourceBundleInput & {
 };
 
 type WritePageInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   path: string;
@@ -381,7 +370,6 @@ type WritePageInput = {
 };
 
 type FileQueryAnswerInput = {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   querySessionId?: string | null;
@@ -455,16 +443,15 @@ export function normalizeSpaceSlug(value: unknown): string {
 
 async function requirePaperclipIngestionPolicy(
   ctx: PluginContext,
-  input: { companyId: string; wikiId: string; spaceSlug?: string | null },
+  input: { wikiId: string; spaceSlug?: string | null },
   purpose: PaperclipIngestionPolicyPurpose,
   options: { requireEnabledProfile?: boolean } = {},
 ): Promise<WikiSpace> {
   const space = await resolveSpace(ctx, {
-    companyId: input.companyId,
     wikiId: input.wikiId,
     spaceSlug: input.spaceSlug,
   });
-  const profile = await profileForSpace(ctx, input.companyId, space);
+  const profile = await profileForSpace(ctx, space);
   const decision = evaluatePaperclipProfilePolicy({
     space,
     profile,
@@ -491,9 +478,9 @@ function assertRequestedCharacterLimit(name: string, value: unknown, max: number
   }
 }
 
-function stableSpaceId(input: { companyId: string; wikiId: string; slug: string }): string {
+function stableSpaceId(input: { wikiId: string; slug: string }): string {
   const hex = createHash("md5")
-    .update(`${input.companyId}:${input.wikiId}:${input.slug}`)
+    .update(`${input.wikiId}:${input.slug}`)
     .digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
@@ -638,11 +625,11 @@ function protectDistillationSourceBody(input: {
 
 async function resolvePaperclipDistillationLimits(
   ctx: PluginContext,
-  input: Pick<PaperclipSourceBundleInput, "companyId" | "maxCharacters" | "maxCharactersPerSource" | "routineRun">,
+  input: Pick<PaperclipSourceBundleInput, "maxCharacters" | "maxCharactersPerSource" | "routineRun">,
 ): Promise<PaperclipDistillationLimits> {
   assertRequestedCharacterLimit("maxCharacters", input.maxCharacters, DEFAULT_MAX_PAPERCLIP_CURSOR_WINDOW_CHARS);
   assertRequestedCharacterLimit("maxCharactersPerSource", input.maxCharactersPerSource, DEFAULT_MAX_PAPERCLIP_ISSUE_SOURCE_CHARS);
-  const config = await ctx.config.get(input.companyId) as Record<string, unknown>;
+  const config = await ctx.config.get() as Record<string, unknown>;
   const maxCharactersPerSource = Math.min(
     normalizeBundleLimit(input.maxCharactersPerSource, DEFAULT_MAX_PAPERCLIP_ISSUE_SOURCE_CHARS),
     normalizeBundleLimit(config.maxPaperclipIssueSourceCharacters, DEFAULT_MAX_PAPERCLIP_ISSUE_SOURCE_CHARS),
@@ -667,11 +654,11 @@ async function resolvePaperclipDistillationLimits(
 
 async function resolvePaperclipDistillationLimitsForSpace(
   ctx: PluginContext,
-  input: Pick<PaperclipSourceBundleInput, "companyId" | "maxCharacters" | "maxCharactersPerSource" | "routineRun"> & { space: WikiSpace },
+  input: Pick<PaperclipSourceBundleInput, "maxCharacters" | "maxCharactersPerSource" | "routineRun"> & { space: WikiSpace },
 ): Promise<PaperclipDistillationLimits> {
   const [base, profile] = await Promise.all([
     resolvePaperclipDistillationLimits(ctx, input),
-    profileForSpace(ctx, input.companyId, input.space),
+    profileForSpace(ctx, input.space),
   ]);
   return {
     ...base,
@@ -685,8 +672,8 @@ function estimateSourceCostCents(characters: number, costCentsPerThousandSourceC
   return Math.ceil((characters / 1000) * costCentsPerThousandSourceCharacters);
 }
 
-async function assertSourceWithinConfiguredLimit(ctx: PluginContext, companyId: string, contents: string) {
-  const config = await ctx.config.get(companyId);
+async function assertSourceWithinConfiguredLimit(ctx: PluginContext, contents: string) {
+  const config = await ctx.config.get();
   const maxSourceBytes = normalizeMaxSourceBytes(config.maxSourceBytes);
   const sourceBytes = byteLength(contents);
   if (sourceBytes > maxSourceBytes) {
@@ -824,31 +811,29 @@ function normalizePaperclipIngestionProfile(
   };
 }
 
-async function profileForSpace(ctx: PluginContext, companyId: string, space: WikiSpace): Promise<PaperclipIngestionProfileV1> {
-  const legacySettings = space.slug === DEFAULT_SPACE_SLUG ? await getEventIngestionSettings(ctx, companyId) : null;
+async function profileForSpace(ctx: PluginContext, space: WikiSpace): Promise<PaperclipIngestionProfileV1> {
+  const legacySettings = space.slug === DEFAULT_SPACE_SLUG ? await getEventIngestionSettings(ctx) : null;
   return normalizePaperclipIngestionProfile(space.settings.paperclipIngestion, { space, legacySettings });
 }
 
-function eventIngestionStateKey(companyId: string) {
+function eventIngestionStateKey() {
   return {
-    scopeKind: "company" as const,
-    scopeId: companyId,
+    scopeKind: "instance" as const,
     namespace: EVENT_INGESTION_STATE_NAMESPACE,
     stateKey: EVENT_INGESTION_STATE_KEY,
   };
 }
 
-function eventIngestionDedupKey(companyId: string, wikiId: string, spaceId: string, sourceKind: WikiEventIngestionSource, sourceId: string) {
+function eventIngestionDedupKey(wikiId: string, spaceId: string, sourceKind: WikiEventIngestionSource, sourceId: string) {
   return {
-    scopeKind: "company" as const,
-    scopeId: companyId,
+    scopeKind: "instance" as const,
     namespace: EVENT_INGESTION_DEDUP_NAMESPACE,
     stateKey: `${wikiId}:${spaceId}:${sourceKind}:${sourceId}`,
   };
 }
 
-export async function getEventIngestionSettings(ctx: PluginContext, companyId: string): Promise<WikiEventIngestionSettings> {
-  return normalizeEventIngestionSettings(await ctx.state.get(eventIngestionStateKey(companyId)));
+export async function getEventIngestionSettings(ctx: PluginContext): Promise<WikiEventIngestionSettings> {
+  return normalizeEventIngestionSettings(await ctx.state.get(eventIngestionStateKey()));
 }
 
 function evaluatePaperclipProfilePolicy(input: {
@@ -895,19 +880,17 @@ function evaluatePaperclipProfilePolicy(input: {
 
 export async function getPaperclipIngestionProfile(
   ctx: PluginContext,
-  input: { companyId: string; wikiId?: string | null; spaceSlug?: string | null },
+  input: { wikiId?: string | null; spaceSlug?: string | null },
 ): Promise<PaperclipIngestionProfileRead> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
-  const profile = await profileForSpace(ctx, input.companyId, space);
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
+  const profile = await profileForSpace(ctx, space);
   const policy = evaluatePaperclipProfilePolicy({ space, profile, purpose: "profile_read" });
   const historicalPageCount = await countPaperclipHistoricalPages(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceId: space.id,
   });
   const overlapCount = await countPaperclipProfileOverlaps(ctx, {
-    companyId: input.companyId,
     wikiId,
     space,
     profile,
@@ -936,12 +919,12 @@ export async function getPaperclipIngestionProfile(
   };
 }
 
-async function countPaperclipHistoricalPages(ctx: PluginContext, input: { companyId: string; wikiId: string; spaceId: string }): Promise<number> {
+async function countPaperclipHistoricalPages(ctx: PluginContext, input: { wikiId: string; spaceId: string }): Promise<number> {
   const rows = await ctx.db.query<{ count: string | number }>(
     `SELECT count(*)::text AS count
        FROM ${pageBindingTable(ctx)}
-      WHERE company_id = $1 AND wiki_id = $2 AND space_id = $3`,
-    [input.companyId, input.wikiId, input.spaceId],
+      WHERE wiki_id = $1 AND space_id = $2`,
+    [input.wikiId, input.spaceId],
   );
   return Number(rows[0]?.count ?? 0) || 0;
 }
@@ -954,7 +937,6 @@ function scopeIdentity(scope: PaperclipIngestionSourceScope): string[] {
 }
 
 async function countPaperclipProfileOverlaps(ctx: PluginContext, input: {
-  companyId: string;
   wikiId: string;
   space: WikiSpace;
   profile: PaperclipIngestionProfileV1;
@@ -962,11 +944,11 @@ async function countPaperclipProfileOverlaps(ctx: PluginContext, input: {
   if (!input.profile.enabled || input.profile.sourceScopes.length === 0) return 0;
   const own = new Set(input.profile.sourceScopes.flatMap(scopeIdentity));
   if (own.size === 0) return 0;
-  const { spaces } = await listSpaces(ctx, { companyId: input.companyId, wikiId: input.wikiId });
+  const { spaces } = await listSpaces(ctx, { wikiId: input.wikiId });
   let overlaps = 0;
   for (const space of spaces) {
     if (space.id === input.space.id) continue;
-    const profile = await profileForSpace(ctx, input.companyId, space);
+    const profile = await profileForSpace(ctx, space);
     if (!profile.enabled) continue;
     for (const key of profile.sourceScopes.flatMap(scopeIdentity)) {
       if (own.has(key)) overlaps += 1;
@@ -976,7 +958,6 @@ async function countPaperclipProfileOverlaps(ctx: PluginContext, input: {
 }
 
 async function validatePaperclipIngestionProfile(ctx: PluginContext, input: {
-  companyId: string;
   space: WikiSpace;
   profile: PaperclipIngestionProfileV1;
 }) {
@@ -995,15 +976,15 @@ async function validatePaperclipIngestionProfile(ctx: PluginContext, input: {
   }
   for (const scope of input.profile.sourceScopes) {
     if (scope.kind === "company_all" && input.space.slug !== DEFAULT_SPACE_SLUG) {
-      throw new Error("Everything in the company is only available on the default wiki space.");
+      throw new Error("Everything in the organization is only available on the default wiki space.");
     }
     if (scope.kind === "selected_projects") {
       if (scope.projectIds.length > MAX_PAPERCLIP_PROFILE_SELECTED_PROJECTS) {
         throw new Error(`selected_projects exceeds the hard cap of ${MAX_PAPERCLIP_PROFILE_SELECTED_PROJECTS}.`);
       }
       for (const projectId of scope.projectIds) {
-        const project = await ctx.projects.get(projectId, input.companyId);
-        if (!project) throw new Error(`Project belongs to another company or does not exist: ${projectId}`);
+        const project = await ctx.projects.get(projectId);
+        if (!project) throw new Error(`Project does not exist: ${projectId}`);
       }
     }
     if (scope.kind === "root_issues") {
@@ -1011,32 +992,30 @@ async function validatePaperclipIngestionProfile(ctx: PluginContext, input: {
         throw new Error(`root_issues exceeds the hard cap of ${MAX_PAPERCLIP_PROFILE_ROOT_ISSUES}.`);
       }
       for (const issueId of scope.issueIds) {
-        const issue = await ctx.issues.get(issueId, input.companyId);
-        if (!issue) throw new Error(`Issue belongs to another company or does not exist: ${issueId}`);
+        const issue = await ctx.issues.get(issueId);
+        if (!issue) throw new Error(`Issue does not exist: ${issueId}`);
       }
     }
   }
 }
 
 export async function updatePaperclipIngestionProfile(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   profile: unknown;
 }): Promise<PaperclipIngestionProfileRead> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
-  const current = await profileForSpace(ctx, input.companyId, space);
-  const profile = normalizePaperclipIngestionProfile(input.profile, { space, legacySettings: space.slug === DEFAULT_SPACE_SLUG ? await getEventIngestionSettings(ctx, input.companyId) : null });
-  await validatePaperclipIngestionProfile(ctx, { companyId: input.companyId, space, profile });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
+  const current = await profileForSpace(ctx, space);
+  const profile = normalizePaperclipIngestionProfile(input.profile, { space, legacySettings: space.slug === DEFAULT_SPACE_SLUG ? await getEventIngestionSettings(ctx) : null });
+  await validatePaperclipIngestionProfile(ctx, { space, profile });
   await updateSpace(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceSlug: space.slug,
     settings: { paperclipIngestion: profile },
   });
   if (space.slug === DEFAULT_SPACE_SLUG) {
-    await ctx.state.set(eventIngestionStateKey(input.companyId), {
+    await ctx.state.set(eventIngestionStateKey(), {
       enabled: profile.enabled,
       wikiId,
       maxCharacters: profile.cursor.maxCharactersPerSource,
@@ -1048,7 +1027,6 @@ export async function updatePaperclipIngestionProfile(ctx: PluginContext, input:
     });
   }
   await ctx.activity.log({
-    companyId: input.companyId,
     message: `Updated Paperclip ingestion profile for ${space.displayName}`,
     entityType: "llm_wiki_space",
     entityId: space.id,
@@ -1063,7 +1041,7 @@ export async function updatePaperclipIngestionProfile(ctx: PluginContext, input:
       cursor: profile.cursor,
     },
   });
-  return getPaperclipIngestionProfile(ctx, { companyId: input.companyId, wikiId, spaceSlug: space.slug });
+  return getPaperclipIngestionProfile(ctx, { wikiId, spaceSlug: space.slug });
 }
 
 export async function listPaperclipIngestionCandidates(ctx: PluginContext, input: PaperclipIngestionCandidatesInput): Promise<{
@@ -1071,9 +1049,9 @@ export async function listPaperclipIngestionCandidates(ctx: PluginContext, input
   rootIssues: Array<{ id: string; identifier: string | null; title: string; status: string; projectId: string | null }>;
 }> {
   const wikiId = normalizeWikiId(input.wikiId);
-  await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "candidate_search");
+  await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "candidate_search");
   const query = stringField(input.query)?.toLowerCase() ?? "";
-  const projects = (await ctx.projects.list({ companyId: input.companyId, limit: 200 }))
+  const projects = (await ctx.projects.list({ limit: 200 }))
     .filter((project) => !project.archivedAt)
     .filter((project) => !query || project.name.toLowerCase().includes(query))
     .slice(0, 50)
@@ -1084,7 +1062,6 @@ export async function listPaperclipIngestionCandidates(ctx: PluginContext, input
       updatedAt: isoString(project.updatedAt),
     }));
   const issues = (await ctx.issues.list({
-    companyId: input.companyId,
     includePluginOperations: false,
     limit: 200,
   }))
@@ -1103,10 +1080,9 @@ export async function listPaperclipIngestionCandidates(ctx: PluginContext, input
 
   export async function updateEventIngestionSettings(
     ctx: PluginContext,
-  input: { companyId: string; settings: WikiEventIngestionSettingsUpdate },
+  input: { settings: WikiEventIngestionSettingsUpdate },
   ): Promise<WikiEventIngestionSettings> {
   await requirePaperclipIngestionPolicy(ctx, {
-    companyId: input.companyId,
     wikiId: normalizeWikiId(input.settings.wikiId),
     spaceSlug: DEFAULT_SPACE_SLUG,
   }, "profile_update");
@@ -1115,7 +1091,7 @@ export async function listPaperclipIngestionCandidates(ctx: PluginContext, input
     throw new Error(`Paperclip ingestion profile sources exceed the hard cap of ${MAX_PAPERCLIP_INGESTION_PROFILE_SOURCE_COUNT}.`);
   }
   assertRequestedCharacterLimit("maxCharacters", input.settings.maxCharacters, MAX_EVENT_SOURCE_CHARS);
-  const current = await getEventIngestionSettings(ctx, input.companyId);
+  const current = await getEventIngestionSettings(ctx);
   const next = normalizeEventIngestionSettings({
     ...current,
     ...input.settings,
@@ -1124,8 +1100,8 @@ export async function listPaperclipIngestionCandidates(ctx: PluginContext, input
       ...(input.settings.sources ?? {}),
     },
   });
-  await ctx.state.set(eventIngestionStateKey(input.companyId), next);
-  const defaultSpace = await ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId: next.wikiId });
+  await ctx.state.set(eventIngestionStateKey(), next);
+  const defaultSpace = await ensureDefaultSpace(ctx, { wikiId: next.wikiId });
   const profile = normalizePaperclipIngestionProfile(
     {
       ...defaultPaperclipIngestionProfile({ space: defaultSpace, legacySettings: next }),
@@ -1145,7 +1121,6 @@ export async function listPaperclipIngestionCandidates(ctx: PluginContext, input
     { space: defaultSpace, legacySettings: next },
   );
   await updateSpace(ctx, {
-    companyId: input.companyId,
     wikiId: next.wikiId,
     spaceSlug: DEFAULT_SPACE_SLUG,
     settings: { paperclipIngestion: profile },
@@ -1263,7 +1238,6 @@ function parseJsonObject(value: unknown): Record<string, unknown> {
 
 type WikiSpaceRow = {
   id: string;
-  company_id: string;
   wiki_id: string;
   slug: string;
   display_name: string;
@@ -1285,7 +1259,6 @@ type WikiSpaceRow = {
 function wikiSpaceFromRow(row: WikiSpaceRow): WikiSpace {
   return {
     id: row.id,
-    companyId: row.company_id,
     wikiId: row.wiki_id,
     slug: row.slug,
     displayName: row.display_name,
@@ -1305,10 +1278,9 @@ function wikiSpaceFromRow(row: WikiSpaceRow): WikiSpace {
   };
 }
 
-function fallbackDefaultSpace(input: { companyId: string; wikiId: string }): WikiSpace {
+function fallbackDefaultSpace(input: { wikiId: string }): WikiSpace {
   return {
-    id: stableSpaceId({ companyId: input.companyId, wikiId: input.wikiId, slug: DEFAULT_SPACE_SLUG }),
-    companyId: input.companyId,
+    id: stableSpaceId({ wikiId: input.wikiId, slug: DEFAULT_SPACE_SLUG }),
     wikiId: input.wikiId,
     slug: DEFAULT_SPACE_SLUG,
     displayName: DEFAULT_SPACE_SLUG,
@@ -1328,43 +1300,43 @@ function fallbackDefaultSpace(input: { companyId: string; wikiId: string }): Wik
   };
 }
 
-export async function ensureDefaultSpace(ctx: PluginContext, input: { companyId: string; wikiId?: string | null }): Promise<WikiSpace> {
+export async function ensureDefaultSpace(ctx: PluginContext, input: { wikiId?: string | null }): Promise<WikiSpace> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const id = stableSpaceId({ companyId: input.companyId, wikiId, slug: DEFAULT_SPACE_SLUG });
+  const id = stableSpaceId({ wikiId, slug: DEFAULT_SPACE_SLUG });
   await ctx.db.execute(
     `INSERT INTO ${spaceTable(ctx)} AS wiki_spaces
-       (id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key, path_prefix, access_scope, status, settings)
-     VALUES ($1, $2, $3, 'default', 'default', 'local_folder', 'managed_subfolder', $4, NULL, 'shared', 'active', '{}'::jsonb)
-     ON CONFLICT (company_id, wiki_id, slug)
+       (id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key, path_prefix, access_scope, status, settings)
+     VALUES ($1, $2, 'default', 'default', 'local_folder', 'managed_subfolder', $3, NULL, 'shared', 'active', '{}'::jsonb)
+     ON CONFLICT (wiki_id, slug)
      DO UPDATE SET updated_at = wiki_spaces.updated_at`,
-    [id, input.companyId, wikiId, WIKI_ROOT_FOLDER_KEY],
+    [id, wikiId, WIKI_ROOT_FOLDER_KEY],
   );
   const rows = await ctx.db.query<WikiSpaceRow>(
-    `SELECT id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
+    `SELECT id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
             path_prefix, configured_root_path, access_scope, owner_user_id, owner_agent_id, team_key,
             settings, status, created_at::text AS created_at, updated_at::text AS updated_at
        FROM ${spaceTable(ctx)}
-      WHERE company_id = $1 AND wiki_id = $2 AND slug = 'default'
+      WHERE wiki_id = $1 AND slug = 'default'
       LIMIT 1`,
-    [input.companyId, wikiId],
+    [wikiId],
   );
-  return rows[0] ? wikiSpaceFromRow(rows[0]) : fallbackDefaultSpace({ companyId: input.companyId, wikiId });
+  return rows[0] ? wikiSpaceFromRow(rows[0]) : fallbackDefaultSpace({ wikiId });
 }
 
 export async function resolveSpace(ctx: PluginContext, input: SpaceInput): Promise<WikiSpace> {
   const wikiId = normalizeWikiId(input.wikiId);
   const slug = normalizeSpaceSlug(input.spaceSlug);
   if (slug === DEFAULT_SPACE_SLUG) {
-    return ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
+    return ensureDefaultSpace(ctx, { wikiId });
   }
   const rows = await ctx.db.query<WikiSpaceRow>(
-    `SELECT id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
+    `SELECT id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
             path_prefix, configured_root_path, access_scope, owner_user_id, owner_agent_id, team_key,
             settings, status, created_at::text AS created_at, updated_at::text AS updated_at
        FROM ${spaceTable(ctx)}
-      WHERE company_id = $1 AND wiki_id = $2 AND slug = $3 AND status <> 'archived'
+      WHERE wiki_id = $1 AND slug = $2 AND status <> 'archived'
       LIMIT 1`,
-    [input.companyId, wikiId, slug],
+    [wikiId, slug],
   );
   if (!rows[0]) throw new Error(`LLM Wiki space not found: ${slug}`);
   return wikiSpaceFromRow(rows[0]);
@@ -1374,34 +1346,34 @@ async function resolveSpaceAnyStatus(ctx: PluginContext, input: SpaceInput): Pro
   const wikiId = normalizeWikiId(input.wikiId);
   const slug = normalizeSpaceSlug(input.spaceSlug);
   if (slug === DEFAULT_SPACE_SLUG) {
-    return ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
+    return ensureDefaultSpace(ctx, { wikiId });
   }
   const rows = await ctx.db.query<WikiSpaceRow>(
-    `SELECT id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
+    `SELECT id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
             path_prefix, configured_root_path, access_scope, owner_user_id, owner_agent_id, team_key,
             settings, status, created_at::text AS created_at, updated_at::text AS updated_at
        FROM ${spaceTable(ctx)}
-      WHERE company_id = $1 AND wiki_id = $2 AND slug = $3
+      WHERE wiki_id = $1 AND slug = $2
       LIMIT 1`,
-    [input.companyId, wikiId, slug],
+    [wikiId, slug],
   );
   if (!rows[0]) throw new Error(`LLM Wiki space not found: ${slug}`);
   return wikiSpaceFromRow(rows[0]);
 }
 
-export async function listSpaces(ctx: PluginContext, input: { companyId: string; wikiId?: string | null }): Promise<{ spaces: WikiSpace[] }> {
+export async function listSpaces(ctx: PluginContext, input: { wikiId?: string | null }): Promise<{ spaces: WikiSpace[] }> {
   const wikiId = normalizeWikiId(input.wikiId);
-  await ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
+  await ensureDefaultSpace(ctx, { wikiId });
   const rows = await ctx.db.query<WikiSpaceRow>(
-    `SELECT id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
+    `SELECT id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
             path_prefix, configured_root_path, access_scope, owner_user_id, owner_agent_id, team_key,
             settings, status, created_at::text AS created_at, updated_at::text AS updated_at
        FROM ${spaceTable(ctx)}
-      WHERE company_id = $1 AND wiki_id = $2 AND status <> 'archived'
+      WHERE wiki_id = $1 AND status <> 'archived'
       ORDER BY CASE WHEN slug = 'default' THEN 0 ELSE 1 END, display_name, slug`,
-    [input.companyId, wikiId],
+    [wikiId],
   );
-  const spaces = rows.length > 0 ? rows.map(wikiSpaceFromRow) : [fallbackDefaultSpace({ companyId: input.companyId, wikiId })];
+  const spaces = rows.length > 0 ? rows.map(wikiSpaceFromRow) : [fallbackDefaultSpace({ wikiId })];
   return { spaces };
 }
 
@@ -1410,7 +1382,7 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
   const displayName = stringField(input.displayName) ?? stringField(input.slug) ?? "New space";
   const slug = normalizeSpaceSlug(input.slug ?? displayName);
   if (slug === DEFAULT_SPACE_SLUG) {
-    return { status: "created", space: await ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId }) };
+    return { status: "created", space: await ensureDefaultSpace(ctx, { wikiId }) };
   }
   const folderMode = input.folderMode ?? "managed_subfolder";
   if (folderMode !== "managed_subfolder") {
@@ -1421,11 +1393,10 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
   const pathPrefix = `spaces/${slug}`;
   await ctx.db.execute(
     `INSERT INTO ${spaceTable(ctx)}
-       (id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key, path_prefix, access_scope, settings, status)
-     VALUES ($1, $2, $3, $4, $5, 'local_folder', $6, $7, $8, $9, $10::jsonb, 'active')`,
+       (id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key, path_prefix, access_scope, settings, status)
+     VALUES ($1, $2, $3, $4, 'local_folder', $5, $6, $7, $8, $9::jsonb, 'active')`,
     [
       id,
-      input.companyId,
       wikiId,
       slug,
       displayName,
@@ -1438,7 +1409,6 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
   );
   const space: WikiSpace = {
     id,
-    companyId: input.companyId,
     wikiId,
     slug,
     displayName,
@@ -1456,8 +1426,8 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
     createdAt: null,
     updatedAt: null,
   };
-  await bootstrapSpaceFiles(ctx, input.companyId, space);
-  await upsertWikiInstance(ctx, { companyId: input.companyId, wikiId });
+  await bootstrapSpaceFiles(ctx, space);
+  await upsertWikiInstance(ctx, { wikiId });
   return { status: "created", space };
 }
 
@@ -1473,13 +1443,12 @@ export async function updateSpace(ctx: PluginContext, input: UpdateSpaceInput): 
   }
   await ctx.db.execute(
     `UPDATE ${spaceTable(ctx)}
-        SET display_name = COALESCE($4, display_name),
-            settings = CASE WHEN $5::jsonb IS NULL THEN settings ELSE settings || $5::jsonb END,
-            status = COALESCE($6, status),
+        SET display_name = COALESCE($3, display_name),
+            settings = CASE WHEN $4::jsonb IS NULL THEN settings ELSE settings || $4::jsonb END,
+            status = COALESCE($5, status),
             updated_at = now()
-      WHERE company_id = $1 AND wiki_id = $2 AND slug = $3`,
+      WHERE wiki_id = $1 AND slug = $2`,
     [
-      input.companyId,
       space.wikiId,
       space.slug,
       nextDisplayName,
@@ -1498,7 +1467,7 @@ export async function updateSpace(ctx: PluginContext, input: UpdateSpaceInput): 
       },
     };
   }
-  return { status: "ok", space: await resolveSpace(ctx, { companyId: input.companyId, wikiId: space.wikiId, spaceSlug: space.slug }) };
+  return { status: "ok", space: await resolveSpace(ctx, { wikiId: space.wikiId, spaceSlug: space.slug }) };
 }
 
 export async function archiveSpace(ctx: PluginContext, input: SpaceInput): Promise<{ status: "archived"; space: WikiSpace }> {
@@ -1507,8 +1476,8 @@ export async function archiveSpace(ctx: PluginContext, input: SpaceInput): Promi
   await ctx.db.execute(
     `UPDATE ${spaceTable(ctx)}
         SET status = 'archived', updated_at = now()
-      WHERE company_id = $1 AND wiki_id = $2 AND slug = $3`,
-    [input.companyId, space.wikiId, space.slug],
+      WHERE wiki_id = $1 AND slug = $2`,
+    [space.wikiId, space.slug],
   );
   return { status: "archived", space: { ...space, status: "archived" } };
 }
@@ -1526,7 +1495,7 @@ function logicalPathFromSpacePath(space: Pick<WikiSpace, "pathPrefix">, path: st
 
 export async function spaceFolderStatus(ctx: PluginContext, input: SpaceInput): Promise<WikiSpaceWithFolderStatus> {
   const space = await resolveSpace(ctx, input);
-  const folder = await ctx.localFolders.status(input.companyId, WIKI_ROOT_FOLDER_KEY);
+  const folder = await ctx.localFolders.status(WIKI_ROOT_FOLDER_KEY);
   return {
     ...space,
     relativeRoot: space.pathPrefix ?? ".",
@@ -1536,17 +1505,16 @@ export async function spaceFolderStatus(ctx: PluginContext, input: SpaceInput): 
 
 async function getResourceBinding(
   ctx: PluginContext,
-  input: { companyId: string; wikiId: string; resourceKind: WikiResourceKind; resourceKey: string },
+  input: { wikiId: string; resourceKind: WikiResourceKind; resourceKey: string },
 ): Promise<WikiResourceBinding | null> {
   const rows = await ctx.db.query<{ resolved_id: string | null; metadata: unknown }>(
     `SELECT resolved_id, metadata
        FROM ${bindingTable(ctx)}
-      WHERE company_id = $1
-        AND wiki_id = $2
-        AND resource_kind = $3
-        AND resource_key = $4
+      WHERE wiki_id = $1
+        AND resource_kind = $2
+        AND resource_key = $3
       LIMIT 1`,
-    [input.companyId, input.wikiId, input.resourceKind, input.resourceKey],
+    [input.wikiId, input.resourceKind, input.resourceKey],
   );
   const row = rows[0];
   return row ? { resolvedId: row.resolved_id, metadata: parseBindingMetadata(row.metadata) } : null;
@@ -1554,19 +1522,18 @@ async function getResourceBinding(
 
 async function upsertResourceBinding(
   ctx: PluginContext,
-  input: { companyId: string; wikiId: string; resourceKind: WikiResourceKind; resourceKey: string; resolvedId: string; metadata?: Record<string, unknown> },
+  input: { wikiId: string; resourceKind: WikiResourceKind; resourceKey: string; resolvedId: string; metadata?: Record<string, unknown> },
 ) {
   await ctx.db.execute(
     `INSERT INTO ${bindingTable(ctx)} AS wiki_resource_bindings
-       (id, company_id, wiki_id, resource_kind, resource_key, resolved_id, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-     ON CONFLICT (company_id, wiki_id, resource_kind, resource_key)
+       (id, wiki_id, resource_kind, resource_key, resolved_id, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+     ON CONFLICT (wiki_id, resource_kind, resource_key)
      DO UPDATE SET resolved_id = EXCLUDED.resolved_id,
                    metadata = EXCLUDED.metadata,
                    updated_at = now()`,
     [
       randomUUID(),
-      input.companyId,
       input.wikiId,
       input.resourceKind,
       input.resourceKey,
@@ -1635,15 +1602,15 @@ function skillResource(resolved: PluginManagedSkillResolution): WikiSkillResourc
   };
 }
 
-async function resolveSelectedAgent(ctx: PluginContext, companyId: string, binding: WikiResourceBinding | null) {
+async function resolveSelectedAgent(ctx: PluginContext, binding: WikiResourceBinding | null) {
   if (!binding?.resolvedId) return null;
-  const agent = await ctx.agents.get(binding.resolvedId, companyId);
+  const agent = await ctx.agents.get(binding.resolvedId);
   return agent && agent.status !== "terminated" ? agent : null;
 }
 
-async function resolveSelectedProject(ctx: PluginContext, companyId: string, binding: WikiResourceBinding | null) {
+async function resolveSelectedProject(ctx: PluginContext, binding: WikiResourceBinding | null) {
   if (!binding?.resolvedId) return null;
-  return ctx.projects.get(binding.resolvedId, companyId);
+  return ctx.projects.get(binding.resolvedId);
 }
 
 function inferTitle(path: string, contents: string): string {
@@ -1677,12 +1644,11 @@ function extractWikiLinks(contents: string): string[] {
 
 async function readCurrentWithHash(
   ctx: PluginContext,
-  companyId: string,
   path: string,
   space: Pick<WikiSpace, "pathPrefix">,
 ): Promise<{ contents: string | null; hash: string | null }> {
   try {
-    const contents = await ctx.localFolders.readText(companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path));
+    const contents = await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path));
     return { contents, hash: contentHash(contents) };
   } catch {
     return { contents: null, hash: null };
@@ -1691,14 +1657,13 @@ async function readCurrentWithHash(
 
 async function filterReadableRows<T>(
   ctx: PluginContext,
-  companyId: string,
   space: Pick<WikiSpace, "pathPrefix">,
   rows: T[],
   pathForRow: (row: T) => string,
 ): Promise<T[]> {
   const checks: Array<T | null> = await Promise.all(rows.map(async (row): Promise<T | null> => {
     try {
-      await ctx.localFolders.readText(companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, pathForRow(row)));
+      await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, pathForRow(row)));
       return row;
     } catch {
       return null;
@@ -1707,10 +1672,10 @@ async function filterReadableRows<T>(
   return checks.filter((row): row is T => row != null);
 }
 
-async function listLocalFiles(ctx: PluginContext, input: { companyId: string; space: Pick<WikiSpace, "pathPrefix">; relativePath: "wiki" | "raw" }): Promise<PluginLocalFolderEntry[]> {
+async function listLocalFiles(ctx: PluginContext, input: { space: Pick<WikiSpace, "pathPrefix">; relativePath: "wiki" | "raw" }): Promise<PluginLocalFolderEntry[]> {
   try {
     const relativePath = spaceRelativePath(input.space, input.relativePath);
-    const listing = await ctx.localFolders.list(input.companyId, WIKI_ROOT_FOLDER_KEY, {
+    const listing = await ctx.localFolders.list(WIKI_ROOT_FOLDER_KEY, {
       relativePath,
       recursive: true,
       maxEntries: LOCAL_BROWSE_FILE_LIMIT,
@@ -1762,19 +1727,18 @@ function assertExpectedHash(expectedHash: string | null | undefined, currentHash
   }
 }
 
-async function upsertWikiInstance(ctx: PluginContext, input: { companyId: string; wikiId: string; rootPath?: string | null }) {
+async function upsertWikiInstance(ctx: PluginContext, input: { wikiId: string; rootPath?: string | null }) {
   await ctx.db.execute(
     `INSERT INTO ${tableName(ctx.db.namespace, "wiki_instances")} AS wiki_instances
-       (id, company_id, wiki_id, root_folder_key, configured_root_path, schema_version, settings, managed_agent_key, managed_project_key)
-     VALUES ($1, $2, $3, $4, $5, 1, '{}'::jsonb, $6, $7)
-     ON CONFLICT (company_id, wiki_id)
+       (id, wiki_id, root_folder_key, configured_root_path, schema_version, settings, managed_agent_key, managed_project_key)
+     VALUES ($1, $2, $3, $4, 1, '{}'::jsonb, $5, $6)
+     ON CONFLICT (wiki_id)
      DO UPDATE SET configured_root_path = COALESCE(EXCLUDED.configured_root_path, wiki_instances.configured_root_path),
                    managed_agent_key = EXCLUDED.managed_agent_key,
                    managed_project_key = EXCLUDED.managed_project_key,
                    updated_at = now()`,
     [
       randomUUID(),
-      input.companyId,
       input.wikiId,
       WIKI_ROOT_FOLDER_KEY,
       input.rootPath ?? null,
@@ -1785,7 +1749,6 @@ async function upsertWikiInstance(ctx: PluginContext, input: { companyId: string
 }
 
 async function upsertPageMetadata(ctx: PluginContext, input: {
-  companyId: string;
   wikiId: string;
   spaceId: string;
   path: string;
@@ -1804,9 +1767,9 @@ async function upsertPageMetadata(ctx: PluginContext, input: {
 
   await ctx.db.execute(
     `INSERT INTO ${tableName(ctx.db.namespace, "wiki_pages")}
-       (id, company_id, wiki_id, space_id, path, title, page_type, frontmatter, source_refs, backlinks, content_hash, current_revision_id)
-     VALUES ($1, $2, $3, $11, $4, $5, $6, '{}'::jsonb, $7::jsonb, $8::jsonb, $9, $10)
-     ON CONFLICT (company_id, wiki_id, space_id, path)
+       (id, wiki_id, space_id, path, title, page_type, frontmatter, source_refs, backlinks, content_hash, current_revision_id)
+     VALUES ($1, $2, $10, $3, $4, $5, '{}'::jsonb, $6::jsonb, $7::jsonb, $8, $9)
+     ON CONFLICT (wiki_id, space_id, path)
      DO UPDATE SET title = EXCLUDED.title,
                    page_type = EXCLUDED.page_type,
                    source_refs = EXCLUDED.source_refs,
@@ -1816,7 +1779,6 @@ async function upsertPageMetadata(ctx: PluginContext, input: {
                    updated_at = now()`,
     [
       pageId,
-      input.companyId,
       input.wikiId,
       input.path,
       title,
@@ -1831,9 +1793,9 @@ async function upsertPageMetadata(ctx: PluginContext, input: {
 
   await ctx.db.execute(
     `INSERT INTO ${tableName(ctx.db.namespace, "wiki_page_revisions")}
-       (id, company_id, wiki_id, space_id, page_id, operation_id, path, content_hash, summary, metadata)
-     VALUES ($1, $2, $3, $8, (SELECT id FROM ${tableName(ctx.db.namespace, "wiki_pages")} WHERE company_id = $2 AND wiki_id = $3 AND space_id = $8 AND path = $4), $7, $4, $5, $6, '{}'::jsonb)`,
-    [revisionId, input.companyId, input.wikiId, input.path, hash, input.summary ?? null, input.operationId ?? null, input.spaceId],
+       (id, wiki_id, space_id, page_id, operation_id, path, content_hash, summary, metadata)
+     VALUES ($1, $2, $7, (SELECT id FROM ${tableName(ctx.db.namespace, "wiki_pages")} WHERE wiki_id = $2 AND space_id = $7 AND path = $3), $6, $3, $4, $5, '{}'::jsonb)`,
+    [revisionId, input.wikiId, input.path, hash, input.summary ?? null, input.operationId ?? null, input.spaceId],
   );
 
   return { title, pageType, backlinks, hash, revisionId };
@@ -1841,14 +1803,13 @@ async function upsertPageMetadata(ctx: PluginContext, input: {
 
 export async function writeWikiPage(ctx: PluginContext, input: WritePageInput) {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const path = assertPagePath(input.path);
   assertPageWriteAllowed(path, input.writer);
-  const current = await readCurrentWithHash(ctx, input.companyId, path, space);
+  const current = await readCurrentWithHash(ctx, path, space);
   assertExpectedHash(input.expectedHash, current.hash, path);
-  await ctx.localFolders.writeTextAtomic(input.companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path), input.contents);
+  await ctx.localFolders.writeTextAtomic(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path), input.contents);
   const metadata = await upsertPageMetadata(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceId: space.id,
     path,
@@ -1857,29 +1818,28 @@ export async function writeWikiPage(ctx: PluginContext, input: WritePageInput) {
     sourceRefs: input.sourceRefs,
     operationId: input.operationId,
   });
-  await upsertWikiInstance(ctx, { companyId: input.companyId, wikiId });
+  await upsertWikiInstance(ctx, { wikiId });
   return { status: "ok", wikiId, spaceSlug: space.slug, path, previousHash: current.hash, ...metadata };
 }
 
 export async function captureWikiSource(ctx: PluginContext, input: CaptureSourceInput) {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const title = stringField(input.title) ?? "Untitled source";
-  await assertSourceWithinConfiguredLimit(ctx, input.companyId, input.contents);
+  await assertSourceWithinConfiguredLimit(ctx, input.contents);
   const hash = contentHash(input.contents);
   const rawPath = input.rawPath
     ? assertRawPath(input.rawPath)
     : assertRawPath(`raw/${new Date().toISOString().slice(0, 10)}-${slugify(title)}-${hash.slice(0, 8)}.md`);
-  await ctx.localFolders.writeTextAtomic(input.companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, rawPath), input.contents);
-  await upsertWikiInstance(ctx, { companyId: input.companyId, wikiId });
+  await ctx.localFolders.writeTextAtomic(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, rawPath), input.contents);
+  await upsertWikiInstance(ctx, { wikiId });
   const sourceId = randomUUID();
   await ctx.db.execute(
     `INSERT INTO ${tableName(ctx.db.namespace, "wiki_sources")}
-       (id, company_id, wiki_id, space_id, source_type, title, url, raw_path, content_hash, status, metadata)
-     VALUES ($1, $2, $3, $10, $4, $5, $6, $7, $8, 'captured', $9::jsonb)`,
+       (id, wiki_id, space_id, source_type, title, url, raw_path, content_hash, status, metadata)
+     VALUES ($1, $2, $9, $3, $4, $5, $6, $7, 'captured', $8::jsonb)`,
     [
       sourceId,
-      input.companyId,
       wikiId,
       stringField(input.sourceType) ?? "text",
       title,
@@ -1893,20 +1853,20 @@ export async function captureWikiSource(ctx: PluginContext, input: CaptureSource
   return { status: "ok", sourceId, wikiId, spaceSlug: space.slug, rawPath, hash, title };
 }
 
-export async function getOverview(ctx: PluginContext, companyId: string): Promise<WikiOverview> {
+export async function getOverview(ctx: PluginContext): Promise<WikiOverview> {
   const [defaultSpace, folder, managedAgent, managedProject, managedSkills] = await Promise.all([
-    ensureDefaultSpace(ctx, { companyId, wikiId: DEFAULT_WIKI_ID }),
-    ctx.localFolders.status(companyId, WIKI_ROOT_FOLDER_KEY),
-    resolveWikiAgentResource(ctx, companyId),
-    resolveWikiProjectResource(ctx, companyId),
-    resolveWikiSkillResources(ctx, companyId),
+    ensureDefaultSpace(ctx, { wikiId: DEFAULT_WIKI_ID }),
+    ctx.localFolders.status(WIKI_ROOT_FOLDER_KEY),
+    resolveWikiAgentResource(ctx),
+    resolveWikiProjectResource(ctx),
+    resolveWikiSkillResources(ctx),
   ]);
   const operationRows = await ctx.db.query<{ count: string }>(
-    `SELECT count(*)::text AS count FROM ${tableName(ctx.db.namespace, "wiki_operations")} WHERE company_id = $1`,
-    [companyId],
+    `SELECT count(*)::text AS count FROM ${tableName(ctx.db.namespace, "wiki_operations")}`,
+    [],
   );
   const operationCount = Number(operationRows[0]?.count ?? 0);
-  const eventIngestion = await getEventIngestionSettings(ctx, companyId);
+  const eventIngestion = await getEventIngestionSettings(ctx);
   return {
     status: "ok",
     checkedAt: new Date().toISOString(),
@@ -1928,21 +1888,19 @@ export async function getOverview(ctx: PluginContext, companyId: string): Promis
 
 export async function resolveWikiAgentResource(
   ctx: PluginContext,
-  companyId: string,
   options: { reconcileMissing?: boolean } = {},
 ): Promise<WikiAgentResource> {
   const wikiId = DEFAULT_WIKI_ID;
   const binding = await getResourceBinding(ctx, {
-    companyId,
     wikiId,
     resourceKind: "agent",
     resourceKey: WIKI_MAINTAINER_AGENT_KEY,
   });
-  const selectedAgent = await resolveSelectedAgent(ctx, companyId, binding);
+  const selectedAgent = await resolveSelectedAgent(ctx, binding);
   if (selectedAgent) {
     const source = binding?.metadata.source === "managed-default" ? "managed" : "selected";
     const managedResolution = source === "managed"
-      ? await ctx.agents.managed.get(WIKI_MAINTAINER_AGENT_KEY, companyId)
+      ? await ctx.agents.managed.get(WIKI_MAINTAINER_AGENT_KEY)
       : null;
     return agentResource({
       status: "resolved",
@@ -1956,11 +1914,10 @@ export async function resolveWikiAgentResource(
   }
 
   const resolved = options.reconcileMissing
-    ? await ctx.agents.managed.reconcile(WIKI_MAINTAINER_AGENT_KEY, companyId)
-    : await ctx.agents.managed.get(WIKI_MAINTAINER_AGENT_KEY, companyId);
+    ? await ctx.agents.managed.reconcile(WIKI_MAINTAINER_AGENT_KEY)
+    : await ctx.agents.managed.get(WIKI_MAINTAINER_AGENT_KEY);
   if (resolved.agentId && options.reconcileMissing) {
     await upsertResourceBinding(ctx, {
-      companyId,
       wikiId,
       resourceKind: "agent",
       resourceKey: WIKI_MAINTAINER_AGENT_KEY,
@@ -1973,17 +1930,15 @@ export async function resolveWikiAgentResource(
 
 export async function resolveWikiProjectResource(
   ctx: PluginContext,
-  companyId: string,
   options: { reconcileMissing?: boolean } = {},
 ): Promise<WikiProjectResource> {
   const wikiId = DEFAULT_WIKI_ID;
   const binding = await getResourceBinding(ctx, {
-    companyId,
     wikiId,
     resourceKind: "project",
     resourceKey: WIKI_PROJECT_KEY,
   });
-  const selectedProject = await resolveSelectedProject(ctx, companyId, binding);
+  const selectedProject = await resolveSelectedProject(ctx, binding);
   if (selectedProject) {
     return projectResource({
       status: "resolved",
@@ -1996,11 +1951,10 @@ export async function resolveWikiProjectResource(
   }
 
   const resolved = options.reconcileMissing
-    ? await ctx.projects.managed.reconcile(WIKI_PROJECT_KEY, companyId)
-    : await ctx.projects.managed.get(WIKI_PROJECT_KEY, companyId);
+    ? await ctx.projects.managed.reconcile(WIKI_PROJECT_KEY)
+    : await ctx.projects.managed.get(WIKI_PROJECT_KEY);
   if (resolved.projectId && options.reconcileMissing) {
     await upsertResourceBinding(ctx, {
-      companyId,
       wikiId,
       resourceKind: "project",
       resourceKey: WIKI_PROJECT_KEY,
@@ -2013,24 +1967,22 @@ export async function resolveWikiProjectResource(
 
 export async function resolveWikiSkillResources(
   ctx: PluginContext,
-  companyId: string,
   options: { reconcileMissing?: boolean } = {},
 ): Promise<WikiSkillResource[]> {
   return Promise.all(
     WIKI_MANAGED_SKILL_KEYS.map(async (skillKey) => {
       const resolved = options.reconcileMissing
-        ? await ctx.skills.managed.reconcile(skillKey, companyId)
-        : await ctx.skills.managed.get(skillKey, companyId);
+        ? await ctx.skills.managed.reconcile(skillKey)
+        : await ctx.skills.managed.get(skillKey);
       return skillResource(resolved);
     }),
   );
 }
 
-export async function reconcileWikiAgentResource(ctx: PluginContext, companyId: string): Promise<WikiAgentResource> {
-  const resolved = await ctx.agents.managed.reconcile(WIKI_MAINTAINER_AGENT_KEY, companyId);
+export async function reconcileWikiAgentResource(ctx: PluginContext): Promise<WikiAgentResource> {
+  const resolved = await ctx.agents.managed.reconcile(WIKI_MAINTAINER_AGENT_KEY);
   if (resolved.agentId) {
     await upsertResourceBinding(ctx, {
-      companyId,
       wikiId: DEFAULT_WIKI_ID,
       resourceKind: "agent",
       resourceKey: WIKI_MAINTAINER_AGENT_KEY,
@@ -2041,11 +1993,10 @@ export async function reconcileWikiAgentResource(ctx: PluginContext, companyId: 
   return agentResource({ status: resolved.status, source: "managed", agent: resolved.agent, defaultDrift: resolved.defaultDrift ?? null });
 }
 
-export async function resetWikiAgentResource(ctx: PluginContext, companyId: string): Promise<WikiAgentResource> {
-  const resolved = await ctx.agents.managed.reset(WIKI_MAINTAINER_AGENT_KEY, companyId);
+export async function resetWikiAgentResource(ctx: PluginContext): Promise<WikiAgentResource> {
+  const resolved = await ctx.agents.managed.reset(WIKI_MAINTAINER_AGENT_KEY);
   if (resolved.agentId) {
     await upsertResourceBinding(ctx, {
-      companyId,
       wikiId: DEFAULT_WIKI_ID,
       resourceKind: "agent",
       resourceKey: WIKI_MAINTAINER_AGENT_KEY,
@@ -2056,13 +2007,12 @@ export async function resetWikiAgentResource(ctx: PluginContext, companyId: stri
   return agentResource({ status: resolved.status, source: "managed", agent: resolved.agent, defaultDrift: resolved.defaultDrift ?? null });
 }
 
-export async function selectWikiAgentResource(ctx: PluginContext, input: { companyId: string; agentId: string }): Promise<WikiAgentResource> {
-  const agent = await ctx.agents.get(input.agentId, input.companyId);
+export async function selectWikiAgentResource(ctx: PluginContext, input: { agentId: string }): Promise<WikiAgentResource> {
+  const agent = await ctx.agents.get(input.agentId);
   if (!agent || agent.status === "terminated") {
     throw new Error("Selected Wiki Maintainer agent was not found or is terminated.");
   }
   await upsertResourceBinding(ctx, {
-    companyId: input.companyId,
     wikiId: DEFAULT_WIKI_ID,
     resourceKind: "agent",
     resourceKey: WIKI_MAINTAINER_AGENT_KEY,
@@ -2072,11 +2022,10 @@ export async function selectWikiAgentResource(ctx: PluginContext, input: { compa
   return agentResource({ status: "resolved", source: "selected", agent });
 }
 
-export async function reconcileWikiProjectResource(ctx: PluginContext, companyId: string): Promise<WikiProjectResource> {
-  const resolved = await ctx.projects.managed.reconcile(WIKI_PROJECT_KEY, companyId);
+export async function reconcileWikiProjectResource(ctx: PluginContext): Promise<WikiProjectResource> {
+  const resolved = await ctx.projects.managed.reconcile(WIKI_PROJECT_KEY);
   if (resolved.projectId) {
     await upsertResourceBinding(ctx, {
-      companyId,
       wikiId: DEFAULT_WIKI_ID,
       resourceKind: "project",
       resourceKey: WIKI_PROJECT_KEY,
@@ -2087,11 +2036,10 @@ export async function reconcileWikiProjectResource(ctx: PluginContext, companyId
   return projectResource({ status: resolved.status, source: "managed", project: resolved.project });
 }
 
-export async function resetWikiProjectResource(ctx: PluginContext, companyId: string): Promise<WikiProjectResource> {
-  const resolved = await ctx.projects.managed.reset(WIKI_PROJECT_KEY, companyId);
+export async function resetWikiProjectResource(ctx: PluginContext): Promise<WikiProjectResource> {
+  const resolved = await ctx.projects.managed.reset(WIKI_PROJECT_KEY);
   if (resolved.projectId) {
     await upsertResourceBinding(ctx, {
-      companyId,
       wikiId: DEFAULT_WIKI_ID,
       resourceKind: "project",
       resourceKey: WIKI_PROJECT_KEY,
@@ -2102,34 +2050,33 @@ export async function resetWikiProjectResource(ctx: PluginContext, companyId: st
   return projectResource({ status: resolved.status, source: "managed", project: resolved.project });
 }
 
-export async function reconcileWikiSkillResources(ctx: PluginContext, companyId: string): Promise<WikiSkillResource[]> {
-  return resolveWikiSkillResources(ctx, companyId, { reconcileMissing: true });
+export async function reconcileWikiSkillResources(ctx: PluginContext): Promise<WikiSkillResource[]> {
+  return resolveWikiSkillResources(ctx, { reconcileMissing: true });
 }
 
-export async function resetWikiSkillResources(ctx: PluginContext, companyId: string): Promise<WikiSkillResource[]> {
+export async function resetWikiSkillResources(ctx: PluginContext): Promise<WikiSkillResource[]> {
   return Promise.all(
     WIKI_MANAGED_SKILL_KEYS.map(async (skillKey) => {
-      return skillResource(await ctx.skills.managed.reset(skillKey, companyId));
+      return skillResource(await ctx.skills.managed.reset(skillKey));
     }),
   );
 }
 
 export async function reconcileWikiRoutineResources(
   ctx: PluginContext,
-  companyId: string,
 ): Promise<{
   managedAgent: WikiAgentResource;
   managedProject: WikiProjectResource;
   managedRoutines: PluginManagedRoutineResolution[];
 }> {
   const [managedAgent, managedProject] = await Promise.all([
-    reconcileWikiAgentResource(ctx, companyId),
-    reconcileWikiProjectResource(ctx, companyId),
+    reconcileWikiAgentResource(ctx),
+    reconcileWikiProjectResource(ctx),
   ]);
 
   const managedRoutines = await Promise.all(
     WIKI_MAINTENANCE_ROUTINE_KEYS.map((routineKey) =>
-      ctx.routines.managed.reconcile(routineKey, companyId, {
+      ctx.routines.managed.reconcile(routineKey, {
         assigneeAgentId: managedAgent.agentId,
         projectId: managedProject.projectId,
       })),
@@ -2138,13 +2085,12 @@ export async function reconcileWikiRoutineResources(
   return { managedAgent, managedProject, managedRoutines };
 }
 
-export async function selectWikiProjectResource(ctx: PluginContext, input: { companyId: string; projectId: string }): Promise<WikiProjectResource> {
-  const project = await ctx.projects.get(input.projectId, input.companyId);
+export async function selectWikiProjectResource(ctx: PluginContext, input: { projectId: string }): Promise<WikiProjectResource> {
+  const project = await ctx.projects.get(input.projectId);
   if (!project) {
     throw new Error("Selected LLM Wiki project was not found.");
   }
   await upsertResourceBinding(ctx, {
-    companyId: input.companyId,
     wikiId: DEFAULT_WIKI_ID,
     resourceKind: "project",
     resourceKey: WIKI_PROJECT_KEY,
@@ -2154,8 +2100,8 @@ export async function selectWikiProjectResource(ctx: PluginContext, input: { com
   return projectResource({ status: "resolved", source: "selected", project });
 }
 
-export async function listWikiAgentOptions(ctx: PluginContext, companyId: string): Promise<WikiResourceOption[]> {
-  const agents = await ctx.agents.list({ companyId, limit: 200 });
+export async function listWikiAgentOptions(ctx: PluginContext): Promise<WikiResourceOption[]> {
+  const agents = await ctx.agents.list({ limit: 200 });
   return agents
     .filter((agent) => agent.status !== "terminated")
     .map((agent) => ({
@@ -2168,16 +2114,15 @@ export async function listWikiAgentOptions(ctx: PluginContext, companyId: string
     }));
 }
 
-export async function listWikiProjectOptions(ctx: PluginContext, companyId: string): Promise<WikiResourceOption[]> {
-  const projects = await ctx.projects.list({ companyId, limit: 200 });
+export async function listWikiProjectOptions(ctx: PluginContext): Promise<WikiResourceOption[]> {
+  const projects = await ctx.projects.list({ limit: 200 });
   return projects.map((project) => ({ id: project.id, name: project.name, status: project.status, color: project.color ?? null }));
 }
 
 export async function bootstrapWikiRoot(ctx: PluginContext, input: BootstrapInput) {
   const wikiId = DEFAULT_WIKI_ID;
-  const defaultSpace = await ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
+  const defaultSpace = await ensureDefaultSpace(ctx, { wikiId });
   const configureFolder = (path: string) => ctx.localFolders.configure({
-      companyId: input.companyId,
       folderKey: WIKI_ROOT_FOLDER_KEY,
       path,
       access: "readWrite",
@@ -2186,38 +2131,37 @@ export async function bootstrapWikiRoot(ctx: PluginContext, input: BootstrapInpu
     });
   const currentFolder = input.path
     ? null
-    : await ctx.localFolders.status(input.companyId, WIKI_ROOT_FOLDER_KEY);
+    : await ctx.localFolders.status(WIKI_ROOT_FOLDER_KEY);
   const folder = input.path
     ? await configureFolder(input.path)
     : currentFolder?.configured && currentFolder.path
       ? await configureFolder(currentFolder.path)
-      : currentFolder ?? await ctx.localFolders.status(input.companyId, WIKI_ROOT_FOLDER_KEY);
+      : currentFolder ?? await ctx.localFolders.status(WIKI_ROOT_FOLDER_KEY);
 
   const writtenFiles: string[] = [];
   const preservedFiles: string[] = [];
   for (const file of BOOTSTRAP_FILES) {
     const path = assertWikiPath(file.path, { allowMetadata: true });
     try {
-      await ctx.localFolders.readText(input.companyId, WIKI_ROOT_FOLDER_KEY, path);
+      await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, path);
       preservedFiles.push(path);
       continue;
     } catch {
       // Missing files are initialized below. Existing files are intentionally preserved.
     }
-    await ctx.localFolders.writeTextAtomic(input.companyId, WIKI_ROOT_FOLDER_KEY, file.path, file.contents);
+    await ctx.localFolders.writeTextAtomic(WIKI_ROOT_FOLDER_KEY, file.path, file.contents);
     writtenFiles.push(path);
   }
 
-  await upsertWikiInstance(ctx, { companyId: input.companyId, wikiId, rootPath: folder.path });
-  const managedSkills = await reconcileWikiSkillResources(ctx, input.companyId);
+  await upsertWikiInstance(ctx, { wikiId, rootPath: folder.path });
+  const managedSkills = await reconcileWikiSkillResources(ctx);
   const [managedAgent, managedProject] = await Promise.all([
-    reconcileWikiAgentResource(ctx, input.companyId),
-    reconcileWikiProjectResource(ctx, input.companyId),
+    reconcileWikiAgentResource(ctx),
+    reconcileWikiProjectResource(ctx),
   ]);
   await ctx.state.set(
     {
-      scopeKind: "company",
-      scopeId: input.companyId,
+      scopeKind: "instance",
       namespace: "llm-wiki",
       stateKey: "last-bootstrap",
     },
@@ -2239,9 +2183,9 @@ export async function bootstrapWikiRoot(ctx: PluginContext, input: BootstrapInpu
 
 export async function bootstrapSpace(ctx: PluginContext, input: SpaceInput) {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
-  const { writtenFiles, preservedFiles } = await bootstrapSpaceFiles(ctx, input.companyId, space);
-  await upsertWikiInstance(ctx, { companyId: input.companyId, wikiId });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
+  const { writtenFiles, preservedFiles } = await bootstrapSpaceFiles(ctx, space);
+  await upsertWikiInstance(ctx, { wikiId });
   return {
     status: "ok",
     wikiId,
@@ -2251,20 +2195,20 @@ export async function bootstrapSpace(ctx: PluginContext, input: SpaceInput) {
   };
 }
 
-async function bootstrapSpaceFiles(ctx: PluginContext, companyId: string, space: WikiSpace) {
+async function bootstrapSpaceFiles(ctx: PluginContext, space: WikiSpace) {
   const writtenFiles: string[] = [];
   const preservedFiles: string[] = [];
   for (const file of BOOTSTRAP_FILES) {
     const path = assertWikiPath(file.path, { allowMetadata: true });
     const physicalPath = spaceRelativePath(space, path);
     try {
-      await ctx.localFolders.readText(companyId, WIKI_ROOT_FOLDER_KEY, physicalPath);
+      await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, physicalPath);
       preservedFiles.push(path);
       continue;
     } catch {
       // Missing files are initialized below. Existing files are intentionally preserved.
     }
-    await ctx.localFolders.writeTextAtomic(companyId, WIKI_ROOT_FOLDER_KEY, physicalPath, file.contents);
+    await ctx.localFolders.writeTextAtomic(WIKI_ROOT_FOLDER_KEY, physicalPath, file.contents);
     writtenFiles.push(path);
   }
   return { writtenFiles, preservedFiles };
@@ -2331,10 +2275,10 @@ function operationMetadata(input: OperationSpaceContext) {
 export async function createOperationIssue(ctx: PluginContext, input: OperationInput) {
   const wikiId = normalizeWikiId(input.wikiId);
   const space = input.operationType === "distill" || input.operationType === "backfill"
-    ? await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "queue", { requireEnabledProfile: true })
-    : await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
-  const managedAgent = await resolveWikiAgentResource(ctx, input.companyId, { reconcileMissing: true });
-  const managedProject = await resolveWikiProjectResource(ctx, input.companyId, { reconcileMissing: true });
+    ? await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "queue", { requireEnabledProfile: true })
+    : await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
+  const managedAgent = await resolveWikiAgentResource(ctx, { reconcileMissing: true });
+  const managedProject = await resolveWikiProjectResource(ctx, { reconcileMissing: true });
   const operationId = randomUUID();
   const title = operationTitleWithSpace(input.title ?? `LLM Wiki ${input.operationType}`, space);
   const originId = operationIssueOriginId({ wikiId, space, operationId });
@@ -2346,7 +2290,6 @@ export async function createOperationIssue(ctx: PluginContext, input: OperationI
       ? managedAgent.agent.id
       : undefined;
   const issue = await ctx.issues.create({
-    companyId: input.companyId,
     projectId: managedProject.projectId ?? undefined,
     title,
     description: operationPromptWithSpaceContext(operationContext),
@@ -2361,11 +2304,10 @@ export async function createOperationIssue(ctx: PluginContext, input: OperationI
 
   await ctx.db.execute(
     `INSERT INTO ${tableName(ctx.db.namespace, "wiki_operations")}
-       (id, company_id, wiki_id, space_id, operation_type, status, hidden_issue_id, project_id, run_ids, cost_cents, warnings, metadata)
-     VALUES ($1, $2, $3, $8, $4, $5, $6, $7, '[]'::jsonb, 0, '[]'::jsonb, $9::jsonb)`,
+       (id, wiki_id, space_id, operation_type, status, hidden_issue_id, project_id, run_ids, cost_cents, warnings, metadata)
+     VALUES ($1, $2, $7, $3, $4, $5, $6, '[]'::jsonb, 0, '[]'::jsonb, $8::jsonb)`,
     [
       operationId,
-      input.companyId,
       wikiId,
       input.operationType,
       "queued",
@@ -2406,7 +2348,6 @@ function paperclipCursorScopeMetadata(input: { projectId?: string | null; rootIs
 }
 
 async function upsertPaperclipDistillationCursor(ctx: PluginContext, input: {
-  companyId: string;
   wikiId: string;
   spaceId: string;
   projectId?: string | null;
@@ -2418,9 +2359,9 @@ async function upsertPaperclipDistillationCursor(ctx: PluginContext, input: {
   const scope = paperclipCursorScopeMetadata(input);
   await ctx.db.execute(
     `INSERT INTO ${distillationCursorTable(ctx)} AS paperclip_distillation_cursors
-       (id, company_id, wiki_id, space_id, source_scope, scope_key, project_id, root_issue_id, source_kind, last_observed_at, pending_event_count, metadata)
-     VALUES ($1, $2, $3, $11, $4, $5, $6, $7, 'paperclip_issue_history', $8::timestamptz, $9, $10::jsonb)
-     ON CONFLICT (company_id, wiki_id, space_id, source_scope, scope_key, source_kind)
+       (id, wiki_id, space_id, source_scope, scope_key, project_id, root_issue_id, source_kind, last_observed_at, pending_event_count, metadata)
+     VALUES ($1, $2, $10, $3, $4, $5, $6, 'paperclip_issue_history', $7::timestamptz, $8, $9::jsonb)
+     ON CONFLICT (wiki_id, space_id, source_scope, scope_key, source_kind)
      DO UPDATE SET last_observed_at = GREATEST(
                        COALESCE(paperclip_distillation_cursors.last_observed_at, EXCLUDED.last_observed_at),
                        COALESCE(EXCLUDED.last_observed_at, paperclip_distillation_cursors.last_observed_at)
@@ -2430,7 +2371,6 @@ async function upsertPaperclipDistillationCursor(ctx: PluginContext, input: {
                    updated_at = now()`,
     [
       cursorId,
-      input.companyId,
       input.wikiId,
       scope.sourceScope,
       scope.scopeKey,
@@ -2445,14 +2385,13 @@ async function upsertPaperclipDistillationCursor(ctx: PluginContext, input: {
   const rows = await ctx.db.query<{ id: string }>(
     `SELECT id
        FROM ${distillationCursorTable(ctx)}
-      WHERE company_id = $1
-        AND wiki_id = $2
-        AND space_id = $3
-        AND source_scope = $4
-        AND scope_key = $5
+      WHERE wiki_id = $1
+        AND space_id = $2
+        AND source_scope = $3
+        AND scope_key = $4
         AND source_kind = 'paperclip_issue_history'
       LIMIT 1`,
-    [input.companyId, input.wikiId, input.spaceId, scope.sourceScope, scope.scopeKey],
+    [input.wikiId, input.spaceId, scope.sourceScope, scope.scopeKey],
   );
   return rows[0]?.id ?? cursorId;
 }
@@ -2470,18 +2409,17 @@ function projectActivityTimestamp(project: Project): string {
 }
 
 export async function enableActiveProjectDistillation(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   limit?: number | null;
 }): Promise<EnableActiveProjectDistillationResult> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "candidate_search", { requireEnabledProfile: true });
+  const space = await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "candidate_search", { requireEnabledProfile: true });
   if (typeof input.limit === "number" && Number.isFinite(input.limit) && Math.floor(input.limit) > MAX_PAPERCLIP_DISTILLATION_FAN_OUT) {
     throw new Error(`Paperclip ingestion fan-out exceeds the hard cap of ${MAX_PAPERCLIP_DISTILLATION_FAN_OUT} enabled profiles.`);
   }
   const limit = normalizeLimit(input.limit ?? 3, 3, 25);
-  const projects = await ctx.projects.list({ companyId: input.companyId, limit: 200 });
+  const projects = await ctx.projects.list({ limit: 200 });
   const activeProjects = projects
     .filter(isActiveDistillationProject)
     .sort((a, b) => projectActivityTimestamp(b).localeCompare(projectActivityTimestamp(a)))
@@ -2491,7 +2429,6 @@ export async function enableActiveProjectDistillation(ctx: PluginContext, input:
   for (const project of activeProjects) {
     const observedAt = projectActivityTimestamp(project);
     const cursorId = await upsertPaperclipDistillationCursor(ctx, {
-      companyId: input.companyId,
       wikiId,
       spaceId: space.id,
       projectId: project.id,
@@ -2513,7 +2450,6 @@ export async function enableActiveProjectDistillation(ctx: PluginContext, input:
   }
 
   const eventIngestion = await updateEventIngestionSettings(ctx, {
-    companyId: input.companyId,
     settings: {
       enabled: true,
       wikiId,
@@ -2588,7 +2524,7 @@ async function listPaperclipBundleIssues(ctx: PluginContext, input: PaperclipSou
       .sort((a, b) => issueSortKey(a).localeCompare(issueSortKey(b)));
 
   if (input.rootIssueId) {
-    const subtree = await ctx.issues.getSubtree(input.rootIssueId, input.companyId, {
+    const subtree = await ctx.issues.getSubtree(input.rootIssueId, {
       includeRoot: true,
       includeRelations: true,
       includeDocuments: true,
@@ -2598,7 +2534,6 @@ async function listPaperclipBundleIssues(ctx: PluginContext, input: PaperclipSou
   }
 
   const issues = await ctx.issues.list({
-    companyId: input.companyId,
     projectId: input.projectId ?? undefined,
     includePluginOperations: false,
     limit: 500,
@@ -2609,7 +2544,7 @@ async function listPaperclipBundleIssues(ctx: PluginContext, input: PaperclipSou
 export async function assemblePaperclipSourceBundle(ctx: PluginContext, input: PaperclipSourceBundleInput): Promise<PaperclipSourceBundle> {
   const wikiId = normalizeWikiId(input.wikiId);
   assertPaperclipSourceScopePayload(input);
-  const space = await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
+  const space = await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
   const limits = await resolvePaperclipDistillationLimitsForSpace(ctx, { ...input, space });
   const maxCharacters = limits.maxCharacters;
   const perSourceLimit = limits.maxCharactersPerSource;
@@ -2624,7 +2559,6 @@ export async function assemblePaperclipSourceBundle(ctx: PluginContext, input: P
     "",
     "## Bundle Metadata",
     "",
-    `- Company ID: ${input.companyId}`,
     `- Wiki ID: ${wikiId}`,
     `- Space: ${space.displayName} (${space.slug})`,
     `- Source scope: ${scope.sourceScope}`,
@@ -2669,9 +2603,9 @@ export async function assemblePaperclipSourceBundle(ctx: PluginContext, input: P
     });
 
     if (includeDocuments && remaining.value > 0) {
-      const documentSummaries = await ctx.issues.documents.list(issue.id, input.companyId);
+      const documentSummaries = await ctx.issues.documents.list(issue.id);
       for (const summary of [...documentSummaries].sort((a, b) => a.key.localeCompare(b.key))) {
-        const document = await ctx.issues.documents.get(issue.id, summary.key, input.companyId);
+        const document = await ctx.issues.documents.get(issue.id, summary.key);
         if (!document) continue;
         const protectedDocument = protectDistillationSourceBody({
           issue,
@@ -2712,7 +2646,7 @@ export async function assemblePaperclipSourceBundle(ctx: PluginContext, input: P
     }
 
     if (includeComments && remaining.value > 0) {
-      const comments = await ctx.issues.listComments(issue.id, input.companyId);
+      const comments = await ctx.issues.listComments(issue.id);
       for (const comment of [...comments].sort((a, b) => (isoString(a.createdAt) ?? "").localeCompare(isoString(b.createdAt) ?? ""))) {
         const protectedComment = protectDistillationSourceBody({
           issue,
@@ -2766,11 +2700,10 @@ export async function assemblePaperclipSourceBundle(ctx: PluginContext, input: P
 export async function createPaperclipDistillationRun(ctx: PluginContext, input: PaperclipDistillationRunInput) {
   const wikiId = normalizeWikiId(input.wikiId);
   assertPaperclipSourceScopePayload(input);
-  const space = await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
+  const space = await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
   const scope = paperclipCursorScopeMetadata(input);
   const limits = await resolvePaperclipDistillationLimitsForSpace(ctx, { ...input, space });
   const cursorId = await upsertPaperclipDistillationCursor(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceId: space.id,
     projectId: scope.projectId,
@@ -2787,11 +2720,10 @@ export async function createPaperclipDistillationRun(ctx: PluginContext, input: 
 
   await ctx.db.execute(
     `INSERT INTO ${distillationRunTable(ctx)}
-       (id, company_id, wiki_id, space_id, cursor_id, work_item_id, project_id, root_issue_id, source_window_start, source_window_end, source_hash, status, operation_issue_id, retry_count, cost_cents, warnings, metadata)
-     VALUES ($1, $2, $3, $15, $4, $5, $6, $7, $8::timestamptz, $9::timestamptz, $10, 'source_ready', $11, 0, $12, $13::jsonb, $14::jsonb)`,
+       (id, wiki_id, space_id, cursor_id, work_item_id, project_id, root_issue_id, source_window_start, source_window_end, source_hash, status, operation_issue_id, retry_count, cost_cents, warnings, metadata)
+     VALUES ($1, $2, $14, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz, $9, 'source_ready', $10, 0, $11, $12::jsonb, $13::jsonb)`,
     [
       runId,
-      input.companyId,
       wikiId,
       cursorId,
       input.workItemId ?? null,
@@ -2815,11 +2747,10 @@ export async function createPaperclipDistillationRun(ctx: PluginContext, input: 
   );
   await ctx.db.execute(
     `INSERT INTO ${sourceSnapshotTable(ctx)}
-       (id, company_id, wiki_id, space_id, distillation_run_id, project_id, root_issue_id, source_hash, max_characters, clipped, source_refs, bundle_markdown, metadata)
-     VALUES ($1, $2, $3, $13, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::jsonb)`,
+       (id, wiki_id, space_id, distillation_run_id, project_id, root_issue_id, source_hash, max_characters, clipped, source_refs, bundle_markdown, metadata)
+     VALUES ($1, $2, $12, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb)`,
     [
       snapshotId,
-      input.companyId,
       wikiId,
       runId,
       scope.projectId,
@@ -2845,21 +2776,19 @@ export async function createPaperclipDistillationRun(ctx: PluginContext, input: 
 
 export async function recordPaperclipDistillationOutcome(ctx: PluginContext, input: PaperclipDistillationOutcomeInput) {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
+  const space = await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
   const warnings = input.warning ? [input.warning] : [];
   await ctx.db.execute(
     `UPDATE ${distillationRunTable(ctx)}
-        SET status = $4,
-            warnings = CASE WHEN $5::jsonb = '[]'::jsonb THEN warnings ELSE warnings || $5::jsonb END,
-            cost_cents = CASE WHEN $6::integer IS NULL THEN cost_cents ELSE $6::integer END,
-            retry_count = CASE WHEN $7::integer IS NULL THEN retry_count ELSE $7::integer END,
+        SET status = $3,
+            warnings = CASE WHEN $4::jsonb = '[]'::jsonb THEN warnings ELSE warnings || $4::jsonb END,
+            cost_cents = CASE WHEN $5::integer IS NULL THEN cost_cents ELSE $5::integer END,
+            retry_count = CASE WHEN $6::integer IS NULL THEN retry_count ELSE $6::integer END,
             updated_at = now()
-      WHERE company_id = $1
-        AND wiki_id = $2
-        AND space_id = $8
-        AND id = $3`,
+      WHERE wiki_id = $1
+        AND space_id = $7
+        AND id = $2`,
     [
-      input.companyId,
       wikiId,
       input.runId,
       input.status,
@@ -2873,16 +2802,15 @@ export async function recordPaperclipDistillationOutcome(ctx: PluginContext, inp
   if (input.status === "succeeded" && input.cursorId && input.sourceHash && input.sourceWindowEnd) {
     await ctx.db.execute(
       `UPDATE ${distillationCursorTable(ctx)}
-          SET last_processed_at = $4::timestamptz,
-              last_successful_run_id = $3,
-              last_source_hash = $5,
+          SET last_processed_at = $3::timestamptz,
+              last_successful_run_id = $2,
+              last_source_hash = $4,
               pending_event_count = 0,
               updated_at = now()
-        WHERE company_id = $1
-          AND wiki_id = $2
-          AND space_id = $7
-          AND id = $6`,
-      [input.companyId, wikiId, input.runId, input.sourceWindowEnd, input.sourceHash, input.cursorId, space.id],
+        WHERE wiki_id = $1
+          AND space_id = $6
+          AND id = $5`,
+      [wikiId, input.runId, input.sourceWindowEnd, input.sourceHash, input.cursorId, space.id],
     );
   }
 
@@ -2895,23 +2823,22 @@ export async function recordPaperclipDistillationOutcome(ctx: PluginContext, inp
 export async function createPaperclipDistillationWorkItem(ctx: PluginContext, input: PaperclipDistillationWorkItemInput) {
   const wikiId = normalizeWikiId(input.wikiId);
   assertPaperclipSourceScopePayload(input);
-  const space = await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "queue", { requireEnabledProfile: true });
+  const space = await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "queue", { requireEnabledProfile: true });
   const itemId = randomUUID();
   const scope = paperclipCursorScopeMetadata(input);
   if (input.kind === "backfill" && !scope.projectId && !scope.rootIssueId) {
-    throw new Error("Backfill work items must target a projectId or rootIssueId; whole-company backfill is not allowed.");
+    throw new Error("Backfill work items must target a projectId or rootIssueId; whole-organization backfill is not allowed.");
   }
   await ctx.db.execute(
     `INSERT INTO ${distillationWorkItemTable(ctx)} AS paperclip_distillation_work_items
-       (id, company_id, wiki_id, space_id, work_item_kind, status, priority, project_id, root_issue_id, requested_by_issue_id, idempotency_key, metadata)
-     VALUES ($1, $2, $3, $11, $4, 'pending', $5, $6, $7, $8, $9, $10::jsonb)
-     ON CONFLICT (company_id, wiki_id, space_id, idempotency_key)
+       (id, wiki_id, space_id, work_item_kind, status, priority, project_id, root_issue_id, requested_by_issue_id, idempotency_key, metadata)
+     VALUES ($1, $2, $10, $3, 'pending', $4, $5, $6, $7, $8, $9::jsonb)
+     ON CONFLICT (wiki_id, space_id, idempotency_key)
      DO UPDATE SET priority = EXCLUDED.priority,
                    metadata = paperclip_distillation_work_items.metadata || EXCLUDED.metadata,
                    updated_at = now()`,
     [
       itemId,
-      input.companyId,
       wikiId,
       input.kind,
       input.priority ?? "medium",
@@ -3256,22 +3183,20 @@ function patchForPage(input: {
   };
 }
 
-async function readPageBinding(ctx: PluginContext, input: { companyId: string; wikiId: string; spaceId: string; pagePath: string }) {
+async function readPageBinding(ctx: PluginContext, input: { wikiId: string; spaceId: string; pagePath: string }) {
   const rows = await ctx.db.query<{ last_applied_source_hash: string | null }>(
     `SELECT last_applied_source_hash
        FROM ${pageBindingTable(ctx)}
-      WHERE company_id = $1
-        AND wiki_id = $2
-        AND space_id = $3
-        AND page_path = $4
+      WHERE wiki_id = $1
+        AND space_id = $2
+        AND page_path = $3
       LIMIT 1`,
-    [input.companyId, input.wikiId, input.spaceId, input.pagePath],
+    [input.wikiId, input.spaceId, input.pagePath],
   );
   return rows[0] ?? null;
 }
 
 async function upsertPageBinding(ctx: PluginContext, input: {
-  companyId: string;
   wikiId: string;
   spaceId: string;
   spaceSlug: string;
@@ -3284,16 +3209,15 @@ async function upsertPageBinding(ctx: PluginContext, input: {
 }) {
   await ctx.db.execute(
     `INSERT INTO ${pageBindingTable(ctx)} AS paperclip_page_bindings
-       (id, company_id, wiki_id, space_id, project_id, root_issue_id, page_path, last_applied_source_hash, last_distillation_run_id, metadata)
-     VALUES ($1, $2, $3, $10, $4, $5, $6, $7, $8, $9::jsonb)
-     ON CONFLICT (company_id, wiki_id, space_id, page_path)
+       (id, wiki_id, space_id, project_id, root_issue_id, page_path, last_applied_source_hash, last_distillation_run_id, metadata)
+     VALUES ($1, $2, $9, $3, $4, $5, $6, $7, $8::jsonb)
+     ON CONFLICT (wiki_id, space_id, page_path)
      DO UPDATE SET last_applied_source_hash = EXCLUDED.last_applied_source_hash,
                    last_distillation_run_id = EXCLUDED.last_distillation_run_id,
                    metadata = paperclip_page_bindings.metadata || EXCLUDED.metadata,
                    updated_at = now()`,
     [
       randomUUID(),
-      input.companyId,
       input.wikiId,
       input.projectId,
       input.rootIssueId,
@@ -3306,11 +3230,11 @@ async function upsertPageBinding(ctx: PluginContext, input: {
   );
 }
 
-async function autoApplyEnabled(ctx: PluginContext, companyId: string, requested: boolean | undefined): Promise<boolean> {
+async function autoApplyEnabled(ctx: PluginContext, requested: boolean | undefined): Promise<boolean> {
   if (getDistillationAutoApplyRestriction().autoApplyRestriction) {
     return false;
   }
-  const config = await ctx.config.get(companyId);
+  const config = await ctx.config.get();
   const configured = (config as { autoApplyIngestPatches?: unknown }).autoApplyIngestPatches !== false;
   return configured && requested !== false;
 }
@@ -3337,23 +3261,22 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
   }
   const wikiId = normalizeWikiId(input.wikiId);
   assertPaperclipSourceScopePayload(input);
-  const space = await requirePaperclipIngestionPolicy(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
+  const space = await requirePaperclipIngestionPolicy(ctx, { wikiId, spaceSlug: input.spaceSlug }, "execute", { requireEnabledProfile: true });
   const scope = paperclipCursorScopeMetadata(input);
   const issues = await listPaperclipBundleIssues(ctx, input);
-  const project = scope.projectId ? await ctx.projects.get(scope.projectId, input.companyId) : null;
-  const rootIssue = scope.rootIssueId ? await ctx.issues.get(scope.rootIssueId, input.companyId) : null;
+  const project = scope.projectId ? await ctx.projects.get(scope.projectId) : null;
+  const rootIssue = scope.rootIssueId ? await ctx.issues.get(scope.rootIssueId) : null;
   const slug = projectPageSlug({ project, rootIssue });
   const projectDir = `wiki/projects/${slug}`;
   const standupPath = assertPagePath(`${projectDir}/standup.md`);
   const pagePath = assertPagePath(`${projectDir}/index.md`);
   const run = await createPaperclipDistillationRun(ctx, input);
   const bundle = run.bundle;
-  const current = await readCurrentWithHash(ctx, input.companyId, pagePath, space);
+  const current = await readCurrentWithHash(ctx, pagePath, space);
   assertExpectedHash(input.expectedProjectPageHash, current.hash, pagePath);
 
   if (!hasDurableSignal(bundle, issues)) {
     await recordPaperclipDistillationOutcome(ctx, {
-      companyId: input.companyId,
       wikiId,
       spaceSlug: space.slug,
       runId: run.runId,
@@ -3375,10 +3298,9 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
     };
   }
 
-  const existingBinding = await readPageBinding(ctx, { companyId: input.companyId, wikiId, spaceId: space.id, pagePath });
+  const existingBinding = await readPageBinding(ctx, { wikiId, spaceId: space.id, pagePath });
   if (existingBinding?.last_applied_source_hash === bundle.sourceHash) {
     await recordPaperclipDistillationOutcome(ctx, {
-      companyId: input.companyId,
       wikiId,
       spaceSlug: space.slug,
       runId: run.runId,
@@ -3404,11 +3326,11 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
   const confidence: "high" | "medium" | "low" = bundle.clipped ? "medium" : "high";
   const reviewRequired = bundle.clipped || warnings.length > 0;
   const title = project?.name ?? rootIssue?.title ?? "Paperclip Project";
-  const standupCurrent = await readCurrentWithHash(ctx, input.companyId, standupPath, space);
+  const standupCurrent = await readCurrentWithHash(ctx, standupPath, space);
   const standupContents = standupPageContents({ project, rootIssue, issues, bundle, pagePath: standupPath, durablePagePath: pagePath });
   const projectContents = projectPageContents({ project, rootIssue, issues, bundle, pagePath });
-  const indexCurrent = await readCurrentWithHash(ctx, input.companyId, "wiki/index.md", space);
-  const logCurrent = await readCurrentWithHash(ctx, input.companyId, "wiki/log.md", space);
+  const indexCurrent = await readCurrentWithHash(ctx, "wiki/index.md", space);
+  const logCurrent = await readCurrentWithHash(ctx, "wiki/log.md", space);
   const indexContents = updateProjectIndexContents(indexCurrent.contents, {
     pagePath,
     standupPath,
@@ -3433,7 +3355,7 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
     const hasDecisions = issues.some((issue) => hasDecisionSignal(`${issue.title}\n${issueDescription(issue)}`));
     if (hasDecisions) {
       const decisionsPath = assertPagePath(`${projectDir}/decisions.md`);
-      const decisionsCurrent = await readCurrentWithHash(ctx, input.companyId, decisionsPath, space);
+      const decisionsCurrent = await readCurrentWithHash(ctx, decisionsPath, space);
       patches.push(patchForPage({
         path: decisionsPath,
         operationType: "decision_distill",
@@ -3446,7 +3368,7 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
       }));
     }
     const historyPath = assertPagePath(`${projectDir}/history.md`);
-    const historyCurrent = await readCurrentWithHash(ctx, input.companyId, historyPath, space);
+    const historyCurrent = await readCurrentWithHash(ctx, historyPath, space);
     patches.push(patchForPage({
       path: historyPath,
       operationType: "history_distill",
@@ -3460,13 +3382,12 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
   }
 
   const autoApplyRestriction = getDistillationAutoApplyRestriction();
-  const canAutoApply = await autoApplyEnabled(ctx, input.companyId, input.autoApply);
+  const canAutoApply = await autoApplyEnabled(ctx, input.autoApply);
   if (!canAutoApply || reviewRequired) {
     const autoApplyWarning =
       autoApplyRestriction.autoApplyRestriction
       ?? "Auto-apply policy disabled; proposed patches require review.";
     await recordPaperclipDistillationOutcome(ctx, {
-      companyId: input.companyId,
       wikiId,
       spaceSlug: space.slug,
       runId: run.runId,
@@ -3491,7 +3412,6 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
   const appliedPages: string[] = [];
   for (const patch of patches) {
     await writeWikiPage(ctx, {
-      companyId: input.companyId,
       wikiId,
       spaceSlug: space.slug,
       path: patch.pagePath,
@@ -3501,7 +3421,6 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
       sourceRefs: patch.sourceRefs,
     });
     await upsertPageBinding(ctx, {
-      companyId: input.companyId,
       wikiId,
       spaceId: space.id,
       spaceSlug: space.slug,
@@ -3515,7 +3434,6 @@ export async function distillPaperclipProjectPage(ctx: PluginContext, input: Pap
     appliedPages.push(patch.pagePath);
   }
   await recordPaperclipDistillationOutcome(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceSlug: space.slug,
     runId: run.runId,
@@ -3570,7 +3488,6 @@ function formatIssueEventSource(issue: Issue, event: PluginEvent, maxCharacters:
     "",
     "## Provenance",
     "",
-    `- Company ID: ${issue.companyId}`,
     `- Issue ID: ${issue.id}`,
     issue.identifier ? `- Issue identifier: ${issue.identifier}` : null,
     `- Event type: ${event.eventType}`,
@@ -3591,7 +3508,6 @@ function formatCommentEventSource(issue: Issue, comment: IssueComment, event: Pl
     "",
     "## Provenance",
     "",
-    `- Company ID: ${issue.companyId}`,
     `- Issue ID: ${issue.id}`,
     issue.identifier ? `- Issue identifier: ${issue.identifier}` : null,
     `- Comment ID: ${comment.id}`,
@@ -3611,7 +3527,6 @@ function formatDocumentEventSource(issue: Issue, document: IssueDocument, event:
     "",
     "## Provenance",
     "",
-    `- Company ID: ${issue.companyId}`,
     `- Issue ID: ${issue.id}`,
     issue.identifier ? `- Issue identifier: ${issue.identifier}` : null,
     `- Document ID: ${document.id}`,
@@ -3629,7 +3544,6 @@ function formatDocumentEventSource(issue: Issue, document: IssueDocument, event:
 }
 
 async function recordPaperclipCursorObservation(ctx: PluginContext, input: {
-  companyId: string;
   wikiId: string;
   space: WikiSpace;
   sourceKind: WikiEventIngestionSource;
@@ -3638,7 +3552,6 @@ async function recordPaperclipCursorObservation(ctx: PluginContext, input: {
   event: PluginEvent;
 }): Promise<Extract<PaperclipEventIngestResult, { status: "recorded" }>> {
   const cursorId = await upsertPaperclipDistillationCursor(ctx, {
-    companyId: input.companyId,
     wikiId: input.wikiId,
     spaceId: input.space.id,
     projectId: input.issue.projectId ?? null,
@@ -3653,7 +3566,7 @@ async function recordPaperclipCursorObservation(ctx: PluginContext, input: {
       lastIssueIdentifier: input.issue.identifier ?? null,
     },
   });
-  await ctx.state.set(eventIngestionDedupKey(input.companyId, input.wikiId, input.space.id, input.sourceKind, input.sourceId), {
+  await ctx.state.set(eventIngestionDedupKey(input.wikiId, input.space.id, input.sourceKind, input.sourceId), {
     eventId: input.event.eventId,
     cursorId,
     issueId: input.issue.id,
@@ -3670,7 +3583,6 @@ async function recordPaperclipCursorObservation(ctx: PluginContext, input: {
 }
 
 async function paperclipProfileIncludesIssue(ctx: PluginContext, input: {
-  companyId: string;
   issue: Issue;
   profile: PaperclipIngestionProfileV1;
 }): Promise<boolean> {
@@ -3680,7 +3592,7 @@ async function paperclipProfileIncludesIssue(ctx: PluginContext, input: {
       return true;
     }
     if (scope.kind === "active_projects" && input.issue.projectId) {
-      const project = await ctx.projects.get(input.issue.projectId, input.companyId);
+      const project = await ctx.projects.get(input.issue.projectId);
       const statuses = scope.statuses ?? ["in_progress"];
       if (project && statuses.includes(project.status as "in_progress" | "todo" | "done") && isActiveDistillationProject(project)) {
         return true;
@@ -3689,7 +3601,7 @@ async function paperclipProfileIncludesIssue(ctx: PluginContext, input: {
     if (scope.kind === "root_issues") {
       for (const rootIssueId of scope.issueIds) {
         if (input.issue.id === rootIssueId) return true;
-        const subtree = await ctx.issues.getSubtree(rootIssueId, input.companyId, { includeRoot: true });
+        const subtree = await ctx.issues.getSubtree(rootIssueId, { includeRoot: true });
         if (subtree.issues.some((issue) => issue.id === input.issue.id)) return true;
       }
     }
@@ -3698,27 +3610,26 @@ async function paperclipProfileIncludesIssue(ctx: PluginContext, input: {
 }
 
 async function routePaperclipCursorObservation(ctx: PluginContext, input: {
-  companyId: string;
   sourceKind: WikiEventIngestionSource;
   sourceId: string;
   issue: Issue;
   event: PluginEvent;
 }): Promise<PaperclipEventIngestResult> {
-  const { spaces } = await listSpaces(ctx, { companyId: input.companyId, wikiId: DEFAULT_WIKI_ID });
+  const { spaces } = await listSpaces(ctx, { wikiId: DEFAULT_WIKI_ID });
   const recorded: Array<Extract<PaperclipEventIngestResult, { status: "recorded" }>> = [];
   let eligibleProfileCount = 0;
   for (const space of spaces) {
-    const profile = await profileForSpace(ctx, input.companyId, space);
+    const profile = await profileForSpace(ctx, space);
     if (!profile.enabled) continue;
     const policy = evaluatePaperclipProfilePolicy({ space, profile, purpose: "event_routing", requireEnabledProfile: true });
     if (!policy.allowed) continue;
     if (!profile.sourceKinds[input.sourceKind]) continue;
-    if (!(await paperclipProfileIncludesIssue(ctx, { companyId: input.companyId, issue: input.issue, profile }))) continue;
+    if (!(await paperclipProfileIncludesIssue(ctx, { issue: input.issue, profile }))) continue;
     eligibleProfileCount += 1;
     if (eligibleProfileCount > MAX_PAPERCLIP_DISTILLATION_FAN_OUT) {
       throw new Error(`Paperclip ingestion fan-out exceeds the hard cap of ${MAX_PAPERCLIP_DISTILLATION_FAN_OUT} enabled profiles.`);
     }
-    if (await ctx.state.get(eventIngestionDedupKey(input.companyId, space.wikiId, space.id, input.sourceKind, input.sourceId))) {
+    if (await ctx.state.get(eventIngestionDedupKey(space.wikiId, space.id, input.sourceKind, input.sourceId))) {
       continue;
     }
     recorded.push(await recordPaperclipCursorObservation(ctx, {
@@ -3731,11 +3642,9 @@ async function routePaperclipCursorObservation(ctx: PluginContext, input: {
 }
 
 export async function handlePaperclipEventIngestion(ctx: PluginContext, event: PluginEvent): Promise<PaperclipEventIngestResult> {
-  const companyId = event.companyId;
-
   const issueId = stringField(event.entityId);
   if (!issueId) return { status: "skipped", reason: "unsupported_event" };
-  const issue = await ctx.issues.get(issueId, companyId);
+  const issue = await ctx.issues.get(issueId);
   if (!issue) return { status: "skipped", reason: "missing_issue" };
   if (isLlmWikiOperationIssue(issue)) return { status: "skipped", reason: "plugin_operation" };
 
@@ -3743,7 +3652,6 @@ export async function handlePaperclipEventIngestion(ctx: PluginContext, event: P
   if (event.eventType === "issue.created" || event.eventType === "issue.updated") {
     const sourceId = `${event.eventType}:${issue.id}:${event.eventId}`;
     return routePaperclipCursorObservation(ctx, {
-      companyId,
       sourceKind: "issues",
       sourceId,
       issue,
@@ -3756,7 +3664,6 @@ export async function handlePaperclipEventIngestion(ctx: PluginContext, event: P
     if (!commentId) return { status: "skipped", reason: "missing_comment" };
     const sourceId = `comment:${commentId}`;
     return routePaperclipCursorObservation(ctx, {
-      companyId,
       sourceKind: "comments",
       sourceId,
       issue,
@@ -3770,7 +3677,6 @@ export async function handlePaperclipEventIngestion(ctx: PluginContext, event: P
     const revision = stringField(payload.revisionId) ?? stringField(payload.latestRevisionId) ?? stringField(payload.revisionNumber) ?? event.eventId;
     const sourceId = `document:${issue.id}:${documentKey}:revision:${revision}`;
     return routePaperclipCursorObservation(ctx, {
-      companyId,
       sourceKind: "documents",
       sourceId,
       issue,
@@ -3785,10 +3691,9 @@ function queryStreamChannel(operationId: string): string {
   return `llm-wiki:query:${operationId}`;
 }
 
-function buildQueryPrompt(input: { companyId: string; wikiId: string; space: WikiSpace; question: string }): string {
+function buildQueryPrompt(input: { wikiId: string; space: WikiSpace; question: string }): string {
   return [
     QUERY_PROMPT,
-    `Company ID: ${input.companyId}`,
     `Wiki ID: ${input.wikiId}`,
     `Space: ${input.space.displayName} (${input.space.slug})`,
     `Space root: ${operationSpaceRoot(input.space)}`,
@@ -3800,7 +3705,6 @@ function buildQueryPrompt(input: { companyId: string; wikiId: string; space: Wik
 }
 
 async function markOperation(ctx: PluginContext, input: {
-  companyId: string;
   operationId: string;
   status: string;
   runId?: string | null;
@@ -3810,15 +3714,14 @@ async function markOperation(ctx: PluginContext, input: {
 }) {
   await ctx.db.execute(
     `UPDATE ${tableName(ctx.db.namespace, "wiki_operations")}
-        SET status = $3,
-            run_ids = CASE WHEN $4::jsonb = '[]'::jsonb THEN run_ids ELSE run_ids || $4::jsonb END,
-            warnings = CASE WHEN $5::jsonb = '[]'::jsonb THEN warnings ELSE warnings || $5::jsonb END,
-            affected_pages = CASE WHEN $6::jsonb = '[]'::jsonb THEN affected_pages ELSE $6::jsonb END,
-            metadata = metadata || $7::jsonb,
+        SET status = $2,
+            run_ids = CASE WHEN $3::jsonb = '[]'::jsonb THEN run_ids ELSE run_ids || $3::jsonb END,
+            warnings = CASE WHEN $4::jsonb = '[]'::jsonb THEN warnings ELSE warnings || $4::jsonb END,
+            affected_pages = CASE WHEN $5::jsonb = '[]'::jsonb THEN affected_pages ELSE $5::jsonb END,
+            metadata = metadata || $6::jsonb,
             updated_at = now()
-      WHERE company_id = $1 AND id = $2`,
+      WHERE id = $1`,
     [
-      input.companyId,
       input.operationId,
       input.status,
       jsonArrayParam(input.runId ? [input.runId] : []),
@@ -3836,9 +3739,8 @@ function isTerminalSessionEvent(event: AgentSessionEvent): boolean {
 export async function startWikiQuerySession(ctx: PluginContext, input: QuerySessionInput) {
   const question = requireString(input.question, "question");
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const operation = await createOperationIssue(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceSlug: space.slug,
     operationType: "query",
@@ -3849,47 +3751,45 @@ export async function startWikiQuerySession(ctx: PluginContext, input: QuerySess
   const channel = queryStreamChannel(operation.operationId);
 
   if (!agentId) {
-    const warning = "No configured Wiki Maintainer agent is available for this company.";
+    const warning = "No configured Wiki Maintainer agent is available.";
     await markOperation(ctx, {
-      companyId: input.companyId,
       operationId: operation.operationId,
       status: "blocked",
       warning,
     });
-    await ctx.issues.update(operation.issue.id, { status: "blocked" }, input.companyId);
-    await ctx.issues.createComment(operation.issue.id, warning, input.companyId);
+    await ctx.issues.update(operation.issue.id, { status: "blocked" });
+    await ctx.issues.createComment(operation.issue.id, warning);
     throw new Error(warning);
   }
 
-  const agent = await ctx.agents.get(agentId, input.companyId);
+  const agent = await ctx.agents.get(agentId);
   if (!agent || agent.status === "paused" || agent.status === "terminated" || agent.status === "pending_approval") {
     const warning = agent
       ? `Wiki Maintainer agent is not invokable while status is ${agent.status}.`
       : "Wiki Maintainer agent could not be loaded.";
     await markOperation(ctx, {
-      companyId: input.companyId,
       operationId: operation.operationId,
       status: "blocked",
       warning,
     });
-    await ctx.issues.update(operation.issue.id, { status: "blocked" }, input.companyId);
-    await ctx.issues.createComment(operation.issue.id, warning, input.companyId);
+    await ctx.issues.update(operation.issue.id, { status: "blocked" });
+    await ctx.issues.createComment(operation.issue.id, warning);
     throw new Error(warning);
   }
 
-  const session = await ctx.agents.sessions.create(agentId, input.companyId, {
+  const session = await ctx.agents.sessions.create(agentId, {
     taskKey: `plugin:${PLUGIN_ID}:session:wiki:${wikiId}:query:${operation.operationId}`,
     reason: "LLM Wiki query session",
   });
   await ctx.db.execute(
     `INSERT INTO ${tableName(ctx.db.namespace, "wiki_query_sessions")}
-       (id, company_id, wiki_id, space_id, hidden_issue_id, agent_session_id, status, filed_outputs)
-     VALUES ($1, $2, $3, $6, $4, $5, 'active', '[]'::jsonb)`,
-    [operation.operationId, input.companyId, wikiId, operation.issue.id, session.sessionId, space.id],
+       (id, wiki_id, space_id, hidden_issue_id, agent_session_id, status, filed_outputs)
+     VALUES ($1, $2, $5, $3, $4, 'active', '[]'::jsonb)`,
+    [operation.operationId, wikiId, operation.issue.id, session.sessionId, space.id],
   );
 
-  const prompt = buildQueryPrompt({ companyId: input.companyId, wikiId, space, question });
-  ctx.streams.open(channel, input.companyId);
+  const prompt = buildQueryPrompt({ wikiId, space, question });
+  ctx.streams.open(channel);
   ctx.streams.emit(channel, {
     type: "query.started",
     operationId: operation.operationId,
@@ -3900,7 +3800,7 @@ export async function startWikiQuerySession(ctx: PluginContext, input: QuerySess
   });
 
   let answer = "";
-  const sendResult = await ctx.agents.sessions.sendMessage(session.sessionId, input.companyId, {
+  const sendResult = await ctx.agents.sessions.sendMessage(session.sessionId, {
     prompt,
     reason: "LLM Wiki query",
     onEvent: (event) => {
@@ -3932,7 +3832,6 @@ export async function startWikiQuerySession(ctx: PluginContext, input: QuerySess
         });
         ctx.streams.close(channel);
         void markOperation(ctx, {
-          companyId: input.companyId,
           operationId: operation.operationId,
           status: finalStatus,
           runId: event.runId,
@@ -3941,34 +3840,31 @@ export async function startWikiQuerySession(ctx: PluginContext, input: QuerySess
         });
         void ctx.db.execute(
           `UPDATE ${tableName(ctx.db.namespace, "wiki_query_sessions")}
-              SET status = $3,
+              SET status = $2,
                   updated_at = now()
-            WHERE company_id = $1 AND id = $2`,
-          [input.companyId, operation.operationId, finalStatus === "done" ? "completed" : "failed"],
+            WHERE id = $1`,
+          [operation.operationId, finalStatus === "done" ? "completed" : "failed"],
         );
         void ctx.issues.createComment(
           operation.issue.id,
           event.eventType === "done"
             ? `Query completed.\n\n${answer.trim() || "_No answer text was streamed._"}`
             : `Query failed: ${event.message ?? "agent session ended with an error"}`,
-          input.companyId,
         );
         void ctx.issues.update(
           operation.issue.id,
           { status: event.eventType === "done" ? "done" : "blocked", originRunId: event.runId },
-          input.companyId,
         );
       }
     },
   });
 
   await markOperation(ctx, {
-    companyId: input.companyId,
     operationId: operation.operationId,
     status: "running",
     runId: sendResult.runId,
   });
-  await ctx.issues.update(operation.issue.id, { originRunId: sendResult.runId }, input.companyId);
+  await ctx.issues.update(operation.issue.id, { originRunId: sendResult.runId });
 
   return {
     status: "running",
@@ -3985,7 +3881,7 @@ export async function startWikiQuerySession(ctx: PluginContext, input: QuerySess
 
 export async function fileQueryAnswerAsPage(ctx: PluginContext, input: FileQueryAnswerInput) {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const path = assertPagePath(input.path);
   const title = stringField(input.title) ?? inferTitle(path, input.contents ?? input.answer ?? "");
   const answer = stringField(input.answer);
@@ -3997,7 +3893,6 @@ export async function fileQueryAnswerAsPage(ctx: PluginContext, input: FileQuery
     answer ?? "",
   ].filter((line): line is string => line !== null).join("\n").trimEnd() + "\n";
   const operation = await createOperationIssue(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceSlug: space.slug,
     operationType: "file-as-page",
@@ -4005,7 +3900,6 @@ export async function fileQueryAnswerAsPage(ctx: PluginContext, input: FileQuery
     prompt: input.question ?? answer ?? `Write ${path}`,
   });
   const result = await writeWikiPage(ctx, {
-    companyId: input.companyId,
     wikiId,
     spaceSlug: space.slug,
     path,
@@ -4022,26 +3916,24 @@ export async function fileQueryAnswerAsPage(ctx: PluginContext, input: FileQuery
     revisionId: result.revisionId,
   };
   await markOperation(ctx, {
-    companyId: input.companyId,
     operationId: operation.operationId,
     status: "done",
     affectedPages: [affectedPage],
     metadata: { querySessionId: input.querySessionId ?? null },
   });
-  await ctx.issues.update(operation.issue.id, { status: "done" }, input.companyId);
+  await ctx.issues.update(operation.issue.id, { status: "done" });
   await ctx.issues.createComment(
     operation.issue.id,
     `Filed query answer as \`${path}\`.`,
-    input.companyId,
   );
 
   if (input.querySessionId) {
     await ctx.db.execute(
       `UPDATE ${tableName(ctx.db.namespace, "wiki_query_sessions")}
-          SET filed_outputs = filed_outputs || $3::jsonb,
+          SET filed_outputs = filed_outputs || $2::jsonb,
               updated_at = now()
-        WHERE company_id = $1 AND id = $2`,
-      [input.companyId, input.querySessionId, jsonArrayParam([affectedPage])],
+        WHERE id = $1`,
+      [input.querySessionId, jsonArrayParam([affectedPage])],
     );
   }
 
@@ -4063,26 +3955,25 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_search")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const query = requireString(input.query, "query");
     const limit = normalizeLimit(input.limit, 20, 50);
     const rows = await ctx.db.query<{ kind: string; path: string; title: string | null; match_text: string | null }>(
       `SELECT 'page' AS kind, path, title, page_type AS match_text
          FROM ${tableName(ctx.db.namespace, "wiki_pages")}
-        WHERE company_id = $1 AND wiki_id = $2 AND space_id = $5 AND (lower(path) LIKE lower($3) OR lower(coalesce(title, '')) LIKE lower($3))
+        WHERE wiki_id = $1 AND space_id = $4 AND (lower(path) LIKE lower($2) OR lower(coalesce(title, '')) LIKE lower($2))
        UNION ALL
        SELECT 'source' AS kind, raw_path AS path, title, source_type AS match_text
          FROM ${tableName(ctx.db.namespace, "wiki_sources")}
-        WHERE company_id = $1 AND wiki_id = $2 AND space_id = $5 AND (lower(raw_path) LIKE lower($3) OR lower(coalesce(title, '')) LIKE lower($3) OR lower(coalesce(url, '')) LIKE lower($3))
+        WHERE wiki_id = $1 AND space_id = $4 AND (lower(raw_path) LIKE lower($2) OR lower(coalesce(title, '')) LIKE lower($2) OR lower(coalesce(url, '')) LIKE lower($2))
        ORDER BY kind, path
-       LIMIT $4`,
-      [companyId, wikiId, `%${query}%`, limit, space.id],
+       LIMIT $3`,
+      [wikiId, `%${query}%`, limit, space.id],
     );
     return {
       content: rows.length ? rows.map((row) => `${row.kind}: ${row.path}${row.title ? ` - ${row.title}` : ""}`).join("\n") : "No wiki matches found.",
-      data: { companyId, wikiId, spaceSlug: space.slug, query, results: rows },
+      data: { wikiId, spaceSlug: space.slug, query, results: rows },
     };
   });
 
@@ -4092,12 +3983,11 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_read_page")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const path = assertPagePath(requireString(input.path, "path"));
-    const contents = await ctx.localFolders.readText(companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path));
-    return { content: contents, data: { companyId, wikiId, spaceSlug: space.slug, path, hash: contentHash(contents) } };
+    const contents = await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path));
+    return { content: contents, data: { wikiId, spaceSlug: space.slug, path, hash: contentHash(contents) } };
   });
 
   ctx.tools.register("wiki_write_page", {
@@ -4107,7 +3997,6 @@ export async function registerWikiTools(ctx: PluginContext) {
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
     const result = await writeWikiPage(ctx, {
-      companyId: requireString(input.companyId, "companyId"),
       wikiId: stringField(input.wikiId),
       spaceSlug: stringField(input.spaceSlug),
       path: requireString(input.path, "path"),
@@ -4125,16 +4014,14 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_propose_patch")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const path = assertPagePath(requireString(input.path, "path"));
     const contents = requireString(input.contents, "contents");
-    const current = await readCurrentWithHash(ctx, companyId, path, space);
+    const current = await readCurrentWithHash(ctx, path, space);
     return {
       content: `Proposed patch for ${path}`,
       data: {
-        companyId,
         wikiId,
         spaceSlug: space.slug,
         path,
@@ -4152,21 +4039,20 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_list_sources")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const limit = normalizeLimit(input.limit, 50, 200);
     const rows = await ctx.db.query<{ raw_path: string; title: string | null; source_type: string; url: string | null; content_hash: string }>(
       `SELECT raw_path, title, source_type, url, content_hash
          FROM ${tableName(ctx.db.namespace, "wiki_sources")}
-        WHERE company_id = $1 AND wiki_id = $2 AND space_id = $4
+        WHERE wiki_id = $1 AND space_id = $3
         ORDER BY created_at DESC
-        LIMIT $3`,
-      [companyId, wikiId, limit, space.id],
+        LIMIT $2`,
+      [wikiId, limit, space.id],
     );
     return {
       content: rows.length ? rows.map((row) => `${row.raw_path}${row.title ? ` - ${row.title}` : ""}`).join("\n") : "No sources captured yet.",
-      data: { companyId, wikiId, spaceSlug: space.slug, sources: rows },
+      data: { wikiId, spaceSlug: space.slug, sources: rows },
     };
   });
 
@@ -4176,12 +4062,11 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_read_source")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const rawPath = assertRawPath(requireString(input.rawPath, "rawPath"));
-    const contents = await ctx.localFolders.readText(companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, rawPath));
-    return { content: contents, data: { companyId, wikiId, spaceSlug: space.slug, rawPath, hash: contentHash(contents) } };
+    const contents = await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, rawPath));
+    return { content: contents, data: { wikiId, spaceSlug: space.slug, rawPath, hash: contentHash(contents) } };
   });
 
   ctx.tools.register("wiki_append_log", {
@@ -4190,27 +4075,25 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_append_log")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const entry = requireString(input.entry, "entry");
     let current = "";
     try {
-      current = await ctx.localFolders.readText(companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, "wiki/log.md"));
+      current = await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, "wiki/log.md"));
     } catch {
       current = "# Log\n\nAppend-only chronological record of wiki operations.\n";
     }
     const next = `${current.trimEnd()}\n\n- ${new Date().toISOString()} ${entry}\n`;
-    await ctx.localFolders.writeTextAtomic(companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, "wiki/log.md"), next);
+    await ctx.localFolders.writeTextAtomic(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, "wiki/log.md"), next);
     await upsertPageMetadata(ctx, {
-      companyId,
       wikiId,
       spaceId: space.id,
       path: "wiki/log.md",
       contents: next,
       summary: "Append log entry",
     });
-    return { content: "Appended log entry", data: { companyId, wikiId, spaceSlug: space.slug, hash: contentHash(next) } };
+    return { content: "Appended log entry", data: { wikiId, spaceSlug: space.slug, hash: contentHash(next) } };
   });
 
   ctx.tools.register("wiki_update_index", {
@@ -4220,7 +4103,6 @@ export async function registerWikiTools(ctx: PluginContext) {
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
     const result = await writeWikiPage(ctx, {
-      companyId: requireString(input.companyId, "companyId"),
       wikiId: stringField(input.wikiId),
       spaceSlug: stringField(input.spaceSlug),
       path: "wiki/index.md",
@@ -4237,21 +4119,20 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_list_backlinks")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const path = assertPagePath(requireString(input.path, "path"));
     const rows = await ctx.db.query<{ path: string; title: string | null }>(
       `SELECT path, title
          FROM ${tableName(ctx.db.namespace, "wiki_pages")}
-        WHERE company_id = $1 AND wiki_id = $2 AND space_id = $4 AND backlinks ? $3
+        WHERE wiki_id = $1 AND space_id = $3 AND backlinks ? $2
         ORDER BY path
         LIMIT 200`,
-      [companyId, wikiId, path, space.id],
+      [wikiId, path, space.id],
     );
     return {
       content: rows.length ? rows.map((row) => `${row.path}${row.title ? ` - ${row.title}` : ""}`).join("\n") : "No backlinks indexed.",
-      data: { companyId, wikiId, spaceSlug: space.slug, path, backlinks: rows },
+      data: { wikiId, spaceSlug: space.slug, path, backlinks: rows },
     };
   });
 
@@ -4261,22 +4142,17 @@ export async function registerWikiTools(ctx: PluginContext) {
     parametersSchema: ctx.manifest.tools?.find((tool) => tool.name === "wiki_list_pages")?.parametersSchema ?? { type: "object" },
   }, async (params: unknown): Promise<ToolResult> => {
     const input = params as ToolParams;
-    const companyId = requireString(input.companyId, "companyId");
     const wikiId = normalizeWikiId(input.wikiId);
-    const space = await resolveSpace(ctx, { companyId, wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
+    const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug as string | null | undefined });
     const rows = await ctx.db.query<{ path: string; title: string | null; page_type: string | null }>(
-      `SELECT path, title, page_type FROM ${tableName(ctx.db.namespace, "wiki_pages")} WHERE company_id = $1 AND wiki_id = $2 AND space_id = $3 ORDER BY path LIMIT 200`,
-      [companyId, wikiId, space.id],
+      `SELECT path, title, page_type FROM ${tableName(ctx.db.namespace, "wiki_pages")} WHERE wiki_id = $1 AND space_id = $2 ORDER BY path LIMIT 200`,
+      [wikiId, space.id],
     );
     return {
       content: rows.length ? rows.map((row) => `${row.path}${row.title ? ` - ${row.title}` : ""}`).join("\n") : "No pages indexed yet.",
-      data: { companyId, wikiId, spaceSlug: space.slug, pages: rows },
+      data: { wikiId, spaceSlug: space.slug, pages: rows },
     };
   });
-}
-
-export function readCompanyIdFromParams(params: Record<string, unknown>): string {
-  return requireString(params.companyId, "companyId");
 }
 
 const TEMPLATE_FILES = ["AGENTS.md", "IDEA.md"] as const;
@@ -4326,7 +4202,6 @@ export type WikiOperationRow = {
 };
 
 export async function listPages(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   pageType?: string | null;
@@ -4334,9 +4209,9 @@ export async function listPages(ctx: PluginContext, input: {
   limit?: number | null;
 }): Promise<{ pages: WikiPageRow[]; sources: WikiSourceRow[] }> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const limit = normalizeLimit(input.limit, 500, LOCAL_BROWSE_FILE_LIMIT);
-  const params: unknown[] = [input.companyId, wikiId, space.id];
+  const params: unknown[] = [wikiId, space.id];
   let pageFilter = "";
   if (input.pageType) {
     params.push(input.pageType);
@@ -4355,12 +4230,12 @@ export async function listPages(ctx: PluginContext, input: {
   }>(
     `SELECT path, title, page_type, backlinks, source_refs, content_hash, updated_at::text AS updated_at
        FROM ${tableName(ctx.db.namespace, "wiki_pages")}
-      WHERE company_id = $1 AND wiki_id = $2 AND space_id = $3${pageFilter}
+      WHERE wiki_id = $1 AND space_id = $2${pageFilter}
       ORDER BY path
       LIMIT $${limitIndex}`,
     params,
   );
-  const readablePageRows = await filterReadableRows(ctx, input.companyId, space, pageRows, (row) => row.path);
+  const readablePageRows = await filterReadableRows(ctx, space, pageRows, (row) => row.path);
   const pages: WikiPageRow[] = readablePageRows.map((row) => ({
     path: row.path,
     title: row.title,
@@ -4372,38 +4247,37 @@ export async function listPages(ctx: PluginContext, input: {
   }));
   let pagesWithLocalFiles = pages;
   if (!input.pageType) {
-    const wikiFiles = await listLocalFiles(ctx, { companyId: input.companyId, space, relativePath: "wiki" });
+    const wikiFiles = await listLocalFiles(ctx, { space, relativePath: "wiki" });
     pagesWithLocalFiles = mergeLocalPageRows(pages, wikiFiles);
   }
 
   let sources: WikiSourceRow[] = [];
   if (input.includeRaw) {
-    sources = (await listSources(ctx, { companyId: input.companyId, wikiId, spaceSlug: space.slug, limit, onlyReadable: true })).sources;
-    sources = mergeLocalSourceRows(sources, await listLocalFiles(ctx, { companyId: input.companyId, space, relativePath: "raw" }));
+    sources = (await listSources(ctx, { wikiId, spaceSlug: space.slug, limit, onlyReadable: true })).sources;
+    sources = mergeLocalSourceRows(sources, await listLocalFiles(ctx, { space, relativePath: "raw" }));
   }
   return { pages: pagesWithLocalFiles, sources };
 }
 
 export async function listSources(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   limit?: number | null;
   onlyReadable?: boolean;
 }): Promise<{ sources: WikiSourceRow[] }> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const limit = normalizeLimit(input.limit, 500, LOCAL_BROWSE_FILE_LIMIT);
   const rows = await ctx.db.query<{ raw_path: string; title: string | null; source_type: string; url: string | null; status: string; created_at: string }>(
     `SELECT raw_path, title, source_type, url, status, created_at::text AS created_at
        FROM ${tableName(ctx.db.namespace, "wiki_sources")}
-      WHERE company_id = $1 AND wiki_id = $2 AND space_id = $4
+      WHERE wiki_id = $1 AND space_id = $3
       ORDER BY created_at DESC
-      LIMIT $3`,
-    [input.companyId, wikiId, limit, space.id],
+      LIMIT $2`,
+    [wikiId, limit, space.id],
   );
   const sourceRows = input.onlyReadable
-    ? await filterReadableRows(ctx, input.companyId, space, rows, (row) => row.raw_path)
+    ? await filterReadableRows(ctx, space, rows, (row) => row.raw_path)
     : rows;
   return {
     sources: sourceRows.map((row) => ({
@@ -4417,17 +4291,17 @@ export async function listSources(ctx: PluginContext, input: {
   };
 }
 
-export async function readWikiPage(ctx: PluginContext, input: { companyId: string; wikiId?: string | null; spaceSlug?: string | null; path: string }) {
+export async function readWikiPage(ctx: PluginContext, input: { wikiId?: string | null; spaceSlug?: string | null; path: string }) {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const path = assertWikiPath(input.path);
-  const contents = await ctx.localFolders.readText(input.companyId, WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path));
+  const contents = await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, spaceRelativePath(space, path));
   const meta = await ctx.db.query<{ title: string | null; page_type: string | null; backlinks: unknown; source_refs: unknown; updated_at: string }>(
     `SELECT title, page_type, backlinks, source_refs, updated_at::text AS updated_at
        FROM ${tableName(ctx.db.namespace, "wiki_pages")}
-      WHERE company_id = $1 AND wiki_id = $2 AND space_id = $4 AND path = $3
+      WHERE wiki_id = $1 AND space_id = $3 AND path = $2
       LIMIT 1`,
-    [input.companyId, wikiId, path, space.id],
+    [wikiId, path, space.id],
   );
   const row = meta[0] ?? null;
   return {
@@ -4444,23 +4318,23 @@ export async function readWikiPage(ctx: PluginContext, input: { companyId: strin
   };
 }
 
-export async function readTemplate(ctx: PluginContext, input: { companyId: string; path: string }) {
+export async function readTemplate(ctx: PluginContext, input: { path: string }) {
   if (!isTemplateFile(input.path)) {
     throw new Error(`template path must be one of ${TEMPLATE_FILES.join(", ")}`);
   }
   try {
-    const contents = await ctx.localFolders.readText(input.companyId, WIKI_ROOT_FOLDER_KEY, input.path);
+    const contents = await ctx.localFolders.readText(WIKI_ROOT_FOLDER_KEY, input.path);
     return { path: input.path, contents, hash: contentHash(contents), exists: true };
   } catch (error) {
     return { path: input.path, contents: "", hash: null, exists: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-export async function writeTemplate(ctx: PluginContext, input: { companyId: string; path: string; contents: string }) {
+export async function writeTemplate(ctx: PluginContext, input: { path: string; contents: string }) {
   if (!isTemplateFile(input.path)) {
     throw new Error(`template path must be one of ${TEMPLATE_FILES.join(", ")}`);
   }
-  await ctx.localFolders.writeTextAtomic(input.companyId, WIKI_ROOT_FOLDER_KEY, input.path, input.contents);
+  await ctx.localFolders.writeTextAtomic(WIKI_ROOT_FOLDER_KEY, input.path, input.contents);
   return { status: "ok", path: input.path, hash: contentHash(input.contents) };
 }
 
@@ -4585,13 +4459,12 @@ function affectedPagePathsFromRunMetadata(metadata: Record<string, unknown>, fal
 }
 
 export async function getDistillationOverview(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   limit?: number | null;
 }): Promise<DistillationOverview> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const runLimit = normalizeLimit(input.limit ?? 25, 25, 200);
   const cursorRows = await ctx.db.query<{
     id: string;
@@ -4626,10 +4499,10 @@ export async function getDistillationOverview(ctx: PluginContext, input: {
        FROM ${distillationCursorTable(ctx)} cursor
        LEFT JOIN public.projects project ON project.id = cursor.project_id
        LEFT JOIN public.issues issue ON issue.id = cursor.root_issue_id
-      WHERE cursor.company_id = $1 AND cursor.wiki_id = $2 AND cursor.space_id = $3
+      WHERE cursor.wiki_id = $1 AND cursor.space_id = $2
       ORDER BY cursor.updated_at DESC
       LIMIT 200`,
-    [input.companyId, wikiId, space.id],
+    [wikiId, space.id],
   );
 
   const runRows = await ctx.db.query<{
@@ -4678,10 +4551,10 @@ export async function getDistillationOverview(ctx: PluginContext, input: {
        LEFT JOIN public.projects project ON project.id = run.project_id
        LEFT JOIN public.issues root_issue ON root_issue.id = run.root_issue_id
        LEFT JOIN public.issues op_issue ON op_issue.id = run.operation_issue_id
-      WHERE run.company_id = $1 AND run.wiki_id = $2 AND run.space_id = $4
+      WHERE run.wiki_id = $1 AND run.space_id = $3
       ORDER BY run.created_at DESC
-      LIMIT $3`,
-    [input.companyId, wikiId, runLimit, space.id],
+      LIMIT $2`,
+    [wikiId, runLimit, space.id],
   );
 
   const workItemRows = await ctx.db.query<{
@@ -4698,10 +4571,10 @@ export async function getDistillationOverview(ctx: PluginContext, input: {
     `SELECT id, work_item_kind, status, priority, project_id, root_issue_id, metadata,
             created_at::text AS created_at, updated_at::text AS updated_at
        FROM ${distillationWorkItemTable(ctx)}
-      WHERE company_id = $1 AND wiki_id = $2 AND space_id = $3 AND status IN ('pending', 'review_required', 'in_progress', 'failed')
+      WHERE wiki_id = $1 AND space_id = $2 AND status IN ('pending', 'review_required', 'in_progress', 'failed')
       ORDER BY created_at DESC
       LIMIT 100`,
-    [input.companyId, wikiId, space.id],
+    [wikiId, space.id],
   );
 
   const bindingRows = await ctx.db.query<{
@@ -4735,10 +4608,10 @@ export async function getDistillationOverview(ctx: PluginContext, input: {
        FROM ${pageBindingTable(ctx)} binding
        LEFT JOIN public.projects project ON project.id = binding.project_id
        LEFT JOIN ${distillationRunTable(ctx)} run ON run.id = binding.last_distillation_run_id
-      WHERE binding.company_id = $1 AND binding.wiki_id = $2 AND binding.space_id = $3
+      WHERE binding.wiki_id = $1 AND binding.space_id = $2
       ORDER BY binding.updated_at DESC
       LIMIT 200`,
-    [input.companyId, wikiId, space.id],
+    [wikiId, space.id],
   );
 
   const cursors: DistillationCursorRow[] = cursorRows.map((row) => ({
@@ -4837,7 +4710,6 @@ export async function getDistillationOverview(ctx: PluginContext, input: {
 }
 
 export async function getDistillationPageProvenance(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   pagePath: string;
@@ -4848,8 +4720,8 @@ export async function getDistillationPageProvenance(ctx: PluginContext, input: {
   cursor: DistillationCursorRow | null;
 }> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
-  const overview = await getDistillationOverview(ctx, { companyId: input.companyId, wikiId, spaceSlug: space.slug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
+  const overview = await getDistillationOverview(ctx, { wikiId, spaceSlug: space.slug });
   const binding = overview.pageBindings.find((row) => row.pagePath === input.pagePath) ?? null;
   if (!binding) {
     return { binding: null, runs: [], snapshot: null, cursor: null };
@@ -4880,10 +4752,10 @@ export async function getDistillationPageProvenance(ctx: PluginContext, input: {
     }>(
       `SELECT id, distillation_run_id, source_hash, max_characters, clipped, source_refs, metadata, created_at::text AS created_at
          FROM ${sourceSnapshotTable(ctx)}
-        WHERE company_id = $1 AND wiki_id = $2 AND space_id = $4 AND distillation_run_id = $3
+        WHERE wiki_id = $1 AND space_id = $3 AND distillation_run_id = $2
         ORDER BY created_at DESC
         LIMIT 1`,
-      [input.companyId, wikiId, binding.lastDistillationRunId, space.id],
+      [wikiId, binding.lastDistillationRunId, space.id],
     );
     if (snapshotRows[0]) {
       const row = snapshotRows[0];
@@ -4904,7 +4776,6 @@ export async function getDistillationPageProvenance(ctx: PluginContext, input: {
 }
 
 export async function listOperations(ctx: PluginContext, input: {
-  companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
   operationType?: string | null;
@@ -4912,9 +4783,9 @@ export async function listOperations(ctx: PluginContext, input: {
   limit?: number | null;
 }): Promise<{ operations: WikiOperationRow[] }> {
   const wikiId = normalizeWikiId(input.wikiId);
-  const space = await resolveSpace(ctx, { companyId: input.companyId, wikiId, spaceSlug: input.spaceSlug });
+  const space = await resolveSpace(ctx, { wikiId, spaceSlug: input.spaceSlug });
   const limit = normalizeLimit(input.limit, 50, 500);
-  const params: unknown[] = [input.companyId, wikiId, space.id];
+  const params: unknown[] = [wikiId, space.id];
   const filters: string[] = [];
   if (input.operationType && input.operationType !== "all") {
     params.push(input.operationType);
@@ -4951,7 +4822,7 @@ export async function listOperations(ctx: PluginContext, input: {
             issue.status::text AS hidden_issue_status
        FROM ${tableName(ctx.db.namespace, "wiki_operations")} op
        LEFT JOIN public.issues issue ON issue.id = op.hidden_issue_id
-      WHERE op.company_id = $1 AND op.wiki_id = $2 AND op.space_id = $3${filterSql}
+      WHERE op.wiki_id = $1 AND op.space_id = $2${filterSql}
       ORDER BY op.created_at DESC
       LIMIT $${params.length}`,
     params,

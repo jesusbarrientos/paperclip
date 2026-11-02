@@ -4,7 +4,7 @@ import { InstanceExperimentalSettings } from "@/pages/InstanceExperimentalSettin
 import { installPublicMcpFixture } from "../fixtures/publicMcp";
 const meta = {
   title: "Assistant connections/Experimental setting", component: InstanceExperimentalSettings,
-  parameters: { layout: "padded", initialEntries: ["/PAP/company/settings/instance/experimental"], docs: { description: { component: "The production Experimental page, including surrounding settings. Changes are local to this story." } } },
+  parameters: { layout: "padded", initialEntries: ["/organization/settings/instance/experimental"], docs: { description: { component: "The production Experimental page, including surrounding settings. Changes are local to this story." } } },
   beforeEach: ({ parameters }) => installPublicMcpFixture(parameters.fixture),
 } satisfies Meta<typeof InstanceExperimentalSettings>;
 export default meta;

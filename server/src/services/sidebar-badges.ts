@@ -25,7 +25,6 @@ function isDismissed(
 export function sidebarBadgeService(db: Db) {
   return {
     get: async (
-      companyId: string,
       extra?: {
         currentUserId?: string | null;
         dismissals?: ReadonlyMap<string, number>;
@@ -37,10 +36,7 @@ export function sidebarBadgeService(db: Db) {
         .select({ id: approvals.id, updatedAt: approvals.updatedAt })
         .from(approvals)
         .where(
-          and(
-            eq(approvals.companyId, companyId),
-            inArray(approvals.status, ACTIONABLE_APPROVAL_STATUSES),
-          ),
+          inArray(approvals.status, ACTIONABLE_APPROVAL_STATUSES),
         )
         .then((rows) =>
           rows.filter((row) => !isDismissed(extra?.dismissals ?? new Map(), `approval:${row.id}`, row.updatedAt)).length
@@ -56,11 +52,7 @@ export function sidebarBadgeService(db: Db) {
         .from(heartbeatRuns)
         .innerJoin(agents, eq(heartbeatRuns.agentId, agents.id))
         .where(
-          and(
-            eq(heartbeatRuns.companyId, companyId),
-            eq(agents.companyId, companyId),
-            not(eq(agents.status, "terminated")),
-          ),
+          not(eq(agents.status, "terminated")),
         )
         .orderBy(heartbeatRuns.agentId, desc(heartbeatRuns.createdAt));
 

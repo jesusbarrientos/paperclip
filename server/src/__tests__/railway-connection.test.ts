@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import { agents, approvals, companies, companyMemberships, companySecrets, connectionGrants, createDb, heartbeatRuns, issues, toolCatalogEntries, toolActionRequests, toolConnections, toolPolicies, toolProfileBindings, toolProfiles, toolAccessAuditEvents } from "@paperclipai/db";
@@ -55,8 +55,8 @@ const initialTools = [
       return new Response("", { status: 404 });
     });
     const service = toolAccessService(db, { remoteHttpRequest: request, remoteHttpEndpointLookup: async () => [{ address: "8.8.8.8", family: 4 }] });
-    const connection = await service.connectGalleryApp(company.id, { galleryKey: "railway", methodKey: "mcp-oauth", name: "Railway" }, actor);
-    const start = await service.startOAuth(company.id, connection.connectionId, { redirectUri, actor });
+    const connection = await service.connectGalleryApp({ galleryKey: "railway", methodKey: "mcp-oauth", name: "Railway" }, actor);
+    const start = await service.startOAuth(connection.connectionId, { redirectUri, actor });
     const url = new URL(start.authorizationUrl);
     expect(start.registrationSource).toBe("dcr");
     expect(url.searchParams.get("prompt")).toBe("consent");
@@ -69,6 +69,7 @@ const initialTools = [
 
   beforeEach(async () => {
     await resetOrganizationState(db);
+    await db.execute(sql.raw('TRUNCATE "tool_applications", "tool_connections", "tool_profiles", "tool_policies", "agents", "issues" CASCADE'));
   });
 
   it("discovers direct tools, blocks opaque actions and quarantines changed tools even on reconnect", async () => {
@@ -83,7 +84,7 @@ const initialTools = [
     const changed = await f.service.listCatalog(f.connectionId);
     expect(changed.find((r) => r.toolName === "list-projects")?.status).toBe("quarantined");
     expect(changed.find((r) => r.toolName === "new-tool")?.status).toBe("quarantined");
-    const start = await f.service.startOAuth(f.company.id, f.connectionId, { redirectUri, actor });
+    const start = await f.service.startOAuth(f.connectionId, { redirectUri, actor });
     await f.service.completeOAuthCallback({ state: new URL(start.authorizationUrl).searchParams.get("state")!, code: "reconnect-code", iss: railwayAuthorizationMetadata.issuer, redirectUri, actor });
     const after = await f.service.listCatalog(f.connectionId);
     expect(after.find((r) => r.toolName === "new-tool")?.status).toBe("quarantined");
@@ -100,7 +101,7 @@ const initialTools = [
     const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connectionId));
     f.setTokenStatus(400);
     let failure: unknown;
-    try { await f.service.refreshOAuthGrantCredentials({ companyId: f.company.id, connectionId: f.connectionId, grantId: grant.id, forceRefresh: true, actor }); }
+    try { await f.service.refreshOAuthGrantCredentials({ connectionId: f.connectionId, grantId: grant.id, forceRefresh: true, actor }); }
     catch (error) { failure = error; }
     expect(failure).toBeTruthy();
     expect(String(failure)).not.toContain("private provider message");
@@ -109,16 +110,16 @@ const initialTools = [
 
   it("denies retired source-deployment entries before refresh and disables them on refresh", async () => {
     const f = await fixture();
-    const [agent] = await db.insert(agents).values({ companyId: f.company.id, name: "Railway operator", role: "engineer", adapterType: "process", adapterConfig: {} }).returning();
-    const [run] = await db.insert(heartbeatRuns).values({ companyId: f.company.id, agentId: agent.id, invocationSource: "on_demand", status: "running" }).returning();
-    const [profile] = await db.insert(toolProfiles).values({ companyId: f.company.id, name: "Railway tools", profileKey: randomUUID(), defaultAction: "allow" }).returning();
-    await db.insert(toolProfileBindings).values({ companyId: f.company.id, profileId: profile.id, targetType: "agent", targetId: agent.id });
+    const [agent] = await db.insert(agents).values({ name: "Railway operator", role: "engineer", adapterType: "process", adapterConfig: {} }).returning();
+    const [run] = await db.insert(heartbeatRuns).values({ agentId: agent.id, invocationSource: "on_demand", status: "running" }).returning();
+    const [profile] = await db.insert(toolProfiles).values({ name: `Railway tools ${randomUUID()}`, profileKey: randomUUID(), defaultAction: "allow" }).returning();
+    await db.insert(toolProfileBindings).values({ profileId: profile.id, targetType: "agent", targetId: agent.id });
     const [existing] = await db.select().from(toolCatalogEntries).where(and(eq(toolCatalogEntries.connectionId, f.connectionId), eq(toolCatalogEntries.toolName, "paperclip-railway-restart")));
     const names = ["paperclip-railway-deploy-revision", "paperclip_railway_deploy_revision", "paperclipRailwayDeployRevision"];
     // Reproduce active catalog rows persisted by an older server, before refresh.
     await db.insert(toolCatalogEntries).values(names.map((name) => ({ ...existing, id: randomUUID(), name, toolName: name, inputSchema: { type: "object" } })));
     const gateway = createToolGatewayService(db, { remoteHttpRequest: f.request });
-    const session = await gateway.createSession({ companyId: f.company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const listed = await gateway.listToolsForSession(session.token);
     expect(listed.some((tool) => names.includes(tool.upstreamToolName ?? ""))).toBe(false);
     const restart = listed.find((tool) => tool.upstreamToolName === "paperclip-railway-restart")!;
@@ -128,7 +129,7 @@ const initialTools = [
     const parameters = { ...ids, repository: "example/app", commitSha: "a".repeat(40) };
     await expect(gateway.executeTool({ sessionToken: session.token, tool: restart.name.replace("paperclip-railway-restart", names[0]), parameters, idempotencyKey: randomUUID() })).rejects.toMatchObject({ reasonCode: "tool_not_found" });
     for (const toolName of names) {
-      await expect(gateway.executeTestCall({ companyId: f.company.id, connectionId: f.connectionId, agentId: agent.id, userId: actor.actorId, toolName, parameters })).rejects.toMatchObject({ reasonCode: "tool_not_found" });
+      await expect(gateway.executeTestCall({ connectionId: f.connectionId, agentId: agent.id, userId: actor.actorId, toolName, parameters })).rejects.toMatchObject({ reasonCode: "tool_not_found" });
     }
     expect(f.request).not.toHaveBeenCalled();
     await f.service.refreshCatalog(f.connectionId, actor);
@@ -140,63 +141,62 @@ const initialTools = [
   it("preserves the dedicated SSH grant key on reconnect and removes it while disconnected", async () => {
     const f = await fixture();
     const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connectionId));
-    const setup = await f.service.configureRailwaySsh(f.connectionId, f.company.id, { action: "prepare", grantId: grant.id }, actor);
+    const setup = await f.service.configureRailwaySsh(f.connectionId, { action: "prepare", grantId: grant.id }, actor);
     expect(setup?.publicKey).toMatch(/^ssh-ed25519 /);
     const [keyGrant] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, grant.id));
     const ref = keyGrant.credentialSecretRefs.find((r) => r.configPath === "railway.ssh_private_key")!;
     expect(ref).toBeTruthy();
-    const start = await f.service.startOAuth(f.company.id, f.connectionId, { redirectUri, actor });
+    const start = await f.service.startOAuth(f.connectionId, { redirectUri, actor });
     await f.service.completeOAuthCallback({ state: new URL(start.authorizationUrl).searchParams.get("state")!, code: "reconnect", iss: railwayAuthorizationMetadata.issuer, redirectUri, actor });
     const [reconnected] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, grant.id));
     expect(reconnected.credentialSecretRefs).toContainEqual(ref);
     await f.service.revokeConnectionGrant(f.connectionId, grant.id, actor);
     await db.update(toolConnections).set({ status: "disabled" }).where(eq(toolConnections.id, f.connectionId));
-    await f.service.configureRailwaySsh(f.connectionId, f.company.id, { action: "remove", grantId: grant.id }, actor);
+    await f.service.configureRailwaySsh(f.connectionId, { action: "remove", grantId: grant.id }, actor);
     expect(await db.select().from(companySecrets).where(eq(companySecrets.id, ref.secretId))).toHaveLength(0);
     expect((await f.service.getConnection(f.connectionId))?.config?.railwaySsh).toBeNull();
   });
 
-  it("enforces policy, grant, run and company boundaries before API execution", async () => {
+  it("enforces policy, grant and run boundaries before API execution", async () => {
     const f = await fixture();
-    const [agent] = await db.insert(agents).values({ companyId: f.company.id, name: "Railway operator", role: "engineer", adapterType: "process", adapterConfig: {} }).returning();
-    const [issue] = await db.insert(issues).values({ companyId: f.company.id, title: "Railway proof", assigneeAgentId: agent.id }).returning();
-    const [run] = await db.insert(heartbeatRuns).values({ companyId: f.company.id, agentId: agent.id, invocationSource: "on_demand", status: "running", contextSnapshot: { issueId: issue.id } }).returning();
-    const [profile] = await db.insert(toolProfiles).values({ companyId: f.company.id, name: "Railway tools", profileKey: randomUUID(), defaultAction: "allow" }).returning();
-    await db.insert(toolProfileBindings).values({ companyId: f.company.id, profileId: profile.id, targetType: "agent", targetId: agent.id });
+    const [agent] = await db.insert(agents).values({ name: "Railway operator", role: "engineer", adapterType: "process", adapterConfig: {} }).returning();
+    const [issue] = await db.insert(issues).values({ title: "Railway proof", assigneeAgentId: agent.id }).returning();
+    const [run] = await db.insert(heartbeatRuns).values({ agentId: agent.id, invocationSource: "on_demand", status: "running", contextSnapshot: { issueId: issue.id } }).returning();
+    const [profile] = await db.insert(toolProfiles).values({ name: `Railway tools ${randomUUID()}`, profileKey: randomUUID(), defaultAction: "allow" }).returning();
+    await db.insert(toolProfileBindings).values({ profileId: profile.id, targetType: "agent", targetId: agent.id });
     const gateway = createToolGatewayService(db, { remoteHttpRequest: f.request, toolActionSigningSecret: "railway-fixture-signing-key" });
-    let session = await gateway.createSession({ companyId: f.company.id, agentId: agent.id, runId: run.id });
+    let session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token)).find((r) => r.upstreamToolName === "paperclip-railway-restart")!;
     expect(tool).toBeTruthy();
-    const [policy] = await db.insert(toolPolicies).values({ companyId: f.company.id, name: "Approve Railway restart", policyType: "require_approval", selectors: { connectionId: f.connectionId }, priority: 10 }).returning();
+    const [policy] = await db.insert(toolPolicies).values({ name: "Approve Railway restart", policyType: "require_approval", selectors: { connectionId: f.connectionId }, priority: 10 }).returning();
     f.request.mockClear();
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: target, idempotencyKey: randomUUID() })).rejects.toMatchObject({ reasonCode: "approval_required" });
     expect(f.request).not.toHaveBeenCalled();
-    const [pending] = await db.select().from(toolActionRequests).where(eq(toolActionRequests.companyId, f.company.id));
-    await gateway.declineActionRequest({ companyId: f.company.id, actionRequestId: pending.id, actor: { userId: actor.actorId } });
+    const [pending] = await db.select().from(toolActionRequests);
+    await gateway.declineActionRequest({ actionRequestId: pending.id, actor: { userId: actor.actorId } });
     expect(f.request).not.toHaveBeenCalled();
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: target, idempotencyKey: randomUUID() })).rejects.toMatchObject({ status: 409 });
     expect(f.request).not.toHaveBeenCalled();
-    const [nextIssue] = await db.insert(issues).values({ companyId: f.company.id, title: "New Railway operation", assigneeAgentId: agent.id }).returning();
-    const [nextRun] = await db.insert(heartbeatRuns).values({ companyId: f.company.id, agentId: agent.id, invocationSource: "on_demand", status: "running", contextSnapshot: { issueId: nextIssue.id } }).returning();
-    session = await gateway.createSession({ companyId: f.company.id, agentId: agent.id, runId: nextRun.id });
+    const [nextIssue] = await db.insert(issues).values({ title: "New Railway operation", assigneeAgentId: agent.id }).returning();
+    const [nextRun] = await db.insert(heartbeatRuns).values({ agentId: agent.id, invocationSource: "on_demand", status: "running", contextSnapshot: { issueId: nextIssue.id } }).returning();
+    session = await gateway.createSession({ agentId: agent.id, runId: nextRun.id });
     await db.update(toolPolicies).set({ policyType: "block" }).where(eq(toolPolicies.id, policy.id));
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: target, idempotencyKey: randomUUID() })).rejects.toMatchObject({ status: 403 });
     expect(f.request).not.toHaveBeenCalled();
     await db.update(toolPolicies).set({ policyType: "require_approval" }).where(eq(toolPolicies.id, policy.id));
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: target, idempotencyKey: randomUUID() })).rejects.toMatchObject({ reasonCode: "approval_required" });
-    const [approved] = await db.select().from(toolActionRequests).where(and(eq(toolActionRequests.companyId, f.company.id), eq(toolActionRequests.status, "pending")));
+    const [approved] = await db.select().from(toolActionRequests).where(eq(toolActionRequests.status, "pending"));
     if (approved.approvalId) await db.update(approvals).set({ status: "approved", decidedByUserId: actor.actorId, decidedAt: new Date() }).where(eq(approvals.id, approved.approvalId));
-    await gateway.approveActionRequest({ companyId: f.company.id, actionRequestId: approved.id, actor: { userId: actor.actorId } });
+    await gateway.approveActionRequest({ actionRequestId: approved.id, actor: { userId: actor.actorId } });
     expect(f.request.mock.calls.some(([, init]) => JSON.parse(String(init.body)).query === RAILWAY_QUERIES.restart)).toBe(true);
     await db.delete(toolPolicies).where(eq(toolPolicies.id, policy.id));
     expect(f.request.mock.calls.filter(([, init]) => String(init.body).includes("mutation"))).toHaveLength(1);
-    expect(JSON.stringify(await db.select().from(toolAccessAuditEvents).where(eq(toolAccessAuditEvents.companyId, f.company.id)))).not.toContain(token);
+    expect(JSON.stringify(await db.select().from(toolAccessAuditEvents))).not.toContain(token);
     f.request.mockClear();
     const [revokedGrant] = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connectionId));
     await f.service.revokeConnectionGrant(f.connectionId, revokedGrant.id, actor);
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: { ...target, deploymentId: randomUUID() }, idempotencyKey: randomUUID() })).rejects.toMatchObject({ status: 409, reasonCode: "organization_authorization_required" });
     expect(f.request).not.toHaveBeenCalled();
-    await expect(gateway.createSession({ companyId: randomUUID(), agentId: agent.id, runId: run.id })).rejects.toThrow();
     await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.id, nextRun.id));
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: target, idempotencyKey: randomUUID() })).rejects.toMatchObject({ status: 401, reasonCode: "session_run_inactive" });
   });

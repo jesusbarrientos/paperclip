@@ -100,7 +100,7 @@ function askFirstLevelsFrom(result: ConnectToolAppResult): string[] {
  * preview (humanized field labels, never the raw transport jargon). This is one
  * of the two M8 screens where "MCP" vocabulary is allowed (PAP-10827 vocab map).
  */
-export function PasteConfigTab({ companyId }: { companyId: string }) {
+export function PasteConfigTab() {
   const navigate = useNavigate();
   const [draftText, setDraftText] = useState("");
   const [preview, setPreview] = useState<McpJsonImportPreview | null>(null);
@@ -114,7 +114,7 @@ export function PasteConfigTab({ companyId }: { companyId: string }) {
   const [authorizationHost, setAuthorizationHost] = useState<string | null>(null);
 
   const importMutation = useMutation({
-    mutationFn: (mcpJson: string) => toolsApi.importMcpJson(companyId, { mcpJson }),
+    mutationFn: (mcpJson: string) => toolsApi.importMcpJson({ mcpJson }),
     onSuccess: (result) => {
       setPreview(result);
       setConnectionNames(Object.fromEntries(result.drafts.map((draft) => [draft.name, draft.name])));
@@ -158,7 +158,7 @@ export function PasteConfigTab({ companyId }: { companyId: string }) {
     mutationFn: (draft: McpJsonImportDraft) => {
       const url = draftConnectUrl(draft);
       if (!url) throw new Error("Only remote HTTP drafts can be checked and activated from pasted config.");
-      return toolsApi.connectApp(companyId, {
+      return toolsApi.connectApp({
         link: url,
         name: connectionNames[draft.name]?.trim() || draft.name,
         credentialValues: credentialValuesForDraft(draft, credentialValues),
@@ -201,7 +201,7 @@ export function PasteConfigTab({ companyId }: { companyId: string }) {
       const askFirstIds = (connectResult?.actions.canMakeChanges ?? [])
         .filter((action) => enabled[action.catalogEntryId] && askFirstLevels.includes(action.riskLevel))
         .map((action) => action.catalogEntryId);
-      return toolsApi.finishApp(companyId, connectResult!.connectionId, {
+      return toolsApi.finishApp(connectResult!.connectionId, {
         enabledCatalogEntryIds: enabledIds,
         askFirstCatalogEntryIds: askFirstIds,
         access: "all_agents",

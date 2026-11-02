@@ -1,6 +1,6 @@
 # Built-in Agents
 
-Built-in agents are first-party, company-scoped agents that Paperclip can resolve by a stable registry key. They are normal rows in `agents`, but they carry immutable metadata under `metadata.paperclipBuiltInAgent` so services can find them without hardcoding a database id.
+Built-in agents are first-party agents that Paperclip can resolve by a stable registry key. They are normal rows in `agents`, but they carry immutable metadata under `metadata.paperclipBuiltInAgent` so services can find them without hardcoding a database id.
 
 The first built-ins are `briefs` and `learning`. Operators can provision them from the API without going through board hire approval, but the route still requires the same `agents:create` permission as normal agent creation.
 
@@ -20,17 +20,17 @@ Built-in agent state is derived from the marked agent row:
 - `ready`: adapter config is complete and the agent is not paused.
 - `paused`: the marked row is paused. Scheduled/background work should log the paused warning and skip queueing work.
 
-Use `builtInAgentService(db).requireBuiltInAgent(companyId, key)` from backend features that need a built-in agent before scheduling work. It throws HTTP 412 with `code: "built_in_agent_not_configured"` for missing or incomplete agents. Paused agents return the agent plus a `built_in_agent_paused` warning so callers can pass the warning through to logs or API responses without treating the agent as ready for scheduling.
+Use `builtInAgentService(db).requireBuiltInAgent(key)` from backend features that need a built-in agent before scheduling work. It throws HTTP 412 with `code: "built_in_agent_not_configured"` for missing or incomplete agents. Paused agents return the agent plus a `built_in_agent_paused` warning so callers can pass the warning through to logs or API responses without treating the agent as ready for scheduling.
 
 ## API
 
-All routes are company-scoped:
+All routes act on the instance's organization:
 
-- `GET /api/companies/:companyId/built-in-agents`
-  Lists registry definitions with current company state.
-- `POST /api/companies/:companyId/built-in-agents/:key/provision`
+- `GET /api/built-in-agents`
+  Lists registry definitions with current organization state.
+- `POST /api/built-in-agents/:key/provision`
   Creates or configures the built-in for the company. Body accepts optional `adapterType` and `adapterConfig`.
-- `POST /api/companies/:companyId/built-in-agents/:key/reset`
+- `POST /api/built-in-agents/:key/reset`
   Restores registry-owned display/default fields on the marked row while preserving operator adapter setup.
 
 Provision and reset require `agents:create`. Provision intentionally skips `requireBoardApprovalForNewAgents` because built-ins are registry-owned system capacity, not ad hoc hires.
@@ -92,7 +92,7 @@ expect(listBuiltInAgentDefinitions().map((definition) => definition.key).sort())
 If a background job needs the agent:
 
 ```ts
-const { agent, warning } = await builtInAgentService(db).requireBuiltInAgent(companyId, "digest");
+const { agent, warning } = await builtInAgentService(db).requireBuiltInAgent("digest");
 if (warning) {
   logger.info({ warning }, "Skipping digest work because built-in agent is paused");
   return;
@@ -126,8 +126,8 @@ If the agent is missing or not configured, the helper throws:
 - `allowedAdapterTypes` is intentionally narrow.
 - Provisioning does not require board hire approval.
 - Generic agent create/update cannot forge or remove the marker.
-- Routes remain company-scoped and write activity for mutations.
-- Background consumers use `requireBuiltInAgent(companyId, key)` instead of open-coding marker lookup.
+- Routes require organization access and write activity for mutations.
+- Background consumers use `requireBuiltInAgent(key)` instead of open-coding marker lookup.
 - Paused built-ins skip scheduled/background work and leave an inspectable log or warning.
 - Focused tests pass:
 

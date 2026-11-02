@@ -30,7 +30,7 @@ Access the dashboard from the left sidebar after selecting a company. It refresh
 The dashboard data is also available via the API:
 
 ```
-GET /api/companies/{companyId}/dashboard
+GET /api/dashboard
 ```
 
 Returns agent counts by status, task counts by status, cost summaries, and stale task alerts.

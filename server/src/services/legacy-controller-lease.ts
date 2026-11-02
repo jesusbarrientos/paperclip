@@ -21,14 +21,14 @@ export function legacyControllerClaim(runtimeMode: string) {
 
 export async function renewLegacyControllerLease(
   db: Db,
-  run: Pick<Run, "id" | "companyId" | "controllerBootId">,
+  run: Pick<Run, "id" | "controllerBootId">,
   stage?: "dispatching",
 ): Promise<boolean> {
   const [renewed] = await db.update(heartbeatRuns).set({
     controllerLeaseExpiresAt: sql`clock_timestamp() + interval '60 seconds'`,
     ...(stage ? { executionStage: stage } : {}),
   }).where(and(
-    eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.companyId, run.companyId),
+    eq(heartbeatRuns.id, run.id),
     eq(heartbeatRuns.runtimeMode, "legacy"), eq(heartbeatRuns.status, "running"),
     eq(heartbeatRuns.controllerBootId, legacyControllerBootId),
     gt(heartbeatRuns.controllerLeaseExpiresAt, sql`clock_timestamp()`),
@@ -39,7 +39,7 @@ export async function renewLegacyControllerLease(
 export async function hasLiveLegacyController(db: Db, run: Run): Promise<boolean> {
   if (run.runtimeMode === "native" || !run.controllerBootId) return false;
   const [owner] = await db.select({ id: heartbeatRuns.id }).from(heartbeatRuns).where(and(
-    eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.companyId, run.companyId),
+    eq(heartbeatRuns.id, run.id),
     eq(heartbeatRuns.status, "running"),
     gt(heartbeatRuns.controllerLeaseExpiresAt, sql`clock_timestamp()`),
   ));
@@ -54,7 +54,7 @@ export async function revokeExpiredLegacyController(db: Db, run: Run): Promise<b
     controllerBootId: randomUUID(),
     controllerLeaseExpiresAt: sql`clock_timestamp() + interval '60 seconds'`,
   }).where(and(
-    eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.companyId, run.companyId),
+    eq(heartbeatRuns.id, run.id),
     eq(heartbeatRuns.status, "running"),
     eq(heartbeatRuns.controllerBootId, run.controllerBootId),
     lte(heartbeatRuns.controllerLeaseExpiresAt, sql`clock_timestamp()`),

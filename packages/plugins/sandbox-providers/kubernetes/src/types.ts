@@ -10,7 +10,7 @@ export const kubernetesProviderConfigSchema = z
     kubeconfig: z.string().optional(),
 
     namespacePrefix: z.string().regex(/^[a-z0-9-]{1,32}$/).default("paperclip-"),
-    companySlug: z.string().regex(/^[a-z0-9-]{1,32}$/).optional(),
+    namespaceSlug: z.string().regex(/^[a-z0-9-]{1,32}$/).default("organization"),
 
     imageRegistry: z.string().url().optional(),
     imageAllowList: z.array(z.string()).default([]),

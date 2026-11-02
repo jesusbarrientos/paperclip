@@ -177,7 +177,6 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Monitor Bot",
       role: "engineer",
       status: input?.agentStatus ?? "active",
@@ -199,7 +198,6 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Watch external deploy",
       status: input?.issueStatus ?? "in_progress",
       priority: "medium",
@@ -244,7 +242,7 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
       monitorScheduledBy: "assignee",
     });
 
-    return { companyId, agentId, issueId, nextCheckAt };
+    return { agentId, issueId, nextCheckAt };
   }
 
   it("triggers due issue monitors once and clears the one-shot schedule", async () => {
@@ -284,11 +282,11 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
 
   it.each(["unknown", "exhausted"] as const)("does not replay a quota monitor with %s execution evidence", async (kind) => {
     const sourceRunId = randomUUID();
-    const { companyId, issueId, agentId } = await seedFixture({
+    const { issueId, agentId } = await seedFixture({
       monitor: { serviceName: PROVIDER_QUOTA_MONITOR_SERVICE_NAME, externalRef: sourceRunId },
     });
     await db.insert(heartbeatRuns).values({
-      id: sourceRunId, companyId, agentId, status: "failed", errorCode: "provider_quota",
+      id: sourceRunId, agentId, status: "failed", errorCode: "provider_quota",
       finishedAt: new Date("2026-04-11T12:00:00.000Z"), contextSnapshot: { issueId },
       scheduledRetryAttempt: kind === "exhausted" ? 2 : 0,
       resultJson: kind === "exhausted" ? { executionRecovery: { kind: "bootstrap", providerWorkStarted: false } } : null,
@@ -301,14 +299,13 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
 
   it("wakes a cross-agent review participant for provider quota monitors", async () => {
     const sourceRunId = randomUUID();
-    const { companyId, issueId, agentId: assigneeAgentId } = await seedFixture({
+    const { issueId, agentId: assigneeAgentId } = await seedFixture({
       issueStatus: "in_review",
       monitor: { serviceName: PROVIDER_QUOTA_MONITOR_SERVICE_NAME, externalRef: sourceRunId },
     });
     const participantAgentId = randomUUID();
     await db.insert(agents).values({
       id: participantAgentId,
-      companyId,
       name: "Quota-limited reviewer",
       role: "engineer",
       status: "active",
@@ -348,7 +345,7 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
       },
     }).where(eq(issues.id, issueId));
     await db.insert(heartbeatRuns).values({
-      id: sourceRunId, companyId, agentId: participantAgentId, status: "failed",
+      id: sourceRunId, agentId: participantAgentId, status: "failed",
       errorCode: "provider_quota", finishedAt: new Date("2026-04-11T12:00:00.000Z"),
       contextSnapshot: { issueId },
       resultJson: { executionRecovery: { kind: "bootstrap", providerWorkStarted: false } },
@@ -493,7 +490,7 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
   });
 
   it("clears timed-out monitors and creates a visible recovery issue when requested", async () => {
-    const { issueId, companyId } = await seedFixture({
+    const { issueId } = await seedFixture({
       monitor: {
         timeoutAt: "2026-04-11T12:00:00.000Z",
         recoveryPolicy: "create_recovery_issue",
@@ -518,7 +515,7 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
       .select()
       .from(issues)
       .where(eq(issues.originId, issueId))
-      .then((rows) => rows.find((row) => row.companyId === companyId && row.originKind === "stranded_issue_recovery") ?? null);
+      .then((rows) => rows.find((row) => true && row.originKind === "stranded_issue_recovery") ?? null);
     expect(recoveryIssue).toMatchObject({
       parentId: issueId,
       priority: "high",

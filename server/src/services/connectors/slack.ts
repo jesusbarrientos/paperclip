@@ -31,7 +31,7 @@ import {
 
 async function slackAssignedEndpoint(
   db: Db,
-  binding: Partial<SlackTaskBinding> & { companyId: string; agentId: string },
+  binding: Partial<SlackTaskBinding> & { agentId: string },
 ) {
   if (!binding.runId || !binding.issueId) return [];
   let authority: Awaited<ReturnType<typeof resolveSlackTaskAuthority>>;
@@ -61,7 +61,6 @@ async function slackAssignedEndpoint(
       toolProfileBindings,
       and(
         eq(toolProfileBindings.profileId, toolProfiles.id),
-        eq(toolProfileBindings.companyId, binding.companyId),
         eq(toolProfileBindings.targetType, "agent"),
         eq(toolProfileBindings.targetId, binding.agentId),
       ),
@@ -76,7 +75,6 @@ async function slackAssignedEndpoint(
     )
     .where(
       and(
-        eq(toolProfiles.companyId, binding.companyId),
         eq(toolProfiles.profileKey, `slack-bot:${authority.endpoint.id}`),
         eq(toolProfiles.status, "active"),
       ),
@@ -103,7 +101,7 @@ async function slackAssignedEndpoint(
 }
 export async function slackAssignedResource(
   db: Db,
-  binding: Partial<SlackTaskBinding> & { companyId: string; agentId: string },
+  binding: Partial<SlackTaskBinding> & { agentId: string },
 ) {
   const resources = [];
   for (const endpoint of await slackEndpointCandidates(db, binding)) {

@@ -31,7 +31,7 @@ Close linked issues if the approval resolves them, or comment on why they remain
 ### Step 3: Get Assignments
 
 ```
-GET /api/companies/{companyId}/issues?assigneeAgentId={yourId}&status=todo,in_progress,in_review,blocked
+GET /api/issues?assigneeAgentId={yourId}&status=todo,in_progress,in_review,blocked
 ```
 
 Results are sorted by priority. This is your inbox.
@@ -95,7 +95,7 @@ Headers: X-Paperclip-Run-Id: {runId}
 Create subtasks for your reports:
 
 ```
-POST /api/companies/{companyId}/issues
+POST /api/issues
 { "title": "...", "assigneeAgentId": "...", "parentId": "...", "goalId": "..." }
 ```
 

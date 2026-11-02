@@ -50,7 +50,6 @@ interface NativeWorkspaceSyncDescriptor {
   schema: DescriptorSchema;
   binding: {
     runId: string;
-    companyId: string;
     workspaceId: string;
     leaseId: string;
     providerLeaseId: string;
@@ -519,7 +518,6 @@ async function readDescriptor(input: {
     binding.leaseId !== input.reference.leaseId ||
     binding.providerLeaseId !== input.reference.providerLeaseId ||
     binding.remoteCwd !== input.reference.remoteCwd ||
-    typeof binding.companyId !== "string" ||
     typeof binding.localCwd !== "string" ||
     !path.isAbsolute(binding.localCwd) ||
     typeof binding.remoteCwd !== "string" ||
@@ -549,7 +547,6 @@ async function readDescriptor(input: {
       schema: candidate.schema,
       binding: {
         runId: binding.runId as string,
-        companyId: binding.companyId,
         workspaceId: binding.workspaceId as string,
         leaseId: binding.leaseId as string,
         providerLeaseId: binding.providerLeaseId as string,
@@ -828,7 +825,6 @@ async function finalizePreparedRuntime(input: {
 export async function prepareNativeWorkspaceSync(input: {
   db: Db;
   runId: string;
-  companyId: string;
   workspaceId: string;
   workspaceLocalDir: string;
   target: AdapterExecutionTarget | null;
@@ -873,8 +869,7 @@ export async function prepareNativeWorkspaceSync(input: {
       reference: existingReference,
     });
     if (
-      existing.descriptor.binding.companyId !== input.companyId ||
-      existing.descriptor.binding.workspaceId !== input.workspaceId ||
+      (existing.descriptor.binding.workspaceId !== input.workspaceId) ||
       path.resolve(existing.descriptor.binding.localCwd) !==
         path.resolve(input.workspaceLocalDir) ||
       existing.descriptor.binding.remoteCwd !== target.remoteCwd
@@ -984,7 +979,6 @@ export async function prepareNativeWorkspaceSync(input: {
       schema: DESCRIPTOR_SCHEMA,
       binding: {
         runId: input.runId,
-        companyId: input.companyId,
         workspaceId: input.workspaceId,
         leaseId: target.leaseId ?? input.lease.id,
         providerLeaseId,

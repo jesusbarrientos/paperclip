@@ -93,23 +93,17 @@ export interface EnvironmentCustomImageRelinkConflict {
   driftedPaths: EnvironmentCustomImageDriftedPath[];
 }
 
-function companyIdQuery(companyId: string): string {
-  return `companyId=${encodeURIComponent(companyId)}`;
-}
-
 export interface EnvironmentSecretRefDescriptor {
   configPath: string;
   secretId: string;
   name: string;
   status: string;
-  companyId: string;
-  companyName: string | null;
 }
 
 export const environmentsApi = {
-  list: (companyId: string) => api.get<Environment[]>(`/companies/${companyId}/environments`),
-  capabilities: (companyId: string) =>
-    api.get<EnvironmentCapabilities>(`/companies/${companyId}/environments/capabilities`),
+  list: () => api.get<Environment[]>(`/environments`),
+  capabilities: () =>
+    api.get<EnvironmentCapabilities>(`/environments/capabilities`),
   lease: (leaseId: string) => api.get<EnvironmentLease>(`/environment-leases/${leaseId}`),
   secretRefs: (environmentId: string) =>
     api.get<{ refs: EnvironmentSecretRefDescriptor[] }>(`/environments/${environmentId}/secret-refs`),
@@ -124,13 +118,13 @@ export const environmentsApi = {
         ? `/environments/${environmentId}?destroyReusableSandboxLeases=true`
         : `/environments/${environmentId}`,
     ),
-  create: (companyId: string, body: {
+  create: (body: {
     name: string;
     description?: string | null;
     driver: "local" | "ssh" | "sandbox" | "plugin";
     config?: Record<string, unknown>;
     metadata?: Record<string, unknown> | null;
-  }) => api.post<Environment>(`/companies/${companyId}/environments`, body),
+  }) => api.post<Environment>(`/environments`, body),
   update: (environmentId: string, body: {
     name?: string;
     description?: string | null;
@@ -141,42 +135,33 @@ export const environmentsApi = {
     // write floor admits envVars-only patches there).
     envVars?: Environment["envVars"];
     metadata?: Record<string, unknown> | null;
-    // Secret-context company for env var / config writes. Without it the
-    // server can only infer a company from existing bindings or a
-    // single-membership actor, and fails closed otherwise — a fresh
-    // environment with no bindings needs the explicit context.
-  }, companyId?: string | null) =>
+  }) =>
     api.patch<EnvironmentUpdateResult>(
-      companyId
-        ? `/environments/${environmentId}?${companyIdQuery(companyId)}`
-        : `/environments/${environmentId}`,
+      `/environments/${environmentId}`,
       body,
     ),
-  probe: (environmentId: string, companyId?: string | null) =>
+  probe: (environmentId: string) =>
     api.post<EnvironmentProbeResult>(
-      companyId
-        ? `/environments/${environmentId}/probe?${companyIdQuery(companyId)}`
-        : `/environments/${environmentId}/probe`,
+      `/environments/${environmentId}/probe`,
       {},
     ),
-  probeConfig: (companyId: string, body: {
+  probeConfig: (body: {
     name?: string;
     driver: "local" | "ssh" | "sandbox" | "plugin";
     description?: string | null;
     config?: Record<string, unknown>;
     metadata?: Record<string, unknown> | null;
-  }) => api.post<EnvironmentProbeResult>(`/companies/${companyId}/environments/probe-config`, body),
-  customImageTemplate: (environmentId: string, companyId: string) =>
+  }) => api.post<EnvironmentProbeResult>(`/environments/probe-config`, body),
+  customImageTemplate: (environmentId: string) =>
     api.get<EnvironmentCustomImageOverview>(
-      `/environments/${environmentId}/custom-image-template?${companyIdQuery(companyId)}`,
+      `/environments/${environmentId}/custom-image-template`,
     ),
   startCustomImageSetupSession: (
     environmentId: string,
-    companyId: string,
     body: StartEnvironmentCustomImageSetupSession = {},
   ) =>
     api.post<EnvironmentCustomImageSetupSessionResult>(
-      `/environments/${environmentId}/custom-image-setup-sessions?${companyIdQuery(companyId)}`,
+      `/environments/${environmentId}/custom-image-setup-sessions`,
       body,
     ),
   customImageSetupSession: (sessionId: string) =>
@@ -207,26 +192,24 @@ export const environmentsApi = {
       `/environment-custom-image-setup-sessions/${sessionId}/cancel`,
       body,
     ),
-  rollbackCustomImageTemplate: (environmentId: string, companyId: string) =>
+  rollbackCustomImageTemplate: (environmentId: string) =>
     api.post<EnvironmentCustomImageRollbackResult>(
-      `/environments/${environmentId}/custom-image-template/rollback?${companyIdQuery(companyId)}`,
+      `/environments/${environmentId}/custom-image-template/rollback`,
       {},
     ),
   relinkCustomImageTemplate: (
     environmentId: string,
-    companyId: string,
     options: { confirmBootSourceDrift?: boolean } = {},
   ) =>
     api.post<EnvironmentCustomImageRelinkResult>(
-      `/environments/${environmentId}/custom-image-template/relink?${companyIdQuery(companyId)}`,
+      `/environments/${environmentId}/custom-image-template/relink`,
       { confirmBootSourceDrift: options.confirmBootSourceDrift === true },
     ),
   disableCustomImageTemplate: (
     environmentId: string,
-    companyId: string,
     options: { deleteProviderTemplate?: boolean } = {},
   ) =>
     api.delete<EnvironmentCustomImageTemplate>(
-      `/environments/${environmentId}/custom-image-template?${companyIdQuery(companyId)}&deleteProviderTemplate=${options.deleteProviderTemplate === true ? "true" : "false"}`,
+      `/environments/${environmentId}/custom-image-template?deleteProviderTemplate=${options.deleteProviderTemplate === true ? "true" : "false"}`,
     ),
 };

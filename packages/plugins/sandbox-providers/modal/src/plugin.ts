@@ -94,7 +94,7 @@ function resolveAuth(config: ModalDriverConfig): { tokenId: string; tokenSecret:
   // The plugin worker runs in a child process that does not inherit host env
   // vars (see PluginWorkerManager.spawnProcess), so MODAL_TOKEN_ID /
   // MODAL_TOKEN_SECRET cannot be read here. Credentials must come from the
-  // environment config, which Paperclip stores as company secrets.
+  // environment config, which Paperclip stores as Paperclip secrets.
   const tokenId = config.tokenId ?? "";
   const tokenSecret = config.tokenSecret ?? "";
   if (!tokenId && !tokenSecret) return null;
@@ -147,14 +147,12 @@ function buildSandboxCreateParams(input: {
 }
 
 function buildSandboxTags(input: {
-  companyId: string;
   environmentId: string;
   runId?: string;
   reuseLease: boolean;
 }): Record<string, string> {
   return {
     "paperclip-provider": "modal",
-    "paperclip-company-id": input.companyId,
     "paperclip-environment-id": input.environmentId,
     "paperclip-reuse-lease": input.reuseLease ? "true" : "false",
     ...(input.runId ? { "paperclip-run-id": input.runId } : {}),
@@ -393,7 +391,6 @@ const plugin = definePlugin({
   ): Promise<PluginEnvironmentProbeResult> {
     const config = parseDriverConfig(params.config);
     const tags = buildSandboxTags({
-      companyId: params.companyId,
       environmentId: params.environmentId,
       reuseLease: false,
     });
@@ -460,7 +457,6 @@ const plugin = definePlugin({
     try {
       const app = await resolveApp(client, config);
       const tags = buildSandboxTags({
-        companyId: params.companyId,
         environmentId: params.environmentId,
         runId: params.runId,
         reuseLease: config.reuseLease,

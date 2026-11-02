@@ -25,9 +25,9 @@ describe("kubernetesProviderConfigSchema", () => {
     );
   });
 
-  it("rejects invalid companySlug", () => {
+  it("rejects invalid namespaceSlug", () => {
     expect(() =>
-      parseKubernetesProviderConfig({ inCluster: true, companySlug: "INVALID UPPER" }),
+      parseKubernetesProviderConfig({ inCluster: true, namespaceSlug: "INVALID UPPER" }),
     ).toThrow();
   });
 

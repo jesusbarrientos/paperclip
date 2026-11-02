@@ -37,10 +37,9 @@ vi.mock("../context/BreadcrumbContext", () => ({
   }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 
@@ -134,7 +133,7 @@ describe("ProfileSettings", () => {
     await flushReact();
     await flushReact();
 
-    expect(mockAssetsApi.uploadImage).toHaveBeenCalledWith("company-1", file, "profiles/user-1");
+    expect(mockAssetsApi.uploadImage).toHaveBeenCalledWith(file, "profiles/user-1");
     expect(mockAuthApi.updateProfile).toHaveBeenCalledWith({
       name: "Jane Example",
       image: "/api/assets/asset-1/content",
@@ -188,7 +187,7 @@ describe("ProfileSettings", () => {
     await flushReact();
 
     const namespace = `profiles/${userId}`;
-    expect(mockAssetsApi.uploadImage).toHaveBeenCalledWith("company-1", file, namespace);
+    expect(mockAssetsApi.uploadImage).toHaveBeenCalledWith(file, namespace);
     // The namespace goes to the API without a change, so the avatar arrives
     // under the identity of the user.
     expect(sanitizeAssetNamespace(namespace)).toBe(namespace);

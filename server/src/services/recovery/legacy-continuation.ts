@@ -2,9 +2,12 @@ import { createHash } from "node:crypto";
 
 /** This contract deliberately has no narrative, liveness label or progress count. */
 export interface LegacyContinuationInput {
-  run: { id: string; companyId: string; agentId: string; status: string; runtimeMode?: string | null };
-  issue: { id: string; companyId: string; status: string; assigneeAgentId: string | null; assigneeUserId?: string | null } | null;
-  agent: { id: string; companyId: string; status: string } | null;
+  run: { id: string;
+ agentId: string; status: string; runtimeMode?: string | null };
+  issue: { id: string;
+ status: string; assigneeAgentId: string | null; assigneeUserId?: string | null } | null;
+  agent: { id: string;
+ status: string } | null;
   episode: LegacyDispositionEpisode;
   gates: {
     stopped: boolean;
@@ -56,8 +59,8 @@ export function legacyDispositionEpisode(run: {
     maxAttempts: handoff || oldRecovery ? 1 : LEGACY_DISPOSITION_REPAIR_MAX_ATTEMPTS,
   };
 }
-export function legacyDispositionFingerprint(companyId: string, issueId: string, agentId: string, episodeId: string) {
-  return `legacy_disposition:v1:${createHash("sha256").update(JSON.stringify([companyId, issueId, agentId, episodeId])).digest("hex")}`;
+export function legacyDispositionFingerprint(issueId: string, agentId: string, episodeId: string) {
+  return `legacy_disposition:v1:${createHash("sha256").update(JSON.stringify([issueId, agentId, episodeId])).digest("hex")}`;
 }
 export function decideLegacyContinuation(input: LegacyContinuationInput):
   | { kind: "skip"; reason: string }
@@ -66,7 +69,7 @@ export function decideLegacyContinuation(input: LegacyContinuationInput):
   const { run, issue, agent, gates, episode } = input;
   if (run.runtimeMode === "native") return { kind: "skip", reason: "native_finalization" };
   if (run.status !== "succeeded") return { kind: "skip", reason: "run_not_successful" };
-  if (!issue || !agent || issue.companyId !== run.companyId || agent.companyId !== run.companyId || agent.id !== run.agentId) return { kind: "skip", reason: "invalid_binding" };
+  if ((!issue || !agent) || agent.id !== run.agentId) return { kind: "skip", reason: "invalid_binding" };
   if (issue.assigneeAgentId !== run.agentId || issue.assigneeUserId) return { kind: "skip", reason: "owner_changed" };
   if (!["todo", "in_progress"].includes(issue.status)) return { kind: "skip", reason: "recorded_disposition" };
   for (const [blocked, reason] of [
@@ -80,7 +83,7 @@ export function decideLegacyContinuation(input: LegacyContinuationInput):
   const nextAttempt = episode.attempt + 1;
   return {
     kind: "enqueue", nextAttempt,
-    idempotencyKey: `issue_disposition_repair:${issue.id}:${legacyDispositionFingerprint(run.companyId, issue.id, run.agentId, episode.id)}:${nextAttempt}`,
+    idempotencyKey: `issue_disposition_repair:${issue.id}:${legacyDispositionFingerprint(issue.id, run.agentId, episode.id)}:${nextAttempt}`,
     instruction: LEGACY_DISPOSITION_REPAIR_INSTRUCTION,
   };
 }

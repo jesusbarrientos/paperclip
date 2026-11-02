@@ -35,10 +35,10 @@ export function isAgentInstalled(state: InstallState, agentId: string): boolean 
 
 /** Serialize an install state back into the PUT payload the API expects. */
 export function installPayload(
-  companyId: string,
   state: InstallState,
+  organizationId: string,
 ): Array<{ targetType: "company" | "agent"; targetId: string }> {
-  if (state.onAll) return [{ targetType: "company", targetId: companyId }];
+  if (state.onAll) return [{ targetType: "company", targetId: organizationId }];
   return [...state.agentIds].map((targetId) => ({ targetType: "agent" as const, targetId }));
 }
 

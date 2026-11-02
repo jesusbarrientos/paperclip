@@ -188,15 +188,15 @@ function seededClient(gateways: ToolMcpGatewayWithTokens[]) {
     },
   });
   c.setQueryData(["tools", "gateways", COMPANY], { gateways });
-  c.setQueryData(queryKeys.tools.profiles(COMPANY), {
+  c.setQueryData(queryKeys.tools.profiles(), {
     profiles: [
       profile("profile-eng", "Engineering", 18),
       profile("profile-support", "Support ops", 7),
       profile("profile-legacy", "Legacy read-only", 3),
     ],
   });
-  c.setQueryData(queryKeys.agents.list(COMPANY), []);
-  c.setQueryData(queryKeys.projects.list(COMPANY), []);
+  c.setQueryData(queryKeys.agents.list(), []);
+  c.setQueryData(queryKeys.projects.list(), []);
   return c;
 }
 
@@ -234,7 +234,7 @@ function GatewaysHost({ gateways }: { gateways: ToolMcpGatewayWithTokens[] }) {
     <QueryClientProvider client={client}>
       <ToastProvider>
         <div className="mx-auto max-w-4xl p-4 sm:p-6">
-          <GatewaysTab companyId={COMPANY} />
+          <GatewaysTab />
         </div>
       </ToastProvider>
     </QueryClientProvider>

@@ -190,7 +190,7 @@ export interface CatalogTeamInstallResult {
 
 /**
  * Server-computed installed-team state for a company. Surfaced by
- * `GET /api/companies/:companyId/teams/catalog/installed` and consumed by the
+ * `GET /api/teams/catalog/installed` and consumed by the
  * Team Catalog UI to render the `INSTALLED · N` group, per-row out-of-date
  * badges, and the detail header "Update available" chip (design
  * [PAP-10238 §3.2 + §5]).

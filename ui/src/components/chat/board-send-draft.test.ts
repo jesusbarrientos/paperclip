@@ -56,8 +56,8 @@ describe("session-scoped Board send identity", () => {
     sessionStorage.clear();
     vi.restoreAllMocks();
   });
-  it("keeps pending payloads isolated by company, task, endpoint and conversation", () => {
-    const scope = ["company", "task", "endpoint", "conversation"] as const;
+  it("keeps pending payloads isolated by task, endpoint and conversation", () => {
+    const scope = ["task", "endpoint", "conversation"] as const;
     const key = boardSendDraftKey(...scope);
     const draft = {
       body: "Intended external update",
@@ -68,7 +68,7 @@ describe("session-scoped Board send identity", () => {
     writeBoardSendDraft(key, draft);
     expect(readBoardSendDraft(key)).toEqual(draft);
     for (let index = 0; index < scope.length; index += 1) {
-      const other = [...scope] as [string, string, string, string];
+      const other = [...scope] as [string, string, string];
       other[index] = "other";
       expect(readBoardSendDraft(boardSendDraftKey(...other))).toBeNull();
     }

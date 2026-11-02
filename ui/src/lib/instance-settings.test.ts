@@ -6,36 +6,33 @@ import {
 } from "./instance-settings";
 
 describe("normalizeRememberedInstanceSettingsPath", () => {
-  it("canonicalizes known instance settings pages under company settings", () => {
+  it("canonicalizes known instance settings pages under organization settings", () => {
     expect(normalizeRememberedInstanceSettingsPath("/instance/settings/general")).toBe(
-      "/company/settings/instance/general",
+      "/organization/settings/instance/general",
     );
     expect(normalizeRememberedInstanceSettingsPath("/instance/settings/experimental")).toBe(
-      "/company/settings/instance/experimental",
+      "/organization/settings/instance/experimental",
     );
     expect(normalizeRememberedInstanceSettingsPath("/instance/settings/environments")).toBe(
-      "/company/settings/instance/environments",
+      "/organization/settings/instance/environments",
     );
     expect(normalizeRememberedInstanceSettingsPath("/settings/access?tab=users#admins")).toBe(
-      "/company/settings/instance/access?tab=users#admins",
+      "/organization/settings/instance/access?tab=users#admins",
     );
     expect(normalizeRememberedInstanceSettingsPath("/instance/settings/plugins/example?tab=config#logs")).toBe(
-      "/company/settings/instance/plugins/example?tab=config#logs",
+      "/organization/settings/instance/plugins/example?tab=config#logs",
     );
-    expect(normalizeRememberedInstanceSettingsPath("/PAP/company/settings/instance/adapters")).toBe(
-      "/company/settings/instance/adapters",
+    expect(normalizeRememberedInstanceSettingsPath("/company/settings/instance/adapters")).toBe(
+      "/organization/settings/instance/adapters",
     );
-    expect(normalizeRememberedInstanceSettingsPath("/company/settings/instance/general")).toBe(
-      "/company/settings/instance/general",
+    expect(normalizeRememberedInstanceSettingsPath("/organization/settings/instance/general")).toBe(
+      "/organization/settings/instance/general",
     );
-    expect(normalizeRememberedInstanceSettingsPath("/company/settings/instance/plugins/example?tab=config#logs")).toBe(
-      "/company/settings/instance/plugins/example?tab=config#logs",
+    expect(normalizeRememberedInstanceSettingsPath("/organization/settings/instance/plugins/example?tab=config#logs")).toBe(
+      "/organization/settings/instance/plugins/example?tab=config#logs",
     );
-    expect(normalizeRememberedInstanceSettingsPath("/company/settings/environments")).toBe(
-      "/company/settings/instance/environments",
-    );
-    expect(normalizeRememberedInstanceSettingsPath("/PAP/settings/plugins/example")).toBe(
-      "/company/settings/instance/plugins/example",
+    expect(normalizeRememberedInstanceSettingsPath("/organization/settings/environments")).toBe(
+      "/organization/settings/instance/environments",
     );
   });
 
@@ -56,23 +53,23 @@ describe("filterHiddenInstanceSettingsPath", () => {
 
   it("remaps hidden pages (including sub-paths) to the default settings path", () => {
     expect(
-      filterHiddenInstanceSettingsPath("/company/settings/instance/plugins", hidden),
+      filterHiddenInstanceSettingsPath("/organization/settings/instance/plugins", hidden),
     ).toBe(DEFAULT_INSTANCE_SETTINGS_PATH);
     expect(
-      filterHiddenInstanceSettingsPath("/company/settings/instance/plugins/plugin-1", hidden),
+      filterHiddenInstanceSettingsPath("/organization/settings/instance/plugins/plugin-1", hidden),
     ).toBe(DEFAULT_INSTANCE_SETTINGS_PATH);
     expect(
-      filterHiddenInstanceSettingsPath("/company/settings/instance/environments", hidden),
+      filterHiddenInstanceSettingsPath("/organization/settings/instance/environments", hidden),
     ).toBe(DEFAULT_INSTANCE_SETTINGS_PATH);
   });
 
   it("keeps visible pages and non-settings paths untouched", () => {
     expect(
-      filterHiddenInstanceSettingsPath("/company/settings/instance/experimental", hidden),
-    ).toBe("/company/settings/instance/experimental");
+      filterHiddenInstanceSettingsPath("/organization/settings/instance/experimental", hidden),
+    ).toBe("/organization/settings/instance/experimental");
     expect(filterHiddenInstanceSettingsPath("/dashboard", hidden)).toBe("/dashboard");
     expect(
-      filterHiddenInstanceSettingsPath("/company/settings/instance/plugins", new Set()),
-    ).toBe("/company/settings/instance/plugins");
+      filterHiddenInstanceSettingsPath("/organization/settings/instance/plugins", new Set()),
+    ).toBe("/organization/settings/instance/plugins");
   });
 });

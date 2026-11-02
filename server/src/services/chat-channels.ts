@@ -1440,7 +1440,6 @@ export interface ChatChannelServiceOptions {
   credentialMutationLeaseRenewalIntervalMs?: number;
   /** Narrow fault-injection boundary for credential-lease ownership checks. */
   renewCredentialMutationLease?: (input: {
-    companyId: string;
     endpointId: string;
     expiresAt: Date;
     leaseKey: string;
@@ -1517,7 +1516,6 @@ export interface ChatChannelServiceOptions {
   discordGatewayLeaseWaitMs?: number;
   /** Narrow fault-injection boundary before renewing a Discord Gateway lease. */
   renewDiscordGatewayLease?: (input: {
-    companyId: string;
     credentialFingerprint: string;
     endpointId: string;
     expiresAt: Date;
@@ -1554,7 +1552,6 @@ interface CredentialMutationLeaseCompletion<T> {
 }
 
 type DiscordGatewayOwnership = {
-  companyId: string;
   context: RuntimeContext;
   endpointId: string;
   expiresAt: Date;
@@ -2780,7 +2777,6 @@ export function createChatSdkStatePersistence(db: Db): ChatSdkStatePersistence {
         .from(chatSdkState)
         .where(
           and(
-            eq(chatSdkState.companyId, scope.companyId),
             eq(chatSdkState.endpointId, scope.endpointId),
             eq(chatSdkState.stateKey, key),
           ),
@@ -2792,7 +2788,6 @@ export function createChatSdkStatePersistence(db: Db): ChatSdkStatePersistence {
         const inserted = await db
           .insert(chatSdkState)
           .values({
-            companyId: input.companyId,
             endpointId: input.endpointId,
             stateKey: input.key,
             version: 1,
@@ -2813,7 +2808,6 @@ export function createChatSdkStatePersistence(db: Db): ChatSdkStatePersistence {
         })
         .where(
           and(
-            eq(chatSdkState.companyId, input.companyId),
             eq(chatSdkState.endpointId, input.endpointId),
             eq(chatSdkState.stateKey, input.key),
             eq(chatSdkState.version, input.expectedVersion),
@@ -2827,7 +2821,6 @@ export function createChatSdkStatePersistence(db: Db): ChatSdkStatePersistence {
         .delete(chatSdkState)
         .where(
           and(
-            eq(chatSdkState.companyId, input.companyId),
             eq(chatSdkState.endpointId, input.endpointId),
             eq(chatSdkState.stateKey, input.key),
             eq(chatSdkState.version, input.expectedVersion),
@@ -2879,7 +2872,6 @@ function isOutboundAttachmentValidationError(
  */
 export async function hydrateOutboundAttachment(input: {
   storage: StorageService;
-  companyId: string;
   objectKey: string;
   byteSize: number;
   sha256: string;
@@ -2917,7 +2909,7 @@ export async function hydrateOutboundAttachment(input: {
   }, timeoutMs);
   acquisitionTimer.unref?.();
   const objectPromise = Promise.resolve()
-    .then(() => input.storage.getObject(input.companyId, input.objectKey))
+    .then(() => input.storage.getObject(input.objectKey))
     .then((object) => {
       if (acquisitionTimedOut) object.stream.destroy();
       return object;
@@ -3070,7 +3062,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .delete(chatEndpointLeases)
       .where(
         and(
-          eq(chatEndpointLeases.companyId, ownership.companyId),
           eq(chatEndpointLeases.endpointId, ownership.endpointId),
           eq(chatEndpointLeases.leaseKey, ownership.leaseKey),
           eq(chatEndpointLeases.token, ownership.token),
@@ -3150,7 +3141,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (
       options.renewDiscordGatewayLease &&
       !(await options.renewDiscordGatewayLease({
-        companyId: ownership.companyId,
         credentialFingerprint: ownership.context.credentialFingerprint,
         endpointId: ownership.endpointId,
         expiresAt: proposedExpiresAt,
@@ -3182,7 +3172,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .set({ expiresAt, updatedAt: now })
         .where(
           and(
-            eq(chatEndpointLeases.companyId, ownership.companyId),
             eq(chatEndpointLeases.endpointId, ownership.endpointId),
             eq(chatEndpointLeases.leaseKey, ownership.leaseKey),
             eq(chatEndpointLeases.token, ownership.token),
@@ -3231,7 +3220,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .set({ expiresAt, updatedAt: now })
       .where(
         and(
-          eq(chatEndpointLeases.companyId, ownership.companyId),
           eq(chatEndpointLeases.endpointId, ownership.endpointId),
           eq(chatEndpointLeases.leaseKey, ownership.leaseKey),
           eq(chatEndpointLeases.token, ownership.token),
@@ -3348,7 +3336,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const inserted = await db
         .insert(chatEndpointLeases)
         .values({
-          companyId: endpoint.companyId,
           endpointId: endpoint.id,
           leaseKey: receiverLeaseKey,
           token,
@@ -3363,7 +3350,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .set({ token, expiresAt, updatedAt: now })
             .where(
               and(
-                eq(chatEndpointLeases.companyId, endpoint.companyId),
                 eq(chatEndpointLeases.endpointId, endpoint.id),
                 eq(chatEndpointLeases.leaseKey, receiverLeaseKey),
                 lte(chatEndpointLeases.expiresAt, now),
@@ -3372,7 +3358,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .returning({ id: chatEndpointLeases.id });
       if (reclaimed.length) {
         const ownership: DiscordGatewayOwnership = {
-          companyId: endpoint.companyId,
           context,
           endpointId: endpoint.id,
           expiresAt,
@@ -3473,7 +3458,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [inserted] = await db
       .insert(chatActions)
       .values({
-        companyId: input.endpoint.companyId,
         endpointId: input.endpoint.id,
         deliveryId: input.deliveryId,
         kind: "receipt_reaction",
@@ -3563,17 +3547,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpoints)
       .innerJoin(
         agents,
-        and(
-          eq(agents.id, chatEndpoints.assignedAgentId),
-          eq(agents.companyId, chatEndpoints.companyId),
-        ),
+        eq(agents.id, chatEndpoints.assignedAgentId),
       )
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, chatEndpoints.connectionId),
-          eq(toolConnections.companyId, chatEndpoints.companyId),
-        ),
+        eq(toolConnections.id, chatEndpoints.connectionId),
       )
       .where(eq(chatEndpoints.id, endpointId))
       .then((rows) => rows[0] ?? null);
@@ -3797,16 +3775,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatEndpoints)
             .innerJoin(
               toolConnections,
-              and(
-                eq(toolConnections.id, chatEndpoints.connectionId),
-                eq(toolConnections.companyId, chatEndpoints.companyId),
-              ),
+              eq(toolConnections.id, chatEndpoints.connectionId),
             )
             .where(
-              and(
-                eq(chatEndpoints.id, action!.endpointId),
-                eq(chatEndpoints.companyId, action!.companyId),
-              ),
+              eq(chatEndpoints.id, action!.endpointId),
             )
             .limit(1);
           if (
@@ -4061,7 +4033,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [inserted] = await db
       .insert(chatActions)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         kind: "telegram_maintenance",
         providerActionId,
@@ -4411,7 +4382,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await credentialLease.assertOwned(tx);
       });
       await logActivity(db, {
-        companyId: record.endpoint.companyId,
         actorType: "system",
         actorId: "chat-maintenance",
         action: `chat_endpoint.telegram_${payload.operation}_completed`,
@@ -4458,7 +4428,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           ),
         );
       await logActivity(db, {
-        companyId: action.companyId,
         actorType: "system",
         actorId: "chat-maintenance",
         action: `chat_endpoint.telegram_${payload.operation}_deferred`,
@@ -4498,10 +4467,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpoints)
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, chatEndpoints.connectionId),
-          eq(toolConnections.companyId, chatEndpoints.companyId),
-        ),
+        eq(toolConnections.id, chatEndpoints.connectionId),
       )
       .where(
         and(
@@ -4548,8 +4514,8 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           eq(chatActions.kind, "telegram_maintenance"),
           sql`(${chatActions.payload}->>'operation' <> 'stop_subscription' or exists (
             select 1 from ${chatEndpoints} inner join ${toolConnections}
-              on ${toolConnections.id} = ${chatEndpoints.connectionId} and ${toolConnections.companyId} = ${chatEndpoints.companyId}
-            where ${chatEndpoints.id} = ${chatActions.endpointId} and ${chatEndpoints.companyId} = ${chatActions.companyId}
+              on ${toolConnections.id} = ${chatEndpoints.connectionId}
+            where ${chatEndpoints.id} = ${chatActions.endpointId}
               and ${chatEndpoints.provider} = 'telegram' and ${chatEndpoints.status} = 'active'
               and ${toolConnections.status} = 'active' and ${toolConnections.enabled} = true
           ))`,
@@ -4591,7 +4557,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [inserted] = await database
       .insert(chatActions)
       .values({
-        companyId: input.endpoint.companyId,
         endpointId: input.endpoint.id,
         deliveryId: input.deliveryId ?? null,
         conversationId: input.conversationId ?? null,
@@ -4624,7 +4589,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function stageAuthorizedTaskControlPublication(
     tx: DbOrTransaction,
     input: {
-      companyId: string;
       conversationId: string;
       endpointId: string;
       idempotencyKey: string;
@@ -4636,7 +4600,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [inserted] = await tx
       .insert(chatPublications)
       .values({
-        companyId: input.companyId,
         endpointId: input.endpointId,
         conversationId: input.conversationId,
         issueId: input.issueId,
@@ -4652,10 +4615,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ id: chatPublications.id })
         .from(chatPublications)
         .where(
-          and(
-            eq(chatPublications.companyId, input.companyId),
-            eq(chatPublications.idempotencyKey, input.idempotencyKey),
-          ),
+          eq(chatPublications.idempotencyKey, input.idempotencyKey),
         )
         .then((rows) => rows[0] ?? null));
     if (!publication) {
@@ -4664,7 +4624,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     await tx
       .insert(chatActions)
       .values({
-        companyId: input.companyId,
         endpointId: input.endpointId,
         conversationId: input.conversationId,
         principalId: input.principalId,
@@ -4907,7 +4866,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (
       endpoint.provider !== "telegram" ||
       endpoint.status !== "active" ||
-      endpoint.companyId !== receipt.companyId ||
       endpoint.id !== receipt.endpointId ||
       endpoint.botExternalId !== receipt.botUserId ||
       !endpoint.providerAccountId ||
@@ -4924,7 +4882,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatEndpointResources)
             .where(
               and(
-                eq(chatEndpointResources.companyId, endpoint.companyId),
                 eq(chatEndpointResources.endpointId, endpoint.id),
                 eq(chatEndpointResources.providerResourceId, receipt.chatId),
               ),
@@ -4942,7 +4899,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, endpoint.companyId),
           eq(chatExternalPrincipals.provider, endpoint.provider),
           eq(
             chatExternalPrincipals.providerAccountId,
@@ -4968,7 +4924,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatIdentityLinks)
       .where(
         and(
-          eq(chatIdentityLinks.companyId, endpoint.companyId),
           eq(chatIdentityLinks.endpointId, endpoint.id),
           eq(chatIdentityLinks.principalId, principal.id),
         ),
@@ -4977,7 +4932,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     return createHash("sha256")
       .update(
         JSON.stringify([
-          endpoint.companyId,
           endpoint.id,
           receipt.botUserId,
           resource?.id ?? null,
@@ -5007,7 +4961,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(chatDeliveries.id, action.deliveryId),
-            eq(chatDeliveries.companyId, action.companyId),
             eq(chatDeliveries.endpointId, action.endpointId),
             eq(chatDeliveries.state, "filtered"),
           ),
@@ -5040,7 +4993,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatConversations)
           .where(
             and(
-              eq(chatConversations.companyId, endpoint.companyId),
               eq(chatConversations.endpointId, endpoint.id),
               eq(chatConversations.id, action.conversationId),
               inArray(chatConversations.state, ["active", "waiting"]),
@@ -5059,7 +5011,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpointResources)
       .where(
         and(
-          eq(chatEndpointResources.companyId, endpoint.companyId),
           eq(chatEndpointResources.endpointId, endpoint.id),
           payload.resourceId || conversation?.resourceId
             ? eq(
@@ -5549,10 +5500,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ refs: toolConnections.credentialSecretRefs })
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.companyId, endpoint.companyId),
-          eq(toolConnections.id, endpoint.connectionId),
-        ),
+        eq(toolConnections.id, endpoint.connectionId),
       )
       .then((rows) => rows[0]?.refs ?? []);
     if (credentialFingerprint(refs) !== context.credentialFingerprint) {
@@ -5824,17 +5772,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .update(chatEndpointResources)
           .set({ availability: "unavailable", updatedAt: now })
           .where(
-            and(
-              eq(chatEndpointResources.companyId, current.companyId),
-              eq(chatEndpointResources.endpointId, current.id),
-            ),
+            eq(chatEndpointResources.endpointId, current.id),
           );
         await tx
           .update(chatConversations)
           .set({ state: "unavailable", updatedAt: now })
           .where(
             and(
-              eq(chatConversations.companyId, current.companyId),
               eq(chatConversations.endpointId, current.id),
               inArray(chatConversations.state, ["active", "waiting"]),
             ),
@@ -5850,7 +5794,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const endpoint = row.endpoint;
     return {
       id: endpoint.id,
-      companyId: endpoint.companyId,
       connectionId: endpoint.connectionId,
       publicationMode: endpoint.publicationMode,
       externalExecutionPolicy: endpoint.externalExecutionPolicy,
@@ -5898,7 +5841,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     };
   }
 
-  async function list(companyId: string) {
+  async function list() {
     const rows = await db
       .select({
         endpoint: chatEndpoints,
@@ -5910,23 +5853,14 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpoints)
       .innerJoin(
         agents,
-        and(
-          eq(agents.id, chatEndpoints.assignedAgentId),
-          eq(agents.companyId, chatEndpoints.companyId),
-        ),
+        eq(agents.id, chatEndpoints.assignedAgentId),
       )
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, chatEndpoints.connectionId),
-          eq(toolConnections.companyId, chatEndpoints.companyId),
-        ),
+        eq(toolConnections.id, chatEndpoints.connectionId),
       )
       .where(
-        and(
-          eq(chatEndpoints.companyId, companyId),
-          ne(chatEndpoints.status, "archived"),
-        ),
+        ne(chatEndpoints.status, "archived"),
       )
       .orderBy(desc(chatEndpoints.updatedAt));
     return rows.map((row) => serializeEndpoint(row));
@@ -5937,7 +5871,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   }
 
   async function create(
-    companyId: string,
     input: CreateChatEndpointInput,
     actorUserId?: string | null,
   ) {
@@ -5946,10 +5879,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ id: agents.id, name: agents.name, status: agents.status })
       .from(agents)
       .where(
-        and(
-          eq(agents.companyId, companyId),
-          eq(agents.id, input.assignedAgentId),
-        ),
+        eq(agents.id, input.assignedAgentId),
       )
       .then((rows) => rows[0] ?? null);
     if (!agent)
@@ -5982,10 +5912,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           })
           .from(toolApplications)
           .where(
-            and(
-              eq(toolApplications.companyId, companyId),
-              eq(toolApplications.id, input.applicationId),
-            ),
+            eq(toolApplications.id, input.applicationId),
           )
           .then((rows) => rows[0] ?? null);
         if (!application) throw notFound("App not found");
@@ -6005,7 +5932,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       } else {
         await tx.insert(toolApplications).values({
           id: applicationId,
-          companyId,
           applicationKey: `chat:${input.provider}:${endpointId}`,
           name: `${name} ${suffix}`,
           description: `People talk to ${agent.name} through ${PROVIDER_LABELS[input.provider]}.`,
@@ -6017,7 +5943,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       }
       await tx.insert(toolConnections).values({
         id: connectionId,
-        companyId,
         applicationId,
         name,
         uid: `chat-${input.provider}-${endpointId}`,
@@ -6035,7 +5960,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       });
       await tx.insert(chatEndpoints).values({
         id: endpointId,
-        companyId,
         connectionId,
         provider: input.provider,
         publicId,
@@ -6057,7 +5981,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       });
     });
     await logActivity(db, {
-      companyId,
       actorType: "user",
       actorId: actorUserId ?? "board",
       action: "chat_endpoint.created",
@@ -6125,7 +6048,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .set(values)
             .where(eq(chatEndpoints.id, endpointId));
           await logActivity(tx as unknown as Db, {
-            companyId: existing.endpoint.companyId,
             actorType: "user",
             actorId: actorUserId ?? "board",
             action: "chat_endpoint.updated",
@@ -6452,7 +6374,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const candidates = await db
       .select({
         id: chatEndpoints.id,
-        companyId: chatEndpoints.companyId,
         assignedAgentId: chatEndpoints.assignedAgentId,
         providerAccountId: chatEndpoints.providerAccountId,
         botExternalId: chatEndpoints.botExternalId,
@@ -6461,9 +6382,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpoints)
       .where(
         and(
-          providerUsesGlobalApplicationIdentity(endpoint.provider)
-            ? undefined
-            : eq(chatEndpoints.companyId, endpoint.companyId),
           eq(chatEndpoints.provider, endpoint.provider),
           ne(chatEndpoints.id, endpoint.id),
           endpoint.provider === "imessage-photon" ? ne(chatEndpoints.status, "archived") : inArray(chatEndpoints.status, [
@@ -6492,7 +6410,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (conflictEndpoint) {
       throw conflict(
         `This ${PROVIDER_LABELS[endpoint.provider]} bot already represents another Paperclip agent connection`,
-        conflictEndpoint.companyId === endpoint.companyId
+        true
           ? {
               code: "chat_bot_identity_in_use",
               endpointId: conflictEndpoint.id,
@@ -6534,10 +6452,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ refs: toolConnections.credentialSecretRefs })
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.companyId, endpoint.companyId),
-          eq(toolConnections.id, endpoint.connectionId),
-        ),
+        eq(toolConnections.id, endpoint.connectionId),
       )
       .then((rows) => rows[0]?.refs ?? []);
     const refs: ToolCredentialSecretRef[] = [];
@@ -6547,7 +6462,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await credentialLease.assertOwned();
         const suffix = randomUUID();
         const secret = await secrets.create(
-          endpoint.companyId,
           {
             name: `chat.${endpoint.provider}.${endpoint.id.slice(0, 8)}.${key}.${suffix.slice(0, 8)}`,
             key: `CHAT_${endpoint.provider.replaceAll("-", "_")}_${endpoint.id.replaceAll("-", "_")}_${key}_${suffix}`.toUpperCase(),
@@ -6574,10 +6488,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select({ refs: toolConnections.credentialSecretRefs })
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.companyId, endpoint.companyId),
-              eq(toolConnections.id, endpoint.connectionId),
-            ),
+            eq(toolConnections.id, endpoint.connectionId),
           )
           .for("update")
           .then((rows) => rows[0] ?? null);
@@ -6594,7 +6505,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .delete(companySecretBindings)
           .where(
             and(
-              eq(companySecretBindings.companyId, endpoint.companyId),
               eq(companySecretBindings.targetType, "tool_connection"),
               eq(companySecretBindings.targetId, endpoint.connectionId),
             ),
@@ -6602,7 +6512,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         if (refs.length > 0) {
           await tx.insert(companySecretBindings).values(
             refs.map((ref) => ({
-              companyId: endpoint.companyId,
               secretId: ref.secretId,
               targetType: "tool_connection",
               targetId: endpoint.connectionId,
@@ -6633,13 +6542,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select({ secretId: companySecretBindings.secretId })
               .from(companySecretBindings)
               .where(
-                and(
-                  eq(companySecretBindings.companyId, endpoint.companyId),
-                  inArray(
-                    companySecretBindings.secretId,
-                    refs.map((ref) => ref.secretId),
-                  ),
-                ),
+                inArray(
+                                      companySecretBindings.secretId,
+                                      refs.map((ref) => ref.secretId),
+                                    ),
               )
               .then((rows) => new Set(rows.map((row) => row.secretId)))
               .catch(() => null);
@@ -6677,10 +6583,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ refs: toolConnections.credentialSecretRefs })
         .from(toolConnections)
         .where(
-          and(
-            eq(toolConnections.companyId, endpoint.companyId),
-            eq(toolConnections.id, endpoint.connectionId),
-          ),
+          eq(toolConnections.id, endpoint.connectionId),
         )
         .for("update")
         .then((rows) => rows[0] ?? null);
@@ -6690,7 +6593,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .delete(companySecretBindings)
         .where(
           and(
-            eq(companySecretBindings.companyId, endpoint.companyId),
             eq(companySecretBindings.targetType, "tool_connection"),
             eq(companySecretBindings.targetId, endpoint.connectionId),
           ),
@@ -6721,7 +6623,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     for (const ref of refs) {
       const key = ref.configPath.replace(/^credentials\./, "");
       values[key] = await (database === db ? secrets : secretService(database as Db)).resolveSecretValue(
-        endpoint.companyId,
         ref.secretId,
         ref.versionSelector ?? "latest",
         {
@@ -6744,10 +6645,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ refs: toolConnections.credentialSecretRefs, config: toolConnections.config })
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.companyId, endpoint.companyId),
-          eq(toolConnections.id, endpoint.connectionId),
-        ),
+        eq(toolConnections.id, endpoint.connectionId),
       )
       .then((rows) => rows[0] ?? null);
     if (!connection) throw notFound("Chat connection not found");
@@ -6771,7 +6669,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const inserted = await db
         .insert(chatEndpointLeases)
         .values({
-          companyId: endpoint.companyId,
           endpointId: endpoint.id,
           leaseKey,
           token,
@@ -6785,7 +6682,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .set({ token, expiresAt, updatedAt: now })
         .where(
           and(
-            eq(chatEndpointLeases.companyId, endpoint.companyId),
             eq(chatEndpointLeases.endpointId, endpoint.id),
             eq(chatEndpointLeases.leaseKey, leaseKey),
             lte(chatEndpointLeases.expiresAt, now),
@@ -6833,7 +6729,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       try {
         const owned = options.renewCredentialMutationLease
           ? await options.renewCredentialMutationLease({
-              companyId: endpoint.companyId,
               endpointId: endpoint.id,
               expiresAt,
               leaseKey: lease.leaseKey,
@@ -6845,7 +6740,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .set({ expiresAt, updatedAt: now })
                 .where(
                   and(
-                    eq(chatEndpointLeases.companyId, endpoint.companyId),
                     eq(chatEndpointLeases.endpointId, endpoint.id),
                     eq(chatEndpointLeases.leaseKey, lease.leaseKey),
                     eq(chatEndpointLeases.token, lease.token),
@@ -6913,7 +6807,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .delete(chatEndpointLeases)
         .where(
           and(
-            eq(chatEndpointLeases.companyId, endpoint.companyId),
             eq(chatEndpointLeases.endpointId, endpoint.id),
             eq(chatEndpointLeases.leaseKey, lease.leaseKey),
             eq(chatEndpointLeases.token, lease.token),
@@ -6999,7 +6892,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await db.transaction(async (tx) => {
           await credentialLease.assertOwned(tx);
           await writeSetupSecretActivity(tx as unknown as Db, {
-            companyId: endpoint.companyId,
             actorType: "user",
             actorId: actorUserId ?? "board",
             action: "chat_endpoint.setup_secret_rotation_started",
@@ -7118,7 +7010,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           }
         } catch (error) {
           await writeSetupSecretActivity(db, {
-            companyId: endpoint.companyId,
             actorType: "user",
             actorId: actorUserId ?? "board",
             action: "chat_endpoint.setup_secret_rotation_failed",
@@ -7141,7 +7032,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .transaction(async (tx) => {
             await credentialLease.assertOwned(tx);
             await writeSetupSecretActivity(tx as unknown as Db, {
-              companyId: endpoint.companyId,
               actorType: "user",
               actorId: actorUserId ?? "board",
               action: "chat_endpoint.setup_secret_generated",
@@ -7174,7 +7064,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .innerJoin(
               companySecretBindings,
               and(
-                eq(companySecretBindings.companyId, initial.endpoint.companyId),
                 eq(companySecretBindings.targetType, "tool_connection"),
                 eq(
                   companySecretBindings.targetId,
@@ -7189,10 +7078,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               ),
             )
             .where(
-              and(
-                eq(toolConnections.companyId, initial.endpoint.companyId),
-                eq(toolConnections.id, initial.endpoint.connectionId),
-              ),
+              eq(toolConnections.id, initial.endpoint.connectionId),
             )
             .then((rows) => rows[0] ?? null);
           return (
@@ -7230,7 +7116,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatEndpointResources)
         .where(
           and(
-            eq(chatEndpointResources.companyId, endpoint.companyId),
             eq(chatEndpointResources.endpointId, endpoint.id),
             eq(chatEndpointResources.type, "repository"),
             sql`${chatEndpointResources.metadata}->>'providerRepositoryId' = ${stableGitHubId}`,
@@ -7247,7 +7132,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatEndpointResources)
           .where(
             and(
-              eq(chatEndpointResources.companyId, endpoint.companyId),
               eq(chatEndpointResources.endpointId, endpoint.id),
               eq(chatEndpointResources.type, "repository"),
               eq(
@@ -7330,7 +7214,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           })
           .where(
             and(
-              eq(chatConversations.companyId, endpoint.companyId),
               eq(chatConversations.endpointId, endpoint.id),
               eq(chatConversations.resourceId, stableResource.id),
             ),
@@ -7342,7 +7225,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [resource] = await tx
       .insert(chatEndpointResources)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         type: item.type,
         providerResourceId: item.providerResourceId,
@@ -7396,7 +7278,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .set({ state: "active", updatedAt: new Date() })
         .where(
           and(
-            eq(chatConversations.companyId, endpoint.companyId),
             eq(chatConversations.endpointId, endpoint.id),
             eq(chatConversations.resourceId, resource.id),
             eq(chatConversations.state, "unavailable"),
@@ -7430,7 +7311,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .set({ state: "active", updatedAt: new Date() })
             .where(
               and(
-                eq(chatConversations.companyId, endpoint.companyId),
                 eq(chatConversations.endpointId, endpoint.id),
                 eq(chatConversations.resourceId, resource.id),
                 eq(chatConversations.state, "unavailable"),
@@ -7447,7 +7327,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatEndpointResources)
         .where(
           and(
-            eq(chatEndpointResources.companyId, endpoint.companyId),
             eq(chatEndpointResources.endpointId, endpoint.id),
             eq(chatEndpointResources.type, resourceType),
           ),
@@ -7463,7 +7342,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .set({ state: "unavailable", updatedAt: new Date() })
           .where(
             and(
-              eq(chatConversations.companyId, endpoint.companyId),
               eq(chatConversations.endpointId, endpoint.id),
               eq(chatConversations.resourceId, resource.id),
               inArray(chatConversations.state, ["active", "waiting"]),
@@ -7503,7 +7381,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .set({ label: resource.label, updatedAt: new Date() })
       .where(
         and(
-          eq(chatEndpointResources.companyId, record.endpoint.companyId),
           eq(chatEndpointResources.endpointId, endpointId),
           eq(chatEndpointResources.type, "channel"),
           eq(chatEndpointResources.providerResourceId, providerResourceId),
@@ -7678,7 +7555,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       )
         return;
       const scope = {
-        companyId: record.endpoint.companyId,
         endpointId,
         applicationId: record.endpoint.botExternalId,
         guildId: record.endpoint.providerAccountId,
@@ -7689,10 +7565,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(chatEndpoints)
           .where(
-            and(
-              eq(chatEndpoints.companyId, scope.companyId),
-              eq(chatEndpoints.id, scope.endpointId),
-            ),
+            eq(chatEndpoints.id, scope.endpointId),
           )
           .for("no key update")
           .then((rows) => rows[0]);
@@ -7709,10 +7582,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.companyId, scope.companyId),
-              eq(toolConnections.id, endpoint.connectionId),
-            ),
+            eq(toolConnections.id, endpoint.connectionId),
           )
           .for("no key update")
           .then((rows) => rows[0]);
@@ -7730,10 +7600,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(chatEndpoints)
           .where(
-            and(
-              eq(chatEndpoints.companyId, scope.companyId),
-              eq(chatEndpoints.id, endpointId),
-            ),
+            eq(chatEndpoints.id, endpointId),
           )
           .then((rows) => rows[0]);
         if (!current) throw notFound("Chat endpoint not found");
@@ -7753,13 +7620,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(chatEndpoints.companyId, scope.companyId),
-              eq(chatEndpoints.id, endpointId),
-            ),
+            eq(chatEndpoints.id, endpointId),
           );
         await logActivity(tx as unknown as Db, {
-          companyId: scope.companyId,
           actorType: "system",
           actorId: "system",
           action: registered
@@ -7932,7 +7795,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             record.endpoint.botExternalId &&
             record.endpoint.providerAccountId
               ? await readRegisteredDiscordCommandRegistration(db, {
-                  companyId: record.endpoint.companyId,
                   endpointId: record.endpoint.id,
                   applicationId: record.endpoint.botExternalId,
                   guildId: record.endpoint.providerAccountId,
@@ -7943,7 +7805,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               ? discordCommands.receipt.commandId
               : undefined;
           instance = await runtime.replaceEndpoint({
-            companyId: record.endpoint.companyId,
             endpointId: record.endpoint.id,
             providerConfig: runtimeConfig(
               record.endpoint,
@@ -7959,9 +7820,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 if (!(await runtimeCallbackRecord(endpoint.id, context, ["verifying", "active", "attention"]))) throw new Error("Photon receiver ownership changed");
                 if (activeThreadId) {
                   const working = await db.select({ id: heartbeatRuns.id }).from(chatConversations).innerJoin(heartbeatRuns, and(
-                    eq(heartbeatRuns.companyId, chatConversations.companyId), eq(heartbeatRuns.agentId, record.endpoint.assignedAgentId),
+                    eq(heartbeatRuns.agentId, record.endpoint.assignedAgentId),
                     eq(sql<string>`${heartbeatRuns.contextSnapshot}->>'issueId'`, sql<string>`${chatConversations.issueId}::text`), inArray(heartbeatRuns.status, ["queued", "running"]),
-                  )).where(and(eq(chatConversations.companyId, record.endpoint.companyId), eq(chatConversations.endpointId, endpoint.id), eq(chatConversations.externalThreadId, activeThreadId), inArray(chatConversations.state, ["active", "waiting"]))).limit(1);
+                  )).where(and(eq(chatConversations.endpointId, endpoint.id), eq(chatConversations.externalThreadId, activeThreadId), inArray(chatConversations.state, ["active", "waiting"]))).limit(1);
                   if (!working.length) throw new Error("Photon conversation has no active agent work");
                 }
                 await db.transaction(async (tx) => {
@@ -7975,7 +7836,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               onPhotonCheckpoint: (sequence) => db.transaction(async (tx) => {
                 if (!(await runtimeCallbackEndpoint(tx, endpoint.id, context, ["verifying", "active"]))) throw new Error("Photon receiver is no longer current");
                 if ((await renewDiscordGatewayOwnershipForMessageAdmission(tx, endpoint.id, context)).kind !== "owned") throw new Error("Photon receiver lease was replaced");
-                await writePhotonCheckpoint(new PhotonState({ companyId: record.endpoint.companyId, endpointId: endpoint.id }, createChatSdkStatePersistence(tx as unknown as Db)), credentials.lineId, sequence);
+                await writePhotonCheckpoint(new PhotonState({ endpointId: endpoint.id }, createChatSdkStatePersistence(tx as unknown as Db)), credentials.lineId, sequence);
               }),
               onPhotonEvent: (event) => handlePhotonEvent(endpoint.id, event, context),
               onPhotonFailure: (error) => handlePhotonFailure(endpoint.id, error, context),
@@ -8094,10 +7955,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpoints)
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, chatEndpoints.connectionId),
-          eq(toolConnections.companyId, chatEndpoints.companyId),
-        ),
+        eq(toolConnections.id, chatEndpoints.connectionId),
       )
       .where(
         and(
@@ -8131,7 +7989,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           afterCommands.endpoint.botExternalId &&
           afterCommands.endpoint.providerAccountId
             ? await readRegisteredDiscordCommandRegistration(db, {
-                companyId: afterCommands.endpoint.companyId,
                 endpointId: row.endpointId,
                 applicationId: afterCommands.endpoint.botExternalId,
                 guildId: afterCommands.endpoint.providerAccountId,
@@ -8185,10 +8042,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .from(toolConnections)
               .where(
-                and(
-                  eq(toolConnections.companyId, current.companyId),
-                  eq(toolConnections.id, current.connectionId),
-                ),
+                eq(toolConnections.id, current.connectionId),
               )
               .for("no key update")
               .then((rows) => rows[0]);
@@ -8205,10 +8059,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .update(chatEndpoints)
               .set({ capabilities: { ...current.capabilities, modals: true } })
               .where(
-                and(
-                  eq(chatEndpoints.companyId, current.companyId),
-                  eq(chatEndpoints.id, current.id),
-                ),
+                eq(chatEndpoints.id, current.id),
               );
           });
         }
@@ -8410,7 +8261,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, endpoint.companyId),
           eq(chatActions.endpointId, endpoint.id),
           eq(chatActions.kind, "photon_interaction"),
           eq(chatActions.providerActionId, `photon:${reference}`),
@@ -8432,7 +8282,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.id, action.conversationId),
         ),
@@ -8450,7 +8299,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, endpoint.companyId),
           eq(chatPublications.endpointId, endpoint.id),
           eq(chatPublications.id, binding.publicationId),
           eq(chatPublications.conversationId, conversation.id),
@@ -8479,7 +8327,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (
       !interaction ||
       interaction.status !== "pending" ||
-      interaction.companyId !== endpoint.companyId ||
       interaction.createdByAgentId !== endpoint.assignedAgentId ||
       !nativePhotonInteraction(interaction)
     )
@@ -8579,7 +8426,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await tx
           .insert(chatActions)
           .values({
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             conversationId: conversation.id,
             kind: "photon_response_notice",
@@ -8595,7 +8441,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await tx
           .insert(chatPublications)
           .values({
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             conversationId: conversation.id,
             issueId: conversation.issueId,
@@ -8674,10 +8519,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.companyId, endpoint.companyId),
-              eq(issues.id, conversation.issueId),
-            ),
+            eq(issues.id, conversation.issueId),
           )
           .then((rows) => rows[0]);
         if (!issue) return true;
@@ -8736,7 +8578,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               if (!claimed.length)
                 throw forbidden("Photon prompt has already been resolved");
               await logActivity(tx as unknown as Db, {
-                companyId: endpoint.companyId,
                 actorType: "user",
                 actorId: principal.userId!,
                 action: "issue.thread_interaction_answered",
@@ -8798,10 +8639,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.companyId, endpoint.companyId),
-              eq(issues.id, conversation.issueId),
-            ),
+            eq(issues.id, conversation.issueId),
           )
           .then((rows) => rows[0]);
         if (!issue) return true;
@@ -8853,7 +8691,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             if (!claimed.length)
               throw forbidden("Photon prompt has already been resolved");
             await logActivity(tx as unknown as Db, {
-              companyId: endpoint.companyId,
               actorType: "user",
               actorId: principal.userId!,
               action:
@@ -8967,7 +8804,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await tx
           .insert(chatEndpointResources)
           .values({
-            companyId: record.endpoint.companyId,
             endpointId,
             providerResourceId: removedThreadId,
             type: "group_chat",
@@ -8993,7 +8829,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       return;
     }
     const groupIdentity = photonThreadId({ lineId: adapter.authentication.identity.lineId, chatGuid: event.chatGuid, isGroup: true });
-    const removedGroup = await db.select({ metadata: chatEndpointResources.metadata }).from(chatEndpointResources).where(and(eq(chatEndpointResources.companyId, record.endpoint.companyId), eq(chatEndpointResources.endpointId, endpointId), eq(chatEndpointResources.providerResourceId, groupIdentity))).limit(1).then((rows) => rows[0]);
+    const removedGroup = await db.select({ metadata: chatEndpointResources.metadata }).from(chatEndpointResources).where(and(eq(chatEndpointResources.endpointId, endpointId), eq(chatEndpointResources.providerResourceId, groupIdentity))).limit(1).then((rows) => rows[0]);
     const readded = event.type === "group.changed" && event.change.type === "participantAdded" && event.change.participant.address === record.endpoint.botExternalId;
     // Late events from a removed chat must still advance recovery without a
     // now-forbidden chat lookup holding every other conversation behind them.
@@ -9063,7 +8899,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await tx
         .insert(chatEndpointResources)
         .values({
-          companyId: record.endpoint.companyId,
           endpointId,
           providerResourceId: threadId,
           type: chat.isGroup ? "group_chat" : "direct_message",
@@ -9215,7 +9050,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       });
       await invalidateRuntime(endpoint.id);
       await logActivity(db, {
-        companyId: endpoint.companyId,
         actorType: "user",
         actorId: actorUserId ?? "board",
         action: "chat_endpoint.paused",
@@ -9407,7 +9241,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         throw error;
       }
       await logActivity(db, {
-        companyId: endpoint.companyId,
         actorType: "user",
         actorId: actorUserId ?? "board",
         action: "chat_endpoint.resumed",
@@ -9484,7 +9317,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(toolConnections)
           .where(
             and(
-              eq(toolConnections.companyId, endpoint.companyId),
               eq(toolConnections.applicationId, record.applicationId),
               ne(toolConnections.id, endpoint.connectionId),
               ne(toolConnections.status, "archived"),
@@ -9724,7 +9556,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await invalidateRuntime(endpoint.id);
       await credentialLease.assertOwned();
       if (credentials.allocation === "shared") await db.update(chatEndpoints).set({ allowGroupChats: false }).where(eq(chatEndpoints.id, endpoint.id));
-      await db.update(toolConnections).set({ config: { provider: endpoint.provider, photon: credentials.allocation === "shared" ? { allocation: "shared", projectId: credentials.projectId } : { allocation: "dedicated", projectId: credentials.projectId, lineId: credentials.lineId } } }).where(and(eq(toolConnections.companyId, endpoint.companyId), eq(toolConnections.id, endpoint.connectionId)));
+      await db.update(toolConnections).set({ config: { provider: endpoint.provider, photon: credentials.allocation === "shared" ? { allocation: "shared", projectId: credentials.projectId } : { allocation: "dedicated", projectId: credentials.projectId, lineId: credentials.lineId } } }).where(eq(toolConnections.id, endpoint.connectionId));
     }
     if (
       (input.credentials && Object.keys(input.credentials).length > 0) ||
@@ -9824,7 +9656,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await db.transaction(async (tx) => {
             await credentialLease.assertOwned(tx);
             await logActivity(tx as unknown as Db, {
-              companyId: endpoint.companyId,
               actorType: "user",
               actorId: actorUserId ?? "board",
               action,
@@ -9962,7 +9793,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     await db.transaction(async (tx) => {
       await credentialLease.assertOwned(tx);
       await logActivity(tx as unknown as Db, {
-        companyId: endpoint.companyId,
         actorType: "user",
         actorId: actorUserId ?? "board",
         action:
@@ -9984,7 +9814,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, userId), eq(companyMemberships.status, "active"), ne(companyMemberships.membershipRole, "viewer"),
       ))
-      .where(and(eq(chatIdentityLinks.companyId, endpoint.companyId), eq(chatIdentityLinks.endpointId, endpoint.id),
+      .where(and(eq(chatIdentityLinks.endpointId, endpoint.id),
         eq(chatIdentityLinks.paperclipUserId, userId), eq(chatIdentityLinks.status, "linked")))
       .limit(1).then((rows) => rows[0] ?? null);
   }
@@ -9995,19 +9825,19 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const startedAt = record.endpoint.setup.testStartedAt;
     if (!startedAt) return { messageReceivedAt: null };
     const links = await db.select({ principalId: chatIdentityLinks.principalId }).from(chatIdentityLinks).where(and(
-      eq(chatIdentityLinks.companyId, record.endpoint.companyId), eq(chatIdentityLinks.endpointId, endpointId),
+      eq(chatIdentityLinks.endpointId, endpointId),
       eq(chatIdentityLinks.paperclipUserId, userId), eq(chatIdentityLinks.status, "linked"),
     ));
     if (!links.length) return { messageReceivedAt: null };
     const principalIds = links.map((link) => link.principalId);
     const [delivery, command] = await Promise.all([
       db.select({ at: chatDeliveries.createdAt }).from(chatDeliveries).where(and(
-        eq(chatDeliveries.companyId, record.endpoint.companyId), eq(chatDeliveries.endpointId, endpointId),
+        eq(chatDeliveries.endpointId, endpointId),
         inArray(chatDeliveries.principalId, principalIds), gte(chatDeliveries.createdAt, new Date(startedAt)),
         inArray(chatDeliveries.eventKind, ["message", "mention"]),
       )).orderBy(asc(chatDeliveries.createdAt)).limit(1).then((rows) => rows[0]),
       db.select({ at: chatActions.createdAt }).from(chatActions).where(and(
-        eq(chatActions.companyId, record.endpoint.companyId), eq(chatActions.endpointId, endpointId),
+        eq(chatActions.endpointId, endpointId),
         inArray(chatActions.principalId, principalIds), eq(chatActions.kind, "slash_task_start"), gte(chatActions.createdAt, new Date(startedAt)),
       )).orderBy(asc(chatActions.createdAt)).limit(1).then((rows) => rows[0]),
     ]);
@@ -10077,7 +9907,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatDeliveries)
             .where(
               and(
-                eq(chatDeliveries.companyId, endpoint.companyId),
                 eq(chatDeliveries.endpointId, endpoint.id),
                 eq(chatDeliveries.state, "processed"),
                 gte(chatDeliveries.processedAt, testStartedAt),
@@ -10108,7 +9937,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               issueComments,
               and(
                 eq(issueComments.id, chatPublications.commentId),
-                eq(issueComments.companyId, chatPublications.companyId),
                 eq(issueComments.issueId, chatPublications.issueId),
                 eq(issueComments.authorType, "agent"),
                 eq(issueComments.authorAgentId, endpoint.assignedAgentId),
@@ -10117,7 +9945,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .innerJoin(
               chatMessageLinks,
               and(
-                eq(chatMessageLinks.companyId, chatPublications.companyId),
                 eq(chatMessageLinks.endpointId, chatPublications.endpointId),
                 eq(
                   chatMessageLinks.conversationId,
@@ -10132,7 +9959,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               heartbeatRuns,
               and(
                 eq(heartbeatRuns.id, issueComments.createdByRunId),
-                eq(heartbeatRuns.companyId, chatPublications.companyId),
                 eq(heartbeatRuns.agentId, endpoint.assignedAgentId),
                 eq(heartbeatRuns.status, "succeeded"),
                 eq(
@@ -10148,7 +9974,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             )
             .where(
               and(
-                eq(chatPublications.companyId, endpoint.companyId),
                 eq(chatPublications.endpointId, endpoint.id),
                 eq(
                   chatPublications.conversationId,
@@ -10228,7 +10053,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             })
             .where(eq(toolConnections.id, endpoint.connectionId));
           if (optionalSlackTest) await logActivity(tx as unknown as Db, {
-            companyId: endpoint.companyId, actorType: "user", actorId: finishOptions!.optionalSlackTestForUser,
+            actorType: "user", actorId: finishOptions!.optionalSlackTestForUser,
             action: "chat.setup_completed", entityType: "chat_endpoint", entityId: endpointId,
             details: { conversationTestOptional: true },
           });
@@ -10253,7 +10078,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [principal] = await db
       .insert(chatExternalPrincipals)
       .values({
-        companyId: endpoint.companyId,
         provider: endpoint.provider,
         providerAccountId,
         externalId,
@@ -10266,7 +10090,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       })
       .onConflictDoUpdate({
         target: [
-          chatExternalPrincipals.companyId,
           chatExternalPrincipals.provider,
           chatExternalPrincipals.providerAccountId,
           chatExternalPrincipals.externalId,
@@ -10324,7 +10147,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function sponsorAllowsGuest(endpoint: EndpointRow): Promise<boolean> {
     // A null sponsor is the local board/operator context used by self-hosted
     // instances. Cloud endpoints retain the creating user and must revalidate
-    // that user's current company authority on every sponsored guest turn.
+    // that user's current organization authority on every sponsored guest turn.
     if (!endpoint.sponsorUserId) return true;
     const membership = await db
       .select({
@@ -10361,7 +10184,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     // identity from racing the authorization snapshot. Row locks below also
     // serialize revocation and membership changes that do not use this key.
     await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${endpoint.companyId}:${principalId}`}, 0))`,
+      sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principalId}`}, 0))`,
     );
     const link = await tx
       .select({
@@ -10371,7 +10194,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatIdentityLinks)
       .where(
         and(
-          eq(chatIdentityLinks.companyId, endpoint.companyId),
           eq(chatIdentityLinks.endpointId, endpoint.id),
           eq(chatIdentityLinks.principalId, principalId),
         ),
@@ -10464,7 +10286,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.id, input.conversationId),
           inArray(chatConversations.state, ["active", "waiting"]),
@@ -10483,7 +10304,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatEndpointResources)
           .where(
             and(
-              eq(chatEndpointResources.companyId, endpoint.companyId),
               eq(chatEndpointResources.endpointId, endpoint.id),
               eq(chatEndpointResources.id, conversation.resourceId),
             ),
@@ -10545,7 +10365,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [resource] = await database
       .insert(chatEndpointResources)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         type,
         providerResourceId,
@@ -10645,14 +10464,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(issueAttachments)
       .innerJoin(
         assets,
-        and(
-          eq(assets.companyId, issueAttachments.companyId),
-          eq(assets.id, issueAttachments.assetId),
-        ),
+        eq(assets.id, issueAttachments.assetId),
       )
       .where(
         and(
-          eq(issueAttachments.companyId, input.endpoint.companyId),
           eq(issueAttachments.issueId, input.issueId),
           eq(issueAttachments.issueCommentId, input.issueCommentId),
         ),
@@ -10682,7 +10497,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatActions)
               .where(
                 and(
-                  eq(chatActions.companyId, input.endpoint.companyId),
                   eq(chatActions.endpointId, input.endpoint.id),
                   eq(chatActions.deliveryId, input.deliveryId),
                   eq(chatActions.kind, "inbound_wakeup"),
@@ -10711,10 +10525,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select()
               .from(chatDeliveries)
               .where(
-                and(
-                  eq(chatDeliveries.companyId, input.endpoint.companyId),
-                  eq(chatDeliveries.id, input.deliveryId),
-                ),
+                eq(chatDeliveries.id, input.deliveryId),
               )
               .for("update", { noWait: true })
               .limit(1)
@@ -10723,10 +10534,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select()
               .from(chatActions)
               .where(
-                and(
-                  eq(chatActions.companyId, input.endpoint.companyId),
-                  eq(chatActions.id, action.id),
-                ),
+                eq(chatActions.id, action.id),
               )
               .for("update", { noWait: true })
               .limit(1)
@@ -10819,7 +10627,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(issueComments)
                 .where(
                   and(
-                    eq(issueComments.companyId, input.endpoint.companyId),
                     eq(issueComments.issueId, input.issueId),
                     eq(issueComments.id, input.issueCommentId),
                     isNull(issueComments.deletedAt),
@@ -10835,7 +10642,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(chatDeliveries)
                 .where(
                   and(
-                    eq(chatDeliveries.companyId, input.endpoint.companyId),
                     eq(chatDeliveries.endpointId, input.endpoint.id),
                     or(
                       isNull(chatDeliveries.conversationId),
@@ -11056,7 +10862,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await db
             .insert(chatActions)
             .values({
-              companyId: input.endpoint.companyId,
               endpointId: input.endpoint.id,
               deliveryId: input.deliveryId,
               kind: relation.kind === "heif_jpeg_preview" ? "attachment_derivative" : "attachment_companion",
@@ -11078,7 +10883,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           continue;
         }
         const stored = await options.storage.putFile({
-          companyId: input.endpoint.companyId,
           namespace: `issues/${input.issueId}`,
           originalFilename,
           contentType,
@@ -11115,7 +10919,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             isExternalActionAuthorizationChange(error)
           )
             await options.storage
-              .deleteObject(input.endpoint.companyId, stored.objectKey)
+              .deleteObject(stored.objectKey)
               .catch(() => undefined);
           throw error;
         }
@@ -11219,10 +11023,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .update(issueComments)
         .set({ body: visibleFailure, updatedAt: new Date() })
         .where(
-          and(
-            eq(issueComments.id, input.commentId),
-            eq(issueComments.companyId, input.endpoint.companyId),
-          ),
+          eq(issueComments.id, input.commentId),
         );
       await tx
         .update(chatActions)
@@ -11380,7 +11181,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatExternalPrincipals)
               .where(
                 and(
-                  eq(chatExternalPrincipals.companyId, endpoint.companyId),
                   eq(chatExternalPrincipals.provider, "discord"),
                   eq(chatExternalPrincipals.providerAccountId, event.guildId),
                   eq(chatExternalPrincipals.externalId, event.userId),
@@ -11449,7 +11249,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await tx
             .insert(chatDeliveries)
             .values({
-              companyId: configuredEndpoint.companyId,
               endpointId: configuredEndpoint.id,
               providerEventId,
               deduplicationKey: createHash("sha256")
@@ -11603,7 +11402,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     await tx
       .insert(chatActions)
       .values({
-        companyId: input.endpoint.companyId,
         endpointId: input.endpoint.id,
         deliveryId: input.deliveryId,
         conversationId: input.conversation.id,
@@ -11651,10 +11449,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, action.companyId),
-          eq(issues.id, payload.issueId),
-        ),
+        eq(issues.id, payload.issueId),
       )
       .for("update", notice ? { noWait: true } : undefined)
       .limit(1)
@@ -11672,10 +11467,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(chatEndpoints)
       .where(
-        and(
-          eq(chatEndpoints.companyId, action.companyId),
-          eq(chatEndpoints.id, action.endpointId),
-        ),
+        eq(chatEndpoints.id, action.endpointId),
       )
       .for("no key update", { noWait: true })
       .limit(1)
@@ -11684,10 +11476,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(chatDeliveries)
       .where(
-        and(
-          eq(chatDeliveries.companyId, action.companyId),
-          eq(chatDeliveries.id, action.deliveryId),
-        ),
+        eq(chatDeliveries.id, action.deliveryId),
       )
       .limit(1)
       .then((rows) => rows[0] ?? null);
@@ -11711,10 +11500,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(chatConversations)
       .where(
-        and(
-          eq(chatConversations.companyId, action.companyId),
-          eq(chatConversations.id, action.conversationId),
-        ),
+        eq(chatConversations.id, action.conversationId),
       )
       .for("update")
       .limit(1)
@@ -11776,13 +11562,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         issueComments,
         and(
           eq(issueComments.id, chatMessageLinks.commentId),
-          eq(issueComments.companyId, action.companyId),
           eq(issueComments.issueId, issue.id),
         ),
       )
       .where(
         and(
-          eq(chatMessageLinks.companyId, action.companyId),
           eq(chatMessageLinks.endpointId, endpoint.id),
           eq(chatMessageLinks.conversationId, conversation.id),
           eq(chatMessageLinks.deliveryId, delivery.id),
@@ -11803,7 +11587,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
 
   function inboundWakeScope(action: typeof chatActions.$inferSelect) {
     return JSON.stringify([
-      action.companyId,
       action.endpointId,
       action.conversationId,
       action.deliveryId,
@@ -11944,10 +11727,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(heartbeatRunEvents)
       .where(
-        and(
-          eq(heartbeatRunEvents.companyId, run.companyId),
-          eq(heartbeatRunEvents.runId, run.id),
-        ),
+        eq(heartbeatRunEvents.runId, run.id),
       )
       .limit(2)
       .for("share", { noWait: true });
@@ -11970,9 +11750,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     )
       return false;
     const evidence = await tx.execute(sql`select 1 where
-      exists (select 1 from native_run_finalizations where company_id = ${run.companyId}::uuid and run_id = ${run.id}::uuid)
-      or exists (select 1 from native_run_results where company_id = ${run.companyId}::uuid and run_id = ${run.id}::uuid)
-      or exists (select 1 from environment_leases where company_id = ${run.companyId}::uuid and heartbeat_run_id = ${run.id}::uuid)`);
+      exists (select 1 from native_run_finalizations where run_id = ${run.id}::uuid)
+      or exists (select 1 from native_run_results where run_id = ${run.id}::uuid)
+      or exists (select 1 from environment_leases where heartbeat_run_id = ${run.id}::uuid)`);
     return evidence.length === 0;
   }
 
@@ -11987,7 +11767,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(nativeRunFinalizations.runId, run.id),
-          eq(nativeRunFinalizations.companyId, run.companyId),
           eq(nativeRunFinalizations.issueId, issueId),
         ),
       )
@@ -12024,7 +11803,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(heartbeatRunEvents)
         .where(
           and(
-            eq(heartbeatRunEvents.companyId, run.companyId),
             eq(heartbeatRunEvents.runId, run.id),
             or(
               isNotNull(heartbeatRunEvents.sourceInstanceId),
@@ -12037,10 +11815,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ id: nativeRunResults.id })
         .from(nativeRunResults)
         .where(
-          and(
-            eq(nativeRunResults.companyId, run.companyId),
-            eq(nativeRunResults.runId, run.id),
-          ),
+          eq(nativeRunResults.runId, run.id),
         )
         .limit(1);
       const checkpoint = run.runnerProfileJson?.sessionCheckpoint as
@@ -12052,7 +11827,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       if (
         !event &&
         !result &&
-        binding?.companyId === run.companyId &&
         binding?.issueId === issueId &&
         binding?.agentId === run.agentId &&
         binding?.runId === run.id &&
@@ -12068,7 +11842,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(heartbeatRuns)
           .where(
             and(
-              eq(heartbeatRuns.companyId, run.companyId),
               eq(heartbeatRuns.agentId, run.agentId),
               eq(heartbeatRuns.nativeIssueId, issueId),
               eq(heartbeatRuns.nativeSessionId, run.nativeSessionId),
@@ -12081,8 +11854,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               // owner is a candidate; the physical check below must still prove
               // that this exact run owns the canonical suspended checkpoint.
               sql`exists (select 1 from native_run_finalizations retired
-            where retired.company_id = ${heartbeatRuns.companyId}
-              and retired.run_id = ${heartbeatRuns.id}
+            where retired.run_id = ${heartbeatRuns.id}
               and retired.phase = 'committed'
               and exists (select 1 from jsonb_array_elements(retired.recovery_history) receipt
                 where receipt->>'kind' = 'native_cleanup_maintenance'
@@ -12098,7 +11870,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(nativeRunFinalizations)
             .where(
               and(
-                eq(nativeRunFinalizations.companyId, run.companyId),
                 eq(nativeRunFinalizations.issueId, issueId),
                 eq(nativeRunFinalizations.runId, predecessor.id),
               ),
@@ -12111,10 +11882,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .select()
             .from(environmentLeases)
             .where(
-              and(
-                eq(environmentLeases.companyId, run.companyId),
-                eq(environmentLeases.heartbeatRunId, run.id),
-              ),
+              eq(environmentLeases.heartbeatRunId, run.id),
             )
             .for("share", { noWait: true });
           if (
@@ -12228,10 +11996,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(environmentLeases)
       .where(
-        and(
-          eq(environmentLeases.companyId, run.companyId),
-          eq(environmentLeases.heartbeatRunId, run.id),
-        ),
+        eq(environmentLeases.heartbeatRunId, run.id),
       )
       .for("share", { noWait: true });
     if (
@@ -12249,7 +12014,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function assertFailedNativeRetryState(
     tx: DbOrTransaction,
     source: Pick<FailedChatRetrySource, "failedRunId" | "issueId" | "agentId">,
-    companyId: string,
   ) {
     const [run] = await tx
       .select()
@@ -12257,7 +12021,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(heartbeatRuns.id, source.failedRunId),
-          eq(heartbeatRuns.companyId, companyId),
           eq(heartbeatRuns.agentId, source.agentId),
         ),
       )
@@ -12272,7 +12035,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           failedExecution: run.runnerProfileJson?.nativeExecutionInput,
           retiredExecution:
             retiredOwner.predecessor.runnerProfileJson?.nativeExecutionInput,
-          companyId,
           issueId: source.issueId,
           agentId: source.agentId,
           failedRunId: run.id,
@@ -12300,7 +12062,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           checkpoint.providerSessionId.trim().length === 0)) ||
       !nativeFailedRunRetryStateIsSafe({
         execution: run.runnerProfileJson?.nativeExecutionInput,
-        companyId,
         issueId: source.issueId,
         agentId: source.agentId,
         runId: run.id,
@@ -12331,7 +12092,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function failedChatRetrySource(
     tx: DbOrTransaction,
     input: {
-      companyId: string;
       issueId: string;
       agentId: string;
       failedRunId: string;
@@ -12362,10 +12122,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(issues)
       .where(
-        and(
-          eq(issues.id, input.issueId),
-          eq(issues.companyId, input.companyId),
-        ),
+        eq(issues.id, input.issueId),
       )
       .for(
         "update",
@@ -12375,10 +12132,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ status: agents.status })
       .from(agents)
       .where(
-        and(
-          eq(agents.id, input.agentId),
-          eq(agents.companyId, input.companyId),
-        ),
+        eq(agents.id, input.agentId),
       )
       .for("share", { noWait: true });
     const [failedRun] = await tx
@@ -12387,7 +12141,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(heartbeatRuns.id, input.failedRunId),
-          eq(heartbeatRuns.companyId, input.companyId),
           eq(heartbeatRuns.agentId, input.agentId),
         ),
       )
@@ -12436,7 +12189,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(nativeRunResults)
       .where(
         and(
-          eq(nativeRunResults.companyId, input.companyId),
           eq(nativeRunResults.runId, failedRun.id),
           eq(nativeRunResults.schemaStatus, "accepted"),
           input.committedResponse
@@ -12452,7 +12204,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(nativeRunFinalizations)
         .where(
           and(
-            eq(nativeRunFinalizations.companyId, input.companyId),
             eq(nativeRunFinalizations.issueId, issue.id),
             eq(nativeRunFinalizations.runId, failedRun.id),
           ),
@@ -12529,7 +12280,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           chatPublications,
           and(
             eq(chatPublications.id, chatTeamsFileTransfers.publicationId),
-            eq(chatPublications.companyId, chatTeamsFileTransfers.companyId),
             eq(chatPublications.endpointId, chatTeamsFileTransfers.endpointId),
             eq(
               chatPublications.conversationId,
@@ -12545,7 +12295,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           chatEndpoints,
           and(
             eq(chatEndpoints.id, chatTeamsFileTransfers.endpointId),
-            eq(chatEndpoints.companyId, input.companyId),
             eq(chatEndpoints.provider, "microsoft-teams"),
           ),
         )
@@ -12553,7 +12302,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           chatConversations,
           and(
             eq(chatConversations.id, chatTeamsFileTransfers.conversationId),
-            eq(chatConversations.companyId, input.companyId),
             eq(chatConversations.endpointId, chatTeamsFileTransfers.endpointId),
             eq(chatConversations.issueId, issue.id),
             eq(
@@ -12566,7 +12314,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           issueComments,
           and(
             eq(issueComments.id, chatTeamsFileTransfers.commentId),
-            eq(issueComments.companyId, input.companyId),
             eq(issueComments.issueId, issue.id),
             eq(issueComments.createdByRunId, failedRun.id),
             eq(issueComments.authorAgentId, input.agentId),
@@ -12577,7 +12324,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           issueAttachments,
           and(
             eq(issueAttachments.id, chatTeamsFileTransfers.attachmentId),
-            eq(issueAttachments.companyId, input.companyId),
             eq(issueAttachments.issueId, issue.id),
             eq(issueAttachments.issueCommentId, issueComments.id),
             eq(issueAttachments.originatingRunId, failedRun.id),
@@ -12587,14 +12333,12 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           assets,
           and(
             eq(assets.id, issueAttachments.assetId),
-            eq(assets.companyId, input.companyId),
             eq(assets.sha256, chatTeamsFileTransfers.sha256),
             eq(assets.byteSize, chatTeamsFileTransfers.byteSize),
           ),
         )
         .where(
           and(
-            eq(chatTeamsFileTransfers.companyId, input.companyId),
             eq(chatTeamsFileTransfers.issueId, issue.id),
             eq(chatTeamsFileTransfers.id, continuingTransfer.transferId),
             eq(
@@ -12620,7 +12364,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(issueThreadInteractions)
       .where(
         and(
-          eq(issueThreadInteractions.companyId, input.companyId),
           eq(issueThreadInteractions.issueId, issue.id),
           eq(issueThreadInteractions.sourceRunId, failedRun.id),
         ),
@@ -12630,10 +12373,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ id: issueQuestionResponseDeliveries.id })
       .from(issueQuestionResponseDeliveries)
       .where(
-        and(
-          eq(issueQuestionResponseDeliveries.companyId, input.companyId),
-          eq(issueQuestionResponseDeliveries.targetRunId, failedRun.id),
-        ),
+        eq(issueQuestionResponseDeliveries.targetRunId, failedRun.id),
       )
       .limit(1);
     const [resultPublication] = await tx
@@ -12641,7 +12381,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, input.companyId),
           eq(chatPublications.issueId, issue.id),
           input.committedResponse
             ? eq(chatPublications.state, "delivery_unknown")
@@ -12654,8 +12393,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               like(chatPublications.idempotencyKey, `run:${failedRun.id}:%`),
               eq(chatPublications.state, "delivery_unknown"),
             ),
-            sql`exists (select 1 from issue_comments result_comment where result_comment.id = ${chatPublications.commentId}
-          and result_comment.company_id = ${input.companyId}::uuid and result_comment.created_by_run_id = ${failedRun.id}::uuid
+            sql`exists (select 1 from issue_comments result_comment where result_comment.id = ${chatPublications.commentId} and result_comment.created_by_run_id = ${failedRun.id}::uuid
           )`,
           ),
         ),
@@ -12674,20 +12412,14 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select()
         .from(chatActions)
         .where(
-          and(
-            eq(chatActions.id, failedRun.wakeupRequestId),
-            eq(chatActions.companyId, input.companyId),
-          ),
+          eq(chatActions.id, failedRun.wakeupRequestId),
         )
         .for("share", { noWait: true });
       const [priorReceipt] = await tx
         .select()
         .from(agentWakeupRequests)
         .where(
-          and(
-            eq(agentWakeupRequests.id, failedRun.wakeupRequestId),
-            eq(agentWakeupRequests.companyId, input.companyId),
-          ),
+          eq(agentWakeupRequests.id, failedRun.wakeupRequestId),
         )
         .for("share", { noWait: true });
       if (
@@ -12728,7 +12460,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       assertFailedRetryReceipt(
         createDurableChatWakeupRequest({
           id: priorIntent.id,
-          companyId: input.companyId,
           agentId: input.agentId,
           issueId: input.issueId,
           commentId: parent.commentIds.at(-1)!,
@@ -12758,10 +12489,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const admittedBatch =
       await tx.execute(sql`select source.id, source.payload->>'commentId' as comment_id
       from agent_wakeup_requests receipt join chat_actions source on source.id = receipt.id
-      where receipt.company_id = ${input.companyId}::uuid and receipt.agent_id = ${input.agentId}::uuid
+      where receipt.agent_id = ${input.agentId}::uuid
         and (receipt.run_id = ${failedRun.id}::uuid or receipt.id = ${failedRun.wakeupRequestId}::uuid
-          or receipt.payload->>'coalescedIntoWakeupRequestId' = ${failedRun.wakeupRequestId})
-        and source.company_id = ${input.companyId}::uuid and source.kind = 'inbound_wakeup' limit 51`);
+          or receipt.payload->>'coalescedIntoWakeupRequestId' = ${failedRun.wakeupRequestId}) and source.kind = 'inbound_wakeup' limit 51`);
     if (
       admittedBatch.length !== commentIds.length ||
       admittedBatch.some(
@@ -12774,7 +12504,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, input.companyId),
           eq(chatActions.kind, "inbound_wakeup"),
           sql`${chatActions.payload}->>'issueId' = ${issue.id}`,
           inArray(
@@ -12805,7 +12534,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     )
       throw failedChatRetryDenied();
     const identity = await tx.execute(
-      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${input.companyId}:${first.principalId}`}, 0)) as locked`,
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${first.principalId}`}, 0)) as locked`,
     );
     if (!identity[0]?.locked)
       throw new NativeChatReviewPresentationContentionError();
@@ -12837,7 +12566,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(issueComments.id, String(action.payload.commentId)),
-            eq(issueComments.companyId, input.companyId),
             eq(issueComments.issueId, issue.id),
           ),
         )
@@ -12865,7 +12593,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatDeliveries)
         .where(
           and(
-            eq(chatDeliveries.companyId, input.companyId),
             eq(chatDeliveries.endpointId, first.endpointId),
             or(
               isNull(chatDeliveries.conversationId),
@@ -12892,7 +12619,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       assertFailedRetryReceipt(
         createDurableChatWakeupRequest({
           id: action.id,
-          companyId: input.companyId,
           agentId: input.agentId,
           issueId: issue.id,
           commentId: comment.id,
@@ -12928,10 +12654,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(agentWakeupRequests)
           .where(
-            and(
-              eq(agentWakeupRequests.id, ownerId),
-              eq(agentWakeupRequests.companyId, input.companyId),
-            ),
+            eq(agentWakeupRequests.id, ownerId),
           )
           .for("share", { noWait: true });
         if (!next) throw failedChatRetryDenied();
@@ -12970,7 +12693,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, input.companyId),
           eq(chatActions.conversationId, first.conversationId),
           eq(chatActions.kind, "inbound_wakeup"),
           notInArray(
@@ -12978,8 +12700,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             ordered.map((action) => action.id),
           ),
           gte(chatActions.createdAt, newestSource),
-          sql`exists (select 1 from agent_wakeup_requests newer_admission where newer_admission.id = ${chatActions.id}
-        and newer_admission.company_id = ${input.companyId}::uuid and newer_admission.status <> 'skipped')`,
+          sql`exists (select 1 from agent_wakeup_requests newer_admission where newer_admission.id = ${chatActions.id} and newer_admission.status <> 'skipped')`,
         ),
       )
       .limit(1);
@@ -13030,7 +12751,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function prepareFailedChatRunRetry(
     tx: DbOrTransaction,
     input: {
-      companyId: string;
       issueId: string;
       agentId: string;
       failedRunId: string;
@@ -13052,19 +12772,17 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (existing) {
       if (
         existing.kind !== "failed_run_retry" ||
-        existing.companyId !== input.companyId ||
         existing.payload.sourceScopeSha256 !== source.sourceScopeSha256
       )
         throw failedChatRetryDenied();
       return { actionId: existing.id, issueId: input.issueId };
     }
-    await assertFailedNativeRetryState(tx, source, input.companyId);
+    await assertFailedNativeRetryState(tx, source);
     const [busy] = await tx
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, input.companyId),
           inArray(heartbeatRuns.status, [
             "queued",
             "running",
@@ -13079,7 +12797,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [intent] = await tx
       .insert(chatActions)
       .values({
-        companyId: input.companyId,
         endpointId: source.endpointId,
         conversationId: source.conversationId,
         principalId: source.principalId,
@@ -13097,7 +12814,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       })
       .returning();
     await logActivity(tx as Db, {
-      companyId: input.companyId,
       actorType: "user",
       actorId: input.initiatedByUserId,
       action: "chat.failed_run_retry_requested",
@@ -13115,7 +12831,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function authorizeFailedChatRunRetry(
     tx: DbOrTransaction,
     input: {
-      companyId: string;
       issueId: string;
       agentId: string;
       retryActionId: string;
@@ -13127,10 +12842,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(chatActions)
       .where(
-        and(
-          eq(chatActions.id, input.retryActionId),
-          eq(chatActions.companyId, input.companyId),
-        ),
+        eq(chatActions.id, input.retryActionId),
       );
     if (
       !snapshot ||
@@ -13173,7 +12885,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       assertFailedRetryReceipt(
         createDurableChatWakeupRequest({
           id: intent.id,
-          companyId: input.companyId,
           agentId: input.agentId,
           issueId: input.issueId,
           commentId: source.commentIds.at(-1)!,
@@ -13198,7 +12909,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(heartbeatRuns.id, input.runId),
-            eq(heartbeatRuns.companyId, input.companyId),
             eq(heartbeatRuns.agentId, input.agentId),
           ),
         )
@@ -13220,7 +12930,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         ...input,
         retryActionId: input.wakeupRequestId,
       });
-      await assertFailedNativeRetryState(tx, source, input.companyId);
+      await assertFailedNativeRetryState(tx, source);
       const context = input.contextSnapshot;
       const hint = context.chatFailedRunRetry as
         | Record<string, unknown>
@@ -13261,20 +12971,14 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(agentWakeupRequests)
       .where(
-        and(
-          eq(agentWakeupRequests.id, action.id),
-          eq(agentWakeupRequests.companyId, action.companyId),
-        ),
+        eq(agentWakeupRequests.id, action.id),
       );
     const [run] = receipt?.runId
       ? await db
           .select()
           .from(heartbeatRuns)
           .where(
-            and(
-              eq(heartbeatRuns.id, receipt.runId),
-              eq(heartbeatRuns.companyId, action.companyId),
-            ),
+            eq(heartbeatRuns.id, receipt.runId),
           )
       : [];
     const status = ["succeeded", "failed", "cancelled"].includes(
@@ -13353,7 +13057,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     };
     try {
       const scope = {
-        companyId: claimed.companyId,
         issueId: String(claimed.payload.issueId),
         agentId: String(claimed.payload.agentId),
         retryActionId: claimed.id,
@@ -13394,7 +13097,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           requestedByActorId: source.requestedByActorId,
           durableChatRequest: createDurableChatWakeupRequest({
             id: claimed.id,
-            companyId: claimed.companyId,
             agentId: source.agentId,
             issueId: source.issueId,
             commentId: source.commentIds.at(-1)!,
@@ -13407,7 +13109,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               await assertFailedNativeRetryState(
                 tx,
                 current,
-                claimed.companyId,
               );
             },
           }),
@@ -13518,10 +13219,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .innerJoin(
         agentWakeupRequests,
-        and(
-          eq(agentWakeupRequests.id, chatActions.id),
-          eq(agentWakeupRequests.companyId, chatActions.companyId),
-        ),
+        eq(agentWakeupRequests.id, chatActions.id),
       )
       .where(
         and(
@@ -13536,8 +13234,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             "failed",
             "skipped",
           ]),
-          sql`not exists (select 1 from chat_publications retry_notice where retry_notice.company_id = ${chatActions.companyId}
-          and retry_notice.idempotency_key = 'wake:' || ${chatActions.id}::text || ':' ||
+          sql`not exists (select 1 from chat_publications retry_notice where retry_notice.idempotency_key = 'wake:' || ${chatActions.id}::text || ':' ||
           case when ${agentWakeupRequests.status} = 'deferred_issue_execution' then 'queued' else 'not_started' end || ':' ||
           ${chatActions.endpointId}::text || ':' || ${chatActions.conversationId}::text)`,
         ),
@@ -13554,7 +13251,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       try {
         inserted += await db.transaction(async (tx) => {
           const source = await authorizeFailedChatRunRetry(tx, {
-            companyId: action.companyId,
             issueId: String(action.payload.issueId),
             agentId: String(action.payload.agentId),
             retryActionId: action.id,
@@ -13575,7 +13271,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             await tx
               .insert(chatPublications)
               .values({
-                companyId: action.companyId,
                 endpointId: source.endpointId,
                 conversationId: source.conversationId,
                 issueId: source.issueId,
@@ -13629,10 +13324,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ runId: issueComments.createdByRunId })
         .from(issueComments)
         .where(
-          and(
-            eq(issueComments.id, publication.commentId),
-            eq(issueComments.companyId, publication.companyId),
-          ),
+          eq(issueComments.id, publication.commentId),
         );
       runId = comment?.runId ?? null;
     }
@@ -13641,13 +13333,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ runId: issueThreadInteractions.sourceRunId })
         .from(issueThreadInteractions)
         .where(
-          and(
-            eq(
-              issueThreadInteractions.id,
-              String(publication.payload.interactionId),
-            ),
-            eq(issueThreadInteractions.companyId, publication.companyId),
-          ),
+          eq(
+                          issueThreadInteractions.id,
+                          String(publication.payload.interactionId),
+                        ),
         );
       runId = interaction?.runId ?? null;
     }
@@ -13656,10 +13345,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(heartbeatRuns)
           .where(
-            and(
-              eq(heartbeatRuns.id, runId),
-              eq(heartbeatRuns.companyId, publication.companyId),
-            ),
+            eq(heartbeatRuns.id, runId),
           )
       : [];
     try {
@@ -13683,7 +13369,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         )
           return false;
         const source = await failedChatRetrySource(tx, {
-          companyId: publication.companyId,
           issueId: publication.issueId,
           agentId: run.agentId,
           failedRunId: run.id,
@@ -13706,15 +13391,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select()
         .from(chatActions)
         .where(
-          and(
-            eq(chatActions.id, actionId),
-            eq(chatActions.companyId, publication.companyId),
-          ),
+          eq(chatActions.id, actionId),
         );
       if (action?.kind !== "failed_run_retry")
         return !run?.contextSnapshot?.chatFailedRunRetry;
       const source = await authorizeFailedChatRunRetry(tx, {
-        companyId: publication.companyId,
         issueId: publication.issueId,
         agentId: String(action.payload.agentId),
         retryActionId: action.id,
@@ -13776,7 +13457,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     terminal: boolean,
   ) {
     const identityLock = await tx.execute(
-      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${action.companyId}:${action.principalId}`}, 0)) as locked`,
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${action.principalId}`}, 0)) as locked`,
     );
     if (!identityLock[0]?.locked)
       throw new NativeChatReviewPresentationContentionError();
@@ -13803,7 +13484,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       !["processed", "failed"].includes(currentAction.status) ||
       !delivery ||
       delivery.state !== "processed" ||
-      delivery.companyId !== action.companyId ||
       delivery.endpointId !== action.endpointId ||
       delivery.conversationId !== action.conversationId ||
       delivery.principalId !== action.principalId
@@ -13815,7 +13495,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(issueComments.id, String(action.payload.commentId)),
-          eq(issueComments.companyId, action.companyId),
           eq(issueComments.issueId, authorized.issue.id),
         ),
       )
@@ -13868,7 +13547,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatMessageLinks)
       .where(
         and(
-          eq(chatMessageLinks.companyId, publication.companyId),
           eq(chatMessageLinks.endpointId, publication.endpointId),
           eq(chatMessageLinks.conversationId, publication.conversationId),
           eq(chatMessageLinks.publicationId, publication.id),
@@ -13887,19 +13565,16 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const owner = alias(agentWakeupRequests, "chat_notice_owner");
     const cursor = inboundWakeNoticeCursor;
     const sourceRemoved = sql`exists (select 1 from issue_comments removed_comment
-      where removed_comment.company_id = ${chatActions.companyId}
-        and removed_comment.issue_id::text = ${chatActions.payload}->>'issueId'
+      where removed_comment.issue_id::text = ${chatActions.payload}->>'issueId'
         and removed_comment.id::text = ${chatActions.payload}->>'commentId'
         and removed_comment.deleted_at is not null)`;
     const hasVisibleQueue = sql`exists (select 1 from chat_publications queued_notice
       join chat_message_links visible_queue on visible_queue.publication_id = queued_notice.id
-        and visible_queue.company_id = queued_notice.company_id
         and visible_queue.endpoint_id = queued_notice.endpoint_id
         and visible_queue.conversation_id = queued_notice.conversation_id
         and visible_queue.provider_message_id = queued_notice.provider_message_id
         and visible_queue.direction = 'outbound' and visible_queue.comment_id is null
-      where queued_notice.company_id = ${chatActions.companyId}
-        and queued_notice.comment_id::text = ${chatActions.payload}->>'commentId'
+      where queued_notice.comment_id::text = ${chatActions.payload}->>'commentId'
         and queued_notice.state = 'published'
         and queued_notice.idempotency_key = 'wake:' || ${owner.id}::text || ':queued:' ||
           ${chatActions.endpointId}::text || ':' || ${chatActions.conversationId}::text)`;
@@ -13920,7 +13595,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         and(
           eq(chatActions.kind, "inbound_wakeup"),
           inArray(chatActions.status, ["processed", "failed"]),
-          eq(owner.companyId, chatActions.companyId),
           or(
             and(
               isNull(owner.runId),
@@ -13940,8 +13614,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             ? sql`(${chatActions.createdAt}, ${chatActions.id}) > (${cursor.createdAt.toISOString()}::timestamptz, ${cursor.id}::uuid)`
             : undefined,
           sql`not exists (select 1 from chat_publications notice
-          where notice.company_id = ${chatActions.companyId}
-            and notice.idempotency_key = 'wake:' || ${owner.id}::text || ':' ||
+          where notice.idempotency_key = 'wake:' || ${owner.id}::text || ':' ||
               (case when ${sourceRemoved} then 'removed' when ${owner.status} = 'deferred_issue_execution'
                 and ${agentWakeupRequests.status} not in ('cancelled','failed','skipped')
                 then 'queued' else 'not_started' end) || ':' ||
@@ -13981,10 +13654,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .select()
             .from(chatPublications)
             .where(
-              and(
-                eq(chatPublications.companyId, action.companyId),
-                eq(chatPublications.idempotencyKey, queuedKey),
-              ),
+              eq(chatPublications.idempotencyKey, queuedKey),
             );
           // Only the exact original notice may be retired; never post a failure
           // notice for input which never received a provider queue acknowledgement.
@@ -14012,7 +13682,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           const rows = await tx
             .insert(chatPublications)
             .values({
-              companyId: action.companyId,
               endpointId: action.endpointId,
               conversationId: action.conversationId,
               issueId: context.issue.id,
@@ -14056,10 +13725,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ kind: chatActions.kind })
         .from(chatActions)
         .where(
-          and(
-            eq(chatActions.id, key.wakeId),
-            eq(chatActions.companyId, publication.companyId),
-          ),
+          eq(chatActions.id, key.wakeId),
         );
       if (retry?.kind === "failed_run_retry")
         return authorizeRetainedChatSourcePublication(tx, publication);
@@ -14076,7 +13742,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, publication.companyId),
           eq(chatActions.endpointId, publication.endpointId),
           eq(chatActions.conversationId, publication.conversationId),
           eq(chatActions.kind, "inbound_wakeup"),
@@ -14092,7 +13757,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, publication.companyId),
             eq(chatPublications.commentId, publication.commentId),
             eq(chatPublications.state, "published"),
             eq(
@@ -14161,7 +13825,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           assertDurableChatWakeupReceipt(
             createDurableChatWakeupRequest({
               id: action.id,
-              companyId: action.companyId,
               agentId: String(action.payload.agentId),
               issueId: String(action.payload.issueId),
               commentId: String(action.payload.commentId),
@@ -14236,7 +13899,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             : undefined,
           sql`exists (select 1 from ${chatDeliveries}
             where ${chatDeliveries.id} = ${chatActions.deliveryId}
-              and ${chatDeliveries.companyId} = ${chatActions.companyId}
               and ${chatDeliveries.endpointId} = ${chatActions.endpointId}
               and ${chatDeliveries.state} in ('filtered', 'failed'))`,
         ),
@@ -14312,7 +13974,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(chatDeliveries.id, deliveryId),
-                eq(chatDeliveries.companyId, claimed.companyId),
                 eq(chatDeliveries.state, "processed"),
               ),
             );
@@ -14347,7 +14008,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       }
       request = createDurableChatWakeupRequest({
         id: claimed.id,
-        companyId: claimed.companyId,
         agentId: claimed.payload.agentId,
         issueId: claimed.payload.issueId,
         commentId: claimed.payload.commentId,
@@ -14618,7 +14278,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       endpoint.providerAccountId &&
       endpoint.botExternalId
         ? deriveTeamsPersonalRecipient(message, {
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             runtimeGeneration: runtimeContext.generation,
             credentialFingerprint: runtimeContext.credentialFingerprint,
@@ -14795,10 +14454,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .select({ refs: toolConnections.credentialSecretRefs })
             .from(toolConnections)
             .where(
-              and(
-                eq(toolConnections.companyId, endpoint.companyId),
-                eq(toolConnections.id, endpoint.connectionId),
-              ),
+              eq(toolConnections.id, endpoint.connectionId),
             )
             .then((rows) => credentialFingerprint(rows[0]?.refs ?? []))
         : null;
@@ -14975,7 +14631,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const [delivery] = await tx
           .insert(chatDeliveries)
           .values({
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             providerEventId,
             deduplicationKey: createHash("sha256")
@@ -15340,10 +14995,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatConversations)
           .innerJoin(
             issues,
-            and(
-              eq(issues.companyId, chatConversations.companyId),
-              eq(issues.id, chatConversations.issueId),
-            ),
+            eq(issues.id, chatConversations.issueId),
           )
           .leftJoin(issueComments, eq(issueComments.id, inboundCommentId))
           .where(
@@ -15542,10 +15194,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select()
               .from(issues)
               .where(
-                and(
-                  eq(issues.companyId, endpoint.companyId),
-                  eq(issues.id, existingConversation.issueId),
-                ),
+                eq(issues.id, existingConversation.issueId),
               )
               .then((rows) => rows[0] ?? null)
           : null;
@@ -15716,7 +15365,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(chatDeliveries.id, activeDelivery.id),
-              eq(chatDeliveries.companyId, endpoint.companyId),
               eq(chatDeliveries.state, "processing"),
             ),
           );
@@ -15733,7 +15381,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatMessageLinks)
           .where(
             and(
-              eq(chatMessageLinks.companyId, endpoint.companyId),
               eq(chatMessageLinks.endpointId, endpoint.id),
               eq(chatMessageLinks.providerMessageId, photonQuote.guid),
             ),
@@ -15809,10 +15456,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .select({ name: agents.name })
                 .from(agents)
                 .where(
-                  and(
-                    eq(agents.companyId, endpoint.companyId),
-                    eq(agents.id, endpoint.assignedAgentId),
-                  ),
+                  eq(agents.id, endpoint.assignedAgentId),
                 )
                 .then((rows) => rows[0]?.name ?? "this agent")
             : null;
@@ -15844,7 +15488,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .where(eq(chatDeliveries.id, activeDelivery.id));
             await stageAuthorizedTaskControlPublication(tx, {
-              companyId: endpoint.companyId,
               endpointId: endpoint.id,
               conversationId: publicationBinding.conversation.id,
               issueId: publicationBinding.issue.id,
@@ -15951,7 +15594,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .where(eq(chatDeliveries.id, activeDelivery.id));
             await stageAuthorizedTaskControlPublication(tx, {
-              companyId: endpoint.companyId,
               endpointId: endpoint.id,
               conversationId: publicationBinding.conversation.id,
               issueId: publicationBinding.issue.id,
@@ -16024,7 +15666,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             ? (latestConversation?.sessionGeneration ?? 0) + 1
             : 1;
           const issue = await issuesSvc.create(
-            endpoint.companyId,
             {
               title: safeTitle(
                 githubAutomatic
@@ -16047,7 +15688,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await taskTx
             .insert(chatConversations)
             .values({
-              companyId: endpoint.companyId,
               endpointId: endpoint.id,
               resourceId: resource.id,
               issueId: issue.id,
@@ -16093,7 +15733,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .where(eq(issues.id, conversation.issueId))
                 .then((rows) => rows[0] ?? null);
         if (!issue) throw notFound("Bound task not found");
-          const [assignedAgentTrust] = taskEndpoint.provider === "github" ? await taskTx.select({ permissions: agents.permissions }).from(agents).where(and(eq(agents.companyId, taskEndpoint.companyId), eq(agents.id, taskEndpoint.assignedAgentId))) : [];
+          const [assignedAgentTrust] = taskEndpoint.provider === "github" ? await taskTx.select({ permissions: agents.permissions }).from(agents).where(eq(agents.id, taskEndpoint.assignedAgentId)) : [];
         if (!taskUserId || (githubAutomatic && !principalResolution.userId) || assignedAgentTrust?.permissions?.trustPreset === LOW_TRUST_REVIEW_PRESET) {
             const reviewPreset = {
               id: LOW_TRUST_REVIEW_PRESET,
@@ -16120,7 +15760,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                     reviewPreset,
                     trustBoundary: {
                       mode: LOW_TRUST_REVIEW_PRESET,
-                      companyId: endpoint.companyId,
                       rootIssueId: issue.id,
                       issueIds: [issue.id],
                       allowedAgentIds: [endpoint.assignedAgentId],
@@ -16136,10 +15775,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 updatedAt: new Date(),
               })
               .where(
-                and(
-                  eq(issues.id, issue.id),
-                  eq(issues.companyId, endpoint.companyId),
-                ),
+                eq(issues.id, issue.id),
               );
           }
 
@@ -16266,7 +15902,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await taskTx
           .insert(chatMessageLinks)
           .values({
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             conversationId: conversation!.id,
             deliveryId: activeDelivery.id,
@@ -16276,7 +15911,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           })
           .onConflictDoNothing();
         if (taskEndpoint.provider === "slack") {
-          await resumeSlackConversation(taskTx as unknown as Db, endpoint.companyId, conversation.issueId);
+          await resumeSlackConversation(taskTx as unknown as Db, conversation.issueId);
         }
         await taskTx
           .update(chatConversations)
@@ -16304,7 +15939,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         }
         if (githubAutomatic) {
           await taskTx.insert(chatGitHubReviews).values({
-            companyId: endpoint.companyId, endpointId: endpoint.id, issueId: issue.id,
+            endpointId: endpoint.id, issueId: issue.id,
             repositoryId: githubAutomatic.context.repositoryId, repository: githubAutomatic.context.repository,
             pullNumber: githubAutomatic.context.pullNumber, headSha: githubAutomatic.context.headSha,
             deliveryId: activeDelivery.id, configurationRevision: githubAutomatic.revision,
@@ -16323,7 +15958,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await logActivity(
             taskTx as Db,
             {
-              companyId: taskEndpoint.companyId,
               actorType: taskUserId ? "user" : "system",
               actorId: taskUserId ?? "chat:imessage-photon",
               action: "issue.comment_added",
@@ -16745,7 +16379,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatEndpointResources)
                   .where(
                     and(
-                      eq(chatEndpointResources.companyId, current.companyId),
                       eq(chatEndpointResources.endpointId, current.id),
                       eq(
                         chatEndpointResources.providerResourceId,
@@ -16766,7 +16399,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .set({ state: "unavailable", updatedAt: now })
               .where(
                 and(
-                  eq(chatConversations.companyId, current!.companyId),
                   eq(chatConversations.endpointId, current!.id),
                   eq(chatConversations.resourceId, resource.id),
                   inArray(chatConversations.state, ["active", "waiting"]),
@@ -16975,7 +16607,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       select 1 from ${chatActions}
       where ${chatActions.deliveryId} = ${chatDeliveries.id}
         and ${chatActions.endpointId} = ${chatDeliveries.endpointId}
-        and ${chatActions.companyId} = ${chatDeliveries.companyId}
         and ${chatActions.kind} = 'inbound_wakeup'
         and ${chatActions.status} in ('issued', 'processing')
         ${
@@ -16990,7 +16621,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   }
 
   async function acquireConversationDeliveryLease(input: {
-    companyId: string;
     endpointId: string;
     threadId: string;
   }): Promise<{ leaseKey: string; token: string } | null> {
@@ -17001,7 +16631,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const inserted = await db
       .insert(chatEndpointLeases)
       .values({
-        companyId: input.companyId,
         endpointId: input.endpointId,
         leaseKey,
         token,
@@ -17015,7 +16644,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .set({ token, expiresAt, updatedAt: now })
       .where(
         and(
-          eq(chatEndpointLeases.companyId, input.companyId),
           eq(chatEndpointLeases.endpointId, input.endpointId),
           eq(chatEndpointLeases.leaseKey, leaseKey),
           lte(chatEndpointLeases.expiresAt, now),
@@ -17253,7 +16881,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       return false;
 
     const lease = await acquireConversationDeliveryLease({
-      companyId: endpoint.companyId,
       endpointId,
       threadId,
     });
@@ -17335,7 +16962,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .where(
                   and(
                     eq(chatDeliveries.id, delivery.id),
-                    eq(chatDeliveries.companyId, endpoint.companyId),
                     eq(chatDeliveries.endpointId, endpoint.id),
                   ),
                 )
@@ -17690,7 +17316,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const [delivery] = await tx
         .insert(chatDeliveries)
         .values({
-          companyId: endpoint.companyId,
           endpointId: input.endpointId,
           providerEventId,
           deduplicationKey: createHash("sha256")
@@ -17923,13 +17548,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               chatConversations,
               and(
                 eq(chatConversations.id, chatMessageLinks.conversationId),
-                eq(chatConversations.companyId, chatMessageLinks.companyId),
                 eq(chatConversations.endpointId, chatMessageLinks.endpointId),
               ),
             )
             .where(
               and(
-                eq(chatMessageLinks.companyId, currentEndpoint.companyId),
                 eq(chatMessageLinks.endpointId, currentEndpoint.id),
                 eq(chatMessageLinks.providerMessageId, lifecycle.messageId),
                 eq(chatConversations.externalThreadId, lifecycle.threadId),
@@ -17994,7 +17617,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatDeliveries)
             .where(
               and(
-                eq(chatDeliveries.companyId, activeDelivery.companyId),
                 eq(chatDeliveries.endpointId, endpoint.id),
                 inArray(chatDeliveries.eventKind, [
                   "message_deleted",
@@ -18106,10 +17728,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatMessageLinks)
           .innerJoin(
             chatConversations,
-            and(
-              eq(chatConversations.companyId, chatMessageLinks.companyId),
-              eq(chatConversations.id, chatMessageLinks.conversationId),
-            ),
+            eq(chatConversations.id, chatMessageLinks.conversationId),
           )
           .where(
             and(
@@ -18177,7 +17796,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatConversations)
           .where(
             and(
-              eq(chatConversations.companyId, currentEndpoint.companyId),
               eq(chatConversations.endpointId, currentEndpoint.id),
               eq(chatConversations.id, linkedTarget.conversationId),
             ),
@@ -18192,10 +17810,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(chatEndpointResources)
                 .where(
                   and(
-                    eq(
-                      chatEndpointResources.companyId,
-                      currentEndpoint.companyId,
-                    ),
                     eq(chatEndpointResources.endpointId, currentEndpoint.id),
                     eq(
                       chatEndpointResources.id,
@@ -18284,10 +17898,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(chatExternalPrincipals)
                 .where(
                   and(
-                    eq(
-                      chatExternalPrincipals.companyId,
-                      currentEndpoint.companyId,
-                    ),
                     eq(
                       chatExternalPrincipals.provider,
                       currentEndpoint.provider,
@@ -18586,14 +18196,12 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         chatConversations,
         and(
-          eq(chatConversations.companyId, chatMessageLinks.companyId),
           eq(chatConversations.endpointId, chatMessageLinks.endpointId),
           eq(chatConversations.id, chatMessageLinks.conversationId),
         ),
       )
       .where(
         and(
-          eq(chatMessageLinks.companyId, endpoint.companyId),
           eq(chatMessageLinks.endpointId, endpoint.id),
           eq(chatMessageLinks.providerMessageId, providerMessageId),
           direction ? eq(chatMessageLinks.direction, direction) : undefined,
@@ -18625,7 +18233,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.id, candidate.id),
         ),
@@ -18648,7 +18255,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatMessageLinks)
       .where(
         and(
-          eq(chatMessageLinks.companyId, endpoint.companyId),
           eq(chatMessageLinks.endpointId, endpoint.id),
           eq(chatMessageLinks.conversationId, current.id),
           eq(chatMessageLinks.providerMessageId, providerMessageId),
@@ -18674,14 +18280,12 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         chatPublications,
         and(
-          eq(chatPublications.companyId, chatConversations.companyId),
           eq(chatPublications.endpointId, chatConversations.endpointId),
           eq(chatPublications.conversationId, chatConversations.id),
         ),
       )
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           or(
             inArray(chatConversations.state, ["active", "waiting"]),
@@ -18716,7 +18320,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.id, candidate.id),
           or(
@@ -18738,7 +18341,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, endpoint.companyId),
           eq(chatPublications.endpointId, endpoint.id),
           eq(chatPublications.conversationId, current.id),
           eq(chatPublications.state, "streaming"),
@@ -18762,7 +18364,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatEndpointResources)
             .where(
               and(
-                eq(chatEndpointResources.companyId, endpoint.companyId),
                 eq(chatEndpointResources.endpointId, endpoint.id),
                 eq(chatEndpointResources.id, conversation.resourceId),
               ),
@@ -18915,7 +18516,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatMessageLinks)
           .where(
             and(
-              eq(chatMessageLinks.companyId, currentEndpoint.companyId),
               eq(chatMessageLinks.endpointId, currentEndpoint.id),
               eq(chatMessageLinks.conversationId, linkedConversation.id),
               eq(chatMessageLinks.providerMessageId, event.event.messageId),
@@ -18979,7 +18579,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const inserted = await tx
         .insert(chatDeliveries)
         .values({
-          companyId: currentEndpoint.companyId,
           endpointId: currentEndpoint.id,
           conversationId: linkedConversation?.id ?? null,
           principalId: principal.principal.id,
@@ -19034,7 +18633,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const telegramCallback =
       endpoint.provider === "telegram" && endpoint.botExternalId
         ? readTelegramCallbackProvenance(event.telegramCallback, {
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             botUserId: endpoint.botExternalId,
             threadId: event.event.threadId,
@@ -19102,7 +18700,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const [inserted] = await tx
           .insert(chatDeliveries)
           .values({
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             conversationId: safelyKnown.conversationId ?? null,
             principalId: safelyKnown.principalId ?? null,
@@ -19229,7 +18826,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const [inserted] = await tx
           .insert(chatDeliveries)
           .values({
-            companyId: endpoint.companyId,
             endpointId: endpoint.id,
             conversationId: safelyKnown.conversationId ?? null,
             principalId: safelyKnown.principalId ?? null,
@@ -19321,7 +18917,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .set({ availability: "unavailable", updatedAt: processedAt })
             .where(
               and(
-                eq(chatEndpointResources.companyId, endpoint.companyId),
                 eq(chatEndpointResources.endpointId, endpoint.id),
                 eq(chatEndpointResources.id, safelyKnown.resource.id),
               ),
@@ -19385,7 +18980,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await database
         .insert(chatDeliveries)
         .values({
-          companyId: endpoint.companyId,
           endpointId: endpoint.id,
           conversationId: input.conversationId ?? null,
           principalId: input.principalId ?? null,
@@ -19466,7 +19060,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatConversations)
         .where(
           and(
-            eq(chatConversations.companyId, action.companyId),
             eq(chatConversations.endpointId, action.endpointId),
             eq(chatConversations.id, action.conversationId),
           ),
@@ -19477,7 +19070,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, action.companyId),
             eq(chatPublications.endpointId, action.endpointId),
             eq(chatPublications.id, token.publicationId as string),
           ),
@@ -19487,10 +19079,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select()
         .from(chatEndpoints)
         .where(
-          and(
-            eq(chatEndpoints.companyId, action.companyId),
-            eq(chatEndpoints.id, action.endpointId),
-          ),
+          eq(chatEndpoints.id, action.endpointId),
         )
         .then((rows) => rows[0] ?? null),
     ]);
@@ -19593,16 +19182,12 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const issue = await db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
         assigneeAgentId: issues.assigneeAgentId,
         status: issues.status,
       })
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, action.companyId),
-          eq(issues.id, conversation.issueId),
-        ),
+        eq(issues.id, conversation.issueId),
       )
       .then((rows) => rows[0] ?? null);
     if (!issue || !interaction.resolvedByUserId) {
@@ -19675,7 +19260,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         })
         .where(
           and(
-            eq(chatActions.companyId, issue.companyId),
             eq(chatActions.endpointId, action.endpointId),
             eq(chatActions.conversationId, conversation.id),
             eq(chatActions.kind, "confirmation_response"),
@@ -19690,7 +19274,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await tx
         .insert(chatPublications)
         .values({
-          companyId: issue.companyId,
           endpointId: action.endpointId,
           conversationId: conversation.id,
           issueId: issue.id,
@@ -19716,7 +19299,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await tx
           .insert(chatActions)
           .values({
-            companyId: issue.companyId,
             endpointId: action.endpointId,
             conversationId: conversation.id,
             principalId: action.principalId,
@@ -19745,7 +19327,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       // resolution event attributed to the board winner.
       if (resolvedByThisProviderAction) {
         await logActivity(tx as unknown as Db, {
-          companyId: issue.companyId,
           actorType: "user",
           actorId: resolvedByUserId,
           action:
@@ -19899,10 +19480,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         })
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, claimed.companyId),
-            eq(issues.id, payload.issueId),
-          ),
+          eq(issues.id, payload.issueId),
         )
         .then((rows) => rows[0] ?? null);
       const currentInteraction = currentIssue
@@ -19915,7 +19493,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       if (
         !currentIssue ||
         !currentInteraction ||
-        currentInteraction.companyId !== claimed.companyId ||
         currentInteraction.kind !== payload.interactionKind ||
         currentInteraction.status !== payload.interactionStatus ||
         currentIssue.assigneeAgentId !== payload.agentId ||
@@ -19956,14 +19533,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatEndpoints)
               .innerJoin(
                 chatMessageLinks,
-                and(
-                  eq(chatMessageLinks.companyId, chatEndpoints.companyId),
-                  eq(chatMessageLinks.endpointId, chatEndpoints.id),
-                ),
+                eq(chatMessageLinks.endpointId, chatEndpoints.id),
               )
               .where(
                 and(
-                  eq(chatEndpoints.companyId, claimed.companyId),
                   eq(chatEndpoints.id, claimed.endpointId),
                   eq(chatMessageLinks.conversationId, claimed.conversationId),
                   eq(chatMessageLinks.direction, "inbound"),
@@ -19986,7 +19559,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(agentWakeupRequests)
           .where(
             and(
-              eq(agentWakeupRequests.companyId, claimed.companyId),
               eq(agentWakeupRequests.idempotencyKey, idempotencyKey),
               notInArray(agentWakeupRequests.status, [
                 "skipped",
@@ -20068,7 +19640,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(agentWakeupRequests)
             .where(
               and(
-                eq(agentWakeupRequests.companyId, claimed.companyId),
                 eq(agentWakeupRequests.idempotencyKey, idempotencyKey),
                 notInArray(agentWakeupRequests.status, [
                   "skipped",
@@ -20125,7 +19696,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(agentWakeupRequests)
               .where(
                 and(
-                  eq(agentWakeupRequests.companyId, claimed.companyId),
                   eq(agentWakeupRequests.idempotencyKey, idempotencyKey),
                   notInArray(agentWakeupRequests.status, [
                     "skipped",
@@ -20253,7 +19823,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         ? await loadDiscordQuestionFormCorrection(
             persistence,
             {
-              companyId: record.endpoint.companyId,
               endpointId: record.endpoint.id,
             },
             event.event.actionId,
@@ -20282,7 +19851,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, record.endpoint.companyId),
           eq(chatActions.endpointId, record.endpoint.id),
           inArray(chatActions.kind, [
             "question_answer",
@@ -20320,7 +19888,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, record.endpoint.companyId),
           eq(chatConversations.endpointId, record.endpoint.id),
           eq(chatConversations.id, actionBinding.conversationId),
           inArray(chatConversations.state, ["active", "waiting"]),
@@ -20347,7 +19914,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatEndpointResources)
           .where(
             and(
-              eq(chatEndpointResources.companyId, record.endpoint.companyId),
               eq(chatEndpointResources.endpointId, record.endpoint.id),
               eq(chatEndpointResources.id, conversation.resourceId),
             ),
@@ -20364,7 +19930,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, record.endpoint.companyId),
           eq(chatPublications.endpointId, record.endpoint.id),
           eq(chatPublications.conversationId, conversation.id),
           eq(chatPublications.issueId, conversation.issueId),
@@ -20394,7 +19959,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .then((rows) => rows[0] ?? null);
         if (
           !current ||
-          current.companyId !== record.endpoint.companyId ||
           current.endpointId !== record.endpoint.id ||
           current.conversationId !== conversation.id ||
           current.issueId !== conversation.issueId ||
@@ -20443,7 +20007,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         await tx
           .insert(chatMessageLinks)
           .values({
-            companyId: current.companyId,
             endpointId: current.endpointId,
             conversationId: current.conversationId,
             publicationId: current.id,
@@ -20478,7 +20041,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         chatPublications,
         and(
-          eq(chatPublications.companyId, chatMessageLinks.companyId),
           eq(chatPublications.endpointId, chatMessageLinks.endpointId),
           eq(chatPublications.conversationId, chatMessageLinks.conversationId),
           eq(chatPublications.id, chatMessageLinks.publicationId),
@@ -20486,7 +20048,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       )
       .where(
         and(
-          eq(chatMessageLinks.companyId, record.endpoint.companyId),
           eq(chatMessageLinks.endpointId, record.endpoint.id),
           eq(chatMessageLinks.conversationId, conversation.id),
           eq(chatMessageLinks.providerMessageId, sourceMessageId),
@@ -20549,7 +20110,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     ).find((candidate) => candidate.id === payload.interactionId);
     if (
       !interaction ||
-      interaction.companyId !== record.endpoint.companyId ||
       interaction.issueId !== conversation.issueId
     ) {
       return deny(safelyKnown);
@@ -20561,7 +20121,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatActions)
         .where(
           and(
-            eq(chatActions.companyId, record.endpoint.companyId),
             eq(chatActions.endpointId, record.endpoint.id),
             eq(chatActions.conversationId, conversation.id),
             eq(chatActions.providerActionId, event.event.actionId),
@@ -20608,7 +20167,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatActions)
         .where(
           and(
-            eq(chatActions.companyId, record.endpoint.companyId),
             eq(chatActions.endpointId, record.endpoint.id),
             eq(chatActions.conversationId, conversation.id),
             eq(chatActions.kind, "confirmation_response"),
@@ -20651,7 +20209,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const issue = await db
         .select({
           id: issues.id,
-          companyId: issues.companyId,
           projectId: issues.projectId,
           goalId: issues.goalId,
           status: issues.status,
@@ -20659,10 +20216,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         })
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, record.endpoint.companyId),
-            eq(issues.id, conversation.issueId),
-          ),
+          eq(issues.id, conversation.issueId),
         )
         .then((rows) => rows[0] ?? null);
       if (!issue) {
@@ -20851,7 +20405,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             runtimeContext,
           });
           const resolved = await resolveChatQuestionFormOpen(tx, {
-            companyId: record.endpoint.companyId,
             endpointId: record.endpoint.id,
             conversationId: conversation.id,
             interaction,
@@ -20870,7 +20423,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           const [attempt] = await tx
             .insert(chatActions)
             .values({
-              companyId: record.endpoint.companyId,
               endpointId: record.endpoint.id,
               conversationId: conversation.id,
               principalId: principal.principal.id,
@@ -20988,7 +20540,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, record.endpoint.companyId),
           eq(chatActions.endpointId, record.endpoint.id),
           eq(chatActions.conversationId, conversation.id),
           eq(chatActions.kind, "question_answer"),
@@ -21037,15 +20588,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const issue = await db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
         status: issues.status,
       })
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, record.endpoint.companyId),
-          eq(issues.id, conversation.issueId),
-        ),
+        eq(issues.id, conversation.issueId),
       )
       .then((rows) => rows[0] ?? null);
     if (!issue) return deny(safelyKnown);
@@ -21106,7 +20653,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .where(
                 and(
-                  eq(chatActions.companyId, issue.companyId),
                   eq(chatActions.endpointId, record.endpoint.id),
                   eq(chatActions.conversationId, conversation.id),
                   eq(chatActions.kind, "question_answer"),
@@ -21119,7 +20665,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 ),
               );
             await logActivity(tx as unknown as Db, {
-              companyId: issue.companyId,
               actorType: "user",
               actorId: principal.userId!,
               action: "issue.thread_interaction_answered",
@@ -21142,7 +20687,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             await tx
               .insert(chatPublications)
               .values({
-                companyId: issue.companyId,
                 endpointId: record.endpoint.id,
                 conversationId: conversation.id,
                 issueId: issue.id,
@@ -21311,7 +20855,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     };
     const loaded = await loadChatQuestionFormSubmissionToken(db, {
       callbackId: event.event.callbackId,
-      companyId: record.endpoint.companyId,
       endpointId: record.endpoint.id,
       includeProcessed: true,
     });
@@ -21321,7 +20864,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, record.endpoint.companyId),
           eq(chatConversations.endpointId, record.endpoint.id),
           eq(chatConversations.id, loaded.conversationId),
           inArray(chatConversations.state, ["active", "waiting"]),
@@ -21375,7 +20917,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatEndpointResources)
           .where(
             and(
-              eq(chatEndpointResources.companyId, record.endpoint.companyId),
               eq(chatEndpointResources.endpointId, record.endpoint.id),
               eq(chatEndpointResources.id, conversation.resourceId),
             ),
@@ -21401,7 +20942,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, record.endpoint.companyId),
           eq(chatPublications.endpointId, record.endpoint.id),
           eq(chatPublications.conversationId, conversation.id),
           eq(chatPublications.issueId, conversation.issueId),
@@ -21441,7 +20981,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         chatPublications,
         and(
-          eq(chatPublications.companyId, chatMessageLinks.companyId),
           eq(chatPublications.endpointId, chatMessageLinks.endpointId),
           eq(chatPublications.conversationId, chatMessageLinks.conversationId),
           eq(chatPublications.id, chatMessageLinks.publicationId),
@@ -21449,7 +20988,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       )
       .where(
         and(
-          eq(chatMessageLinks.companyId, record.endpoint.companyId),
           eq(chatMessageLinks.endpointId, record.endpoint.id),
           eq(chatMessageLinks.conversationId, conversation.id),
           eq(chatMessageLinks.providerMessageId, providerMessageId),
@@ -21523,8 +21061,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const isExactProcessedReplay = (
       current: Awaited<ReturnType<typeof loadChatQuestionFormSubmissionToken>>,
     ) =>
-      interaction?.companyId === record.endpoint.companyId &&
-      interaction.issueId === conversation.issueId &&
+      interaction?.issueId === conversation.issueId &&
       interaction.kind === "ask_user_questions" &&
       interaction.status === "answered" &&
       interaction.resolvedByUserId === principal.userId &&
@@ -21543,7 +21080,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await deleteDiscordQuestionFormCorrection(
             persistence,
             {
-              companyId: record.endpoint.companyId,
               endpointId: record.endpoint.id,
             },
             {
@@ -21590,7 +21126,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     }
     if (
       !interaction ||
-      interaction.companyId !== record.endpoint.companyId ||
       interaction.issueId !== conversation.issueId ||
       interaction.kind !== "ask_user_questions" ||
       interaction.status !== "pending"
@@ -21601,8 +21136,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       // does not authorize this form. Recheck current policy under its locks.
       let processedReplay = false;
       if (
-        interaction?.companyId === record.endpoint.companyId &&
-        interaction.issueId === conversation.issueId &&
+        interaction?.issueId === conversation.issueId &&
         interaction.kind === "ask_user_questions" &&
         interaction.status === "answered"
       ) {
@@ -21618,7 +21152,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             return isExactProcessedReplay(
               await loadChatQuestionFormSubmissionToken(tx, {
                 callbackId: event.event.callbackId,
-                companyId: record.endpoint.companyId,
                 endpointId: record.endpoint.id,
                 includeProcessed: true,
               }),
@@ -21680,10 +21213,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(issueThreadInteractions)
                 .where(
                   and(
-                    eq(
-                      issueThreadInteractions.companyId,
-                      record.endpoint.companyId,
-                    ),
                     eq(issueThreadInteractions.issueId, conversation.issueId),
                     eq(issueThreadInteractions.id, interaction.id),
                     eq(issueThreadInteractions.status, "pending"),
@@ -21693,7 +21222,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .then((rows) => rows[0]);
               const resolved = pending
                 ? await resolveChatQuestionFormOpen(tx, {
-                    companyId: record.endpoint.companyId,
                     endpointId: record.endpoint.id,
                     conversationId: conversation.id,
                     interaction,
@@ -21709,7 +21237,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               return retainDiscordQuestionFormCorrection(
                 createChatSdkStatePersistence(tx as unknown as Db),
                 {
-                  companyId: record.endpoint.companyId,
                   endpointId: record.endpoint.id,
                 },
                 {
@@ -21763,15 +21290,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const issue = await db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
         status: issues.status,
       })
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, record.endpoint.companyId),
-          eq(issues.id, conversation.issueId),
-        ),
+        eq(issues.id, conversation.issueId),
       )
       .then((rows) => rows[0] ?? null);
     if (!issue) {
@@ -21826,7 +21349,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .where(
                 and(
-                  eq(chatActions.companyId, issue.companyId),
                   eq(chatActions.endpointId, record.endpoint.id),
                   eq(chatActions.conversationId, conversation.id),
                   eq(chatActions.kind, "question_form_open"),
@@ -21838,7 +21360,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 ),
               );
             await logActivity(tx as unknown as Db, {
-              companyId: issue.companyId,
               actorType: "user",
               actorId: principal.userId!,
               action: "issue.thread_interaction_answered",
@@ -21929,7 +21450,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       if (event.provider === "discord") {
         const current = await loadChatQuestionFormSubmissionToken(db, {
           callbackId: event.event.callbackId,
-          companyId: record.endpoint.companyId,
           endpointId: record.endpoint.id,
           includeProcessed: true,
         });
@@ -21976,10 +21496,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .innerJoin(
         issues,
-        and(
-          eq(issues.companyId, chatConversations.companyId),
-          eq(issues.id, chatConversations.issueId),
-        ),
+        eq(issues.id, chatConversations.issueId),
       )
       .where(
         and(
@@ -22240,7 +21757,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(chatExternalPrincipals.id, action.principalId),
-          eq(chatExternalPrincipals.companyId, record.endpoint.companyId),
           eq(chatExternalPrincipals.provider, "slack"),
           eq(
             chatExternalPrincipals.providerAccountId,
@@ -22549,10 +22065,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .where(
                   and(
                     eq(chatExternalPrincipals.id, action.principalId),
-                    eq(
-                      chatExternalPrincipals.companyId,
-                      record.endpoint.companyId,
-                    ),
                     eq(chatExternalPrincipals.provider, "slack"),
                     eq(
                       chatExternalPrincipals.providerAccountId,
@@ -22648,10 +22160,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatEndpointResources)
                   .where(
                     and(
-                      eq(
-                        chatEndpointResources.companyId,
-                        currentEndpoint.companyId,
-                      ),
                       eq(chatEndpointResources.endpointId, currentEndpoint.id),
                       eq(
                         chatEndpointResources.providerResourceId,
@@ -22917,7 +22425,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     )
       return denied;
     const scope = {
-      companyId: record.endpoint.companyId,
       endpointId: record.endpoint.id,
       applicationId: record.endpoint.botExternalId ?? "",
       guildId: record.endpoint.providerAccountId ?? "",
@@ -22950,7 +22457,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           );
           if (
             !endpoint ||
-            endpoint.companyId !== scope.companyId ||
             endpoint.provider !== "discord" ||
             endpoint.botExternalId !== scope.applicationId ||
             endpoint.providerAccountId !== scope.guildId ||
@@ -22961,10 +22467,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .select()
             .from(toolConnections)
             .where(
-              and(
-                eq(toolConnections.companyId, scope.companyId),
-                eq(toolConnections.id, endpoint.connectionId),
-              ),
+              eq(toolConnections.id, endpoint.connectionId),
             )
             .for("no key update")
             .then((rows) => rows[0] ?? null);
@@ -22991,7 +22494,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatActions)
             .where(
               and(
-                eq(chatActions.companyId, scope.companyId),
                 eq(chatActions.endpointId, scope.endpointId),
                 eq(chatActions.providerActionId, providerActionId),
               ),
@@ -23019,7 +22521,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatConversations)
                   .where(
                     and(
-                      eq(chatConversations.companyId, scope.companyId),
                       eq(chatConversations.endpointId, scope.endpointId),
                       eq(chatConversations.id, receipt.target.conversationId),
                     ),
@@ -23033,7 +22534,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatConversations)
                   .where(
                     and(
-                      eq(chatConversations.companyId, scope.companyId),
                       eq(chatConversations.endpointId, scope.endpointId),
                       eq(
                         chatConversations.externalConversationId,
@@ -23074,7 +22574,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatEndpointResources)
                   .where(
                     and(
-                      eq(chatEndpointResources.companyId, scope.companyId),
                       eq(chatEndpointResources.endpointId, scope.endpointId),
                       eq(
                         chatEndpointResources.providerResourceId,
@@ -23106,10 +22605,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .select()
                 .from(issues)
                 .where(
-                  and(
-                    eq(issues.companyId, scope.companyId),
-                    eq(issues.id, conversation.issueId),
-                  ),
+                  eq(issues.id, conversation.issueId),
                 )
                 .for("share")
                 .then((rows) => rows[0] ?? null)
@@ -23126,7 +22622,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatEndpointLeases)
             .where(
               and(
-                eq(chatEndpointLeases.companyId, scope.companyId),
                 eq(chatEndpointLeases.endpointId, scope.endpointId),
                 eq(chatEndpointLeases.leaseKey, ownership.leaseKey),
                 eq(chatEndpointLeases.token, ownership.token),
@@ -23206,7 +22701,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             const publication = await stageAuthorizedTaskControlPublication(
               tx,
               {
-                companyId: scope.companyId,
                 endpointId: scope.endpointId,
                 conversationId: conversation.id,
                 issueId: issue.id,
@@ -23225,7 +22719,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           const inserted = await tx
             .insert(chatActions)
             .values({
-              companyId: scope.companyId,
               endpointId: scope.endpointId,
               conversationId: target?.conversationId ?? null,
               principalId: principal.principal.id,
@@ -23251,7 +22744,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .returning({ id: chatActions.id });
           if (!inserted.length) throw authorityChanged;
           await logActivity(tx as unknown as Db, {
-            companyId: scope.companyId,
             actorType: authorization.userId ? "user" : "system",
             actorId: authorization.userId ?? `chat:${principal.principal.id}`,
             action: "chat.discord_command_recorded",
@@ -23411,9 +22903,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         if (!(await runtimeCallbackEndpoint(tx, event.endpointId, runtimeContext, ["verifying", "active"]))) {
           throw conflict("This Slack connection changed; send the connect command again");
         }
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${record.endpoint.companyId}:${principal.principal.id}`}, 0))`);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principal.principal.id}`}, 0))`);
         const inserted = await tx.insert(chatActions).values({
-          companyId: record.endpoint.companyId, endpointId: event.endpointId,
+          endpointId: event.endpointId,
           principalId: principal.principal.id, kind: "slack_connect",
           providerActionId: `slack_connect:${providerCommandId}`,
           payload: { version: 1, channelId: event.event.channel.id, userId: event.event.user.userId },
@@ -23429,7 +22921,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           const tokenHash = createHash("sha256").update(token).digest("hex");
           const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
           await tx.insert(chatIdentityLinks).values({
-            companyId: record.endpoint.companyId, endpointId: event.endpointId, principalId: principal.principal.id,
+            endpointId: event.endpointId, principalId: principal.principal.id,
             status: "pending", confirmationTokenHash: tokenHash, expiresAt,
           }).onConflictDoUpdate({
             target: [chatIdentityLinks.endpointId, chatIdentityLinks.principalId],
@@ -23444,7 +22936,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             : "Return to the Paperclip setup wizard to confirm your Slack account. No agent work has started.";
         }
         await logActivity(tx as unknown as Db, {
-          companyId: record.endpoint.companyId, actorType: "system", actorId: `chat:${principal.principal.id}`,
+          actorType: "system", actorId: `chat:${principal.principal.id}`,
           action: "chat.slack_identity_discovered", entityType: "chat_endpoint", entityId: event.endpointId,
           details: { principalId: principal.principal.id },
         });
@@ -23598,7 +23090,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           return tx
             .insert(chatActions)
             .values({
-              companyId: record.endpoint.companyId,
               endpointId: record.endpoint.id,
               principalId: principal.principal.id,
               kind: "slash_task_start",
@@ -23657,7 +23148,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [inserted] = await db
       .insert(chatDeliveries)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         providerEventId,
         deduplicationKey,
@@ -23856,17 +23346,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .update(chatEndpointResources)
                   .set({ availability: "unavailable", updatedAt: revokedAt })
                   .where(
-                    and(
-                      eq(chatEndpointResources.companyId, current.companyId),
-                      eq(chatEndpointResources.endpointId, current.id),
-                    ),
+                    eq(chatEndpointResources.endpointId, current.id),
                   );
                 await tx
                   .update(chatConversations)
                   .set({ state: "unavailable", updatedAt: revokedAt })
                   .where(
                     and(
-                      eq(chatConversations.companyId, current.companyId),
                       eq(chatConversations.endpointId, current.id),
                       inArray(chatConversations.state, ["active", "waiting"]),
                     ),
@@ -24106,23 +23592,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .update(chatEndpointResources)
                   .set({ availability: "unavailable", updatedAt: failedAt })
                   .where(
-                    and(
-                      eq(
-                        chatEndpointResources.companyId,
-                        currentEndpoint.companyId,
-                      ),
-                      eq(chatEndpointResources.endpointId, currentEndpoint.id),
-                    ),
+                    eq(chatEndpointResources.endpointId, currentEndpoint.id),
                   );
                 await tx
                   .update(chatConversations)
                   .set({ state: "unavailable", updatedAt: failedAt })
                   .where(
                     and(
-                      eq(
-                        chatConversations.companyId,
-                        currentEndpoint.companyId,
-                      ),
                       eq(chatConversations.endpointId, currentEndpoint.id),
                       inArray(chatConversations.state, ["active", "waiting"]),
                     ),
@@ -24254,7 +23730,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             const [resource] = await tx
               .insert(chatEndpointResources)
               .values({
-                companyId: currentEndpoint.companyId,
                 endpointId: currentEndpoint.id,
                 type: effect.resourceType,
                 providerResourceId,
@@ -24323,7 +23798,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 })
                 .where(
                   and(
-                    eq(chatConversations.companyId, currentEndpoint.companyId),
                     eq(chatConversations.endpointId, currentEndpoint.id),
                     eq(chatConversations.resourceId, previousResource.id),
                   ),
@@ -24341,7 +23815,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 })
                 .where(
                   and(
-                    eq(chatConversations.companyId, currentEndpoint.companyId),
                     eq(chatConversations.endpointId, currentEndpoint.id),
                     eq(chatConversations.resourceId, resource.id),
                     effect.availability === "available"
@@ -24429,20 +23902,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .update(chatEndpointResources)
                 .set({ availability: "unavailable", updatedAt: now })
                 .where(
-                  and(
-                    eq(
-                      chatEndpointResources.companyId,
-                      currentEndpoint.companyId,
-                    ),
-                    eq(chatEndpointResources.endpointId, currentEndpoint.id),
-                  ),
+                  eq(chatEndpointResources.endpointId, currentEndpoint.id),
                 );
               await tx
                 .update(chatConversations)
                 .set({ state: "unavailable", updatedAt: now })
                 .where(
                   and(
-                    eq(chatConversations.companyId, currentEndpoint.companyId),
                     eq(chatConversations.endpointId, currentEndpoint.id),
                     inArray(chatConversations.state, ["active", "waiting"]),
                   ),
@@ -24811,10 +24277,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select({ refs: toolConnections.credentialSecretRefs })
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.companyId, record.endpoint.companyId),
-              eq(toolConnections.id, record.endpoint.connectionId),
-            ),
+            eq(toolConnections.id, record.endpoint.connectionId),
           )
           .for("update")
           .then((rows) => rows[0] ?? null);
@@ -24839,7 +24302,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         // queued by GitHub before pause/reconnect must not be authenticated
         // into a later generation, even if the provider signs with its current
         // secret. Include archived endpoints so reusing an App cannot move a
-        // delayed callback into another endpoint/company.
+        // delayed callback into another endpoint.
         const recoveryReceipts = credentials.appId
           ? await tx
               .select({
@@ -24937,7 +24400,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatEndpointResources)
             .where(
               and(
-                eq(chatEndpointResources.companyId, currentEndpoint.companyId),
                 eq(chatEndpointResources.endpointId, currentEndpoint.id),
                 eq(chatEndpointResources.type, "repository"),
                 eq(chatEndpointResources.availability, "available"),
@@ -24980,7 +24442,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               await tx
                 .insert(chatDeliveries)
                 .values({
-                  companyId: currentEndpoint.companyId,
                   endpointId: currentEndpoint.id,
                   providerEventId,
                   deduplicationKey: providerEventId,
@@ -25041,7 +24502,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const inserted = await tx
           .insert(chatActions)
           .values({
-            companyId: currentEndpoint.companyId,
             endpointId: currentEndpoint.id,
             kind: "github_webhook_ingress",
             providerActionId: `github_webhook_ingress:${providerDeliveryId}`,
@@ -25410,7 +24870,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpointResources)
       .where(
         and(
-          eq(chatEndpointResources.companyId, endpoint.companyId),
           eq(chatEndpointResources.endpointId, endpoint.id),
           eq(chatEndpointResources.type, "repository"),
           eq(chatEndpointResources.enabled, true),
@@ -25438,7 +24897,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, endpoint.companyId),
           eq(chatActions.endpointId, endpoint.id),
           eq(chatActions.providerActionId, `github_webhook_ingress:${guid}`),
         ),
@@ -25453,7 +24911,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatDeliveries)
       .where(
         and(
-          eq(chatDeliveries.companyId, endpoint.companyId),
           eq(chatDeliveries.endpointId, endpoint.id),
           eq(
             chatDeliveries.providerEventId,
@@ -25488,7 +24945,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await tx
         .insert(chatActions)
         .values({
-          companyId: current.companyId,
           endpointId: current.id,
           kind: "github_webhook_recovery",
           providerActionId: `github_webhook_recovery:${original.guid}`,
@@ -25569,10 +25025,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatEndpoints)
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, chatEndpoints.connectionId),
-          eq(toolConnections.companyId, chatEndpoints.companyId),
-        ),
+        eq(toolConnections.id, chatEndpoints.connectionId),
       )
       .leftJoin(
         chatSdkState,
@@ -25607,7 +25060,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       if (!record || !record.endpoint.botExternalId) continue;
       const context = runtimeContextForRecord(record);
       const webhookUrl = `${getWebhookPublicBaseUrl()}/api/chat-webhooks/${endpoint.publicId}/github`;
-      const scope = { companyId: endpoint.companyId, endpointId: endpoint.id };
+      const scope = { endpointId: endpoint.id };
       const stored = await persistence.read(scope, GITHUB_RECOVERY_STATE_KEY);
       const previous = githubRecoveryWindow(stored?.value);
       const epochMatches =
@@ -25882,7 +25335,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .where(
                   and(
                     eq(toolConnections.id, current.connectionId),
-                    eq(toolConnections.companyId, current.companyId),
                     eq(toolConnections.enabled, true),
                     eq(toolConnections.status, "active"),
                   ),
@@ -25942,7 +25394,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 : await tx
                     .insert(chatActions)
                     .values({
-                      companyId: endpoint.companyId,
                       endpointId: endpoint.id,
                       kind: "github_webhook_recovery",
                       providerActionId: recoveryId,
@@ -26074,7 +25525,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatConversations)
         .where(
           and(
-            eq(chatConversations.companyId, currentEndpoint.companyId),
             eq(chatConversations.endpointId, currentEndpoint.id),
             eq(chatConversations.externalThreadId, event.threadId),
             inArray(chatConversations.state, ["active", "waiting"]),
@@ -26089,7 +25539,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, currentEndpoint.companyId),
             eq(chatExternalPrincipals.provider, "slack"),
             eq(
               chatExternalPrincipals.providerAccountId,
@@ -26108,7 +25557,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(issues)
             .where(
               and(
-                eq(issues.companyId, currentEndpoint.companyId),
                 eq(issues.id, conversation.issueId),
                 eq(issues.assigneeAgentId, currentEndpoint.assignedAgentId),
               ),
@@ -26127,7 +25575,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const run = await tx
           .select({
             agentId: heartbeatRuns.agentId,
-            companyId: heartbeatRuns.companyId,
             contextSnapshot: heartbeatRuns.contextSnapshot,
             createdAt: heartbeatRuns.createdAt,
             id: heartbeatRuns.id,
@@ -26137,7 +25584,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(heartbeatRuns.id, issue.executionRunId),
-              eq(heartbeatRuns.companyId, currentEndpoint.companyId),
               eq(heartbeatRuns.agentId, currentEndpoint.assignedAgentId),
               inArray(heartbeatRuns.status, [
                 "queued",
@@ -26164,7 +25610,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(agentWakeupRequests)
           .where(
             and(
-              eq(agentWakeupRequests.companyId, currentEndpoint.companyId),
               eq(agentWakeupRequests.agentId, currentEndpoint.assignedAgentId),
               inArray(agentWakeupRequests.status, [
                 "queued",
@@ -26201,7 +25646,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const [inserted] = await tx
         .insert(chatActions)
         .values({
-          companyId: currentEndpoint.companyId,
           endpointId: currentEndpoint.id,
           conversationId: conversation?.id ?? null,
           principalId: principal?.id ?? null,
@@ -26327,7 +25771,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           })
           .where(eq(chatActions.id, current.id));
         await logActivity(tx as unknown as Db, {
-          companyId: current.companyId,
           actorType: actorUserId ? "user" : "system",
           actorId: actorUserId ?? "slack-session-stop",
           action:
@@ -26362,7 +25805,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(chatEndpoints.id, current.endpointId),
-            eq(chatEndpoints.companyId, current.companyId),
             eq(chatEndpoints.provider, "slack"),
             eq(chatEndpoints.status, "active"),
             eq(chatEndpoints.assignedAgentId, payload.assignedAgentId),
@@ -26377,7 +25819,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(chatConversations.id, current.conversationId),
-                eq(chatConversations.companyId, current.companyId),
                 eq(chatConversations.endpointId, current.endpointId),
                 eq(chatConversations.issueId, payload.issueId),
                 eq(chatConversations.externalThreadId, payload.threadId),
@@ -26399,7 +25840,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .where(
                 and(
                   eq(chatEndpointResources.id, conversation.resourceId),
-                  eq(chatEndpointResources.companyId, current.companyId),
                   eq(chatEndpointResources.endpointId, current.endpointId),
                 ),
               )
@@ -26413,7 +25853,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(chatExternalPrincipals.id, current.principalId),
-                eq(chatExternalPrincipals.companyId, current.companyId),
                 eq(chatExternalPrincipals.provider, "slack"),
                 eq(
                   chatExternalPrincipals.providerAccountId,
@@ -26445,7 +25884,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .where(
                 and(
                   eq(issues.id, payload.issueId),
-                  eq(issues.companyId, current.companyId),
                   eq(issues.assigneeAgentId, payload.assignedAgentId),
                 ),
               )
@@ -26479,7 +25917,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(agentWakeupRequests.id, payload.target.id),
-              eq(agentWakeupRequests.companyId, current.companyId),
               eq(agentWakeupRequests.agentId, payload.assignedAgentId),
               lte(agentWakeupRequests.requestedAt, eventCutoff),
               or(
@@ -26520,14 +25957,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .select({ name: agents.name })
             .from(agents)
             .where(
-              and(
-                eq(agents.companyId, current.companyId),
-                eq(agents.id, payload.assignedAgentId),
-              ),
+              eq(agents.id, payload.assignedAgentId),
             )
             .then((rows) => rows[0]?.name ?? "Paperclip agent");
           await stageAuthorizedTaskControlPublication(tx, {
-            companyId: current.companyId,
             conversationId: conversation.id,
             endpointId: current.endpointId,
             idempotencyKey: `control:stop:${current.id}`,
@@ -26578,7 +26011,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(heartbeatRuns.id, runId),
-                eq(heartbeatRuns.companyId, current.companyId),
                 eq(heartbeatRuns.agentId, payload.assignedAgentId),
                 payload.target.kind === "wakeup"
                   ? eq(heartbeatRuns.wakeupRequestId, payload.target.id)
@@ -26691,7 +26123,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .returning({ id: chatActions.id });
         if (!settled) return;
         await logActivity(tx as unknown as Db, {
-          companyId: action.companyId,
           actorType: "user",
           actorId: claim.userId,
           action: cancellationWon
@@ -27001,7 +26432,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 })
                 .where(eq(chatEndpoints.id, endpoint.id));
               await logActivity(tx as unknown as Db, {
-                companyId: current.endpoint.companyId,
                 actorType: "system",
                 actorId: "github-webhook",
                 action: "chat_endpoint.webhook_verified",
@@ -27695,8 +27125,8 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
    * or no-longer-available files are omitted without losing the text turn.
    */
   async function processPendingSlackBoardMessages(limit = 25) {
-    const pending = await db.select({ id: chatActions.id, companyId: chatActions.companyId, endpointId: chatActions.endpointId }).from(chatActions)
-      .innerJoin(chatEndpoints, and(eq(chatEndpoints.id, chatActions.endpointId), eq(chatEndpoints.companyId, chatActions.companyId)))
+    const pending = await db.select({ id: chatActions.id, endpointId: chatActions.endpointId }).from(chatActions)
+      .innerJoin(chatEndpoints, eq(chatEndpoints.id, chatActions.endpointId))
       .where(and(eq(chatActions.kind, "slack_board_message"), eq(chatActions.status, "received"), notInArray(chatEndpoints.status, ["paused", "attention"])))
       .orderBy(asc(chatActions.createdAt)).limit(limit);
     for (const candidate of pending) {
@@ -27711,7 +27141,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await lease.commit(async (tx) => {
             await tx.update(chatActions).set({ status: "cancelled", result: { code: "slack_board_work_not_authorized", message }, updatedAt: new Date() }).where(eq(chatActions.id, action.id));
             await tx.update(chatPublications).set({ state: "cancelled", redactedError: message, nextAttemptAt: null, updatedAt: new Date() }).where(and(
-              eq(chatPublications.companyId, action.companyId), eq(chatPublications.endpointId, action.endpointId),
+              eq(chatPublications.endpointId, action.endpointId),
               eq(chatPublications.conversationId, action.conversationId!), eq(chatPublications.commentId, commentId),
               inArray(chatPublications.state, ["pending", "retry"]),
             ));
@@ -27719,14 +27149,14 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         }
         const currentEndpoint = await endpointRecord(action.endpointId);
         if (currentEndpoint && ["paused", "attention"].includes(currentEndpoint.endpoint.status)) return;
-        const bindings = await slackBoardReplyBindings(db, { companyId: action.companyId, issueId, userId, agentId, commentIds: [commentId] });
+        const bindings = await slackBoardReplyBindings(db, { issueId, userId, agentId, commentIds: [commentId] });
         if (!bindings.some(binding => binding.endpointId === action.endpointId && binding.conversationId === action.conversationId)) {
           await cancelWork("The Slack message author no longer has access to this conversation");
           return;
         }
         try {
-          const [publication] = await db.select().from(chatPublications).where(and(eq(chatPublications.companyId, action.companyId), eq(chatPublications.endpointId, action.endpointId), eq(chatPublications.commentId, commentId))).limit(1);
-          const [conversation] = await db.select().from(chatConversations).where(and(eq(chatConversations.companyId, action.companyId), eq(chatConversations.id, action.conversationId!)));
+          const [publication] = await db.select().from(chatPublications).where(and(eq(chatPublications.endpointId, action.endpointId), eq(chatPublications.commentId, commentId))).limit(1);
+          const [conversation] = await db.select().from(chatConversations).where(eq(chatConversations.id, action.conversationId!));
           const credentials = currentEndpoint ? await resolveCredentials(currentEndpoint.endpoint) : null;
           if (!publication || !conversation || !currentEndpoint || !await authorizeSlackBoardPublication(db, currentEndpoint.endpoint, conversation, publication, credentials?.botToken ?? "", lease.fetch)) {
             throw forbidden("The Slack message author no longer has access to this conversation");
@@ -27734,13 +27164,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           // Persist the resume and its marker together before waking. If a
           // scheduler response is lost, retry cannot reopen work a second time.
           const issue = await lease.commit(async (tx) => {
-            const [current] = await tx.select().from(issues).where(and(eq(issues.id, issueId), eq(issues.companyId, action.companyId), eq(issues.assigneeAgentId, agentId))).for("update");
+            const [current] = await tx.select().from(issues).where(and(eq(issues.id, issueId), eq(issues.assigneeAgentId, agentId))).for("update");
             if (!current) throw forbidden("The task is no longer assigned to the Slack agent");
             await assertSlackBoardWorkAllowed(tx as unknown as Db, current);
             if (action.result?.resumeApplied !== true) {
               if (["done", "blocked"].includes(current.status)) {
                 await issueService(tx as unknown as Db).update(current.id, { status: "todo", actorUserId: userId });
-                await logActivity(tx as unknown as Db, { companyId: current.companyId, actorType: "user", actorId: userId, action: "issue.updated", entityType: "issue", entityId: current.id, details: { status: "todo", source: "slack_board_message" } });
+                await logActivity(tx as unknown as Db, { actorType: "user", actorId: userId, action: "issue.updated", entityType: "issue", entityId: current.id, details: { status: "todo", source: "slack_board_message" } });
               }
               await tx.update(chatActions).set({ result: { resumeApplied: true }, updatedAt: new Date() }).where(eq(chatActions.id, action.id));
             }
@@ -27958,16 +27388,12 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await credentialLease.assertOwned(tx);
           const [endpoint] = await tx
             .select({
-              companyId: chatEndpoints.companyId,
               connectionId: chatEndpoints.connectionId,
               provider: chatEndpoints.provider,
             })
             .from(chatEndpoints)
             .where(
-              and(
-                eq(chatEndpoints.id, endpointId),
-                eq(chatEndpoints.companyId, initial.endpoint.companyId),
-              ),
+              eq(chatEndpoints.id, endpointId),
             )
             .for("no key update");
           if (!endpoint) throw notFound("Chat endpoint not found");
@@ -27980,7 +27406,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatEndpointResources)
             .where(
               and(
-                eq(chatEndpointResources.companyId, endpoint.companyId),
                 eq(chatEndpointResources.endpointId, endpointId),
                 inArray(chatEndpointResources.id, ids),
               ),
@@ -28019,7 +27444,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .set({ enabled: entry.enabled, updatedAt: new Date() })
               .where(
                 and(
-                  eq(chatEndpointResources.companyId, endpoint.companyId),
                   eq(chatEndpointResources.endpointId, endpointId),
                   eq(chatEndpointResources.id, entry.id),
                 ),
@@ -28028,7 +27452,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             await logActivity(
               tx as unknown as Db,
               {
-                companyId: endpoint.companyId,
                 actorType: "user",
                 actorId: actorUserId ?? "board",
                 action: "chat_endpoint.resources_updated",
@@ -28056,7 +27479,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, record.endpoint.companyId),
           eq(chatExternalPrincipals.provider, record.endpoint.provider),
           eq(
             chatExternalPrincipals.providerAccountId,
@@ -28073,7 +27495,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ principalId: chatActions.principalId, lastConnectAt: sql<string>`max(${chatActions.createdAt})::text` })
       .from(chatActions)
       .where(and(
-        eq(chatActions.companyId, record.endpoint.companyId),
         eq(chatActions.endpointId, endpointId),
         eq(chatActions.kind, "slack_connect"),
         eq(chatActions.status, "processed"),
@@ -28131,7 +27552,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, record.endpoint.companyId),
           eq(chatExternalPrincipals.id, principalId),
           eq(chatExternalPrincipals.provider, record.endpoint.provider),
           eq(
@@ -28150,7 +27570,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
     await db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${record.endpoint.companyId}:${principalId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principalId}`}, 0))`,
       );
       const existingLink = await tx
         .select({ status: chatIdentityLinks.status })
@@ -28171,7 +27591,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await tx
         .insert(chatIdentityLinks)
         .values({
-          companyId: record.endpoint.companyId,
           endpointId,
           principalId,
           status: "pending",
@@ -28211,19 +27630,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatIdentityLinks)
       .innerJoin(
         chatExternalPrincipals,
-        and(
-          eq(chatExternalPrincipals.companyId, chatIdentityLinks.companyId),
-          eq(chatExternalPrincipals.id, chatIdentityLinks.principalId),
-        ),
+        eq(chatExternalPrincipals.id, chatIdentityLinks.principalId),
       )
       .innerJoin(
         chatEndpoints,
-        and(
-          eq(chatEndpoints.companyId, chatIdentityLinks.companyId),
-          eq(chatEndpoints.id, chatIdentityLinks.endpointId),
-        ),
+        eq(chatEndpoints.id, chatIdentityLinks.endpointId),
       )
-      .innerJoin(companies, eq(companies.id, chatIdentityLinks.companyId))
+      .innerJoin(companies, sql`true`)
       .where(
         and(
           eq(chatIdentityLinks.confirmationTokenHash, tokenHash),
@@ -28236,7 +27649,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     }
     if (!["active", "verifying"].includes(row.endpoint.status)) throw unprocessable("This connection is not available");
     const selfService = Boolean(await db.select({ id: chatActions.id }).from(chatActions).where(and(
-      eq(chatActions.companyId, row.link.companyId), eq(chatActions.endpointId, row.link.endpointId),
+      eq(chatActions.endpointId, row.link.endpointId),
       eq(chatActions.principalId, row.link.principalId), eq(chatActions.kind, "slack_connect"),
       sql`${chatActions.payload}->>'identityLinkHash' = ${tokenHash}`,
     )).limit(1).then((rows) => rows[0]));
@@ -28247,7 +27660,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       selfService,
       canConfirm: membership?.status === "active",
       endpointId: row.endpoint.id,
-      companyId: row.endpoint.companyId,
       companyName: row.companyName,
       companyPrefix: row.companyPrefix,
       provider: row.endpoint.provider,
@@ -28269,10 +27681,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (!preview.selfService) throw forbidden("This identity link cannot request access");
     if (preview.canConfirm) return { status: "member" as const };
     return db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`chat-join:${preview.companyId}:${userId}`}, 0))`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`chat-join:${userId}`}, 0))`);
       const tokenHash = createHash("sha256").update(token).digest("hex");
       const validLink = await tx.select({ id: chatIdentityLinks.id }).from(chatIdentityLinks).where(and(
-        eq(chatIdentityLinks.companyId, preview.companyId), eq(chatIdentityLinks.endpointId, preview.endpointId),
+        eq(chatIdentityLinks.endpointId, preview.endpointId),
         eq(chatIdentityLinks.confirmationTokenHash, tokenHash), eq(chatIdentityLinks.status, "pending"), gt(chatIdentityLinks.expiresAt, new Date()),
       )).for("update").then((rows) => rows[0]);
       if (!validLink) throw unprocessable("This identity-link request is invalid or expired");
@@ -28294,7 +27706,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         requestIp, requestingUserId: userId, requestEmailSnapshot: user.email,
       }).returning({ id: joinRequests.id });
       await logActivity(tx as unknown as Db, {
-        companyId: preview.companyId, actorType: "user", actorId: userId, action: "join.requested",
+        actorType: "user", actorId: userId, action: "join.requested",
         entityType: "join_request", entityId: request.id, details: { requestType: "human", source: "slack_identity_link", endpointId: preview.endpointId },
       });
       return { status: "pending_approval" as const };
@@ -28324,12 +27736,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     let confirmationEffectId: string | null = null;
     const confirmed = await db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${link.companyId}:${link.principalId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${link.principalId}`}, 0))`,
       );
       const currentLink = await tx
         .select({
           id: chatIdentityLinks.id,
-          companyId: chatIdentityLinks.companyId,
           endpointId: chatIdentityLinks.endpointId,
           principalId: chatIdentityLinks.principalId,
           expiresAt: chatIdentityLinks.expiresAt,
@@ -28376,7 +27787,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatIdentityLinks)
         .where(
           and(
-            eq(chatIdentityLinks.companyId, link.companyId),
             eq(chatIdentityLinks.principalId, link.principalId),
             eq(chatIdentityLinks.status, "linked"),
             ne(chatIdentityLinks.paperclipUserId, paperclipUserId),
@@ -28437,7 +27847,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
 
   async function revokeLink(endpointId: string, principalId: string) {
     const link = await db
-      .select({ companyId: chatIdentityLinks.companyId })
+      .select({ id: chatIdentityLinks.id })
       .from(chatIdentityLinks)
       .where(
         and(
@@ -28449,7 +27859,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     if (!link) throw notFound("Identity link not found");
     const revoked = await db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${link.companyId}:${principalId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principalId}`}, 0))`,
       );
       return tx
         .update(chatIdentityLinks)
@@ -28462,7 +27872,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         })
         .where(
           and(
-            eq(chatIdentityLinks.companyId, link.companyId),
             eq(chatIdentityLinks.endpointId, endpointId),
             eq(chatIdentityLinks.principalId, principalId),
           ),
@@ -28535,7 +27944,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               : null));
       return {
         id: conversation.id,
-        companyId: conversation.companyId,
         endpointId: conversation.endpointId,
         resourceId: conversation.resourceId,
         externalLabel: conversation.externalLabel,
@@ -28656,7 +28064,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .leftJoin(
           recoveryIngress,
           and(
-            eq(recoveryIngress.companyId, chatActions.companyId),
             eq(recoveryIngress.endpointId, chatActions.endpointId),
             eq(recoveryIngress.kind, "github_webhook_ingress"),
             sql`${recoveryIngress.providerActionId} = 'github_webhook_ingress:' || (${chatActions.payload}#>>'{original,guid}')`,
@@ -28701,7 +28108,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             chatPublications,
             and(
               eq(chatPublications.id, chatTeamsFileTransfers.publicationId),
-              eq(chatPublications.companyId, chatTeamsFileTransfers.companyId),
               eq(
                 chatPublications.endpointId,
                 chatTeamsFileTransfers.endpointId,
@@ -28714,7 +28120,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           )
           .where(
             and(
-              eq(chatTeamsFileTransfers.companyId, publications[0]!.companyId),
               eq(chatTeamsFileTransfers.endpointId, endpointId),
               inArray(
                 chatTeamsFileTransfers.publicationId,
@@ -28735,7 +28140,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       if (!publication?.conversationId) continue;
       if (
         await teamsTransferProtocol().canCancelConflict({
-          companyId: publication.companyId,
           endpointId,
           conversationId: publication.conversationId,
           publicationId: publication.id,
@@ -29146,7 +28550,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(issueThreadInteractions.id, interactionId),
-            eq(issueThreadInteractions.companyId, publication.companyId),
             eq(issueThreadInteractions.issueId, publication.issueId),
           ),
         )
@@ -29164,7 +28567,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, publication.companyId),
             eq(chatPublications.endpointId, endpointId),
             eq(chatPublications.id, publication.id),
           ),
@@ -29183,10 +28585,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ id: chatTeamsFileTransfers.id })
         .from(chatTeamsFileTransfers)
         .where(
-          and(
-            eq(chatTeamsFileTransfers.companyId, current.companyId),
-            eq(chatTeamsFileTransfers.publicationId, current.id),
-          ),
+          eq(chatTeamsFileTransfers.publicationId, current.id),
         )
         .then((rows) => rows[0]);
       if (transfer)
@@ -29260,10 +28659,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             })
             .from(chatTeamsFileTransfers)
             .where(
-              and(
-                eq(chatTeamsFileTransfers.companyId, publication.companyId),
-                eq(chatTeamsFileTransfers.publicationId, publication.id),
-              ),
+              eq(chatTeamsFileTransfers.publicationId, publication.id),
             )
             .then((rows) => rows[0]);
           if (transfer || fileTransfer) {
@@ -29293,7 +28689,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               result = await teamsTransferProtocol({
                 credentialLease,
               }).resolveInTransaction(tx, {
-                companyId: publication.companyId,
                 publicationId: publication.id,
                 transferId: transfer.id,
                 expectedVersion: fileTransfer.version,
@@ -29314,7 +28709,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               throw error;
             }
             await logActivity(tx as unknown as Db, {
-              companyId: publication.companyId,
               actorType: "user",
               actorId: userId,
               action: `chat.publication_${action}`,
@@ -29364,7 +28758,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .where(
                 and(
                   eq(issueThreadInteractions.id, interactionId),
-                  eq(issueThreadInteractions.companyId, publication.companyId),
                   eq(issueThreadInteractions.issueId, publication.issueId),
                 ),
               )
@@ -29386,7 +28779,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             await tx
               .insert(chatActions)
               .values({
-                companyId: publication.companyId,
                 endpointId,
                 conversationId: publication.conversationId,
                 kind: "photon_publication_retry",
@@ -29447,7 +28839,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .where(
                 and(
-                  eq(chatActions.companyId, publication.companyId),
                   eq(chatActions.endpointId, publication.endpointId),
                   eq(chatActions.conversationId, publication.conversationId),
                   eq(chatActions.kind, "slack_file_upload_receipt"),
@@ -29476,7 +28867,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               })
               .where(
                 and(
-                  eq(chatActions.companyId, publication.companyId),
                   eq(chatActions.endpointId, publication.endpointId),
                   eq(chatActions.conversationId, publication.conversationId),
                   eq(chatActions.kind, "slack_file_upload_receipt"),
@@ -29538,7 +28928,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             );
           }
           await logActivity(tx as unknown as Db, {
-            companyId: publication.companyId,
             actorType: "user",
             actorId: userId,
             action: `chat.publication_${action}`,
@@ -29682,7 +29071,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               });
             }
             await logActivity(tx as unknown as Db, {
-              companyId: action.companyId,
               actorType: "user",
               actorId: userId,
               action: "chat.provider_effect_retry_anyway",
@@ -29841,7 +29229,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .where(eq(chatEndpoints.id, endpointId));
           }
           await logActivity(tx as unknown as Db, {
-            companyId: action.companyId,
             actorType: "user",
             actorId: userId,
             action: `chat.provider_effect_${resolution}`,
@@ -29971,7 +29358,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 ),
               );
             await logActivity(tx as unknown as Db, {
-              companyId: action.companyId,
               actorType: "user",
               actorId: userId,
               action: "chat.slack_command_cancel",
@@ -30058,7 +29444,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(chatExternalPrincipals.id, action.principalId),
-              eq(chatExternalPrincipals.companyId, record.endpoint.companyId),
               eq(chatExternalPrincipals.provider, "slack"),
               eq(
                 chatExternalPrincipals.providerAccountId,
@@ -30207,10 +29592,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatEndpointResources)
                   .where(
                     and(
-                      eq(
-                        chatEndpointResources.companyId,
-                        currentEndpoint.companyId,
-                      ),
                       eq(chatEndpointResources.endpointId, currentEndpoint.id),
                       eq(
                         chatEndpointResources.providerResourceId,
@@ -30264,7 +29645,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             )
             .returning();
           await logActivity(tx as unknown as Db, {
-            companyId: current.companyId,
             actorType: "user",
             actorId: userId,
             action: "chat.slack_command_retry_anyway",
@@ -30381,7 +29761,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .leftJoin(
         chatTeamsFileTransfers,
         and(
-          eq(chatTeamsFileTransfers.companyId, chatPublications.companyId),
           eq(chatTeamsFileTransfers.endpointId, chatPublications.endpointId),
           eq(
             chatTeamsFileTransfers.conversationId,
@@ -30392,7 +29771,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       )
       .where(
         and(
-          eq(chatPublications.companyId, anchor.companyId),
           eq(chatPublications.endpointId, endpointId),
           eq(chatPublications.conversationId, conversationId),
           anchor.commentId
@@ -30449,7 +29827,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: conversation.companyId,
         endpointId,
         conversationId,
         issueId: conversation.issueId,
@@ -30470,7 +29847,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, conversation.companyId),
           eq(chatPublications.endpointId, endpointId),
           eq(chatPublications.conversationId, conversationId),
           eq(chatPublications.commentId, commentId),
@@ -30529,7 +29905,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatPublications)
           .where(
             and(
-              eq(chatPublications.companyId, record.endpoint.companyId),
               eq(chatPublications.endpointId, endpointId),
               eq(chatPublications.conversationId, conversationId),
               eq(chatPublications.idempotencyKey, idempotencyKey),
@@ -30547,7 +29922,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatActions)
               .where(
                 and(
-                  eq(chatActions.companyId, record.endpoint.companyId),
                   eq(chatActions.endpointId, endpointId),
                   eq(chatActions.providerActionId, rejectionActionId),
                 ),
@@ -30574,10 +29948,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select()
         .from(chatPublications)
         .where(
-          and(
-            eq(chatPublications.companyId, conversation.companyId),
-            eq(chatPublications.idempotencyKey, idempotencyKey),
-          ),
+          eq(chatPublications.idempotencyKey, idempotencyKey),
         )
         .then((rows) => rows[0] ?? null);
       if (existing) {
@@ -30607,7 +29978,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatActions)
         .where(
           and(
-            eq(chatActions.companyId, conversation.companyId),
             eq(chatActions.endpointId, endpointId),
             eq(chatActions.providerActionId, rejectionActionId),
           ),
@@ -30658,7 +30028,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             : null;
         if (
           details?.code !== "issue_comment_attachments_already_bound" ||
-          details.companyId !== conversation.companyId ||
           details.issueId !== conversation.issueId ||
           !validRejectedIds(details.attachmentIds) ||
           !details.attachmentIds.every((id) => attachmentIds.includes(id))
@@ -30668,7 +30037,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           (details.attachmentIds as string[]).includes(id),
         );
         await tx.insert(chatActions).values({
-          companyId: conversation.companyId,
           endpointId,
           conversationId,
           kind: "board_send_rejected",
@@ -30686,11 +30054,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         return { rejection: rejectionDetails(invalidIds) };
       }
       if (emailBoundary?.endpoint.provider === "slack") {
-        const [issue] = await tx.select().from(issues).where(and(eq(issues.id, conversation.issueId), eq(issues.companyId, conversation.companyId)));
+        const [issue] = await tx.select().from(issues).where(eq(issues.id, conversation.issueId));
         if (!issue) throw notFound("Task not found");
         await assertSlackBoardWorkAllowed(tx as unknown as Db, issue);
         await mirrorSlackBoardComment(tx, comment, { publicationKey: idempotencyKey, wakeAgent: true, endpointId, conversationId, attachmentIds });
-        const [created] = await tx.select().from(chatPublications).where(and(eq(chatPublications.companyId, conversation.companyId), eq(chatPublications.idempotencyKey, idempotencyKey)));
+        const [created] = await tx.select().from(chatPublications).where(eq(chatPublications.idempotencyKey, idempotencyKey));
         if (!created) throw conflict("This Slack task is no longer assigned to the connected agent");
         return created;
       }
@@ -30704,7 +30072,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
             .where(
               and(
-                eq(issueAttachments.companyId, conversation.companyId),
                 eq(issueAttachments.issueId, conversation.issueId),
                 eq(issueAttachments.issueCommentId, comment.id),
                 inArray(issueAttachments.id, attachmentIds),
@@ -30721,7 +30088,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const [created] = await tx
         .insert(chatPublications)
         .values({
-          companyId: conversation.companyId,
           endpointId,
           conversationId,
           issueId: conversation.issueId,
@@ -30745,7 +30111,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const [attachmentPublication] = await tx
           .insert(chatPublications)
           .values({
-            companyId: conversation.companyId,
             endpointId,
             conversationId,
             issueId: conversation.issueId,
@@ -30771,7 +30136,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         terminalPublication = attachmentPublication;
       }
       await logActivity(tx as unknown as Db, {
-        companyId: conversation.companyId,
         actorType: "user",
         actorId: userId,
         action: "chat.publication_requested",
@@ -30849,10 +30213,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(chatEndpoints)
       .where(
-        and(
-          eq(chatEndpoints.companyId, supplied.companyId),
-          eq(chatEndpoints.id, supplied.endpointId),
-        ),
+        eq(chatEndpoints.id, supplied.endpointId),
       )
       .for("no key update", { noWait: true });
     if (
@@ -30868,10 +30229,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select()
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.companyId, endpoint.companyId),
-          eq(toolConnections.id, endpoint.connectionId),
-        ),
+        eq(toolConnections.id, endpoint.connectionId),
       )
       .for("share", { noWait: true });
     if (!connection?.enabled || connection.status !== "active") return null;
@@ -30903,7 +30261,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.id, supplied.conversationId),
           eq(chatConversations.issueId, supplied.issueId),
@@ -30920,7 +30277,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, endpoint.companyId),
           eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.externalThreadId, conversation.externalThreadId),
           gt(
@@ -30935,10 +30291,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .select({ id: issues.id, assigneeAgentId: issues.assigneeAgentId })
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, endpoint.companyId),
-          eq(issues.id, conversation.issueId),
-        ),
+        eq(issues.id, conversation.issueId),
       )
       .for("share", { noWait: true });
     if (!issue || issue.assigneeAgentId !== endpoint.assignedAgentId)
@@ -30951,7 +30304,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatEndpointResources)
         .where(
           and(
-            eq(chatEndpointResources.companyId, endpoint.companyId),
             eq(chatEndpointResources.endpointId, endpoint.id),
             eq(chatEndpointResources.id, conversation.resourceId),
           ),
@@ -30962,7 +30314,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, endpoint.companyId),
           eq(chatPublications.endpointId, endpoint.id),
           eq(chatPublications.conversationId, conversation.id),
           eq(chatPublications.issueId, conversation.issueId),
@@ -30988,7 +30339,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(issueComments)
       .where(
         and(
-          eq(issueComments.companyId, endpoint.companyId),
           eq(issueComments.issueId, conversation.issueId),
           eq(issueComments.id, publication.commentId),
           isNull(issueComments.deletedAt),
@@ -31000,14 +30350,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(issueAttachments)
       .innerJoin(
         assets,
-        and(
-          eq(assets.id, issueAttachments.assetId),
-          eq(assets.companyId, endpoint.companyId),
-        ),
+        eq(assets.id, issueAttachments.assetId),
       )
       .where(
         and(
-          eq(issueAttachments.companyId, endpoint.companyId),
           eq(issueAttachments.issueId, conversation.issueId),
           eq(issueAttachments.issueCommentId, publication.commentId),
           eq(issueAttachments.id, ids[0]),
@@ -31063,7 +30409,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     principalId: string,
   ) {
     const identity = await tx.execute(
-      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${endpoint.companyId}:${principalId}`}, 0)) as locked`,
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${principalId}`}, 0)) as locked`,
     );
     if (!identity[0]?.locked)
       throw new NativeChatReviewPresentationContentionError();
@@ -31072,7 +30418,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatIdentityLinks)
       .where(
         and(
-          eq(chatIdentityLinks.companyId, endpoint.companyId),
           eq(chatIdentityLinks.endpointId, endpoint.id),
           eq(chatIdentityLinks.principalId, principalId),
         ),
@@ -31107,7 +30452,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, endpoint.companyId),
           eq(chatActions.endpointId, endpoint.id),
           eq(chatActions.conversationId, conversation.id),
           eq(chatActions.id, actionId),
@@ -31132,7 +30476,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatDeliveries)
       .where(
         and(
-          eq(chatDeliveries.companyId, endpoint.companyId),
           eq(chatDeliveries.endpointId, endpoint.id),
           eq(chatDeliveries.conversationId, conversation.id),
           eq(chatDeliveries.id, action.deliveryId),
@@ -31152,7 +30495,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, endpoint.companyId),
           eq(chatExternalPrincipals.id, action.principalId),
           eq(chatExternalPrincipals.provider, "microsoft-teams"),
           eq(
@@ -31166,7 +30508,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .for("share", { noWait: true });
     if (!delivery || !originalFence || !principal) return null;
     const admission = {
-      companyId: endpoint.companyId,
       endpointId: endpoint.id,
       runtimeGeneration: originalFence.generation,
       credentialFingerprint: originalFence.credentialFingerprint,
@@ -31217,13 +30558,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         issueComments,
         and(
           eq(issueComments.id, chatMessageLinks.commentId),
-          eq(issueComments.companyId, endpoint.companyId),
           eq(issueComments.issueId, conversation.issueId),
         ),
       )
       .where(
         and(
-          eq(chatMessageLinks.companyId, endpoint.companyId),
           eq(chatMessageLinks.endpointId, endpoint.id),
           eq(chatMessageLinks.conversationId, conversation.id),
           eq(chatMessageLinks.deliveryId, delivery.id),
@@ -31256,7 +30595,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatDeliveries)
       .where(
         and(
-          eq(chatDeliveries.companyId, endpoint.companyId),
           eq(chatDeliveries.endpointId, endpoint.id),
           or(
             isNull(chatDeliveries.conversationId),
@@ -31286,7 +30624,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(agentWakeupRequests)
       .where(
         and(
-          eq(agentWakeupRequests.companyId, endpoint.companyId),
           eq(agentWakeupRequests.id, action.id),
           eq(agentWakeupRequests.agentId, endpoint.assignedAgentId),
         ),
@@ -31298,7 +30635,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       assertFailedRetryReceipt(
         createDurableChatWakeupRequest({
           id: action.id,
-          companyId: endpoint.companyId,
           agentId: endpoint.assignedAgentId,
           issueId: conversation.issueId,
           commentId: source.comment.id,
@@ -31351,7 +30687,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, scope.endpoint.companyId),
           eq(chatActions.endpointId, scope.endpoint.id),
           eq(chatActions.conversationId, scope.conversation.id),
           eq(chatActions.kind, "inbound_wakeup"),
@@ -31366,7 +30701,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, scope.endpoint.companyId),
           eq(chatActions.endpointId, scope.endpoint.id),
           eq(chatActions.conversationId, scope.conversation.id),
           eq(chatActions.kind, "inbound_wakeup"),
@@ -31381,7 +30715,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
 
   async function teamsBoardAuthorIsCurrent(
     tx: DbTransaction,
-    companyId: string,
     userId: string,
   ) {
     const [membership] = await tx
@@ -31455,7 +30788,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       scope.comment.authorUserId !== userId ||
       scope.comment.authorAgentId ||
       scope.comment.createdByRunId ||
-      !(await teamsBoardAuthorIsCurrent(tx, scope.endpoint.companyId, userId))
+      !(await teamsBoardAuthorIsCurrent(tx, userId))
     )
       return;
     const source = await teamsBoardOriginBinding(tx, scope);
@@ -31467,7 +30800,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, scope.endpoint.companyId),
           eq(chatActions.endpointId, scope.endpoint.id),
           eq(chatActions.providerActionId, key),
         ),
@@ -31488,7 +30820,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       return;
     }
     await tx.insert(chatActions).values({
-      companyId: scope.endpoint.companyId,
       endpointId: scope.endpoint.id,
       conversationId: scope.conversation.id,
       deliveryId: source.binding.deliveryId,
@@ -31522,7 +30853,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         scope.comment.createdByRunId ||
         !(await teamsBoardAuthorIsCurrent(
           tx,
-          scope.endpoint.companyId,
           scope.comment.authorUserId,
         ))
       )
@@ -31532,7 +30862,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatActions)
         .where(
           and(
-            eq(chatActions.companyId, scope.endpoint.companyId),
             eq(chatActions.endpointId, scope.endpoint.id),
             eq(chatActions.conversationId, scope.conversation.id),
             eq(chatActions.kind, teamsBoardFileIntentKind),
@@ -31587,7 +30916,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(heartbeatRuns)
         .where(
           and(
-            eq(heartbeatRuns.companyId, scope.endpoint.companyId),
             eq(heartbeatRuns.id, runId),
             eq(heartbeatRuns.agentId, scope.endpoint.assignedAgentId),
             eq(heartbeatRuns.nativeIssueId, scope.conversation.issueId),
@@ -31619,7 +30947,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatActions)
         .where(
           and(
-            eq(chatActions.companyId, scope.endpoint.companyId),
             eq(chatActions.conversationId, scope.conversation.id),
             eq(chatActions.kind, "inbound_wakeup"),
             inArray(
@@ -31639,7 +30966,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       let proved: FailedChatRetrySource;
       try {
         proved = await failedChatRetrySource(tx, {
-          companyId: scope.endpoint.companyId,
           issueId: scope.conversation.issueId,
           agentId: run.agentId,
           failedRunId: run.id,
@@ -31693,7 +31019,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         !(await authorizeNativeChatReviewPresentation(
           tx as unknown as Db,
           {
-            companyId: scope.endpoint.companyId,
             issueId: scope.conversation.issueId,
             runId: run.id,
             resultJson: run.resultJson,
@@ -31721,7 +31046,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     // this digest. The next authorization derives these facts afresh.
     const sourceDigest = teamsFileProofHash({
       schema: "paperclip.teams.file-source.v1",
-      companyId: scope.endpoint.companyId,
       endpointId: scope.endpoint.id,
       conversationId: scope.conversation.id,
       conversationGeneration: scope.conversation.sessionGeneration,
@@ -31733,7 +31057,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     });
     if (!teamsFileRuntimeStillCurrent(scope)) return null;
     return {
-      companyId: scope.endpoint.companyId,
       endpointId: scope.endpoint.id,
       conversationId: scope.conversation.id,
       issueId: scope.conversation.issueId,
@@ -31773,7 +31096,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const record = await endpointRecord(authority.endpointId);
       if (
         !record ||
-        record.endpoint.companyId !== authority.companyId ||
         record.endpoint.provider !== "microsoft-teams" ||
         record.endpoint.status !== "active"
       )
@@ -31818,7 +31140,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatPublications)
           .where(
             and(
-              eq(chatPublications.companyId, expected.companyId),
               eq(chatPublications.endpointId, expected.endpointId),
               eq(chatPublications.id, expected.publicationId),
             ),
@@ -31839,7 +31160,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(chatTeamsFileTransfers)
                 .where(
                   and(
-                    eq(chatTeamsFileTransfers.companyId, expected.companyId),
                     eq(chatTeamsFileTransfers.endpointId, expected.endpointId),
                     eq(
                       chatTeamsFileTransfers.conversationId,
@@ -31885,7 +31205,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatPublications)
           .where(
             and(
-              eq(chatPublications.companyId, authority.companyId),
               eq(chatPublications.endpointId, authority.endpointId),
               eq(chatPublications.id, authority.publicationId),
             ),
@@ -31963,10 +31282,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       })
       .from(chatTeamsFileTransfers)
       .where(
-        and(
-          eq(chatTeamsFileTransfers.companyId, selected.companyId),
-          eq(chatTeamsFileTransfers.publicationId, selected.id),
-        ),
+        eq(chatTeamsFileTransfers.publicationId, selected.id),
       );
     if (!existing && !selected.payload.attachmentIds?.length) return false;
     const record = await endpointRecord(selected.endpointId);
@@ -31993,10 +31309,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .select()
                 .from(chatPublications)
                 .where(
-                  and(
-                    eq(chatPublications.companyId, selected.companyId),
-                    eq(chatPublications.id, selected.id),
-                  ),
+                  eq(chatPublications.id, selected.id),
                 )
                 .for("update");
               if (
@@ -32028,10 +31341,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select({ nextAttemptAt: chatPublications.nextAttemptAt })
               .from(chatPublications)
               .where(
-                and(
-                  eq(chatPublications.companyId, selected.companyId),
-                  eq(chatPublications.id, selected.id),
-                ),
+                eq(chatPublications.id, selected.id),
               );
             if (
               !current ||
@@ -32039,7 +31349,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             )
               break;
             const result = await protocol.process(
-              selected.companyId,
               transferId,
             );
             if (
@@ -32079,8 +31388,8 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     teamsMaintenanceAfter = Date.now() + 30_000;
     scheduleMessageProcessing(async () => {
       try {
-        const scopes = await db
-          .selectDistinct({ companyId: chatTeamsFileTransfers.companyId })
+        const due = await db
+          .select({ id: chatTeamsFileTransfers.id })
           .from(chatTeamsFileTransfers)
           .where(
             or(
@@ -32102,13 +31411,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 lte(chatTeamsFileTransfers.attemptExpiresAt, new Date()),
               ),
             ),
-          );
+          )
+          .limit(1);
         const protocol = teamsTransferProtocol();
-        // Separate from the ordinary message queue. Each company sweep bounds
-        // its row count and lock waits and performs no provider I/O.
-        for (const scope of scopes) {
-          if (shuttingDown) break;
-          await protocol.expireAndRecover(scope.companyId, 100);
+        // Separate from the ordinary message queue. The sweep bounds its row
+        // count and lock waits and performs no provider I/O.
+        if (due.length > 0 && !shuttingDown) {
+          await protocol.expireAndRecover(100);
         }
       } catch {
         // Selection errors are closed here too; private transfer envelopes and
@@ -32144,7 +31453,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
         .where(
           and(
-            eq(issueAttachments.companyId, publication.companyId),
             eq(issueAttachments.issueId, publication.issueId),
             inArray(issueAttachments.id, payload.attachmentIds),
           ),
@@ -32191,7 +31499,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         files.push(
           await hydrateOutboundAttachment({
             storage: options.storage,
-            companyId: publication.companyId,
             objectKey: row.objectKey,
             byteSize: row.byteSize,
             sha256: row.sha256,
@@ -32280,7 +31587,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(chatPublications.id, input.publication.id),
-            eq(chatPublications.companyId, input.publication.companyId),
             eq(chatPublications.endpointId, input.publication.endpointId),
             eq(
               chatPublications.conversationId,
@@ -32310,7 +31616,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(chatConversations.id, input.conversation.id),
-                eq(chatConversations.companyId, input.publication.companyId),
                 eq(chatConversations.endpointId, input.endpoint.id),
                 inArray(chatConversations.state, [
                   "active",
@@ -32335,7 +31640,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const inserted = await tx
         .insert(chatActions)
         .values({
-          companyId: input.publication.companyId,
           endpointId: input.publication.endpointId,
           conversationId: input.publication.conversationId,
           kind: "slack_file_upload_receipt",
@@ -32385,7 +31689,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const inserted = await tx
       .insert(chatMessageLinks)
       .values({
-        companyId: input.publication.companyId,
         endpointId: input.publication.endpointId,
         conversationId: input.publication.conversationId,
         publicationId: input.publication.id,
@@ -32401,7 +31704,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatMessageLinks)
       .where(
         and(
-          eq(chatMessageLinks.companyId, input.publication.companyId),
           eq(chatMessageLinks.endpointId, input.publication.endpointId),
           eq(chatMessageLinks.conversationId, input.publication.conversationId),
           eq(chatMessageLinks.publicationId, input.publication.id),
@@ -32452,7 +31754,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       );
     if (input.stageSessionSync) {
       await stageSlackSessionSync(tx, {
-        companyId: input.publication.companyId,
         endpointId: input.publication.endpointId,
         conversationId: input.publication.conversationId,
         runtimeGeneration: input.runtimeContext.generation,
@@ -32496,7 +31797,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, endpoint.companyId),
           eq(chatActions.endpointId, endpoint.id),
           eq(chatActions.kind, "telegram_stop_subscription"),
           eq(
@@ -32541,10 +31841,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select()
         .from(toolConnections)
         .where(
-          and(
-            eq(toolConnections.id, current.connectionId),
-            eq(toolConnections.companyId, current.companyId),
-          ),
+          eq(toolConnections.id, current.connectionId),
         )
         .for("share");
       if (
@@ -32559,7 +31856,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       await tx
         .insert(chatActions)
         .values({
-          companyId: endpoint.companyId,
           endpointId: endpoint.id,
           kind: "telegram_stop_subscription",
           providerActionId: `telegram-stop-subscription:${scope.runtimeGeneration}:${scope.credentialFingerprint}:${scope.webhookUrlSha256}`,
@@ -32620,7 +31916,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         );
         if (
           !current ||
-          current.companyId !== endpoint.companyId ||
           current.botExternalId !== scope.botUserId ||
           current.publicId !== endpoint.publicId
         )
@@ -32629,10 +31924,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.id, current.connectionId),
-              eq(toolConnections.companyId, current.companyId),
-            ),
+            eq(toolConnections.id, current.connectionId),
           )
           .for("share");
         if (
@@ -32772,7 +32064,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, record.endpoint.companyId),
           eq(chatActions.endpointId, callback.endpointId),
           eq(chatActions.kind, TELEGRAM_DRAFT_ACTION_KIND),
           sql`${chatActions.payload}->>'botUserId' = ${receipt.botUserId}`,
@@ -32800,7 +32091,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, record.endpoint.companyId),
             eq(chatPublications.endpointId, callback.endpointId),
             eq(chatPublications.conversationId, binding.conversationId),
             eq(chatPublications.id, binding.publicationId),
@@ -32830,10 +32120,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select()
         .from(toolConnections)
         .where(
-          and(
-            eq(toolConnections.companyId, endpoint.companyId),
-            eq(toolConnections.id, endpoint.connectionId),
-          ),
+          eq(toolConnections.id, endpoint.connectionId),
         )
         .for("share")
         .then((rows) => rows[0] ?? null);
@@ -32849,7 +32136,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatConversations)
         .where(
           and(
-            eq(chatConversations.companyId, endpoint.companyId),
             eq(chatConversations.endpointId, endpoint.id),
             eq(chatConversations.id, binding.conversationId),
           ),
@@ -32917,7 +32203,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         })
         .where(
           and(
-            eq(chatActions.companyId, publication.companyId),
             eq(chatActions.endpointId, publication.endpointId),
             eq(
               chatActions.providerActionId,
@@ -33002,7 +32287,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       // fresh, never-before-used bot-global ID.
       if (existing.length)
         throw new Error("Telegram draft attempt already exists");
-      // NO CYCLE and no company/endpoint ownership: rollback, endpoint deletion
+      // NO CYCLE and no endpoint ownership: rollback, endpoint deletion
       // and bot re-binding cannot recycle a provider-visible draft identity.
       // Exhaustion is a refusal, never a fallback to a process-local/random ID.
       const allocated = await tx.execute(
@@ -33017,7 +32302,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const [action] = await tx
         .insert(chatActions)
         .values({
-          companyId: input.endpoint.companyId,
           endpointId: input.endpoint.id,
           conversationId: input.conversation.id,
           kind: TELEGRAM_DRAFT_ACTION_KIND,
@@ -33036,10 +32320,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(chatPublications)
           .where(
-            and(
-              eq(chatPublications.companyId, input.endpoint.companyId),
-              eq(chatPublications.id, input.publication.id),
-            ),
+            eq(chatPublications.id, input.publication.id),
           )
           .for("update")
           .then((rows) => rows[0] ?? null);
@@ -33061,10 +32342,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .select()
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.companyId, endpoint.companyId),
-              eq(toolConnections.id, endpoint.connectionId),
-            ),
+            eq(toolConnections.id, endpoint.connectionId),
           )
           .for("share")
           .then((rows) => rows[0] ?? null);
@@ -33080,7 +32358,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatConversations)
           .where(
             and(
-              eq(chatConversations.companyId, endpoint.companyId),
               eq(chatConversations.endpointId, endpoint.id),
               eq(chatConversations.id, input.conversation.id),
             ),
@@ -33261,7 +32538,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatEndpointResources)
           .where(
             and(
-              eq(chatEndpointResources.companyId, current.endpoint.companyId),
               eq(chatEndpointResources.endpointId, current.endpoint.id),
               eq(chatEndpointResources.id, input.conversation.resourceId!),
             ),
@@ -33309,7 +32585,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatActions)
           .where(
             and(
-              eq(chatActions.companyId, input.endpoint.companyId),
               eq(chatActions.endpointId, input.endpoint.id),
               eq(chatActions.kind, "photon_interaction"),
               nextQuestion
@@ -33338,13 +32613,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select({ status: issueThreadInteractions.status })
               .from(issueThreadInteractions)
               .where(
-                and(
-                  eq(
-                    issueThreadInteractions.companyId,
-                    input.endpoint.companyId,
-                  ),
-                  eq(issueThreadInteractions.id, interaction.id),
-                ),
+                eq(issueThreadInteractions.id, interaction.id),
               )
               .then((rows) => rows[0]);
             if (current?.status !== "pending")
@@ -33391,7 +32660,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .innerJoin(
               chatMessageLinks,
               and(
-                eq(chatMessageLinks.companyId, input.endpoint.companyId),
                 eq(chatMessageLinks.endpointId, input.endpoint.id),
                 eq(chatMessageLinks.conversationId, input.conversation.id),
                 eq(chatMessageLinks.direction, "inbound"),
@@ -33402,10 +32670,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               ),
             )
             .where(
-              and(
-                eq(heartbeatRuns.id, sourceRunId),
-                eq(heartbeatRuns.companyId, input.endpoint.companyId),
-              ),
+              eq(heartbeatRuns.id, sourceRunId),
             )
             .orderBy(desc(chatMessageLinks.createdAt))
             .limit(1)
@@ -33431,7 +32696,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(chatActions)
           .where(
             and(
-              eq(chatActions.companyId, input.endpoint.companyId),
               eq(chatActions.endpointId, input.endpoint.id),
               eq(chatActions.kind, "photon_response_notice"),
               eq(
@@ -33624,7 +32888,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, publication.companyId),
           eq(chatActions.endpointId, publication.endpointId),
           eq(chatActions.conversationId, publication.conversationId),
           eq(chatActions.providerActionId, preparationKey),
@@ -33668,7 +32931,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         heartbeatRuns,
         and(
           eq(heartbeatRuns.id, issueComments.createdByRunId),
-          eq(heartbeatRuns.companyId, publication.companyId),
           eq(heartbeatRuns.nativeIssueId, publication.issueId),
           eq(heartbeatRuns.agentId, endpoint.assignedAgentId),
           eq(heartbeatRuns.runtimeMode, "native"),
@@ -33679,7 +32941,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         nativeRunFinalizations,
         and(
-          eq(nativeRunFinalizations.companyId, publication.companyId),
           eq(nativeRunFinalizations.issueId, publication.issueId),
           eq(nativeRunFinalizations.runId, heartbeatRuns.id),
           eq(nativeRunFinalizations.phase, "committed"),
@@ -33688,7 +32949,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(issueComments.id, publication.commentId),
-          eq(issueComments.companyId, publication.companyId),
           eq(issueComments.issueId, publication.issueId),
           eq(issueComments.authorAgentId, endpoint.assignedAgentId),
           isNull(issueComments.deletedAt),
@@ -33710,7 +32970,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       // result, immutable owner/coalesced receipts, every current source,
       // runtime/generation, source edits/deletes and current principal access.
       const source = await failedChatRetrySource(tx, {
-        companyId: publication.companyId,
         issueId: publication.issueId,
         agentId: origin.run.agentId,
         failedRunId: origin.run.id,
@@ -33736,7 +32995,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         ? publication.payload.text
         : `${publication.payload.text}\n\n[Open this Paperclip task](${taskUrl})`;
       await tx.insert(chatActions).values({
-        companyId: publication.companyId,
         endpointId: publication.endpointId,
         conversationId: publication.conversationId,
         kind: "github_omission_navigation",
@@ -33833,7 +33091,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(chatConversations)
             .where(
               and(
-                eq(chatConversations.companyId, endpoint.companyId),
                 eq(chatConversations.endpointId, endpoint.id),
                 eq(chatConversations.id, input.publication.conversationId),
                 inArray(chatConversations.state, [
@@ -33853,7 +33110,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatEndpointResources)
               .where(
                 and(
-                  eq(chatEndpointResources.companyId, endpoint.companyId),
                   eq(chatEndpointResources.endpointId, endpoint.id),
                   eq(chatEndpointResources.id, conversation.resourceId),
                 ),
@@ -33868,7 +33124,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatConversations)
               .where(
                 and(
-                  eq(chatConversations.companyId, conversation.companyId),
                   eq(chatConversations.endpointId, conversation.endpointId),
                   eq(
                     chatConversations.externalThreadId,
@@ -33896,7 +33151,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatActions)
               .where(
                 and(
-                  eq(chatActions.companyId, endpoint.companyId),
                   eq(chatActions.endpointId, endpoint.id),
                   eq(chatActions.conversationId, conversation?.id ?? ""),
                   eq(chatActions.kind, "task_control_authorization"),
@@ -33913,7 +33167,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const destinationAllowed =
         endpoint !== null &&
         conversation !== null &&
-        (endpoint.provider !== "slack" || await slackPublicationAllowed(tx, endpoint.companyId, endpoint.id, input.publication.issueId, conversation.externalConversationId, null)) &&
+        (endpoint.provider !== "slack" || await slackPublicationAllowed(tx, endpoint.id, input.publication.issueId, conversation.externalConversationId, null)) &&
         (conversation.isDirectMessage
           ? endpoint.allowDirectMessages
           : nonDirectDestinationAllowed(endpoint, resource));
@@ -33956,15 +33210,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .from(issueComments)
           .innerJoin(
             heartbeatRuns,
-            and(
-              eq(heartbeatRuns.id, issueComments.createdByRunId),
-              eq(heartbeatRuns.companyId, issueComments.companyId),
-            ),
+            eq(heartbeatRuns.id, issueComments.createdByRunId),
           )
           .where(
             and(
               eq(issueComments.id, input.publication.commentId),
-              eq(issueComments.companyId, endpoint.companyId),
               eq(issueComments.issueId, input.publication.issueId),
             ),
           )
@@ -33978,7 +33228,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               !(await authorizeNativeChatReviewPresentation(
                 tx as unknown as Db,
                 {
-                  companyId: endpoint.companyId,
                   issueId: input.publication.issueId,
                   runId: origin.runId,
                   resultJson: origin.resultJson,
@@ -34098,10 +33347,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ id: issues.id })
         .from(issues)
         .where(
-          and(
-            eq(issues.id, publication.issueId),
-            eq(issues.companyId, publication.companyId),
-          ),
+          eq(issues.id, publication.issueId),
         )
         .for("update")
         .then((rows) => rows[0] ?? null);
@@ -34115,7 +33361,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(heartbeatRuns.id, runId),
-            eq(heartbeatRuns.companyId, publication.companyId),
             sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${publication.issueId}`,
           ),
         )
@@ -34170,7 +33415,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         chatPublications,
         and(
           eq(chatPublications.id, chatMessageLinks.publicationId),
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.issueId, publication.issueId),
@@ -34180,7 +33424,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       )
       .where(
         and(
-          eq(chatMessageLinks.companyId, publication.companyId),
           eq(chatMessageLinks.endpointId, publication.endpointId),
           eq(chatMessageLinks.conversationId, publication.conversationId),
           eq(chatMessageLinks.direction, "outbound"),
@@ -34216,7 +33459,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(heartbeatRuns.id, runId),
-              eq(heartbeatRuns.companyId, publication.companyId),
               eq(heartbeatRuns.nativeIssueId, publication.issueId),
               eq(heartbeatRuns.runtimeMode, "native"),
               eq(heartbeatRuns.status, "succeeded"),
@@ -34237,7 +33479,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(issueComments.id, publication.commentId!),
-              eq(issueComments.companyId, publication.companyId),
               eq(issueComments.issueId, publication.issueId),
               eq(issueComments.createdByRunId, runId),
               eq(issueComments.authorAgentId, run.agentId),
@@ -34253,13 +33494,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             issueComments,
             and(
               eq(issueComments.id, chatPublications.commentId),
-              eq(issueComments.companyId, publication.companyId),
               eq(issueComments.createdByRunId, runId),
             ),
           )
           .where(
             and(
-              eq(chatPublications.companyId, publication.companyId),
               eq(chatPublications.endpointId, publication.endpointId),
               eq(chatPublications.conversationId, publication.conversationId),
               eq(chatPublications.issueId, publication.issueId),
@@ -34284,7 +33523,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             chatPublications,
             and(
               eq(chatPublications.id, chatMessageLinks.publicationId),
-              eq(chatPublications.companyId, publication.companyId),
               eq(chatPublications.endpointId, publication.endpointId),
               eq(chatPublications.conversationId, publication.conversationId),
               eq(chatPublications.issueId, publication.issueId),
@@ -34300,7 +33538,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           )
           .where(
             and(
-              eq(chatMessageLinks.companyId, publication.companyId),
               eq(chatMessageLinks.endpointId, publication.endpointId),
               eq(chatMessageLinks.conversationId, publication.conversationId),
               eq(chatMessageLinks.providerMessageId, providerMessageId),
@@ -34347,7 +33584,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .leftJoin(issueComments, eq(issueComments.id, chatPublications.commentId))
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.state, "published"),
@@ -34417,10 +33653,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ runId: issueComments.createdByRunId })
         .from(issueComments)
         .where(
-          and(
-            eq(issueComments.id, publication.commentId),
-            eq(issueComments.companyId, publication.companyId),
-          ),
+          eq(issueComments.id, publication.commentId),
         )
         .then((rows) => rows[0]?.runId ?? null);
       return isUuidLike(runId) ? runId : null;
@@ -34436,7 +33669,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(issueThreadInteractions.id, payload.interactionId),
-            eq(issueThreadInteractions.companyId, publication.companyId),
             eq(issueThreadInteractions.issueId, publication.issueId),
           ),
         )
@@ -34468,7 +33700,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(issueThreadInteractions.id, payload.interactionId),
-            eq(issueThreadInteractions.companyId, publication.companyId),
             eq(issueThreadInteractions.issueId, publication.issueId),
             inArray(issueThreadInteractions.kind, [
               "ask_user_questions",
@@ -34485,7 +33716,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(issueComments.id, publication.commentId),
-            eq(issueComments.companyId, publication.companyId),
             eq(issueComments.issueId, publication.issueId),
           ),
         );
@@ -34503,7 +33733,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           )
           .where(
             and(
-              eq(chatPublications.companyId, publication.companyId),
               eq(chatPublications.endpointId, publication.endpointId),
               eq(chatPublications.conversationId, publication.conversationId),
               eq(chatPublications.state, "published"),
@@ -34525,7 +33754,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           and(
             eq(agentWakeupRequests.id, heartbeatRuns.wakeupRequestId),
             eq(agentWakeupRequests.runId, heartbeatRuns.id),
-            eq(agentWakeupRequests.companyId, heartbeatRuns.companyId),
             eq(agentWakeupRequests.agentId, heartbeatRuns.agentId),
             // Failed/cancelled is the admitted run's outcome, not loss of
             // its original admission. Its terminal milestone still owns
@@ -34536,7 +33764,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .where(
           and(
             eq(heartbeatRuns.id, runId),
-            eq(heartbeatRuns.companyId, publication.companyId),
             sql`${heartbeatRuns.contextSnapshot}->>'issueId' = ${publication.issueId}`,
           ),
         );
@@ -34552,7 +33779,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.issueId, publication.issueId),
@@ -34631,7 +33857,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         chatMessageLinks,
         and(
-          eq(chatMessageLinks.companyId, heartbeatRuns.companyId),
           eq(chatMessageLinks.endpointId, input.publication.endpointId),
           eq(chatMessageLinks.conversationId, input.publication.conversationId),
           eq(chatMessageLinks.direction, "inbound"),
@@ -34646,7 +33871,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         chatDeliveries,
         and(
           eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-          eq(chatDeliveries.companyId, chatMessageLinks.companyId),
           eq(chatDeliveries.endpointId, chatMessageLinks.endpointId),
           eq(chatDeliveries.conversationId, chatMessageLinks.conversationId),
           ["slack", "telegram", "github"].includes(input.endpoint.provider)
@@ -34666,7 +33890,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(heartbeatRuns.id, runId),
-          eq(heartbeatRuns.companyId, input.publication.companyId),
           eq(
             sql<string>`${heartbeatRuns.contextSnapshot} ->> 'issueId'`,
             input.publication.issueId,
@@ -34730,7 +33953,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       if (!payload || payload.operation !== "add") return [];
       return [
         {
-          companyId: input.publication.companyId,
           endpointId: input.publication.endpointId,
           conversationId: input.publication.conversationId,
           deliveryId: receipt.deliveryId,
@@ -34817,7 +34039,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.issueId, publication.issueId),
@@ -34852,7 +34073,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .where(
         and(
           eq(issueThreadInteractions.id, payload.interactionId),
-          eq(issueThreadInteractions.companyId, publication.companyId),
           eq(issueThreadInteractions.issueId, publication.issueId),
           inArray(issueThreadInteractions.kind, [
             "ask_user_questions",
@@ -34874,7 +34094,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, publication.companyId),
             eq(chatPublications.endpointId, publication.endpointId),
             eq(chatPublications.conversationId, publication.conversationId),
             eq(chatPublications.issueId, publication.issueId),
@@ -34907,7 +34126,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(issueThreadInteractions)
       .where(
         and(
-          eq(issueThreadInteractions.companyId, publication.companyId),
           eq(issueThreadInteractions.issueId, publication.issueId),
           eq(issueThreadInteractions.sourceRunId, sourceRunId),
           inArray(issueThreadInteractions.kind, [
@@ -34923,7 +34141,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.issueId, publication.issueId),
@@ -34962,7 +34179,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .leftJoin(issueComments, eq(issueComments.id, chatPublications.commentId))
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.state, "published"),
@@ -35038,7 +34254,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         heartbeatRuns,
         and(
-          eq(heartbeatRuns.companyId, publication.companyId),
           eq(heartbeatRuns.agentId, endpoint.assignedAgentId),
           sql`${heartbeatRuns.contextSnapshot}->>'issueId' = ${publication.issueId}`,
           sql`split_part(${chatPublications.idempotencyKey}, ':', 2) = ${heartbeatRuns.id}::text`,
@@ -35047,7 +34262,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .innerJoin(
         chatMessageLinks,
         and(
-          eq(chatMessageLinks.companyId, publication.companyId),
           eq(chatMessageLinks.endpointId, publication.endpointId),
           eq(chatMessageLinks.conversationId, publication.conversationId),
           eq(chatMessageLinks.direction, "outbound"),
@@ -35061,7 +34275,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         current,
         and(
           eq(current.id, chatMessageLinks.publicationId),
-          eq(current.companyId, publication.companyId),
           eq(current.endpointId, publication.endpointId),
           eq(current.conversationId, publication.conversationId),
           eq(current.issueId, publication.issueId),
@@ -35080,7 +34293,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       )
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.issueId, publication.issueId),
@@ -35103,13 +34315,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         issueComments,
         and(
           eq(issueComments.id, chatPublications.commentId),
-          eq(issueComments.companyId, publication.companyId),
           eq(issueComments.issueId, publication.issueId),
         ),
       )
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           eq(chatPublications.issueId, publication.issueId),
@@ -35136,8 +34346,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             // never reached the provider (including an unconfirmed receipt).
             sql`exists (
               select 1 from issue_thread_interactions consuming_interaction
-              where consuming_interaction.company_id = ${publication.companyId}::uuid
-                and consuming_interaction.issue_id = ${publication.issueId}::uuid
+              where consuming_interaction.issue_id = ${publication.issueId}::uuid
                 and consuming_interaction.source_run_id = ${lane.runId}::uuid
                 and consuming_interaction.kind in ('ask_user_questions', 'request_confirmation')
                 and ${chatPublications.payload}->>'interactionId' = consuming_interaction.id::text
@@ -35175,10 +34384,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       })
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, publication.companyId),
-          eq(issues.id, publication.issueId),
-        ),
+        eq(issues.id, publication.issueId),
       )
       .then((rows) => rows[0] ?? null);
     if (!issue) return persisted;
@@ -35226,7 +34432,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     tx: Db,
     publication: Pick<
       typeof chatPublications.$inferSelect,
-      | "companyId"
+
       | "conversationId"
       | "createdAt"
       | "endpointId"
@@ -35242,7 +34448,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .set({ state: "completed", updatedAt: committedAt })
       .where(
         and(
-          eq(chatConversations.companyId, publication.companyId),
           eq(chatConversations.endpointId, publication.endpointId),
           eq(chatConversations.id, publication.conversationId),
           inArray(chatConversations.state, ["active", "waiting"]),
@@ -35263,7 +34468,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       })
       .where(
         and(
-          eq(chatPublications.companyId, publication.companyId),
           eq(chatPublications.endpointId, publication.endpointId),
           eq(chatPublications.conversationId, publication.conversationId),
           or(
@@ -35489,7 +34693,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatConversations)
               .where(
                 and(
-                  eq(chatConversations.companyId, publication.companyId),
                   eq(chatConversations.endpointId, publication.endpointId),
                   eq(chatConversations.id, publication.conversationId),
                   inArray(chatConversations.state, ["active", "waiting"]),
@@ -35516,7 +34719,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           await tx
             .insert(chatPublications)
             .values({
-              companyId: publication.companyId,
               endpointId: publication.endpointId,
               conversationId: publication.conversationId,
               issueId: publication.issueId,
@@ -35644,7 +34846,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(eq(chatPublications.id, current.id));
         await tx.insert(chatPublications).values(
           currentParts.slice(1).map((_part, offset) => ({
-            companyId: current.companyId,
             endpointId: current.endpointId,
             conversationId: current.conversationId,
             issueId: current.issueId,
@@ -35738,7 +34939,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         };
         delete attachmentPayload.progressState;
         await tx.insert(chatPublications).values({
-          companyId: current.companyId,
           endpointId: current.endpointId,
           conversationId: current.conversationId,
           issueId: current.issueId,
@@ -35835,7 +35035,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         };
         delete attachmentPayload.progressState;
         await tx.insert(chatPublications).values({
-          companyId: current.companyId,
           endpointId: current.endpointId,
           conversationId: current.conversationId,
           issueId: current.issueId,
@@ -35897,7 +35096,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         currentParts.slice(1).map((text, offset) => {
           const index = offset + 1;
           return {
-            companyId: current.companyId,
             endpointId: current.endpointId,
             conversationId: current.conversationId,
             issueId: current.issueId,
@@ -36027,7 +35225,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(chatActions.id, input.actionId),
-              eq(chatActions.companyId, publication.companyId),
               eq(chatActions.endpointId, publication.endpointId),
               eq(chatActions.conversationId, publication.conversationId),
               eq(chatActions.kind, "slack_file_upload_receipt"),
@@ -36064,7 +35261,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatMessageLinks)
         .where(
           and(
-            eq(chatMessageLinks.companyId, publication.companyId),
             eq(chatMessageLinks.endpointId, publication.endpointId),
             eq(chatMessageLinks.conversationId, publication.conversationId),
             eq(chatMessageLinks.publicationId, publication.id),
@@ -36107,7 +35303,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           .where(
             and(
               eq(chatConversations.id, publication.conversationId),
-              eq(chatConversations.companyId, publication.companyId),
               eq(chatConversations.endpointId, publication.endpointId),
               eq(chatConversations.externalThreadId, input.payload.threadId),
               inArray(chatConversations.state, [
@@ -36128,7 +35323,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(chatEndpointResources.id, conversation.resourceId),
-                eq(chatEndpointResources.companyId, endpoint.companyId),
                 eq(chatEndpointResources.endpointId, endpoint.id),
               ),
             )
@@ -36736,7 +35930,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                     and(
                       eq(chatConversations.id, action.conversationId!),
                       eq(chatConversations.endpointId, endpoint.id),
-                      eq(chatConversations.companyId, endpoint.companyId),
                       inArray(chatConversations.state, [
                         "active",
                         "waiting",
@@ -36755,7 +35948,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                     .where(
                       and(
                         eq(chatEndpointResources.id, conversation.resourceId),
-                        eq(chatEndpointResources.companyId, endpoint.companyId),
                         eq(chatEndpointResources.endpointId, endpoint.id),
                       ),
                     )
@@ -36768,7 +35960,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatConversations)
                   .where(
                     and(
-                      eq(chatConversations.companyId, conversation.companyId),
                       eq(chatConversations.endpointId, conversation.endpointId),
                       eq(
                         chatConversations.externalThreadId,
@@ -36808,7 +35999,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatPublications)
               .where(
                 and(
-                  eq(chatPublications.companyId, endpoint.companyId),
                   eq(chatPublications.endpointId, endpoint.id),
                   eq(chatPublications.conversationId, conversation.id),
                   eq(chatPublications.state, "published"),
@@ -36847,7 +36037,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .where(
                   and(
                     eq(heartbeatRuns.id, runId),
-                    eq(heartbeatRuns.companyId, endpoint.companyId),
                     eq(heartbeatRuns.agentId, endpoint.assignedAgentId),
                   ),
                 )
@@ -36993,7 +36182,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     const leaseKey = `publication:${publication.id}:${publication.attempts + 1}`;
     const now = new Date();
     const owned = and(
-      eq(chatEndpointLeases.companyId, publication.companyId),
       eq(chatEndpointLeases.endpointId, publication.endpointId),
       eq(chatEndpointLeases.leaseKey, leaseKey),
       eq(chatEndpointLeases.token, token),
@@ -37006,7 +36194,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, publication.companyId),
             eq(chatPublications.id, publication.id),
             eq(chatPublications.state, publication.state),
             eq(chatPublications.attempts, publication.attempts),
@@ -37019,10 +36206,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .select({ id: chatTeamsFileTransfers.id })
         .from(chatTeamsFileTransfers)
         .where(
-          and(
-            eq(chatTeamsFileTransfers.companyId, publication.companyId),
-            eq(chatTeamsFileTransfers.publicationId, current.id),
-          ),
+          eq(chatTeamsFileTransfers.publicationId, current.id),
         )
         .then((rows) => rows[0]);
       if (transfer) return false;
@@ -37043,7 +36227,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .returning({ id: chatPublications.id });
       if (!row) return false;
       await tx.insert(chatEndpointLeases).values({
-        companyId: publication.companyId,
         endpointId: publication.endpointId,
         leaseKey,
         token,
@@ -37310,8 +36493,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .where(
                   and(
                     eq(chatEndpointResources.id, conversation.resourceId),
-                    eq(chatEndpointResources.endpointId, endpoint.id),
-                    eq(chatEndpointResources.companyId, endpoint.companyId),
+                    eq(chatEndpointResources.endpointId, endpoint.id)
                   ),
                 )
                 .then((result) => result[0] ?? null)
@@ -37347,7 +36529,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .where(
               and(
                 eq(issueThreadInteractions.id, interactionId!),
-                eq(issueThreadInteractions.companyId, publication.companyId),
                 eq(issueThreadInteractions.issueId, publication.issueId),
               ),
             )
@@ -37694,7 +36875,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                     ? null
                     : publication.commentId;
                   const messageLinkInsert = tx.insert(chatMessageLinks).values({
-                    companyId: publication.companyId,
                     endpointId: publication.endpointId,
                     conversationId: publication.conversationId,
                     publicationId: publication.id,
@@ -37766,7 +36946,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   !publication.idempotencyKey.startsWith("control:status:")
                 ) {
                   await stageSlackSessionSync(tx, {
-                    companyId: publication.companyId,
                     endpointId: publication.endpointId,
                     conversationId: publication.conversationId,
                     runtimeGeneration:
@@ -37853,13 +37032,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .select({ id: chatTeamsFileTransfers.id })
               .from(chatTeamsFileTransfers)
               .where(
-                and(
-                  eq(
-                    chatTeamsFileTransfers.companyId,
-                    chatPublications.companyId,
-                  ),
-                  eq(chatTeamsFileTransfers.publicationId, chatPublications.id),
-                ),
+                eq(chatTeamsFileTransfers.publicationId, chatPublications.id),
               ),
           ),
           notExists(
@@ -37868,7 +37041,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
               .from(chatEndpointLeases)
               .where(
                 and(
-                  eq(chatEndpointLeases.companyId, chatPublications.companyId),
                   eq(
                     chatEndpointLeases.endpointId,
                     chatPublications.endpointId,
@@ -37934,7 +37106,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             and(
               // An explicit Board send promises both delivery and work. Keep
               // its text/files pending until the durable wake has been accepted.
-              sql`not exists (select 1 from chat_actions a where a.company_id = ${chatPublications.companyId} and a.endpoint_id = ${chatPublications.endpointId} and a.conversation_id = ${chatPublications.conversationId} and a.kind = 'slack_board_message' and a.status = 'received' and a.payload->>'commentId' = ${chatPublications.commentId}::text)`,
+              sql`not exists (select 1 from chat_actions a where a.endpoint_id = ${chatPublications.endpointId} and a.conversation_id = ${chatPublications.conversationId} and a.kind = 'slack_board_message' and a.status = 'received' and a.payload->>'commentId' = ${chatPublications.commentId}::text)`,
               or(
                 and(
                   sql`not exists (select 1 from chat_endpoints e where e.id = ${chatPublications.endpointId} and e.publication_mode = 'explicit')`,
@@ -37944,16 +37116,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                       .select({ id: chatTeamsFileTransfers.id })
                       .from(chatTeamsFileTransfers)
                       .where(
-                        and(
-                          eq(
-                            chatTeamsFileTransfers.companyId,
-                            chatPublications.companyId,
-                          ),
-                          eq(
-                            chatTeamsFileTransfers.publicationId,
-                            chatPublications.id,
-                          ),
-                        ),
+                        eq(
+                                                      chatTeamsFileTransfers.publicationId,
+                                                      chatPublications.id,
+                                                    ),
                       ),
                   ),
                 ),
@@ -37964,10 +37130,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                   .from(chatTeamsFileTransfers)
                   .where(
                     and(
-                      eq(
-                        chatTeamsFileTransfers.companyId,
-                        chatPublications.companyId,
-                      ),
                       eq(
                         chatTeamsFileTransfers.endpointId,
                         chatPublications.endpointId,
@@ -37986,10 +37148,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                         .where(
                           and(
                             eq(chatEndpoints.id, chatPublications.endpointId),
-                            eq(
-                              chatEndpoints.companyId,
-                              chatPublications.companyId,
-                            ),
                             eq(chatEndpoints.provider, "microsoft-teams"),
                             eq(chatEndpoints.status, "active"),
                           ),
@@ -38093,7 +37251,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           const task = Promise.resolve()
             .then(async () => {
               await processSelectedPublication(selectedPublication);
-              await settleSlackConversation(db, selectedPublication.companyId, selectedPublication.issueId).catch((err) => {
+              await settleSlackConversation(db, selectedPublication.issueId).catch((err) => {
                 logger.warn({ err, publicationId: selectedPublication.id }, "Slack conversation settlement deferred to reconciliation");
               });
             })
@@ -38173,13 +37331,13 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function getIssueBinding(
     issueId: string,
   ): Promise<ExternalChannelBindingSummary | null> {
-    const companyId = await db
-      .select({ companyId: issues.companyId })
+    const issue = await db
+      .select({ id: issues.id })
       .from(issues)
       .where(eq(issues.id, issueId))
-      .then((rows) => rows[0]?.companyId ?? null);
-    return companyId
-      ? getExternalChannelBindingSummary(db, companyId, issueId)
+      .then((rows) => rows[0] ?? null);
+    return issue
+      ? getExternalChannelBindingSummary(db, issueId)
       : null;
   }
 
@@ -38218,7 +37376,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           setup: { ...record.endpoint.setup, github: { stage: "install", appSlug: slug, installationUrl: `https://github.com/apps/${slug}/installations/new`, registrationStatus: "completed" } },
           healthMessage: "Install the App on GitHub to continue", updatedAt: new Date(),
         }).where(eq(chatEndpoints.id, endpointId));
-        await logActivity(tx as unknown as Db, { companyId: record.endpoint.companyId, actorType: "user", actorId: userId, action: "chat_github.app_connected", entityType: "tool_connection", entityId: record.endpoint.connectionId, details: { endpointId, appId: identity.botExternalId } });
+        await logActivity(tx as unknown as Db, { actorType: "user", actorId: userId, action: "chat_github.app_connected", entityType: "tool_connection", entityId: record.endpoint.connectionId, details: { endpointId, appId: identity.botExternalId } });
       });
     });
     // Manifest registration can send its ping before the credential exchange
@@ -38267,7 +37425,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       throw forbidden("Slack tools require the bound task and an accepted linked user");
     const resolved = await db.transaction(async (tx) => {
       const [action] = await tx.select().from(chatActions).where(and(
-        eq(chatActions.companyId, binding.companyId),
         eq(chatActions.kind, "inbound_wakeup"),
         sql`${chatActions.payload}->>'issueId' = ${binding.issueId}`,
         sql`${chatActions.payload}->>'agentId' = ${binding.agentId}`,
@@ -38279,7 +37436,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         // Ordinary tasks and routines use their accepted responsible user, never
         // an earlier Slack sender or the connection owner's credentials.
         const [message] = identity.sourceMessageId ? await tx.select().from(issueComments)
-          .where(and(eq(issueComments.companyId, binding.companyId), eq(issueComments.issueId, binding.issueId),
+          .where(and(eq(issueComments.issueId, binding.issueId),
             eq(issueComments.id, identity.sourceMessageId), isNull(issueComments.deletedAt))) : [];
         if (identity.sourceMessageId && (!message || message.authorType !== "user" || message.authorUserId !== run.responsibleUserId))
           throw forbidden("Slack tools require the current task requester's identity");
@@ -38287,17 +37444,17 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         // falling back to ordinary-task access after source admission fails.
         if (identity.sourceMessageId) {
           const [external] = await tx.select({ id: chatMessageLinks.id }).from(chatMessageLinks)
-            .where(and(eq(chatMessageLinks.companyId, binding.companyId), eq(chatMessageLinks.commentId, identity.sourceMessageId), eq(chatMessageLinks.direction, "inbound"))).limit(1);
+            .where(and(eq(chatMessageLinks.commentId, identity.sourceMessageId), eq(chatMessageLinks.direction, "inbound"))).limit(1);
           if (external) throw forbidden("External messages require their originating Slack connection");
         }
         const endpoints = await tx.select().from(chatEndpoints).where(and(
-          eq(chatEndpoints.companyId, binding.companyId), eq(chatEndpoints.provider, "slack"),
+          eq(chatEndpoints.provider, "slack"),
           eq(chatEndpoints.assignedAgentId, binding.agentId), eq(chatEndpoints.status, "active"),
           ...(binding.endpointId ? [eq(chatEndpoints.id, binding.endpointId)] : []),
         )).for("no key update");
         if (endpoints.length !== 1) throw forbidden("Select an active Slack connection assigned to this agent");
         const endpoint = endpoints[0]!;
-        const [issue] = await tx.select().from(issues).where(and(eq(issues.companyId, binding.companyId), eq(issues.id, binding.issueId), eq(issues.assigneeAgentId, binding.agentId)));
+        const [issue] = await tx.select().from(issues).where(and(eq(issues.id, binding.issueId), eq(issues.assigneeAgentId, binding.agentId)));
         if (!issue) throw forbidden("Slack tools require a task assigned to this agent");
         const [member] = await tx.select().from(companyMemberships).where(and(
           eq(companyMemberships.principalType, "user"),
@@ -38305,15 +37462,15 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         ));
         if (!member) throw forbidden("The responsible user must be an active company operator");
         const links = await tx.select({ principal: chatExternalPrincipals }).from(chatIdentityLinks)
-          .innerJoin(chatExternalPrincipals, and(eq(chatExternalPrincipals.id, chatIdentityLinks.principalId), eq(chatExternalPrincipals.companyId, binding.companyId)))
-          .where(and(eq(chatIdentityLinks.companyId, binding.companyId), eq(chatIdentityLinks.endpointId, endpoint.id),
+          .innerJoin(chatExternalPrincipals, eq(chatExternalPrincipals.id, chatIdentityLinks.principalId))
+          .where(and(eq(chatIdentityLinks.endpointId, endpoint.id),
             eq(chatIdentityLinks.paperclipUserId, run.responsibleUserId!), eq(chatIdentityLinks.status, "linked"),
             eq(chatExternalPrincipals.provider, "slack"), eq(chatExternalPrincipals.providerAccountId, endpoint.providerAccountId!), eq(chatExternalPrincipals.isBot, false)));
         if (links.length !== 1) throw forbidden("Link your Slack account to this connection before using it from tasks or routines");
         // A Board message changes who is directing the work, not the privacy
         // of context already present in its linked Slack conversation.
         const conversations = await tx.select().from(chatConversations).where(and(
-          eq(chatConversations.companyId, binding.companyId), eq(chatConversations.endpointId, endpoint.id),
+          eq(chatConversations.endpointId, endpoint.id),
           eq(chatConversations.issueId, binding.issueId),
         )).limit(2);
         if (conversations.length > 1) throw forbidden("The task's Slack conversation boundary is ambiguous");
@@ -38326,14 +37483,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       // the ingress lock order (endpoint, then issue) so a normal webhook or
       // endpoint update cannot turn tool setup into a NOWAIT failure. The
       // scheduler retains its nonblocking check when it owns the issue first.
-      await tx.select({ id: chatEndpoints.id }).from(chatEndpoints).where(and(
-        eq(chatEndpoints.companyId, binding.companyId),
-        eq(chatEndpoints.id, action.endpointId),
-      )).for("no key update");
+      await tx.select({ id: chatEndpoints.id }).from(chatEndpoints).where(eq(chatEndpoints.id, action.endpointId)).for("no key update");
       const source = await authorizeInboundWakeup(tx, action);
       if (source.endpoint.provider !== "slack") throw forbidden("This is not a Slack task");
       const [principal] = await tx.select().from(chatExternalPrincipals).where(and(
-        eq(chatExternalPrincipals.companyId, binding.companyId),
         eq(chatExternalPrincipals.id, action.principalId!),
         eq(chatExternalPrincipals.provider, "slack"),
         eq(chatExternalPrincipals.providerAccountId, source.endpoint.providerAccountId!),
@@ -38353,7 +37506,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       revision: createHash("sha256").update(JSON.stringify([
         resolved.endpoint.status, resolved.endpoint.allowDirectMessages, resolved.conversation?.sessionGeneration ?? null,
         run.responsibleUserId, credentials.botToken,
-        await slackAuthorizationRevision(db, binding.companyId, resolved.endpoint.id, resolved.endpoint.connectionId, binding.agentId, run.responsibleUserId),
+        await slackAuthorizationRevision(db, resolved.endpoint.id, resolved.endpoint.connectionId, binding.agentId, run.responsibleUserId),
       ])).digest("hex"),
       botToken: credentials.botToken,
       searchActionToken: resolved.delivery ? slackSearchActionToken(db, resolved.endpoint.id, resolved.endpoint.providerAccountId!, resolved.slackUserId, String((resolved.delivery.normalizedEvent.message as Record<string, unknown> | undefined)?.providerMessageId ?? "")) : null,

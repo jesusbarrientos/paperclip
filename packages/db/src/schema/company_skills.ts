@@ -12,7 +12,6 @@ import {
 import { sql } from "drizzle-orm";
 import type { CompanySkillFileInventoryEntry, CompanySkillSharingScope } from "@paperclipai/shared";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { folders } from "./folders.js";
 
@@ -20,7 +19,6 @@ export const companySkills = pgTable(
   "company_skills",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     folderId: uuid("folder_id").references(() => folders.id, { onDelete: "set null" }),
     key: text("key").notNull(),
     slug: text("slug").notNull(),
@@ -42,7 +40,6 @@ export const companySkills = pgTable(
     sharingScope: text("sharing_scope").$type<CompanySkillSharingScope>().notNull().default("company"),
     publicShareToken: text("public_share_token"),
     forkedFromSkillId: uuid("forked_from_skill_id").references((): AnyPgColumn => companySkills.id, { onDelete: "set null" }),
-    forkedFromCompanyId: uuid("forked_from_company_id").references(() => companies.id, { onDelete: "set null" }),
     starCount: integer("star_count").notNull().default(0),
     installCount: integer("install_count").notNull().default(0),
     forkCount: integer("fork_count").notNull().default(0),
@@ -52,13 +49,13 @@ export const companySkills = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyKeyUniqueIdx: uniqueIndex("company_skills_company_key_idx").on(table.companyId, table.key),
-    companyNameIdx: index("company_skills_company_name_idx").on(table.companyId, table.name),
-    companyFolderIdx: index("company_skills_company_folder_idx").on(table.companyId, table.folderId),
+    companyKeyUniqueIdx: uniqueIndex("company_skills_company_key_idx").on(table.key),
+    companyNameIdx: index("company_skills_company_name_idx").on(table.name),
+    companyFolderIdx: index("company_skills_company_folder_idx").on(table.folderId),
     companyCategoriesIdx: index("company_skills_company_categories_idx").using("gin", table.categories),
-    companySharingScopeIdx: index("company_skills_company_sharing_scope_idx").on(table.companyId, table.sharingScope),
-    companyCurrentVersionIdx: index("company_skills_company_current_version_idx").on(table.companyId, table.currentVersionId),
-    companyForkedFromIdx: index("company_skills_company_forked_from_idx").on(table.companyId, table.forkedFromSkillId),
+    companySharingScopeIdx: index("company_skills_company_sharing_scope_idx").on(table.sharingScope),
+    companyCurrentVersionIdx: index("company_skills_company_current_version_idx").on(table.currentVersionId),
+    companyForkedFromIdx: index("company_skills_company_forked_from_idx").on(table.forkedFromSkillId),
   }),
 );
 
@@ -72,7 +69,6 @@ export const companySkillVersions = pgTable(
   "company_skill_versions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     companySkillId: uuid("company_skill_id").notNull().references(() => companySkills.id, { onDelete: "cascade" }),
     revisionNumber: integer("revision_number").notNull(),
     label: text("label"),
@@ -93,7 +89,6 @@ export const companySkillVersions = pgTable(
       .on(table.companySkillId, table.releaseId)
       .where(sql`${table.releaseId} is not null`),
     companySkillCreatedIdx: index("company_skill_versions_company_skill_created_idx").on(
-      table.companyId,
       table.companySkillId,
       table.createdAt,
     ),
@@ -104,7 +99,6 @@ export const companySkillStars = pgTable(
   "company_skill_stars",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     companySkillId: uuid("company_skill_id").notNull().references(() => companySkills.id, { onDelete: "cascade" }),
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: "cascade" }),
     userId: text("user_id"),
@@ -114,7 +108,6 @@ export const companySkillStars = pgTable(
     companySkillAgentUniqueIdx: uniqueIndex("company_skill_stars_skill_agent_idx").on(table.companySkillId, table.agentId),
     companySkillUserUniqueIdx: uniqueIndex("company_skill_stars_skill_user_idx").on(table.companySkillId, table.userId),
     companySkillCreatedIdx: index("company_skill_stars_company_skill_created_idx").on(
-      table.companyId,
       table.companySkillId,
       table.createdAt,
     ),
@@ -125,7 +118,6 @@ export const companySkillComments = pgTable(
   "company_skill_comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     companySkillId: uuid("company_skill_id").notNull().references(() => companySkills.id, { onDelete: "cascade" }),
     parentCommentId: uuid("parent_comment_id").references((): AnyPgColumn => companySkillComments.id, { onDelete: "set null" }),
     authorAgentId: uuid("author_agent_id").references(() => agents.id, { onDelete: "set null" }),
@@ -137,7 +129,6 @@ export const companySkillComments = pgTable(
   },
   (table) => ({
     companySkillCreatedIdx: index("company_skill_comments_company_skill_created_idx").on(
-      table.companyId,
       table.companySkillId,
       table.createdAt,
     ),
@@ -149,7 +140,6 @@ export const companySkillTestInputs = pgTable(
   "company_skill_test_inputs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     skillId: uuid("skill_id").notNull().references(() => companySkills.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     content: text("content").notNull(),
@@ -160,12 +150,10 @@ export const companySkillTestInputs = pgTable(
   },
   (table) => ({
     companySkillNameIdx: index("company_skill_test_inputs_company_skill_name_idx").on(
-      table.companyId,
       table.skillId,
       table.name,
     ),
     companySkillActiveIdx: index("company_skill_test_inputs_company_skill_active_idx").on(
-      table.companyId,
       table.skillId,
       table.deletedAt,
     ),
@@ -176,7 +164,6 @@ export const companySkillTestRunTemplates = pgTable(
   "company_skill_test_run_templates",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
     body: text("body").notNull(),
@@ -190,7 +177,6 @@ export const companySkillTestRunTemplates = pgTable(
   },
   (table) => ({
     companyActiveIdx: index("company_skill_test_run_templates_company_active_idx").on(
-      table.companyId,
       table.deletedAt,
       table.name,
     ),
@@ -201,7 +187,6 @@ export const companySkillTestRuns = pgTable(
   "company_skill_test_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     skillId: uuid("skill_id").notNull().references(() => companySkills.id, { onDelete: "cascade" }),
     inputId: uuid("input_id").references(() => companySkillTestInputs.id, { onDelete: "set null" }),
     inputSnapshot: text("input_snapshot").notNull(),
@@ -227,19 +212,16 @@ export const companySkillTestRuns = pgTable(
   },
   (table) => ({
     companySkillCreatedIdx: index("company_skill_test_runs_company_skill_created_idx").on(
-      table.companyId,
       table.skillId,
       table.createdAt,
     ),
-    companyIssueIdx: uniqueIndex("company_skill_test_runs_company_issue_idx").on(table.companyId, table.issueId),
+    companyIssueIdx: uniqueIndex("company_skill_test_runs_company_issue_idx").on(table.issueId),
     companyInputCreatedIdx: index("company_skill_test_runs_company_input_created_idx").on(
-      table.companyId,
       table.inputId,
       table.createdAt,
     ),
-    companyStatusIdx: index("company_skill_test_runs_company_status_idx").on(table.companyId, table.status),
+    companyStatusIdx: index("company_skill_test_runs_company_status_idx").on(table.status),
     companyHarnessIssueExpiresIdx: index("company_skill_test_runs_company_harness_expires_idx").on(
-      table.companyId,
       table.harnessIssueExpiresAt,
     ),
   }),

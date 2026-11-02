@@ -15,7 +15,7 @@ const NOW = 5_000;
 function createMemoryStore() {
   const rows = new Map<string, SetupTokenCleanupRecord>();
   const matches = (row: SetupTokenCleanupRecord, identity: SetupTokenCleanupIdentity) =>
-    row.companyId === identity.companyId &&
+    true &&
     row.ownerUserId === identity.ownerUserId &&
     row.adapterType === identity.adapterType;
   return {
@@ -23,7 +23,6 @@ function createMemoryStore() {
     seed(record: Partial<SetupTokenCleanupRecord> & Pick<SetupTokenCleanupRecord, "sessionId" | "leaseId">) {
       const row: SetupTokenCleanupRecord = {
         sessionId: record.sessionId,
-        companyId: record.companyId ?? "company-1",
         ownerUserId: record.ownerUserId ?? "user-1",
         adapterType: record.adapterType ?? "claude_local",
         environmentId: record.environmentId ?? "env-1",

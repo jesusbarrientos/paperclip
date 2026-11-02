@@ -15,7 +15,7 @@ import { connectionIntentService } from "../services/connection-intents.js";
 import { logActivity } from "../services/activity-log.js";
 import { accessService } from "../services/access.js";
 import type { heartbeatService } from "../services/heartbeat.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertBoard, assertOrgAccess } from "./authz.js";
 import { resolveGitHubOperationCredentials } from "../services/github-operation-credentials.js";
 
 function bearer(req: Request) {
@@ -53,7 +53,7 @@ export function runtimeConnectionIntentRoutes(db: Db) {
     if (!claims) throw unauthorized("Invalid GitHub runtime capability");
     res.setHeader("Cache-Control", "no-store");
     res.json(await resolveGitHubOperationCredentials(db, {
-      companyId: claims.company_id, agentId: claims.sub, runId: claims.run_id,
+      agentId: claims.sub, runId: claims.run_id,
     }));
   });
 
@@ -150,10 +150,9 @@ export function connectionIntentBoardRoutes(db: Db, heartbeat: Heartbeat) {
     return req.actor.source === "local_implicit" || req.actor.isInstanceAdmin === true;
   }
 
-  async function canManageCompanyConnections(req: Request, companyId: string) {
+  async function canManageCompanyConnections(req: Request) {
     if (bypassCurrentMembershipCheck(req)) return true;
     return Boolean(req.actor.userId && await access.hasPermission(
-      companyId,
       "user",
       req.actor.userId,
       "tools:manage_connections",
@@ -163,7 +162,7 @@ export function connectionIntentBoardRoutes(db: Db, heartbeat: Heartbeat) {
   async function addressedIntent(req: Request) {
     assertBoard(req);
     const loaded = await service.loadIntent(req.params.interactionId as string);
-    assertCompanyAccess(req, loaded.issue.companyId);
+    assertOrgAccess(req);
     const userId = req.actor.userId ?? "local-board";
     if (loaded.interaction.addresseeUserId !== userId) {
       throw forbidden("Only the addressed user can act on this connection request");
@@ -182,7 +181,7 @@ export function connectionIntentBoardRoutes(db: Db, heartbeat: Heartbeat) {
   router.get("/connection-intents/:interactionId/setup-options", async (req, res) => {
     const { loaded } = await addressedIntent(req);
     res.json(await service.setupOptions(req.params.interactionId as string, {
-      canManageOrganizationGrant: await canManageCompanyConnections(req, loaded.issue.companyId),
+      canManageOrganizationGrant: await canManageCompanyConnections(req),
     }));
   });
 
@@ -202,11 +201,10 @@ export function connectionIntentBoardRoutes(db: Db, heartbeat: Heartbeat) {
     const { loaded, userId } = await addressedIntent(req);
     const input = completeConnectionIntentSchema.parse(req.body);
     const interaction = await service.complete(loaded.interaction.id, input.connectionId, userId, {
-      canManageOrganizationGrant: await canManageCompanyConnections(req, loaded.issue.companyId),
+      canManageOrganizationGrant: await canManageCompanyConnections(req),
       bypassCurrentMembershipCheck: bypassCurrentMembershipCheck(req),
     });
     await logActivity(db, {
-      companyId: loaded.issue.companyId,
       actorType: "user",
       actorId: userId,
       action: "issue.connection_intent_connected",
@@ -229,7 +227,6 @@ export function connectionIntentBoardRoutes(db: Db, heartbeat: Heartbeat) {
       bypassCurrentMembershipCheck: bypassCurrentMembershipCheck(req),
     });
     await logActivity(db, {
-      companyId: loaded.issue.companyId,
       actorType: "user",
       actorId: userId,
       action: "issue.connection_intent_declined",

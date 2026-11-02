@@ -23,7 +23,7 @@ import { inspectNativeCompletionSourceMetadata } from "../../../../tests/runner-
 const tools = PAPERCLIP_SEMANTIC_ACTION_CATALOG
   .filter(tool => tool.placement === "core")
   .map(tool => ({ name: tool.operationId, description: tool.description, inputSchema: tool.inputSchema }));
-const identity = { companyId: "company", agentId: "agent", issueId: "issue", runId: "run", sessionId: "session" };
+const identity = { agentId: "agent", issueId: "issue", runId: "run", sessionId: "session" };
 const { qualificationModel: _qualificationModel, reportedModelId: _reportedModelId, permissionPolicy: _permissionPolicy, ...profile } = resolveQualifiedAcpxProfile("claude", "claude-sonnet-5");
 const providers: NativeExecutionInput["provider"][] = [
   { kind: "codex", model: "gpt-5.6-sol", approvalPolicy: "never" },
@@ -45,7 +45,7 @@ function execution(provider: NativeExecutionInput["provider"], schema: "v4" | "v
   };
   return parseNativeExecutionInput({
     schema: `paperclip.native-execution-input.${schema}`,
-    binding: { companyId: identity.companyId, agentId: identity.agentId, issueId: identity.issueId, runId: identity.runId, executionWorkspaceId: "workspace" },
+    binding: { agentId: identity.agentId, issueId: identity.issueId, runId: identity.runId, executionWorkspaceId: "workspace" },
     task: { identifier: "TASK-1", title: "Save the requested document", description: "Save the requested document", prompt: "Save the requested document.", workMode: "standard" },
     workspace: { cwd: rootPath, repoUrl: null, repoRef: null, branchName: null },
     session: { normalizedSessionId: "session", driverKind: provider.kind === "acpx" ? "acpx_runtime" : provider.kind === "opencode" ? "opencode_server" : "codex_app_server", protocolVersion: 1 },

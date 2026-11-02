@@ -34,28 +34,28 @@ App-shipped catalog (read-only browse + company install):
 - `GET /api/skills/catalog/:catalogId`
 - `GET /api/skills/catalog/ref?ref=<id|key|slug>`
 - `GET /api/skills/catalog/:catalogId/files?path=SKILL.md`
-- `POST /api/companies/:companyId/skills/install-catalog`
+- `POST /api/skills/install-catalog`
 
 Company library:
 
-- `GET /api/companies/:companyId/skills`
-- `GET /api/companies/:companyId/skills/:skillId`
-- `GET /api/companies/:companyId/skills/:skillId/files?path=SKILL.md`
-- `POST /api/companies/:companyId/skills` (managed local create)
-- `POST /api/companies/:companyId/skills/import`
-- `POST /api/companies/:companyId/skills/scan-projects`
-- `GET /api/companies/:companyId/skills/:skillId/update-status`
-- `POST /api/companies/:companyId/skills/:skillId/install-update`
-- `POST /api/companies/:companyId/skills/:skillId/audit`
-- `POST /api/companies/:companyId/skills/:skillId/reset`
-- `DELETE /api/companies/:companyId/skills/:skillId`
+- `GET /api/skills`
+- `GET /api/skills/:skillId`
+- `GET /api/skills/:skillId/files?path=SKILL.md`
+- `POST /api/skills` (managed local create)
+- `POST /api/skills/import`
+- `POST /api/skills/scan-projects`
+- `GET /api/skills/:skillId/update-status`
+- `POST /api/skills/:skillId/install-update`
+- `POST /api/skills/:skillId/audit`
+- `POST /api/skills/:skillId/reset`
+- `DELETE /api/skills/:skillId`
 
 Agent attach and hire/create composition:
 
 - `GET /api/agents/:agentId/skills`
 - `POST /api/agents/:agentId/skills/sync`
-- `POST /api/companies/:companyId/agent-hires`
-- `POST /api/companies/:companyId/agents`
+- `POST /api/agent-hires`
+- `POST /api/agents`
 
 If a board user, CEO, or manager is driving locally, prefer the
 `paperclipai skills` CLI documented in `doc/CLI.md` — it wraps every endpoint
@@ -85,7 +85,7 @@ curl -sS "$PAPERCLIP_API_URL/api/skills/catalog?kind=bundled" \
 curl -sS "$PAPERCLIP_API_URL/api/skills/catalog/ref?ref=github-pr-workflow" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/install-catalog" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/skills/install-catalog" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -116,7 +116,7 @@ Import using a **skills.sh URL**, a key-style source string, a GitHub URL, or a 
 ### Example: skills.sh import (preferred)
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/import" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/skills/import" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -127,7 +127,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/
 Or equivalently using the key-style string:
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/import" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/skills/import" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -138,7 +138,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/
 ### Example: GitHub import
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/import" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/skills/import" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -155,7 +155,7 @@ You can also use source strings such as:
 If the task is to discover skills from the company project workspaces first:
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/scan-projects" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/skills/scan-projects" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -164,17 +164,17 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/
 ## Inspect What Was Installed
 
 ```sh
-curl -sS "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills" \
+curl -sS "$PAPERCLIP_API_URL/api/skills" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
 Read the skill entry and its `SKILL.md`:
 
 ```sh
-curl -sS "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/<skill-id>" \
+curl -sS "$PAPERCLIP_API_URL/api/skills/<skill-id>" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 
-curl -sS "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills/<skill-id>/files?path=SKILL.md" \
+curl -sS "$PAPERCLIP_API_URL/api/skills/<skill-id>/files?path=SKILL.md" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
@@ -218,7 +218,7 @@ curl -sS "$PAPERCLIP_API_URL/api/agents/<agent-id>/skills" \
 Use the same company skill keys or references in `desiredSkills` when hiring or creating an agent:
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-hires" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/agent-hires" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -237,7 +237,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-h
 For direct create without approval:
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agents" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/agents" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -259,8 +259,8 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agents"
 - If a reference is missing or ambiguous, the API returns `422`.
 - Prefer linking back to the relevant issue, approval, and agent when you comment about skill changes.
 - Use company portability routes when you need whole-package import/export, not just a skill:
-  - `POST /api/companies/:companyId/imports/preview`
-  - `POST /api/companies/:companyId/imports/apply`
-  - `POST /api/companies/:companyId/exports/preview`
-  - `POST /api/companies/:companyId/exports`
+  - `POST /api/imports/preview`
+  - `POST /api/imports/apply`
+  - `POST /api/exports/preview`
+  - `POST /api/exports`
 - Use skill-only import when the task is specifically to add a skill to the company library without importing the surrounding company/team/package structure.

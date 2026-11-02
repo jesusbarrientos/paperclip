@@ -16,7 +16,7 @@ the connection owner's identity or an earlier Slack sender. A routine uses its
 persisted responsible user when it runs, with fresh membership/link checks.
 
 An optional endpoint ID selects among the supplied assignments; it cannot grant
-access to another company's or agent's bot. Native tools, CLI calls and queued
+access to another agent's bot. Native tools, CLI calls and queued
 approvals enforce the same binding. Tokens and requester identities stay server-side.
 
 Reads require current bot membership and requester access. Full workspace members
@@ -141,7 +141,7 @@ current link to that bot's workspace. The bundled
 `TOOLS.json` provide the equivalent HTTP interface for CLI/sandbox adapters:
 
 ```text
-POST /api/companies/:companyId/slack/tasks/:issueId/tools
+POST /api/slack/tasks/:issueId/tools
 Authorization: Bearer <agent run key>
 X-Paperclip-Run-Id: <run ID>
 

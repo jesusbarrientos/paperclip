@@ -26,16 +26,14 @@ function Frame({
 
 const stalledReviewRow: AttentionItem = {
   id: "review:issue-1",
-  companyId: "company-1",
   sourceKind: "review",
   subject: {
     kind: "issue",
     id: "issue-1",
-    companyId: "company-1",
     title: "Ship the onboarding redesign",
     identifier: "PAP-4242",
     status: "in_review",
-    href: "/PAP/issues/PAP-4242",
+    href: "/issues/PAP-4242",
     metadata: { reviewAttentionState: "stalled" },
   },
   whyNow:
@@ -87,7 +85,6 @@ const meta = {
   component: AttentionQueueRow,
   args: {
     item: stalledReviewRow,
-    companyId: "company-1",
     expanded: true,
     onToggleExpand: () => {},
     onDismiss: () => {},
@@ -114,7 +111,6 @@ export const DecisionsCardInline: Story = {
       <Frame label="Decisions · a stalled review actuates the three verbs inline">
         <AttentionQueueRow
           item={stalledReviewRow}
-          companyId="company-1"
           expanded={expanded}
           onToggleExpand={() => setExpanded((prev) => !prev)}
           onDismiss={() => {}}
@@ -132,7 +128,6 @@ export const DecisionsCardInlineNarrow: Story = {
       <Frame width={390} label="Decisions · phone width — the inline verbs stack, never overlap">
         <AttentionQueueRow
           item={stalledReviewRow}
-          companyId="company-1"
           expanded={expanded}
           onToggleExpand={() => setExpanded((prev) => !prev)}
           onDismiss={() => {}}

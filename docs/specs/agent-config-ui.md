@@ -271,16 +271,16 @@ All endpoints already exist. No new server work needed for V1.
 
 | Action | Endpoint | Used by |
 |--------|----------|---------|
-| List agents | `GET /companies/:id/agents` | List page |
-| Get org tree | `GET /companies/:id/org` | Org chart view |
-| Create agent | `POST /companies/:id/agents` | Creation dialog |
+| List agents | `GET /agents` | List page |
+| Get org tree | `GET /org` | Org chart view |
+| Create agent | `POST /agents` | Creation dialog |
 | Update agent | `PATCH /agents/:id` | Configuration tab |
 | Pause/Resume/Terminate | `POST /agents/:id/{action}` | Header actions |
 | Reset session | `POST /agents/:id/runtime-state/reset-session` | Overflow menu |
 | Create API key | `POST /agents/:id/keys` | Overflow menu |
 | Get runtime state | `GET /agents/:id/runtime-state` | Overview tab, properties panel |
 | Invoke/Wakeup | `POST /agents/:id/heartbeat/invoke` | Header invoke button |
-| List runs | `GET /companies/:id/heartbeat-runs?agentId=X` | Runs tab |
+| List runs | `GET /heartbeat-runs?agentId=X` | Runs tab |
 | Cancel run | `POST /heartbeat-runs/:id/cancel` | Run detail |
 | Run events | `GET /heartbeat-runs/:id/events` | Log viewer |
 | Run log | `GET /heartbeat-runs/:id/log` | Full log view |

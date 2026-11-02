@@ -91,7 +91,6 @@ function createIssueRun(index: number, issueId: string) {
 function createIssue(id: string, identifier: string, title: string) {
   return {
     id,
-    companyId: "company-1",
     identifier,
     title,
     description: null,
@@ -137,13 +136,13 @@ describe("ActiveAgentsPanel", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
-          <ActiveAgentsPanel companyId="company-1" />
+          <ActiveAgentsPanel />
         </QueryClientProvider>,
       );
     });
     await flushReact();
 
-    expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith("company-1", {
+    expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith({
       minCount: 4,
       limit: undefined,
       distinctTasks: false,
@@ -179,13 +178,13 @@ describe("ActiveAgentsPanel", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
-          <ActiveAgentsPanel companyId="company-1" dedupeLinkedTasks />
+          <ActiveAgentsPanel dedupeLinkedTasks />
         </QueryClientProvider>,
       );
     });
     await flushReact();
 
-    expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith("company-1", {
+    expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith({
       minCount: 4,
       limit: undefined,
       distinctTasks: true,
@@ -217,7 +216,6 @@ describe("ActiveAgentsPanel", () => {
       root.render(
         <QueryClientProvider client={queryClient}>
           <ActiveAgentsPanel
-            companyId="company-1"
             minRunCount={50}
             fetchLimit={50}
             cardLimit={50}
@@ -229,7 +227,7 @@ describe("ActiveAgentsPanel", () => {
     });
     await flushReact();
 
-    expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith("company-1", {
+    expect(mockHeartbeatsApi.liveRunsForCompany).toHaveBeenCalledWith({
       minCount: 50,
       limit: 50,
       distinctTasks: false,
@@ -261,7 +259,7 @@ describe("ActiveAgentsPanel", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
-          <ActiveAgentsPanel companyId="company-1" />
+          <ActiveAgentsPanel />
         </QueryClientProvider>,
       );
     });
@@ -289,7 +287,6 @@ describe("ActiveAgentsPanel", () => {
       root.render(<>{statuses.map((status, index) => (
         <AgentRunCard
           key={status}
-          companyId="company-1"
           run={{ ...createIssueRun(index, "issue-1"), status }}
           issue={{ title: "Review release notes", identifier: "PAP-559", status: "in_review" }}
         />
@@ -314,7 +311,7 @@ describe("ActiveAgentsPanel", () => {
   it("shows an answered Slack task as idle without changing the run outcome", async () => {
     const root = createRoot(container);
     await act(async () => {
-      root.render(<AgentRunCard companyId="company-1"
+      root.render(<AgentRunCard
         run={{ ...createIssueRun(0, "issue-1"), status: "succeeded" }}
         issue={{ title: "Slack conversation", identifier: "PAP-559", status: "in_review", externalConversationState: "waiting" }} />);
     });
@@ -327,7 +324,7 @@ describe("ActiveAgentsPanel", () => {
   it("keeps a failed task lookup navigable and shows a clear error", async () => {
     const root = createRoot(container);
     await act(async () => {
-      root.render(<AgentRunCard companyId="company-1" run={createIssueRun(1, "issue-missing")} issueLoadFailed />);
+      root.render(<AgentRunCard run={createIssueRun(1, "issue-missing")} issueLoadFailed />);
     });
     expect(container.textContent).toContain("Task unavailable");
     expect(container.querySelector('a[href="/issues/issue-missing"]')).not.toBeNull();
@@ -338,7 +335,6 @@ describe("ActiveAgentsPanel", () => {
     const root = createRoot(container);
     await act(async () => {
       root.render(<AgentRunCard
-        companyId="company-1"
         run={{
           ...createRun(0),
           execution: {

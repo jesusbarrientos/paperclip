@@ -14,7 +14,6 @@ import type { TaskChatProviderActivityItem } from "./task-chat-model";
 function planDocument(overrides: Partial<IssueDocument> = {}): IssueDocument {
   return {
     id: "plan-document",
-    companyId: "company-1",
     issueId: "issue-1",
     key: "plan",
     title: "Plan",

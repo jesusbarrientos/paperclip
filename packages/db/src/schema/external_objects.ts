@@ -13,14 +13,12 @@ import type {
   ExternalObjectStatusCategory,
   ExternalObjectStatusTone,
 } from "@paperclipai/shared";
-import { companies } from "./companies.js";
 import { plugins } from "./plugins.js";
 
 export const externalObjects = pgTable(
   "external_objects",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     providerKey: text("provider_key").notNull(),
     pluginId: uuid("plugin_id").references(() => plugins.id, { onDelete: "set null" }),
     objectType: text("object_type").notNull(),
@@ -52,25 +50,17 @@ export const externalObjects = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyProviderObjectIdx: index("external_objects_company_provider_object_idx").on(
-      table.companyId,
-      table.providerKey,
-      table.objectType,
-    ),
     companyProviderStatusIdx: index("external_objects_company_provider_status_idx").on(
-      table.companyId,
       table.providerKey,
       table.statusCategory,
     ),
-    companyRefreshIdx: index("external_objects_company_refresh_idx").on(table.companyId, table.nextRefreshAt),
+    companyRefreshIdx: index("external_objects_company_refresh_idx").on(table.nextRefreshAt),
     companyExternalIdUq: uniqueIndex("external_objects_company_external_id_uq").on(
-      table.companyId,
       table.providerKey,
       table.objectType,
       table.externalId,
     ),
     companyCanonicalIdentityUq: uniqueIndex("external_objects_company_identity_uq").on(
-      table.companyId,
       table.providerKey,
       table.objectType,
       table.canonicalIdentityHash,

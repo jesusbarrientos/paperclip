@@ -6,17 +6,17 @@ import { captureRunIdentity } from "./run-identity.js";
 
 /** Resolve authority from the authenticated run, never caller-supplied user/task IDs. */
 export async function projectToolContext(db: Db, actor: Request["actor"], write = false, resource = "Project") {
-  if (actor.type !== "agent" || actor.source !== "agent_jwt" || !actor.runId || !actor.agentId || !actor.companyId) {
+  if (actor.type !== "agent" || actor.source !== "agent_jwt" || !actor.runId || !actor.agentId) {
     throw forbidden(`${resource} tools require an authenticated agent run`);
   }
   // Acquire task/run locks before checking mode and session generation. A reset,
   // cancellation, or steering update cannot race a committing project mutation.
-  const identity = await captureRunIdentity(db, { companyId: actor.companyId, agentId: actor.agentId, runId: actor.runId });
+  const identity = await captureRunIdentity(db, { agentId: actor.agentId, runId: actor.runId });
   const run = identity.run;
   const snapshot = run.contextSnapshot ?? {};
   const issueId = run.nativeIssueId ?? (typeof snapshot.issueId === "string" ? snapshot.issueId : null);
   if (!issueId) throw forbidden(`${resource} tools require a task-bound run`);
-  const [issue] = await db.select().from(issues).where(and(eq(issues.id, issueId), eq(issues.companyId, actor.companyId)));
+  const [issue] = await db.select().from(issues).where(eq(issues.id, issueId));
   if (!issue) throw forbidden("Run task is unavailable");
   if (issue.conversationAgentId && Number(snapshot.conversationSessionGeneration ?? 0) !== issue.conversationSessionGeneration) {
     throw forbidden("Conversation session has changed");

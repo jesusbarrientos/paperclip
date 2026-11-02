@@ -13,55 +13,52 @@ import {
 } from "@/lib/saved-provider-credentials";
 
 export function useSavedProviderKeys(
-  companyId: string | null,
   envKey: string,
   enabled = true,
 ) {
   const provider = ({ ANTHROPIC_API_KEY: "anthropic", OPENAI_API_KEY: "openai", OPENROUTER_API_KEY: "openrouter", XAI_API_KEY: "xai" } as Record<string, AiProvider>)[envKey];
   const managed = useQuery({
-    queryKey: ["ai-connections", companyId],
-    queryFn: () => aiConnectionsApi.list(companyId!),
-    enabled: Boolean(companyId && provider) && enabled,
+    queryKey: ["ai-connections"],
+    queryFn: () => aiConnectionsApi.list(),
+    enabled: Boolean(provider) && enabled,
     retry: false,
   });
-  const managedAccounts = provider && managed.data ? savedManagedProviderAccounts(companyId!, provider, managed.data.currentUserId, managed.data.connections) : [];
+  const managedAccounts = provider && managed.data ? savedManagedProviderAccounts(provider, managed.data.currentUserId, managed.data.connections) : [];
   const personal = useQuery({
-    queryKey: queryKeys.secrets.myUserSecrets(companyId ?? ""),
-    queryFn: () => secretsApi.listMyUserSecrets(companyId!),
-    enabled: Boolean(companyId) && enabled,
+    queryKey: queryKeys.secrets.myUserSecrets(),
+    queryFn: () => secretsApi.listMyUserSecrets(),
+    enabled,
     retry: false,
   });
   const organization = useQuery({
-    queryKey: queryKeys.secrets.list(companyId ?? ""),
-    queryFn: () => secretsApi.list(companyId!),
-    enabled: Boolean(companyId) && enabled,
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
+    enabled,
     retry: false,
   });
   const storedLogin = useQuery({
     // Disabled queries still return cached data. Keep other providers away
     // from the shared Claude login cache.
-    queryKey: ["claude-oauth-token-status", envKey === "ANTHROPIC_API_KEY" ? companyId : null],
+    queryKey: envKey === "ANTHROPIC_API_KEY" ? ["claude-oauth-token-status"] : ["claude-oauth-token-status", null],
     queryFn: async () => {
       try {
-        return await agentsApi.getClaudeOAuthTokenStatus(companyId!);
+        return await agentsApi.getClaudeOAuthTokenStatus();
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
       }
     },
-    enabled: Boolean(companyId) && enabled && envKey === "ANTHROPIC_API_KEY",
+    enabled: enabled && envKey === "ANTHROPIC_API_KEY",
     retry: false,
   });
   return {
     storedLogin,
     options: [...managedAccounts.filter(account => account.aiConnection?.method === "api_key"), ...savedProviderKeys(
-      companyId ?? "",
       envKey,
       personal.data ?? [],
       organization.data ?? [],
     )],
     subscriptions: [...managedAccounts.filter(account => account.aiConnection?.method === "subscription"), ...(provider === "openai" ? savedCodexSubscriptions(
-      companyId ?? "",
       organization.data ?? [],
     ) : [])],
     // Background refreshes must not unmount an active login panel sharing this query.

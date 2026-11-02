@@ -115,7 +115,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(agents).values([
       {
         id: workerId,
-        companyId,
         name: "Worker",
         role: "engineer",
         status: "idle",
@@ -126,7 +125,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: reviewerId,
-        companyId,
         name: "Reviewer",
         role: "qa",
         status: "idle",
@@ -137,7 +135,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: errorAgentId,
-        companyId,
         name: "Broken Agent",
         role: "engineer",
         status: "error",
@@ -153,7 +150,6 @@ describeEmbeddedPostgres("attention service", () => {
   }
 
   async function insertIssue(input: {
-    companyId: string;
     id?: string;
     identifier: string;
     title: string;
@@ -178,7 +174,6 @@ describeEmbeddedPostgres("attention service", () => {
     const id = input.id ?? randomUUID();
     await db.insert(issues).values({
       id,
-      companyId: input.companyId,
       identifier: input.identifier,
       title: input.title,
       status: input.status,
@@ -226,9 +221,8 @@ describeEmbeddedPostgres("attention service", () => {
   }
 
   it("excludes internal harness reviews from items, counts, and decision queues", async () => {
-    const { companyId, workerId } = await seedCompany("ATH");
+    const { workerId } = await seedCompany("ATH");
     const harnessIssueId = await insertIssue({
-      companyId,
       identifier: "ATH-1",
       title: "Internal harness review",
       status: "in_review",
@@ -238,14 +232,12 @@ describeEmbeddedPostgres("attention service", () => {
     const queueId = randomUUID();
     await db.insert(decisionQueues).values({
       id: queueId,
-      companyId,
       key: "internal-review",
       title: "Internal review",
       createdByType: "user",
       createdByUserId: "board-user",
     });
     await db.insert(decisionQueueItems).values({
-      companyId,
       queueId,
       sourceKind: "review",
       sourceId: harnessIssueId,
@@ -253,7 +245,7 @@ describeEmbeddedPostgres("attention service", () => {
       addedByUserId: "board-user",
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
 
     expect(feed.items.some((item) => item.subject.id === harnessIssueId)).toBe(false);
     expect(feed.countsBySourceKind.review ?? 0).toBe(0);
@@ -264,7 +256,6 @@ describeEmbeddedPostgres("attention service", () => {
     const { companyId, workerId, reviewerId } = await seedCompany("ATN");
     const baseTime = new Date("2026-07-09T12:00:00.000Z");
     const interactionIssueId = await insertIssue({
-      companyId,
       identifier: "ATN-1",
       title: "Needs interaction",
       status: "in_progress",
@@ -272,7 +263,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: baseTime,
     });
     const recoverySourceIssueId = await insertIssue({
-      companyId,
       identifier: "ATN-2",
       title: "Needs recovery",
       status: "in_progress",
@@ -280,7 +270,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: baseTime,
     });
     const agentRecoverySourceIssueId = await insertIssue({
-      companyId,
       identifier: "ATN-21",
       title: "Agent-owned recovery source",
       status: "in_progress",
@@ -288,7 +277,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: baseTime,
     });
     const productivitySourceIssueId = await insertIssue({
-      companyId,
       identifier: "ATN-3",
       title: "Needs productivity review source",
       status: "in_progress",
@@ -296,7 +284,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: baseTime,
     });
     const agentProductivitySourceIssueId = await insertIssue({
-      companyId,
       identifier: "ATN-31",
       title: "Agent productivity review source",
       status: "in_progress",
@@ -304,7 +291,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: baseTime,
     });
     const blockerParentId = await insertIssue({
-      companyId,
       identifier: "ATN-4",
       title: "Blocked parent",
       status: "blocked",
@@ -312,7 +298,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: new Date("2026-07-09T12:04:00.000Z"),
     });
     const blockerLeafId = await insertIssue({
-      companyId,
       identifier: "ATN-5",
       title: "Stalled review blocker",
       status: "in_review",
@@ -323,13 +308,11 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: new Date("2026-07-09T12:05:00.000Z"),
     });
     await db.insert(issueRelations).values({
-      companyId,
       issueId: blockerLeafId,
       relatedIssueId: blockerParentId,
       type: "blocks",
     });
     const reviewUserIssueId = await insertIssue({
-      companyId,
       identifier: "ATN-6",
       title: "Human review",
       status: "in_review",
@@ -337,7 +320,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: new Date("2026-07-09T12:06:00.000Z"),
     });
     await insertIssue({
-      companyId,
       identifier: "ATN-7",
       title: "Agent review excluded",
       status: "in_review",
@@ -349,7 +331,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(approvals).values([
       {
         id: pendingApprovalId,
-        companyId,
         type: "hire_agent",
         status: "pending",
         payload: { title: "Hire Designer" },
@@ -358,7 +339,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         type: "hire_agent",
         status: "revision_requested",
         payload: { title: "Revision requested" },
@@ -370,7 +350,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(issueThreadInteractions).values([
       {
         id: randomUUID(),
-        companyId,
         issueId: interactionIssueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -382,7 +361,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId: interactionIssueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -395,7 +373,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId: interactionIssueId,
         kind: "request_confirmation",
         status: "accepted",
@@ -428,7 +405,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(issueRecoveryActions).values([
       {
         id: randomUUID(),
-        companyId,
         sourceIssueId: recoverySourceIssueId,
         kind: "missing_disposition",
         status: "escalated",
@@ -444,7 +420,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         sourceIssueId: agentRecoverySourceIssueId,
         kind: "stranded_assigned_issue",
         status: "active",
@@ -461,7 +436,6 @@ describeEmbeddedPostgres("attention service", () => {
     ]);
 
     await insertIssue({
-      companyId,
       identifier: "ATN-8",
       title: "Human productivity review",
       status: "todo",
@@ -474,7 +448,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: new Date("2026-07-09T12:08:00.000Z"),
     });
     await insertIssue({
-      companyId,
       identifier: "ATN-9",
       title: "Agent productivity review excluded",
       status: "todo",
@@ -492,7 +465,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: exhaustedRunId,
-        companyId,
         agentId: workerId,
         invocationSource: "automation",
         status: "failed",
@@ -507,7 +479,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: transientRunId,
-        companyId,
         agentId: reviewerId,
         invocationSource: "automation",
         status: "failed",
@@ -520,7 +491,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
     await db.insert(heartbeatRunEvents).values({
-      companyId,
       runId: exhaustedRunId,
       agentId: workerId,
       seq: 1,
@@ -536,7 +506,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(budgetPolicies).values([
       {
         id: softPolicy85Id,
-        companyId,
         scopeType: "company",
         scopeId: companyId,
         metric: "billed_cents",
@@ -545,7 +514,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: softPolicy84Id,
-        companyId,
         scopeType: "company",
         scopeId: companyId,
         metric: "billed_cents",
@@ -554,7 +522,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: hardPolicyId,
-        companyId,
         scopeType: "agent",
         scopeId: workerId,
         metric: "billed_cents",
@@ -564,7 +531,6 @@ describeEmbeddedPostgres("attention service", () => {
     ]);
     await db.insert(budgetIncidents).values([
       {
-        companyId,
         policyId: softPolicy85Id,
         scopeType: "company",
         scopeId: companyId,
@@ -580,7 +546,6 @@ describeEmbeddedPostgres("attention service", () => {
         updatedAt: new Date("2026-07-09T12:10:00.000Z"),
       },
       {
-        companyId,
         policyId: softPolicy84Id,
         scopeType: "company",
         scopeId: companyId,
@@ -596,7 +561,6 @@ describeEmbeddedPostgres("attention service", () => {
         updatedAt: new Date("2026-07-09T12:10:30.000Z"),
       },
       {
-        companyId,
         policyId: hardPolicyId,
         scopeType: "agent",
         scopeId: workerId,
@@ -613,7 +577,7 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
 
     expect(feed.totalCount).toBe(11);
     expect(feed.countsBySourceKind).toMatchObject({
@@ -708,13 +672,12 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("returns addressed interactions to board attention after addressee pause or termination", async () => {
-    const { companyId, reviewerId } = await seedCompany("ATF");
+    const { reviewerId } = await seedCompany("ATF");
     const pausedReviewerId = randomUUID();
     const terminatedReviewerId = randomUUID();
     await db.insert(agents).values([
       {
         id: pausedReviewerId,
-        companyId,
         name: "Paused Reviewer",
         role: "qa",
         status: "active",
@@ -725,7 +688,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: terminatedReviewerId,
-        companyId,
         name: "Terminated Reviewer",
         role: "qa",
         status: "active",
@@ -736,7 +698,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATF-1",
       title: "Needs a decision",
       status: "in_progress",
@@ -744,7 +705,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(issueThreadInteractions).values([
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -754,7 +714,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -765,7 +724,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -776,7 +734,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -790,7 +747,7 @@ describeEmbeddedPostgres("attention service", () => {
     await agentService(db).pause(pausedReviewerId);
     await agentService(db).terminate(terminatedReviewerId);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const interactionTitles = feed.items
       .filter((item) => item.sourceKind === "issue_thread_interaction")
       .map((item) => item.subject.title);
@@ -807,9 +764,8 @@ describeEmbeddedPostgres("attention service", () => {
   // the interaction, so the audience the resolution routes will enforce has to
   // ship with the feed item.
   it("ships the effective resolver audience with each interaction row", async () => {
-    const { companyId, workerId, reviewerId } = await seedCompany("ARA");
+    const { workerId, reviewerId } = await seedCompany("ARA");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ARA-1",
       title: "Needs a decision",
       status: "in_progress",
@@ -817,7 +773,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(issueThreadInteractions).values([
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -827,7 +782,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -840,7 +794,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -856,7 +809,6 @@ describeEmbeddedPostgres("attention service", () => {
     // act, which is exactly when naming the addressee matters most.
     await db.insert(issueThreadInteractions).values({
       id: randomUUID(),
-      companyId,
       issueId,
       kind: "ask_user_questions",
       status: "pending",
@@ -867,7 +819,6 @@ describeEmbeddedPostgres("attention service", () => {
     });
     await db.insert(issueThreadInteractions).values({
       id: randomUUID(),
-      companyId,
       issueId,
       kind: "ask_user_questions",
       status: "pending",
@@ -880,8 +831,8 @@ describeEmbeddedPostgres("attention service", () => {
     });
     await agentService(db).pause(reviewerId);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
-    const otherUserFeed = await attentionService(db).list(companyId, { userId: "other-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
+    const otherUserFeed = await attentionService(db).list({ userId: "other-user" });
     const audienceByTitle = new Map(feed.items
       .filter((item) => item.sourceKind === "issue_thread_interaction")
       .map((item) => [item.subject.title, item.resolverAudience]));
@@ -918,46 +869,41 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("reads one compact row per exhausted run despite thousands of historical receipts", async () => {
-    const { companyId, workerId, reviewerId } = await seedCompany("MEM");
-    const other = await seedCompany("OTH");
+    const { workerId, reviewerId } = await seedCompany("MEM");
     await db.update(agents).set({ status: "terminated" }).where(eq(agents.id, reviewerId));
     const issueId = await insertIssue({
-      companyId, identifier: "MEM-1", title: "Failed task", status: "in_progress",
+      identifier: "MEM-1", title: "Failed task", status: "in_progress",
     });
     const taskId = await insertIssue({
-      companyId, identifier: "MEM-2", title: "Timed out task", status: "in_progress",
+      identifier: "MEM-2", title: "Timed out task", status: "in_progress",
     });
-    const [failedId, timedOutId, succeededId, terminatedId, foreignId, noReceiptId] =
-      Array.from({ length: 6 }, () => randomUUID());
+    const [failedId, timedOutId, succeededId, terminatedId, noReceiptId] =
+      Array.from({ length: 5 }, () => randomUUID());
     const createdAt = new Date("2026-07-09T12:00:00.000Z");
     await db.insert(heartbeatRuns).values([
-      { id: failedId, companyId, agentId: workerId, status: "failed", contextSnapshot: { issueId, prompt: "x".repeat(32_000) } },
-      { id: timedOutId, companyId, agentId: workerId, status: "timed_out", contextSnapshot: { taskId, prompt: "y".repeat(32_000) } },
-      { id: succeededId, companyId, agentId: workerId, status: "succeeded" },
-      { id: terminatedId, companyId, agentId: reviewerId, status: "failed" },
-      { id: foreignId, companyId: other.companyId, agentId: other.workerId, status: "failed" },
-      { id: noReceiptId, companyId, agentId: workerId, status: "failed" },
+      { id: failedId, agentId: workerId, status: "failed", contextSnapshot: { issueId, prompt: "x".repeat(32_000) } },
+      { id: timedOutId, agentId: workerId, status: "timed_out", contextSnapshot: { taskId, prompt: "y".repeat(32_000) } },
+      { id: succeededId, agentId: workerId, status: "succeeded" },
+      { id: terminatedId, agentId: reviewerId, status: "failed" },
+      { id: noReceiptId, agentId: workerId, status: "failed" },
     ].map((run) => ({ ...run, createdAt, updatedAt: createdAt, finishedAt: createdAt })));
     for (let batch = 0; batch < 5; batch += 1) {
       await db.insert(heartbeatRunEvents).values(Array.from({ length: 500 }, (_, index) => ({
-        companyId, agentId: workerId, runId: failedId, seq: batch * 500 + index + 1,
+        agentId: workerId, runId: failedId, seq: batch * 500 + index + 1,
         eventType: "lifecycle", message: `Bounded retry exhausted receipt ${batch * 500 + index + 1}`,
       })));
     }
     await db.insert(heartbeatRunEvents).values([
-      { companyId, agentId: workerId, runId: timedOutId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted timeout" },
-      { companyId, agentId: workerId, runId: succeededId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted success" },
-      { companyId, agentId: reviewerId, runId: terminatedId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted terminated" },
-      { companyId: other.companyId, agentId: other.workerId, runId: foreignId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted other company" },
-      // A newer event must not replace the latest matching, company-scoped receipt.
-      { companyId: other.companyId, agentId: other.workerId, runId: failedId, seq: 2501, eventType: "lifecycle", message: "Bounded retry exhausted foreign receipt" },
-      { companyId, agentId: workerId, runId: failedId, seq: 2502, eventType: "stdout", message: "Bounded retry exhausted quoted output" },
-      { companyId, agentId: workerId, runId: failedId, seq: 2503, eventType: "lifecycle", message: "Unrelated lifecycle event" },
+      { agentId: workerId, runId: timedOutId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted timeout" },
+      { agentId: workerId, runId: succeededId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted success" },
+      { agentId: reviewerId, runId: terminatedId, seq: 1, eventType: "lifecycle", message: "Bounded retry exhausted terminated" },
+      { agentId: workerId, runId: failedId, seq: 2502, eventType: "stdout", message: "Bounded retry exhausted quoted output" },
+      { agentId: workerId, runId: failedId, seq: 2503, eventType: "lifecycle", message: "Unrelated lifecycle event" },
     ]);
 
     // Assert the database result itself: JavaScript feed deduplication used to
     // hide the thousands of full run contexts already loaded into memory.
-    const rows = await listAttentionExhaustedRuns(db, companyId);
+    const rows = await listAttentionExhaustedRuns(db);
     expect(rows).toHaveLength(2);
     expect(rows.find((row) => row.id === failedId)).toMatchObject({
       exhaustionMessage: "Bounded retry exhausted receipt 2500",
@@ -966,7 +912,7 @@ describeEmbeddedPostgres("attention service", () => {
     expect(rows.find((row) => row.id === timedOutId)?.contextSnapshot).toEqual({ issueId: null, taskId });
     expect(Buffer.byteLength(JSON.stringify(rows))).toBeLessThan(4096);
 
-    const feed = await attentionService(db).list(companyId, {
+    const feed = await attentionService(db).list({
       includeDismissed: true, all: true, allowUnscopedAll: true,
     });
     const failures = feed.items.filter((item) => item.sourceKind === "failed_run");
@@ -975,9 +921,8 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("suppresses failed-run attention after a newer run for the same issue", async () => {
-    const { companyId, workerId } = await seedCompany("ATN");
+    const { workerId } = await seedCompany("ATN");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATN-1",
       title: "Recoverable task",
       status: "in_progress",
@@ -988,7 +933,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: failedRunId,
-        companyId,
         agentId: workerId,
         invocationSource: "automation",
         status: "failed",
@@ -1000,7 +944,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         agentId: workerId,
         invocationSource: "automation",
         status: "succeeded",
@@ -1011,7 +954,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
     await db.insert(heartbeatRunEvents).values({
-      companyId,
       runId: failedRunId,
       agentId: workerId,
       seq: 1,
@@ -1020,13 +962,13 @@ describeEmbeddedPostgres("attention service", () => {
       createdAt: new Date("2026-07-09T12:00:01.000Z"),
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
 
     expect(feed.items.filter((item) => item.sourceKind === "failed_run")).toEqual([]);
   });
 
   it("enriches interaction details with project, workspace, plan metadata, and images", async () => {
-    const { companyId, workerId } = await seedCompany("ATE");
+    const { workerId } = await seedCompany("ATE");
     const projectId = randomUUID();
     const workspaceId = randomUUID();
     const issueId = randomUUID();
@@ -1036,7 +978,6 @@ describeEmbeddedPostgres("attention service", () => {
 
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Attention Project",
       status: "in_progress",
       color: "#0f766e",
@@ -1044,7 +985,6 @@ describeEmbeddedPostgres("attention service", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: workspaceId,
-      companyId,
       projectId,
       name: "Preview workspace",
       sourceType: "local_path",
@@ -1052,7 +992,6 @@ describeEmbeddedPostgres("attention service", () => {
     });
     await insertIssue({
       id: issueId,
-      companyId,
       identifier: "ATE-1",
       title: "Approve launch plan",
       status: "in_progress",
@@ -1063,7 +1002,6 @@ describeEmbeddedPostgres("attention service", () => {
     });
     await db.insert(documents).values({
       id: planDocumentId,
-      companyId,
       title: "Launch Plan",
       format: "markdown",
       latestBody: "# Summary\n\nThis plan explains the launch checklist, rollout owner, QA gates, and risk controls for the homepage release.",
@@ -1071,19 +1009,17 @@ describeEmbeddedPostgres("attention service", () => {
       latestRevisionNumber: 2,
     });
     await db.insert(issueDocuments).values({
-      companyId,
       issueId,
       documentId: planDocumentId,
       key: "plan",
     });
     await db.insert(assets).values([
-      { id: imageAssetIds[0], companyId, provider: "local_disk", objectKey: "img-1", contentType: "image/png", byteSize: 10, sha256: "a".repeat(64), originalFilename: "one.png" },
-      { id: imageAssetIds[1], companyId, provider: "local_disk", objectKey: "img-2", contentType: "image/jpeg", byteSize: 10, sha256: "b".repeat(64), originalFilename: "two.jpg" },
-      { id: imageAssetIds[2], companyId, provider: "local_disk", objectKey: "img-3", contentType: "image/gif", byteSize: 10, sha256: "c".repeat(64), originalFilename: "three.gif" },
-      { id: imageAssetIds[3], companyId, provider: "local_disk", objectKey: "img-4", contentType: "image/png", byteSize: 10, sha256: "d".repeat(64), originalFilename: "four.png" },
+      { id: imageAssetIds[0], provider: "local_disk", objectKey: "img-1", contentType: "image/png", byteSize: 10, sha256: "a".repeat(64), originalFilename: "one.png" },
+      { id: imageAssetIds[1], provider: "local_disk", objectKey: "img-2", contentType: "image/jpeg", byteSize: 10, sha256: "b".repeat(64), originalFilename: "two.jpg" },
+      { id: imageAssetIds[2], provider: "local_disk", objectKey: "img-3", contentType: "image/gif", byteSize: 10, sha256: "c".repeat(64), originalFilename: "three.gif" },
+      { id: imageAssetIds[3], provider: "local_disk", objectKey: "img-4", contentType: "image/png", byteSize: 10, sha256: "d".repeat(64), originalFilename: "four.png" },
     ]);
     await db.insert(issueAttachments).values(imageAssetIds.map((assetId, index) => ({
-      companyId,
       issueId,
       assetId,
       createdAt: new Date(`2026-07-09T12:0${index}:30.000Z`),
@@ -1098,7 +1034,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(issueThreadInteractions).values([
       {
         id: planInteractionId,
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "pending",
@@ -1116,7 +1051,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: questionsInteractionId,
-        companyId,
         issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -1134,7 +1068,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: tasksInteractionId,
-        companyId,
         issueId,
         kind: "suggest_tasks",
         status: "pending",
@@ -1146,7 +1079,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: checkboxInteractionId,
-        companyId,
         issueId,
         kind: "request_checkbox_confirmation",
         status: "pending",
@@ -1158,7 +1090,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: verdictInteractionId,
-        companyId,
         issueId,
         kind: "request_item_verdicts",
         status: "pending",
@@ -1170,7 +1101,7 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const interactionItems = feed.items.filter((item) => item.sourceKind === "issue_thread_interaction");
     const detailsByKind = new Map(interactionItems.map((item) => [item.detail?.kind, item]));
 
@@ -1219,9 +1150,8 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("shows only the newest pending confirmation per issue and kind", async () => {
-    const { companyId, workerId, reviewerId } = await seedCompany("ATC");
+    const { workerId, reviewerId } = await seedCompany("ATC");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATC-1",
       title: "Repeated sign-offs",
       status: "in_review",
@@ -1233,7 +1163,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(issueThreadInteractions).values([
       {
         id: olderConfirmationId,
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "pending",
@@ -1246,7 +1175,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: newerConfirmationId,
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "pending",
@@ -1259,7 +1187,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: checkboxId,
-        companyId,
         issueId,
         kind: "request_checkbox_confirmation",
         status: "pending",
@@ -1272,7 +1199,7 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const interactionIds = feed.items
       .filter((item) => item.sourceKind === "issue_thread_interaction")
       .map((item) => item.subject.id);
@@ -1283,11 +1210,10 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("uses inbox_dismissals with attention-prefixed dedup keys and resurfaces newer activity", async () => {
-    const { companyId } = await seedCompany("ATD");
+    const {} = await seedCompany("ATD");
     const approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
       type: "hire_agent",
       status: "pending",
       payload: { title: "Hire Writer" },
@@ -1295,15 +1221,14 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: new Date("2026-07-09T12:00:00.000Z"),
     });
     await db.insert(inboxDismissals).values({
-      companyId,
       userId: "board-user",
       itemKey: `attention:approval:${approvalId}`,
       dismissedAt: new Date("2026-07-09T13:00:00.000Z"),
     });
 
-    await expect(attentionService(db).list(companyId, { userId: "board-user" }))
+    await expect(attentionService(db).list({ userId: "board-user" }))
       .resolves.toMatchObject({ totalCount: 1 }); // agent_error_alert from seed
-    const includeDismissedFeed = await attentionService(db).list(companyId, { userId: "board-user", includeDismissed: true });
+    const includeDismissedFeed = await attentionService(db).list({ userId: "board-user", includeDismissed: true });
     expect(includeDismissedFeed.totalCount).toBe(2);
     expect(includeDismissedFeed.items.find((item) => item.dedupKey === `approval:${approvalId}`)?.dismissal)
       .toMatchObject({ kind: "dismiss", isActive: true, snoozedUntil: null });
@@ -1313,15 +1238,14 @@ describeEmbeddedPostgres("attention service", () => {
       .set({ updatedAt: new Date("2026-07-09T14:00:00.000Z") })
       .where(eq(approvals.id, approvalId));
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     expect(feed.items.some((item) => item.dedupKey === `approval:${approvalId}`)).toBe(true);
   });
 
   it("delivers a structured human unblock descriptor once per blocked transition", async () => {
-    const { companyId } = await seedCompany("ATU");
+    const {} = await seedCompany("ATU");
     const transitionAt = new Date("2026-07-23T18:30:00.000Z");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATU-1",
       title: "Needs board action",
       status: "blocked",
@@ -1329,7 +1253,7 @@ describeEmbeddedPostgres("attention service", () => {
       blockedTransitionAt: transitionAt,
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const items = feed.items.filter((item) => item.dedupKey === `blocked-owner:${issueId}:${transitionAt.toISOString()}`);
 
     expect(items).toHaveLength(1);
@@ -1337,16 +1261,15 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("keeps legacy blocker attention visible for pre-rollout blocked issues", async () => {
-    const { companyId } = await seedCompany("ATP");
+    const {} = await seedCompany("ATP");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATP-1",
       title: "Blocked before rollout",
       status: "blocked",
       blockedTransitionAt: new Date(ROUTABLE_BLOCKED_ROLLOUT_AT.getTime() - 1),
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
 
     expect(feed.items.some((item) => item.dedupKey === `blocker:${issueId}`)).toBe(true);
   });
@@ -1355,16 +1278,15 @@ describeEmbeddedPostgres("attention service", () => {
   // task's own identity when no `blocks` relation was loaded, so every such row
   // claimed the task was blocked by itself ("PAP-23 — Blocked by PAP-23").
   it("reports no blocking task rather than a self-reference when the blocker is unknown", async () => {
-    const { companyId } = await seedCompany("ATV");
+    const {} = await seedCompany("ATV");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATV-1",
       title: "Blocked with no relation",
       status: "blocked",
       blockedTransitionAt: new Date(ROUTABLE_BLOCKED_ROLLOUT_AT.getTime() - 1),
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const row = feed.items.find((item) => item.dedupKey === `blocker:${issueId}`);
 
     expect(row).toBeTruthy();
@@ -1373,99 +1295,89 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("suppresses a blocked dependency row while its blocker is actively progressing", async () => {
-    const { companyId } = await seedCompany("ATW");
+    const {} = await seedCompany("ATW");
     const blockedId = await insertIssue({
-      companyId,
       identifier: "ATW-1",
       title: "Blocked parent",
       status: "blocked",
       blockedTransitionAt: new Date(ROUTABLE_BLOCKED_ROLLOUT_AT.getTime() - 1),
     });
     const blockerId = await insertIssue({
-      companyId,
       identifier: "ATW-2",
       title: "The actual blocker",
       status: "in_progress",
     });
     await db.insert(issueRelations).values({
-      companyId,
       issueId: blockerId,
       relatedIssueId: blockedId,
       type: "blocks",
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     expect(feed.items.some((item) => item.sourceKind === "blocker_attention")).toBe(false);
   });
 
   it("suppresses a mixed blocker tree when any blocker is live", async () => {
-    const { companyId } = await seedCompany("ATL");
+    const {} = await seedCompany("ATL");
     const blockedId = await insertIssue({
-      companyId,
       identifier: "ATL-1",
       title: "Blocked rollout",
       status: "blocked",
     });
     const blockerIds = await Promise.all([
-      insertIssue({ companyId, identifier: "ATL-2", title: "Live phase one", status: "in_progress" }),
-      insertIssue({ companyId, identifier: "ATL-3", title: "Live phase two", status: "in_progress" }),
-      insertIssue({ companyId, identifier: "ATL-4", title: "Live phase three", status: "in_progress" }),
-      insertIssue({ companyId, identifier: "ATL-5", title: "Stopped phase", status: "todo" }),
+      insertIssue({ identifier: "ATL-2", title: "Live phase one", status: "in_progress" }),
+      insertIssue({ identifier: "ATL-3", title: "Live phase two", status: "in_progress" }),
+      insertIssue({ identifier: "ATL-4", title: "Live phase three", status: "in_progress" }),
+      insertIssue({ identifier: "ATL-5", title: "Stopped phase", status: "todo" }),
     ]);
     await db.insert(issueRelations).values(blockerIds.map((issueId) => ({
-      companyId,
       issueId,
       relatedIssueId: blockedId,
       type: "blocks" as const,
     })));
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
 
     expect(feed.items.filter((item) => item.sourceKind === "blocker_attention")).toEqual([]);
   });
 
   it("emits one terminal-blocker row with a cycle-safe transitive blocked-work count", async () => {
-    const { companyId } = await seedCompany("ATC");
+    const {} = await seedCompany("ATC");
     const terminalId = await insertIssue({
-      companyId,
       identifier: "ATC-1",
       title: "Choose migration owner",
       status: "todo",
     });
     const blockedId = await insertIssue({
-      companyId,
       identifier: "ATC-2",
       title: "Blocked migration",
       status: "blocked",
     });
     await insertIssue({
-      companyId,
       identifier: "ATC-3",
       title: "Open migration child",
       status: "todo",
       parentId: blockedId,
     });
     const transitiveId = await insertIssue({
-      companyId,
       identifier: "ATC-4",
       title: "Transitively blocked follow-up",
       status: "todo",
     });
     await insertIssue({
-      companyId,
       identifier: "ATC-5",
       title: "Closed child",
       status: "done",
       parentId: blockedId,
     });
     await db.insert(issueRelations).values([
-      { companyId, issueId: terminalId, relatedIssueId: blockedId, type: "blocks" },
-      { companyId, issueId: blockedId, relatedIssueId: transitiveId, type: "blocks" },
+      { issueId: terminalId, relatedIssueId: blockedId, type: "blocks" },
+      { issueId: blockedId, relatedIssueId: transitiveId, type: "blocks" },
       // Corrupt legacy cycles must not inflate or hang the count.
-      { companyId, issueId: transitiveId, relatedIssueId: blockedId, type: "blocks" },
+      { issueId: transitiveId, relatedIssueId: blockedId, type: "blocks" },
     ]);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const rows = feed.items.filter((item) => item.sourceKind === "blocker_attention");
 
     expect(rows).toHaveLength(1);
@@ -1479,41 +1391,37 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("orders terminal blockers by blocked-work weight descending", async () => {
-    const { companyId } = await seedCompany("ATR");
+    const {} = await seedCompany("ATR");
     const heavyTerminalId = await insertIssue({
-      companyId,
       identifier: "ATR-1",
       title: "Heavy blocker",
       status: "todo",
       updatedAt: new Date("2026-07-01T00:00:00.000Z"),
     });
     const lightTerminalId = await insertIssue({
-      companyId,
       identifier: "ATR-2",
       title: "Light blocker",
       status: "todo",
       updatedAt: new Date("2026-07-03T00:00:00.000Z"),
     });
     const heavyBlockedId = await insertIssue({
-      companyId,
       identifier: "ATR-3",
       title: "Heavy blocked root",
       status: "blocked",
     });
     const lightBlockedId = await insertIssue({
-      companyId,
       identifier: "ATR-4",
       title: "Light blocked root",
       status: "blocked",
     });
-    await insertIssue({ companyId, identifier: "ATR-5", title: "Heavy child one", status: "todo", parentId: heavyBlockedId });
-    await insertIssue({ companyId, identifier: "ATR-6", title: "Heavy child two", status: "todo", parentId: heavyBlockedId });
+    await insertIssue({ identifier: "ATR-5", title: "Heavy child one", status: "todo", parentId: heavyBlockedId });
+    await insertIssue({ identifier: "ATR-6", title: "Heavy child two", status: "todo", parentId: heavyBlockedId });
     await db.insert(issueRelations).values([
-      { companyId, issueId: heavyTerminalId, relatedIssueId: heavyBlockedId, type: "blocks" },
-      { companyId, issueId: lightTerminalId, relatedIssueId: lightBlockedId, type: "blocks" },
+      { issueId: heavyTerminalId, relatedIssueId: heavyBlockedId, type: "blocks" },
+      { issueId: lightTerminalId, relatedIssueId: lightBlockedId, type: "blocks" },
     ]);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const rows = feed.items.filter((item) => item.sourceKind === "blocker_attention");
 
     expect(rows.map((item) => item.subject.id)).toEqual([heavyTerminalId, lightTerminalId]);
@@ -1521,10 +1429,9 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("does not name the blocked task as its own blocker on a human-owned unblock row", async () => {
-    const { companyId } = await seedCompany("ATX");
+    const {} = await seedCompany("ATX");
     const transitionAt = new Date("2026-07-23T18:30:00.000Z");
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATX-1",
       title: "Needs board action",
       status: "blocked",
@@ -1532,7 +1439,7 @@ describeEmbeddedPostgres("attention service", () => {
       blockedTransitionAt: transitionAt,
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const row = feed.items.find(
       (item) => item.dedupKey === `blocked-owner:${issueId}:${transitionAt.toISOString()}`,
     );
@@ -1541,10 +1448,9 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("does not route pre-rollout human unblock descriptors", async () => {
-    const { companyId } = await seedCompany("ATQ");
+    const {} = await seedCompany("ATQ");
     const transitionAt = new Date(ROUTABLE_BLOCKED_ROLLOUT_AT.getTime() - 1);
     const issueId = await insertIssue({
-      companyId,
       identifier: "ATQ-1",
       title: "Human-owned before rollout",
       status: "blocked",
@@ -1552,31 +1458,30 @@ describeEmbeddedPostgres("attention service", () => {
       blockedTransitionAt: transitionAt,
     });
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
 
     expect(feed.items.some((item) => item.dedupKey === `blocked-owner:${issueId}:${transitionAt.toISOString()}`)).toBe(false);
   });
 
   it("returns one pending approval row when the approval is linked to multiple tasks", async () => {
-    const { companyId } = await seedCompany("ATM");
+    const {} = await seedCompany("ATM");
     const approvalId = randomUUID();
     const firstIssueId = "00000000-0000-4000-8000-000000000001";
     const secondIssueId = "00000000-0000-4000-8000-000000000002";
-    await insertIssue({ companyId, id: firstIssueId, identifier: "ATM-1", title: "First task", status: "in_progress" });
-    await insertIssue({ companyId, id: secondIssueId, identifier: "ATM-2", title: "Second task", status: "in_progress" });
+    await insertIssue({ id: firstIssueId, identifier: "ATM-1", title: "First task", status: "in_progress" });
+    await insertIssue({ id: secondIssueId, identifier: "ATM-2", title: "Second task", status: "in_progress" });
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
       type: "request_board_approval",
       status: "pending",
       payload: { title: "Approve rollout" },
     });
     await db.insert(issueApprovals).values([
-      { companyId, issueId: secondIssueId, approvalId },
-      { companyId, issueId: firstIssueId, approvalId },
+      { issueId: secondIssueId, approvalId },
+      { issueId: firstIssueId, approvalId },
     ]);
 
-    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const feed = await attentionService(db).list({ userId: "board-user" });
     const approvalItems = feed.items.filter((item) => item.dedupKey === `approval:${approvalId}`);
 
     expect(approvalItems).toHaveLength(1);
@@ -1584,11 +1489,10 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("hides snoozed attention rows until snoozedUntil passes, then returns them unconditionally", async () => {
-    const { companyId } = await seedCompany("ATS");
+    const {} = await seedCompany("ATS");
     const approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
       type: "hire_agent",
       status: "pending",
       payload: { title: "Hire Researcher" },
@@ -1596,7 +1500,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: new Date("2026-07-09T12:00:00.000Z"),
     });
     await db.insert(inboxDismissals).values({
-      companyId,
       userId: "board-user",
       itemKey: `attention:approval:${approvalId}`,
       kind: "snooze",
@@ -1604,9 +1507,9 @@ describeEmbeddedPostgres("attention service", () => {
       snoozedUntil: new Date("2099-01-02T00:00:00.000Z"),
     });
 
-    await expect(attentionService(db).list(companyId, { userId: "board-user" }))
+    await expect(attentionService(db).list({ userId: "board-user" }))
       .resolves.toMatchObject({ totalCount: 1 }); // agent_error_alert from seed
-    const hiddenFeed = await attentionService(db).list(companyId, { userId: "board-user", includeDismissed: true });
+    const hiddenFeed = await attentionService(db).list({ userId: "board-user", includeDismissed: true });
     expect(hiddenFeed.items.find((item) => item.dedupKey === `approval:${approvalId}`)?.dismissal)
       .toMatchObject({ kind: "snooze", isActive: true, snoozedUntil: "2099-01-02T00:00:00.000Z" });
 
@@ -1615,17 +1518,16 @@ describeEmbeddedPostgres("attention service", () => {
       .set({ snoozedUntil: new Date("2020-01-01T00:00:00.000Z") })
       .where(eq(inboxDismissals.itemKey, `attention:approval:${approvalId}`));
 
-    const visibleFeed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const visibleFeed = await attentionService(db).list({ userId: "board-user" });
     const visibleApproval = visibleFeed.items.find((item) => item.dedupKey === `approval:${approvalId}`);
     expect(visibleApproval?.dismissal).toMatchObject({ kind: "snooze", isActive: false });
     expect(visibleApproval).toBeTruthy();
   });
 
   it("enriches, filters, paginates, snoozes, and ranks the decide-now feed", async () => {
-    const { companyId, workerId, errorAgentId } = await seedCompany("ATP");
+    const { workerId, errorAgentId } = await seedCompany("ATP");
     const now = Date.now();
     const originIssueId = await insertIssue({
-      companyId,
       identifier: "ATP-1",
       title: "Decision origin",
       status: "in_progress",
@@ -1635,7 +1537,6 @@ describeEmbeddedPostgres("attention service", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: workerId,
       status: "succeeded",
       contextSnapshot: { issueId: originIssueId },
@@ -1653,7 +1554,6 @@ describeEmbeddedPostgres("attention service", () => {
     ];
     await db.insert(decisions).values(decisionValues.map((value) => ({
       ...value,
-      companyId,
       originAgentId: workerId,
       originIssueId,
       originRunId: runId,
@@ -1668,14 +1568,12 @@ describeEmbeddedPostgres("attention service", () => {
     const queueId = randomUUID();
     await db.insert(decisionQueues).values({
       id: queueId,
-      companyId,
       key: "urgent-releases",
       title: "Urgent releases",
       createdByType: "user",
       createdByUserId: "board-user",
     });
     await db.insert(decisionQueueItems).values([expiringSoonId, expiringLaterId].map((sourceId) => ({
-      companyId,
       queueId,
       sourceKind: "decision",
       sourceId,
@@ -1687,7 +1585,6 @@ describeEmbeddedPostgres("attention service", () => {
       expiringLaterId,
       snoozedId,
     ].map((sourceId) => ({
-      companyId,
       sourceKind: "decision",
       sourceId,
       decideBy: "today",
@@ -1696,7 +1593,6 @@ describeEmbeddedPostgres("attention service", () => {
       snoozedUntil: sourceId === snoozedId ? new Date(now + 60 * 60_000) : null,
     })));
     await db.insert(decisionTriage).values({
-      companyId,
       sourceKind: "decision",
       sourceId: wheneverId,
       decideBy: "whenever",
@@ -1707,7 +1603,6 @@ describeEmbeddedPostgres("attention service", () => {
     const approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
       type: "hire_agent",
       status: "pending",
       payload: { title: "Newer medium-severity approval" },
@@ -1716,7 +1611,7 @@ describeEmbeddedPostgres("attention service", () => {
     });
     await db.update(agents).set({ updatedAt: new Date(now - 5 * 60_000) }).where(eq(agents.id, errorAgentId));
 
-    const feed = await attentionService(db).list(companyId, {
+    const feed = await attentionService(db).list({
       userId: "board-user",
       sort: "decide",
       limit: 20,
@@ -1760,7 +1655,7 @@ describeEmbeddedPostgres("attention service", () => {
       snoozedUntil: null,
     });
 
-    const firstPage = await attentionService(db).list(companyId, {
+    const firstPage = await attentionService(db).list({
       userId: "board-user",
       queue: "urgent-releases",
       sort: "decide",
@@ -1769,7 +1664,7 @@ describeEmbeddedPostgres("attention service", () => {
     expect(firstPage).toMatchObject({ totalCount: 2, deskBadgeCount: 2 });
     expect(firstPage.items.map((item) => item.subject.id)).toEqual([expiringSoonId]);
     expect(firstPage.nextCursor).toBeTruthy();
-    const secondPage = await attentionService(db).list(companyId, {
+    const secondPage = await attentionService(db).list({
       userId: "board-user",
       queue: "urgent-releases",
       sort: "decide",
@@ -1779,7 +1674,7 @@ describeEmbeddedPostgres("attention service", () => {
     expect(secondPage.items.map((item) => item.subject.id)).toEqual([expiringLaterId]);
     expect(secondPage.nextCursor).toBeNull();
 
-    const completeSnapshot = await attentionService(db).list(companyId, {
+    const completeSnapshot = await attentionService(db).list({
       userId: "board-user",
       queue: "urgent-releases",
       sort: "decide",
@@ -1788,7 +1683,7 @@ describeEmbeddedPostgres("attention service", () => {
     expect(completeSnapshot.items.map((item) => item.subject.id)).toEqual([expiringSoonId, expiringLaterId]);
     expect(completeSnapshot.nextCursor).toBeNull();
 
-    const dateFiltered = await attentionService(db).list(companyId, {
+    const dateFiltered = await attentionService(db).list({
       userId: "board-user",
       queue: "urgent-releases",
       activitySince: new Date(now - 90_000).toISOString(),
@@ -1796,7 +1691,7 @@ describeEmbeddedPostgres("attention service", () => {
     });
     expect(dateFiltered.items.map((item) => item.subject.id)).toEqual([expiringSoonId]);
 
-    const withSnoozed = await attentionService(db).list(companyId, {
+    const withSnoozed = await attentionService(db).list({
       userId: "board-user",
       includeDismissed: true,
       limit: 20,
@@ -1806,11 +1701,10 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("returns a complete queue snapshot beyond the normal page limit", async () => {
-    const { companyId } = await seedCompany("ATS");
+    const {} = await seedCompany("ATS");
     const queueId = randomUUID();
     await db.insert(decisionQueues).values({
       id: queueId,
-      companyId,
       key: "bulk-review",
       title: "Bulk review",
       createdByType: "user",
@@ -1819,7 +1713,6 @@ describeEmbeddedPostgres("attention service", () => {
 
     const approvalRows = Array.from({ length: 101 }, (_, index) => ({
       id: randomUUID(),
-      companyId,
       type: "hire_agent",
       status: "pending",
       payload: { title: `Review ${index + 1}` },
@@ -1828,7 +1721,6 @@ describeEmbeddedPostgres("attention service", () => {
     }));
     await db.insert(approvals).values(approvalRows);
     await db.insert(decisionQueueItems).values(approvalRows.map((approval) => ({
-      companyId,
       queueId,
       sourceKind: "approval",
       sourceId: approval.id,
@@ -1836,14 +1728,14 @@ describeEmbeddedPostgres("attention service", () => {
       addedByUserId: "board-user",
     })));
 
-    const firstPage = await attentionService(db).list(companyId, {
+    const firstPage = await attentionService(db).list({
       userId: "board-user",
       queue: "bulk-review",
     });
     expect(firstPage.items).toHaveLength(50);
     expect(firstPage.nextCursor).toBeTruthy();
 
-    const completeSnapshot = await attentionService(db).list(companyId, {
+    const completeSnapshot = await attentionService(db).list({
       userId: "board-user",
       queue: "bulk-review",
       all: true,
@@ -1852,7 +1744,7 @@ describeEmbeddedPostgres("attention service", () => {
     expect(new Set(completeSnapshot.items.map((item) => item.id)).size).toBe(101);
     expect(completeSnapshot.nextCursor).toBeNull();
 
-    const internalSnapshot = await attentionService(db).list(companyId, {
+    const internalSnapshot = await attentionService(db).list({
       userId: "board-user",
       all: true,
       allowUnscopedAll: true,
@@ -1862,9 +1754,9 @@ describeEmbeddedPostgres("attention service", () => {
     expect(internalSnapshot.items.length).toBeGreaterThan(100);
     expect(internalSnapshot.nextCursor).toBeNull();
 
-    await expect(attentionService(db).list(companyId, { userId: "board-user", all: true }))
+    await expect(attentionService(db).list({ userId: "board-user", all: true }))
       .rejects.toThrow("all requires a queue filter");
-    await expect(attentionService(db).list(companyId, {
+    await expect(attentionService(db).list({
       userId: "board-user",
       queue: "bulk-review",
       all: true,
@@ -1873,9 +1765,8 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("does not apply the open-decision safety limit to complete snapshots", async () => {
-    const { companyId, workerId } = await seedCompany("ATC");
+    const { workerId } = await seedCompany("ATC");
     const originIssueId = await insertIssue({
-      companyId,
       identifier: "ATC-1",
       title: "Decision origin",
       status: "in_progress",
@@ -1884,14 +1775,12 @@ describeEmbeddedPostgres("attention service", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: workerId,
       status: "succeeded",
       contextSnapshot: { issueId: originIssueId },
     });
     await db.insert(decisions).values(["First decision", "Second decision"].map((title) => ({
       id: randomUUID(),
-      companyId,
       originAgentId: workerId,
       originIssueId,
       originRunId: runId,
@@ -1905,10 +1794,10 @@ describeEmbeddedPostgres("attention service", () => {
     })));
 
     const svc = attentionService(db, { openDecisionLimit: 1 });
-    const limited = await svc.list(companyId, { userId: "board-user" });
+    const limited = await svc.list({ userId: "board-user" });
     expect(limited.items.filter((item) => item.sourceKind === "decision")).toHaveLength(1);
 
-    const complete = await svc.list(companyId, {
+    const complete = await svc.list({
       userId: "board-user",
       all: true,
       allowUnscopedAll: true,
@@ -1918,10 +1807,9 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("keeps this-week deadlines in the current UTC week", async () => {
-    const { companyId, workerId } = await seedCompany("ATW");
+    const { workerId } = await seedCompany("ATW");
     const now = Date.parse("2026-08-02T12:00:00.000Z"); // Sunday in an ISO Monday-Sunday week.
     const originIssueId = await insertIssue({
-      companyId,
       identifier: "ATW-1",
       title: "Decision origin",
       status: "in_progress",
@@ -1931,7 +1819,6 @@ describeEmbeddedPostgres("attention service", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: workerId,
       status: "succeeded",
       contextSnapshot: { issueId: originIssueId },
@@ -1944,7 +1831,6 @@ describeEmbeddedPostgres("attention service", () => {
       { id: nextWeekId, title: "Next week", expiresAt: new Date("2026-08-03T12:00:00.000Z") },
     ].map((value) => ({
       ...value,
-      companyId,
       originAgentId: workerId,
       originIssueId,
       originRunId: runId,
@@ -1958,7 +1844,6 @@ describeEmbeddedPostgres("attention service", () => {
     })));
     await db.insert(decisionTriage).values([
       {
-        companyId,
         sourceKind: "decision",
         sourceId: thisWeekId,
         decideBy: "this_week",
@@ -1966,7 +1851,6 @@ describeEmbeddedPostgres("attention service", () => {
         setByUserId: "board-user",
       },
       {
-        companyId,
         sourceKind: "decision",
         sourceId: nextWeekId,
         decideBy: "date",
@@ -1976,7 +1860,7 @@ describeEmbeddedPostgres("attention service", () => {
       },
     ]);
 
-    const feed = await attentionService(db, { now: () => now }).list(companyId, {
+    const feed = await attentionService(db, { now: () => now }).list({
       userId: "board-user",
       sort: "decide",
       limit: 20,
@@ -1995,7 +1879,7 @@ describeEmbeddedPostgres("attention service", () => {
   });
 
   it("serves the route for board users and rejects agent callers", async () => {
-    const { companyId } = await seedCompany("ATR");
+    const {} = await seedCompany("ATR");
 
     function app(actor: Record<string, unknown>) {
       const testApp = express();
@@ -2013,37 +1897,34 @@ describeEmbeddedPostgres("attention service", () => {
       type: "board",
       source: "local_implicit",
       userId: "board-user",
-      companyIds: [companyId],
       isInstanceAdmin: false,
     };
     const agent = {
       type: "agent",
       source: "agent_key",
-      companyId,
       agentId: randomUUID(),
       runId: null,
     };
 
-    await request(app(board)).get(`/api/companies/${companyId}/attention`).expect(200);
+    await request(app(board)).get(`/api/attention`).expect(200);
     const completeFeed = await request(app(board))
-      .get(`/api/companies/${companyId}/attention?includeDismissed=true&all=true`)
+      .get(`/api/attention?includeDismissed=true&all=true`)
       .expect(200);
     expect(completeFeed.body.nextCursor).toBeNull();
     await request(app(board))
-      .get(`/api/companies/${companyId}/attention?activitySince=yesterday`)
+      .get(`/api/attention?activitySince=yesterday`)
       .expect(400, { error: "activitySince must be an ISO timestamp" });
     await request(app(board))
-      .get(`/api/companies/${companyId}/attention?sort=oldest`)
+      .get(`/api/attention?sort=oldest`)
       .expect(400, { error: "sort must be 'activity' or 'decide'" });
-    await request(app(agent)).get(`/api/companies/${companyId}/attention`).expect(403);
+    await request(app(agent)).get(`/api/attention`).expect(403);
   });
 
   it("computes the aging shelf uniformly across approval, interaction, and review sources", async () => {
-    const { companyId, workerId } = await seedCompany("AGE");
+    const { workerId } = await seedCompany("AGE");
     const now = Date.parse("2026-08-02T12:00:00.000Z");
     const idleAt = new Date("2026-06-30T12:00:00.000Z");
     const interactionIssueId = await insertIssue({
-      companyId,
       identifier: "AGE-1",
       title: "Old questions",
       status: "in_progress",
@@ -2052,7 +1933,6 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: idleAt,
     });
     const reviewIssueId = await insertIssue({
-      companyId,
       identifier: "AGE-2",
       title: "Old review",
       status: "in_review",
@@ -2067,7 +1947,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(approvals).values([
       {
         id: approvalId,
-        companyId,
         type: "request_board_approval",
         requestedByAgentId: workerId,
         status: "pending",
@@ -2077,7 +1956,6 @@ describeEmbeddedPostgres("attention service", () => {
       },
       {
         id: queueApprovalId,
-        companyId,
         type: "request_board_approval",
         requestedByAgentId: workerId,
         status: "pending",
@@ -2088,7 +1966,6 @@ describeEmbeddedPostgres("attention service", () => {
     ]);
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId,
       issueId: interactionIssueId,
       kind: "ask_user_questions",
       status: "pending",
@@ -2098,21 +1975,19 @@ describeEmbeddedPostgres("attention service", () => {
       updatedAt: idleAt,
     });
     const [queue] = await db.insert(decisionQueues).values({
-      companyId,
       key: "fast-aging",
       title: "Fast aging",
       retentionDays: 10,
       createdByType: "system",
     }).returning();
     await db.insert(decisionQueueItems).values({
-      companyId,
       queueId: queue!.id,
       sourceKind: "approval",
       sourceId: queueApprovalId,
       addedByType: "system",
     });
 
-    const feed = await attentionService(db, { now: () => now }).list(companyId, {
+    const feed = await attentionService(db, { now: () => now }).list({
       userId: "board-user",
       limit: 100,
     });

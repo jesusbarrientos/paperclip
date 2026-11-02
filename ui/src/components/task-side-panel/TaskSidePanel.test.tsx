@@ -212,7 +212,7 @@ describe("TaskSidePanel", () => {
     await act(async () => container.querySelector<HTMLButtonElement>("#side-panel-tab-properties")?.click());
     expect(container.querySelector("iframe")).toBe(iframe);
     expect(iframe?.closest("[hidden]")).toBeTruthy();
-    expect(localStorage.getItem("paperclip:task-side-panel:v1:user-1:company-1")).not.toContain("test-viewer");
+    expect(localStorage.getItem("paperclip:task-side-panel:v1:user-1")).not.toContain("test-viewer");
     await act(async () => container.querySelector<HTMLButtonElement>(`[id="side-panel-tab-browser:${id}"]`)?.click());
     const close = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(b => b.getAttribute("aria-label")?.startsWith("Close Browser"));
     expect(close).toBeTruthy();
@@ -226,7 +226,7 @@ describe("TaskSidePanel", () => {
     const next = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const acknowledged = vi.fn(() => {
       expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe(`side-panel-tab-browser:${next}`);
-      expect(localStorage.getItem("paperclip:task-side-panel:v1:user-1:company-1")).toContain(next);
+      expect(localStorage.getItem("paperclip:task-side-panel:v1:user-1")).toContain(next);
     });
     await render(panel({ openBrowserId: first }));
     await render(panel({ openBrowserId: next, onBrowserOpened: acknowledged }));
@@ -245,7 +245,7 @@ describe("TaskSidePanel", () => {
   });
 
   it("keeps an Artifacts-only layout the user chose", async () => {
-    writeTaskSidePanelState("user-1", "company-1", "task-1", {
+    writeTaskSidePanelState("user-1", "task-1", {
       state: { tabs: [taskPanelArtifactsTab()], activeTabId: "artifacts" },
       launcherOpen: false,
       userInteracted: true,
@@ -260,7 +260,7 @@ describe("TaskSidePanel", () => {
   it("falls back to Artifacts when Agent Chat is off and only the Tasks tab was saved", async () => {
     agentChat.enabled = false;
     try {
-      writeTaskSidePanelState("user-1", "company-1", "task-1", {
+      writeTaskSidePanelState("user-1", "task-1", {
         state: { tabs: [taskPanelAgentTasksTab()], activeTabId: "agent-tasks" },
         launcherOpen: false,
         userInteracted: true,
@@ -276,7 +276,7 @@ describe("TaskSidePanel", () => {
   });
 
   it("moves a chat's stored Artifacts-only default onto the agent's tasks", async () => {
-    writeTaskSidePanelState("user-1", "company-1", "task-1", {
+    writeTaskSidePanelState("user-1", "task-1", {
       state: { tabs: [taskPanelArtifactsTab()], activeTabId: "artifacts" },
       launcherOpen: false,
       userInteracted: false,
@@ -579,7 +579,7 @@ describe("TaskSidePanel", () => {
   });
 
   it("lets a persisted intentionally empty state win over defaults", async () => {
-    writeTaskSidePanelState("user-1", "company-1", "task-1", {
+    writeTaskSidePanelState("user-1", "task-1", {
       state: { tabs: [], activeTabId: null },
       launcherOpen: false,
       userInteracted: true,
@@ -592,7 +592,7 @@ describe("TaskSidePanel", () => {
   });
 
   it("removes a Plan tab persisted before a plan document existed", async () => {
-    writeTaskSidePanelState("user-1", "company-1", "task-1", {
+    writeTaskSidePanelState("user-1", "task-1", {
       state: {
         tabs: [taskPanelPropertiesTab(), taskPanelDocumentTab("plan", "Plan")],
         activeTabId: "document:plan",
@@ -619,7 +619,7 @@ describe("TaskSidePanel", () => {
   });
 
   it("keeps Files out of the launcher when the experiment is disabled", async () => {
-    writeTaskSidePanelState("user-1", "company-1", "task-1", {
+    writeTaskSidePanelState("user-1", "task-1", {
       state: { tabs: [], activeTabId: null },
       launcherOpen: false,
       userInteracted: true,
@@ -631,7 +631,7 @@ describe("TaskSidePanel", () => {
   });
 
   it("restores a persisted Properties tab", async () => {
-    writeTaskSidePanelState("user-1", "company-1", "task-1", {
+    writeTaskSidePanelState("user-1", "task-1", {
       state: { tabs: [taskPanelPropertiesTab()], activeTabId: "properties" },
       launcherOpen: false,
       userInteracted: true,

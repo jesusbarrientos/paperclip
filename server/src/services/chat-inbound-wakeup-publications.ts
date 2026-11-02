@@ -90,7 +90,6 @@ export function resolveInboundWakeReceipt(
     assertDurableChatWakeupReceipt(
       createDurableChatWakeupRequest({
         id: action.id,
-        companyId: action.companyId,
         agentId: payload.agentId,
         issueId: payload.issueId,
         commentId: payload.commentId,
@@ -106,11 +105,10 @@ export function resolveInboundWakeReceipt(
   }
   const coalescedId = receipt.payload?.coalescedIntoWakeupRequestId;
   if (
-    (owner.id !== receipt.id &&
-      (receipt.status !== "coalesced" || coalescedId !== owner.id)) ||
-    (owner.id === receipt.id && coalescedId !== undefined) ||
-    owner.payload?.coalescedIntoWakeupRequestId !== undefined ||
-    owner.companyId !== action.companyId ||
+    ((owner.id !== receipt.id &&
+            (receipt.status !== "coalesced" || coalescedId !== owner.id)) ||
+          (owner.id === receipt.id && coalescedId !== undefined) ||
+          owner.payload?.coalescedIntoWakeupRequestId !== undefined) ||
     owner.agentId !== payload.agentId ||
     owner.requestedByActorType !== payload.requestedByActorType ||
     owner.requestedByActorId !== payload.requestedByActorId ||

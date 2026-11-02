@@ -19,7 +19,6 @@ import {
 import { IssueThreadInteractionCard } from "./IssueThreadInteractionCard";
 
 interface AttentionInteractionResolverProps {
-  companyId: string;
   issueId: string;
   interactionId: string;
   agentMap?: Map<string, Agent>;
@@ -48,7 +47,6 @@ export function replaceResolvedInteraction(
  * (converged PAP-12628). Reviews never reach here — they deep-link.
  */
 export function AttentionInteractionResolver({
-  companyId,
   issueId,
   interactionId,
   agentMap,
@@ -82,7 +80,7 @@ export function AttentionInteractionResolver({
       );
     }
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.interactions(issueId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.attention(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.attention() });
     onResolved?.();
   };
 

@@ -13,7 +13,6 @@ function minuteBucket(date: Date): Date {
 export async function incrementToolRuntimeMetricCounter(
   db: Db,
   input: {
-    companyId: string;
     metric: string;
     at?: Date;
   },
@@ -22,7 +21,6 @@ export async function incrementToolRuntimeMetricCounter(
   await db
     .insert(toolRuntimeMetricCounters)
     .values({
-      companyId: input.companyId,
       metric: input.metric,
       bucketStartAt: minuteBucket(at),
       count: 1,
@@ -31,7 +29,6 @@ export async function incrementToolRuntimeMetricCounter(
     })
     .onConflictDoUpdate({
       target: [
-        toolRuntimeMetricCounters.companyId,
         toolRuntimeMetricCounters.metric,
         toolRuntimeMetricCounters.bucketStartAt,
       ],
@@ -42,15 +39,13 @@ export async function incrementToolRuntimeMetricCounter(
     });
 }
 
-export async function recordToolRuntimeAuditWriteFailure(db: Db, companyId: string) {
+export async function recordToolRuntimeAuditWriteFailure(db: Db) {
   try {
     await incrementToolRuntimeMetricCounter(db, {
-      companyId,
       metric: TOOL_RUNTIME_AUDIT_WRITE_FAILURE_METRIC,
     });
   } catch (error) {
     console.error("[tool-runtime-metrics] Failed to record audit write failure counter", {
-      companyId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

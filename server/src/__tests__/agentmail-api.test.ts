@@ -354,12 +354,12 @@ describe("AgentMail protocol boundary", () => {
   });
   it("exposes explicit email actions in runtime API discovery and keeps credential setup board-only", () => {
     const operations = buildRunnerApiCatalog();
-    const send = operations.find(o => o.path === "/api/companies/{companyId}/email/send");
+    const send = operations.find(o => o.path === "/api/email/send");
     expect(send?.method).toBe("POST"); expect(send?.requestBody).toBeDefined();
     expect(send?.responses).toHaveProperty("202");
-    const setup = operations.find(o => o.path === "/api/companies/{companyId}/email/inspect");
+    const setup = operations.find(o => o.path === "/api/email/inspect");
     expect(JSON.stringify(setup?.authorization)).toContain("board");
-    const check = operations.find(o => o.path === "/api/companies/{companyId}/email/connections/{connectionId}/check-address");
+    const check = operations.find(o => o.path === "/api/email/connections/{connectionId}/check-address");
     expect(check?.requestBody).toBeDefined();
     expect(JSON.stringify(check?.authorization)).toContain("board");
     expect(check?.responses).toHaveProperty("429");

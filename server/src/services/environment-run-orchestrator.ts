@@ -171,7 +171,6 @@ export function environmentRunOrchestrator(
    * ensure the local environment row exists.
    */
   async function resolveEnvironment(input: {
-    companyId: string;
     selectedEnvironmentId: string;
     localEnvironmentId: string;
   }): Promise<Environment> {
@@ -179,7 +178,7 @@ export function environmentRunOrchestrator(
 
     const environment =
       environmentId === input.localEnvironmentId
-        ? await environmentsSvc.ensureLocalEnvironment(input.companyId)
+        ? await environmentsSvc.ensureLocalEnvironment()
         : await environmentsSvc.getById(environmentId);
 
     if (!environment) {
@@ -203,7 +202,6 @@ export function environmentRunOrchestrator(
    * Wraps the runtime driver's acquire call with standardized error handling.
    */
   async function acquireLease(input: {
-    companyId: string;
     environment: Environment;
     issueId: string | null;
     agentId: string;
@@ -231,7 +229,6 @@ export function environmentRunOrchestrator(
    * Resolve the execution transport for an adapter based on the acquired lease.
    */
   async function resolveTransport(input: {
-    companyId: string;
     adapterType: string;
     environment: Environment;
     leaseMetadata: Record<string, unknown> | null;
@@ -239,7 +236,6 @@ export function environmentRunOrchestrator(
     try {
       return await resolveEnvironmentExecutionTransport({
         db,
-        companyId: input.companyId,
         adapterType: input.adapterType,
         environment: input.environment,
         leaseMetadata: input.leaseMetadata,
@@ -262,7 +258,6 @@ export function environmentRunOrchestrator(
    * This is the primary entry point for heartbeat run setup.
    */
   async function acquireForRun(input: {
-    companyId: string;
     selectedEnvironmentId: string;
     localEnvironmentId: string;
     adapterType: string;
@@ -276,7 +271,6 @@ export function environmentRunOrchestrator(
   }): Promise<EnvironmentAcquisitionResult> {
     // Step 1: Resolve environment
     const selectedEnvironment = await resolveEnvironment({
-      companyId: input.companyId,
       selectedEnvironmentId: input.selectedEnvironmentId,
       localEnvironmentId: input.localEnvironmentId,
     });
@@ -287,7 +281,6 @@ export function environmentRunOrchestrator(
 
     // Step 2: Acquire lease
     const leaseRecord = await acquireLease({
-      companyId: input.companyId,
       environment,
       issueId: input.issueId,
       agentId: input.agentId,
@@ -299,7 +292,6 @@ export function environmentRunOrchestrator(
 
     // Step 3: Log lease acquisition activity
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: "agent",
       actorId: input.agentId,
       agentId: input.agentId,
@@ -321,7 +313,6 @@ export function environmentRunOrchestrator(
 
     // Step 4: Resolve execution transport
     const executionTransport = await resolveTransport({
-      companyId: input.companyId,
       adapterType: input.adapterType,
       environment,
       leaseMetadata: leaseRecord.lease.metadata,
@@ -351,7 +342,6 @@ export function environmentRunOrchestrator(
     environment: Environment;
     lease: EnvironmentLease;
     adapterType: string;
-    companyId: string;
     issueId: string | null;
     heartbeatRunId: string;
     executionWorkspace: RealizedExecutionWorkspace;
@@ -364,21 +354,12 @@ export function environmentRunOrchestrator(
      */
     duplexObservabilityRecorder?: DuplexObservabilityRecorder | null;
   }): Promise<EnvironmentRealizationResult> {
-    const {
-      environment,
-      adapterType,
-      companyId,
-      issueId,
-      heartbeatRunId,
-      executionWorkspace,
-      effectiveExecutionWorkspaceMode,
-    } = input;
+    const { environment, adapterType, issueId, heartbeatRunId, executionWorkspace, effectiveExecutionWorkspaceMode } = input;
     let { lease, persistedExecutionWorkspace } = input;
 
     // Step 1: Build workspace realization request
     const workspaceRealizationRequest = buildWorkspaceRealizationRequest({
       adapterType,
-      companyId,
       environmentId: environment.id,
       executionWorkspaceId: persistedExecutionWorkspace?.id ?? null,
       issueId,
@@ -520,7 +501,6 @@ export function environmentRunOrchestrator(
     try {
       executionTarget = await resolveEnvironmentExecutionTarget({
         db,
-        companyId,
         adapterType,
         environment,
         leaseId: lease.id,
@@ -587,7 +567,6 @@ export function environmentRunOrchestrator(
    */
   async function releaseForRun(input: {
     heartbeatRunId: string;
-    companyId: string;
     agentId: string;
     status?: Extract<EnvironmentLeaseStatus, "released" | "expired" | "failed">;
     failureReason?: string;
@@ -625,7 +604,6 @@ export function environmentRunOrchestrator(
     for (const released of releasedLeases) {
       try {
         await logActivity(db, {
-          companyId: input.companyId,
           actorType: "agent",
           actorId: input.agentId,
           agentId: input.agentId,

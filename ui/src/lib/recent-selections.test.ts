@@ -70,28 +70,24 @@ describe("recent selection ordering", () => {
     expect(getRecentProjectIds()).toEqual(["project-1", "project-2"]);
   });
 
-  it("remembers projects and explicit No project separately for each company", () => {
-    expect(getLastProjectId("company-1")).toBeUndefined();
-    trackRecentProject("project-1", "company-1");
-    trackRecentProject("project-2", "company-2");
-    expect(getLastProjectId("company-1")).toBe("project-1");
-    expect(getLastProjectId("company-2")).toBe("project-2");
-    trackRecentProject("", "company-1");
-    expect(getLastProjectId("company-1")).toBe("");
-    expect(getLastProjectId("company-2")).toBe("project-2");
+  it("remembers the last project and an explicit No project", () => {
+    expect(getLastProjectId()).toBeUndefined();
+    trackRecentProject("project-1");
+    trackRecentProject("project-2");
+    expect(getLastProjectId()).toBe("project-2");
+    trackRecentProject("");
+    expect(getLastProjectId()).toBe("");
     expect(getRecentProjectIds()).toEqual(["project-2", "project-1"]);
   });
 
-  it("remembers effort and an explicit Default choice within the company", () => {
-    expect(getLastComposerEffort("company-1")).toBeUndefined();
-    rememberComposerEffort("company-1", "high");
-    rememberComposerEffort("company-2", "ultra");
-    expect(getLastComposerEffort("company-1")).toBe("high");
-    rememberComposerEffort("company-1", null);
-    expect(getLastComposerEffort("company-1")).toBeNull();
-    expect(getLastComposerEffort("company-2")).toBe("ultra");
-    localStorage.setItem("paperclip:composer-effort:company-1", "broken json");
-    expect(getLastComposerEffort("company-1")).toBeUndefined();
+  it("remembers effort and an explicit Default choice", () => {
+    expect(getLastComposerEffort()).toBeUndefined();
+    rememberComposerEffort("high");
+    expect(getLastComposerEffort()).toBe("high");
+    rememberComposerEffort(null);
+    expect(getLastComposerEffort()).toBeNull();
+    localStorage.setItem("paperclip:composer-effort", "broken json");
+    expect(getLastComposerEffort()).toBeUndefined();
   });
 
   it("tracks recent user and agent assignee selections with prefixed ids", () => {
@@ -100,15 +96,5 @@ describe("recent selection ordering", () => {
 
     expect(getRecentAssigneeSelectionIds()).toEqual(["user:user-1", "agent:agent-1"]);
     expect(getRecentAssigneeIds()).toEqual(["agent-1"]);
-  });
-
-  it("remembers assignees separately in each company", () => {
-    trackRecentAssignee("agent-1", "company-1");
-    trackRecentAssigneeUser("user-1", "company-2");
-    trackRecentAssigneeUser("user-2", "company-1");
-
-    expect(getRecentAssigneeSelectionIds("company-1")).toEqual(["user:user-2", "agent:agent-1"]);
-    expect(getRecentAssigneeSelectionIds("company-2")).toEqual(["user:user-1"]);
-    expect(getRecentAssigneeSelectionIds("company-3")).toEqual([]);
   });
 });

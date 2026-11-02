@@ -117,7 +117,6 @@ function makeAgent(overrides: Partial<CompanySkillUsageAgent> = {}): CompanySkil
 function makeVersion(overrides: Partial<CompanySkillVersion> = {}): CompanySkillVersion {
   return {
     id: "ver-1",
-    companyId: "company-1",
     companySkillId: "skill-1",
     revisionNumber: 1,
     label: null,
@@ -135,7 +134,6 @@ function makeVersion(overrides: Partial<CompanySkillVersion> = {}): CompanySkill
 function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
   return {
     id: "skill-1",
-    companyId: "company-1",
     key: "paperclip/demo",
     slug: "demo",
     name: "Demo Skill",
@@ -156,7 +154,6 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
     sharingScope: "company",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,
@@ -201,7 +198,7 @@ afterEach(() => {
 
 describe("AgentsUsingSkillBadge", () => {
   it("renders a muted '0 agents' button with an a11y label when unused", async () => {
-    await renderNode(<AgentsUsingSkillBadge companyId="company-1" skill={makeSkill()} />);
+    await renderNode(<AgentsUsingSkillBadge skill={makeSkill()} />);
     const badge = findButton("0 agents");
     expect(badge).toBeDefined();
     expect(badge?.getAttribute("aria-label")).toBe("0 agents use this skill");
@@ -212,7 +209,7 @@ describe("AgentsUsingSkillBadge", () => {
     const skill = makeSkill({
       usedByAgents: [makeAgent(), makeAgent({ id: "agent-2", name: "Coder", urlKey: "coder" })],
     });
-    await renderNode(<AgentsUsingSkillBadge companyId="company-1" skill={skill} />);
+    await renderNode(<AgentsUsingSkillBadge skill={skill} />);
     const badge = findButton("2 agents");
     expect(badge?.getAttribute("aria-label")).toBe("2 agents use this skill");
     await click(badge!);
@@ -230,7 +227,7 @@ describe("AgentsUsingSkillDialog", () => {
     ]);
     const skill = makeSkill({ usedByAgents: [makeAgent()] });
     await renderNode(
-      <AgentsUsingSkillDialog open onOpenChange={() => {}} companyId="company-1" skill={skill} />,
+      <AgentsUsingSkillDialog open onOpenChange={() => {}} skill={skill} />,
     );
     const select = document.body.querySelector("select");
     expect(select).not.toBeNull();
@@ -242,7 +239,6 @@ describe("AgentsUsingSkillDialog", () => {
       <AgentsUsingSkillDialog
         open
         onOpenChange={() => {}}
-        companyId="company-1"
         skill={makeSkill({ currentVersion: null, currentVersionId: null, usedByAgents: [makeAgent()] })}
       />,
     );
@@ -257,7 +253,7 @@ describe("AgentsUsingSkillDialog", () => {
     ]);
     const skill = makeSkill({ usedByAgents: [makeAgent({ versionId: "ver-1" })] });
     await renderNode(
-      <AgentsUsingSkillDialog open onOpenChange={() => {}} companyId="company-1" skill={skill} />,
+      <AgentsUsingSkillDialog open onOpenChange={() => {}} skill={skill} />,
     );
     expect(document.body.textContent).toContain("2 versions behind latest");
   });
@@ -277,7 +273,7 @@ describe("AgentsUsingSkillDialog", () => {
     });
     const skill = makeSkill({ usedByAgents: [makeAgent()] });
     await renderNode(
-      <AgentsUsingSkillDialog open onOpenChange={() => {}} companyId="company-1" skill={skill} />,
+      <AgentsUsingSkillDialog open onOpenChange={() => {}} skill={skill} />,
     );
 
     // The trash button has no text; grab it by aria-label.
@@ -290,7 +286,7 @@ describe("AgentsUsingSkillDialog", () => {
     );
     await click(confirm!);
 
-    expect(mockAgentsApi.skills).toHaveBeenCalledWith("agent-1", "company-1");
+    expect(mockAgentsApi.skills).toHaveBeenCalledWith("agent-1");
     expect(mockAgentsApi.syncSkills).toHaveBeenCalledTimes(1);
     const [, sentEntries] = mockAgentsApi.syncSkills.mock.calls[0];
     expect(sentEntries).toEqual([{ key: "paperclip/other", versionId: null }]);
@@ -315,7 +311,7 @@ describe("AgentsUsingSkillDialog", () => {
     });
     const skill = makeSkill({ usedByAgents: [makeAgent()] });
     await renderNode(
-      <AgentsUsingSkillDialog open onOpenChange={() => {}} companyId="company-1" skill={skill} />,
+      <AgentsUsingSkillDialog open onOpenChange={() => {}} skill={skill} />,
     );
     const select = document.body.querySelector<HTMLSelectElement>("select");
     await act(async () => {
@@ -337,7 +333,6 @@ describe("AgentsUsingSkillDialog", () => {
       <AgentsUsingSkillDialog
         open
         onOpenChange={() => {}}
-        companyId="company-1"
         skill={skill}
         canManage={false}
       />,

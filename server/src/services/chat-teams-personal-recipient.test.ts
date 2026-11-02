@@ -11,7 +11,7 @@ import {
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const botAppId = "22222222-2222-4222-8222-222222222222";
-const companyId = "33333333-3333-4333-8333-333333333333";
+const foreignId = "33333333-3333-4333-8333-333333333333";
 const endpointId = "44444444-4444-4444-8444-444444444444";
 const aadObjectId = "55555555-5555-4555-8555-555555555555";
 const deliveryId = "66666666-6666-4666-8666-666666666666";
@@ -50,7 +50,6 @@ function fixture() {
   // Message. Parsing does not authenticate this synthetic activity or use HTTP.
   const message = adapter.parseMessage(raw);
   const admission: TeamsPersonalRecipientAdmission = {
-    companyId,
     endpointId,
     runtimeGeneration: 7,
     credentialFingerprint: "a".repeat(64),
@@ -80,7 +79,6 @@ describe("Teams durable personal-recipient evidence", () => {
     const proof = deriveTeamsPersonalRecipient(message, admission);
     expect(proof).toEqual({
       schema: "paperclip.teams.personal-recipient.v1",
-      companyId,
       endpointId,
       runtimeGeneration: 7,
       credentialFingerprint: "a".repeat(64),
@@ -180,13 +178,13 @@ describe("Teams durable personal-recipient evidence", () => {
     [
       "foreign tenant",
       (raw: Record<string, any>): void => {
-        raw.conversation.tenantId = companyId;
+        raw.conversation.tenantId = foreignId;
       },
     ],
     [
       "contradictory tenant",
       (raw: Record<string, any>): void => {
-        raw.channelData.tenant.id = companyId;
+        raw.channelData.tenant.id = foreignId;
       },
     ],
     [
@@ -199,7 +197,7 @@ describe("Teams durable personal-recipient evidence", () => {
     [
       "wrong recipient",
       (raw: Record<string, any>): void => {
-        raw.recipient.id = `28:${companyId}`;
+        raw.recipient.id = `28:${foreignId}`;
       },
     ],
     [
@@ -256,12 +254,11 @@ describe("Teams durable personal-recipient evidence", () => {
   );
 
   it.each([
-    { companyId: deliveryId },
     { endpointId: deliveryId },
     { runtimeGeneration: 8 },
     { credentialFingerprint: "b".repeat(64) },
-    { tenantId: companyId },
-    { botAppId: companyId },
+    { tenantId: foreignId },
+    { botAppId: foreignId },
     { providerEventId: "foreign-event" },
     { threadId: canonicalThread("foreign-conversation") },
     { isDirectMessage: false },
@@ -275,10 +272,10 @@ describe("Teams durable personal-recipient evidence", () => {
   });
 
   it.each([
-    { deliveryId: companyId },
-    { principalId: companyId },
-    { externalPrincipalId: companyId },
-    { conversationId: companyId },
+    { deliveryId: foreignId },
+    { principalId: foreignId },
+    { externalPrincipalId: foreignId },
+    { conversationId: foreignId },
     { conversationGeneration: 4 },
   ])("rejects an independently changed durable binding %j", (patch) => {
     const { message, admission, binding } = fixture();

@@ -21,7 +21,6 @@ export interface StalledReviewDecisionActor {
 
 export interface DecideStalledReviewInput {
   issueId: string;
-  companyId: string;
   action: StalledReviewDecisionAction;
   note?: string;
   actor: StalledReviewDecisionActor;
@@ -40,7 +39,6 @@ export function stalledReviewDecisionService(db: Db) {
           .from(issues)
           .where(and(
             eq(issues.id, input.issueId),
-            eq(issues.companyId, input.companyId),
             executionIssueCondition(),
           ))
           .for("update")
@@ -55,7 +53,7 @@ export function stalledReviewDecisionService(db: Db) {
         }
 
         const reviewAttention = await svc
-          .listReviewAttention(lockedIssue.companyId, [lockedIssue], tx)
+          .listReviewAttention([lockedIssue], tx)
           .then((rows) => rows.get(lockedIssue.id));
         if (reviewAttention?.state !== "stalled") {
           throw conflict("Issue is no longer a stalled review", {
@@ -88,7 +86,6 @@ export function stalledReviewDecisionService(db: Db) {
 
         if (comment) {
           await logActivity(txDb, {
-            companyId: updated.companyId,
             actorType: "user",
             actorId: input.actor.userId,
             runId: input.actor.runId ?? null,
@@ -104,7 +101,6 @@ export function stalledReviewDecisionService(db: Db) {
           });
         }
         await logActivity(txDb, {
-          companyId: updated.companyId,
           actorType: "user",
           actorId: input.actor.userId,
           runId: input.actor.runId ?? null,

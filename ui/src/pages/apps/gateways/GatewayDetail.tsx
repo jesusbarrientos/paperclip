@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Send } from "lucide-react";
 import type { ToolMcpGatewayTokenCreated } from "@paperclipai/shared";
 import { Link, Navigate, useNavigate, useParams } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
@@ -31,7 +30,6 @@ export function GatewayDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [snippetOpen, setSnippetOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -40,34 +38,28 @@ export function GatewayDetail() {
   const activeTab: GatewayTabKey | null = isGatewayTabKey(tab) ? tab : null;
 
   const gatewaysQuery = useQuery({
-    queryKey: gatewaysQueryKey(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGateways(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: gatewaysQueryKey(),
+    queryFn: () => toolsApi.listGateways(),
   });
   const profilesQuery = useQuery({
-    queryKey: queryKeys.tools.profiles(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listProfiles(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId ?? "__none__"),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId ?? "__none__", { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
 
   const gateway = useMemo(
@@ -112,7 +104,7 @@ export function GatewayDetail() {
 
   const toggleMutation = useMutation({
     mutationFn: () =>
-      toolsApi.updateGateway(selectedCompanyId!, gatewayId, {
+      toolsApi.updateGateway(gatewayId, {
         status: gateway && isGatewayOn(gateway) ? "disabled" : "active",
       }),
     onSuccess: async (updated) => {
@@ -124,7 +116,7 @@ export function GatewayDetail() {
             : `${updated.name} is off — every client goes silent.`,
         tone: "success",
       });
-      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey() });
     },
     onError: (error) =>
       pushToast({
@@ -134,9 +126,6 @@ export function GatewayDetail() {
       }),
   });
 
-  if (!selectedCompanyId) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an organization to manage gateways.</div>;
-  }
   if (!activeTab) {
     return <Navigate replace to={gatewayTabHref(gatewayId, "overview")} />;
   }
@@ -222,16 +211,15 @@ export function GatewayDetail() {
       {activeTab === "apps" && <AppsToolsPanel apps={apps} profile={profile} />}
       {activeTab === "tokens" && (
         <TokensPanel
-          companyId={selectedCompanyId}
           gateway={gateway}
           onTokenCreated={rememberCreatedToken}
         />
       )}
       {activeTab === "activity" && (
-        <GatewayActivityPanel companyId={selectedCompanyId} gateway={gateway} />
+        <GatewayActivityPanel gateway={gateway} />
       )}
       {activeTab === "advanced" && (
-        <GatewayAdvancedPanel companyId={selectedCompanyId} gateway={gateway} />
+        <GatewayAdvancedPanel gateway={gateway} />
       )}
 
       <ConnectClientDialog
@@ -242,7 +230,6 @@ export function GatewayDetail() {
         onTokenCreated={rememberCreatedToken}
       />
       <EditGatewayDialog
-        companyId={selectedCompanyId}
         gateway={gateway}
         profiles={profilesQuery.data?.profiles ?? []}
         open={editing}

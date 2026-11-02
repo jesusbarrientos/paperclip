@@ -81,7 +81,6 @@ function futureDate(minutes = 60) {
 function createSession(overrides: Record<string, unknown> = {}) {
   return {
     id: "session-1",
-    companyId: "company-1",
     environmentId: "env-1",
     provider: "daytona",
     status: "waiting_for_user",
@@ -243,7 +242,6 @@ describe("custom image terminal websocket bridge", () => {
 
     const expired = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old", host: "old.example.test", port: 22 },
@@ -278,7 +276,6 @@ describe("custom image terminal websocket bridge", () => {
     });
     const unsupportedPayload = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old-token", host: "old.example.test", port: 22 },
@@ -311,7 +308,6 @@ describe("custom image terminal websocket bridge", () => {
     });
     const unsupportedCommand = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old-token", host: "old.example.test", port: 22 },
@@ -341,7 +337,6 @@ describe("custom image terminal websocket bridge", () => {
     const { port } = await startHarness();
     const minted = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old-token", host: "old.example.test", port: 22 },
@@ -412,7 +407,6 @@ describe("custom image terminal websocket bridge", () => {
     const { port } = await startHarness();
     const minted = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old-token", host: "old.example.test", port: 22 },
@@ -449,7 +443,6 @@ describe("custom image terminal websocket bridge", () => {
     const { port } = await startHarness();
     const minted = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old-token", host: "old.example.test", port: 22 },
@@ -485,7 +478,6 @@ describe("custom image terminal websocket bridge", () => {
     connector.connect.mockRejectedValueOnce(new Error("provider secret should not leak"));
     const minted = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "old-token", host: "old.example.test", port: 22 },
@@ -511,7 +503,6 @@ describe("custom image terminal websocket bridge", () => {
     const { port } = await startHarness();
     const minted = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "token", host: "example.test", port: 22 },
@@ -541,7 +532,6 @@ describe("custom image terminal websocket bridge", () => {
     const { server, port } = await startHarness();
     const minted = sessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "token", host: "example.test", port: 22 },

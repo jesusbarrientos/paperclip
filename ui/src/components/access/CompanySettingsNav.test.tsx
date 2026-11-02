@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
 import { CompanySettingsNav, getCompanySettingsTab } from "./CompanySettingsNav";
 
-let currentPathname = "/company/settings";
+let currentPathname = "/organization/settings";
 const navigateMock = vi.hoisted(() => vi.fn());
 const pageTabBarMock = vi.hoisted(() => vi.fn());
 
@@ -56,7 +56,7 @@ describe("CompanySettingsNav", () => {
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    currentPathname = "/company/settings";
+    currentPathname = "/organization/settings";
   });
 
   afterEach(() => {
@@ -66,27 +66,27 @@ describe("CompanySettingsNav", () => {
   });
 
   it("maps company settings routes to the expected shared tab value", () => {
-    expect(getCompanySettingsTab("/company/settings")).toBe("general");
-    expect(getCompanySettingsTab("/PAP/company/settings")).toBe("general");
-    expect(getCompanySettingsTab("/company/settings/environments")).toBe("instance-environments");
-    expect(getCompanySettingsTab("/company/export")).toBe("export");
-    expect(getCompanySettingsTab("/PAP/company/export")).toBe("export");
-    expect(getCompanySettingsTab("/company/import")).toBe("import");
-    expect(getCompanySettingsTab("/PAP/company/import")).toBe("import");
-    expect(getCompanySettingsTab("/company/settings/members")).toBe("members");
-    expect(getCompanySettingsTab("/PAP/company/settings/members")).toBe("members");
-    expect(getCompanySettingsTab("/company/settings/access")).toBe("members");
-    expect(getCompanySettingsTab("/PAP/company/settings/access")).toBe("members");
-    expect(getCompanySettingsTab("/company/settings/invites")).toBe("members");
-    expect(getCompanySettingsTab("/PAP/company/settings/secrets")).toBe("secrets");
-    expect(getCompanySettingsTab("/company/settings/instance/profile")).toBe("instance-profile");
-    expect(getCompanySettingsTab("/PAP/company/settings/instance/general")).toBe("general");
-    expect(getCompanySettingsTab("/company/settings/instance/environments")).toBe("instance-environments");
-    expect(getCompanySettingsTab("/company/settings/instance/access")).toBe("instance-access");
-    expect(getCompanySettingsTab("/PAP/company/settings/instance/access")).toBe("instance-access");
-    expect(getCompanySettingsTab("/company/settings/instance/experimental")).toBe("instance-experimental");
-    expect(getCompanySettingsTab("/PAP/company/settings/instance/plugins/example")).toBe("instance-plugins");
-    expect(getCompanySettingsTab("/company/settings/instance/adapters")).toBe("instance-adapters");
+    expect(getCompanySettingsTab("/organization/settings")).toBe("general");
+    expect(getCompanySettingsTab("/PAP/organization/settings")).toBe("general");
+    expect(getCompanySettingsTab("/organization/settings/environments")).toBe("instance-environments");
+    expect(getCompanySettingsTab("/organization/export")).toBe("export");
+    expect(getCompanySettingsTab("/PAP/organization/export")).toBe("export");
+    expect(getCompanySettingsTab("/organization/import")).toBe("import");
+    expect(getCompanySettingsTab("/PAP/organization/import")).toBe("import");
+    expect(getCompanySettingsTab("/organization/settings/members")).toBe("members");
+    expect(getCompanySettingsTab("/PAP/organization/settings/members")).toBe("members");
+    expect(getCompanySettingsTab("/organization/settings/access")).toBe("members");
+    expect(getCompanySettingsTab("/PAP/organization/settings/access")).toBe("members");
+    expect(getCompanySettingsTab("/organization/settings/invites")).toBe("members");
+    expect(getCompanySettingsTab("/PAP/organization/settings/secrets")).toBe("secrets");
+    expect(getCompanySettingsTab("/organization/settings/instance/profile")).toBe("instance-profile");
+    expect(getCompanySettingsTab("/PAP/organization/settings/instance/general")).toBe("general");
+    expect(getCompanySettingsTab("/organization/settings/instance/environments")).toBe("instance-environments");
+    expect(getCompanySettingsTab("/organization/settings/instance/access")).toBe("instance-access");
+    expect(getCompanySettingsTab("/PAP/organization/settings/instance/access")).toBe("instance-access");
+    expect(getCompanySettingsTab("/organization/settings/instance/experimental")).toBe("instance-experimental");
+    expect(getCompanySettingsTab("/PAP/organization/settings/instance/plugins/example")).toBe("instance-plugins");
+    expect(getCompanySettingsTab("/organization/settings/instance/adapters")).toBe("instance-adapters");
   });
 
   function renderNav(
@@ -108,7 +108,7 @@ describe("CompanySettingsNav", () => {
   }
 
   it("renders the active tab and navigates when a different tab is selected", async () => {
-    currentPathname = "/PAP/company/settings/members";
+    currentPathname = "/PAP/organization/settings/members";
     const root = createRoot(container);
 
     await act(async () => {
@@ -142,7 +142,7 @@ describe("CompanySettingsNav", () => {
       button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(navigateMock).toHaveBeenCalledWith("/company/settings/secrets");
+    expect(navigateMock).toHaveBeenCalledWith("/organization/settings/secrets");
 
     await act(async () => {
       root.unmount();
@@ -150,7 +150,7 @@ describe("CompanySettingsNav", () => {
   });
 
   it("filters operator-hidden tabs out of the tab bar", async () => {
-    currentPathname = "/PAP/company/settings/members";
+    currentPathname = "/PAP/organization/settings/members";
     const root = createRoot(container);
 
     await act(async () => {
@@ -179,7 +179,7 @@ describe("CompanySettingsNav", () => {
   });
 
   it("filters operator-hidden company tabs out of the tab bar", async () => {
-    currentPathname = "/PAP/company/settings/members";
+    currentPathname = "/PAP/organization/settings/members";
     const root = createRoot(container);
 
     await act(async () => {
@@ -200,7 +200,7 @@ describe("CompanySettingsNav", () => {
   });
 
   it("suppresses the Import tab on a Cloud-managed instance", async () => {
-    currentPathname = "/PAP/company/settings/members";
+    currentPathname = "/PAP/organization/settings/members";
     const root = createRoot(container);
 
     await act(async () => {

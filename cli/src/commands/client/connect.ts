@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import type { Agent, Company } from "@paperclipai/shared";
+import type { Agent } from "@paperclipai/shared";
 import { createAgentKeySchema, createBoardApiKeySchema } from "@paperclipai/shared";
 import { loginBoardCli } from "../../client/board-auth.js";
 import { PaperclipApiClient } from "../../client/http.js";
@@ -76,29 +76,22 @@ async function connectWizard(opts: ConnectOptions) {
   const boardLogin = await loginBoardCli({
     apiBase,
     requestedAccess: "board",
-    requestedCompanyId: opts.companyId ?? resolvedProfile.profile.companyId ?? null,
     command: "paperclipai connect",
   });
   const boardApi = new PaperclipApiClient({ apiBase, apiKey: boardLogin.token });
-  const companies = (await boardApi.get<Company[]>("/api/companies")) ?? [];
 
   const persona = await choosePersona(opts.persona);
   const profileName = opts.profile?.trim() || await askProfileName(resolvedProfile.name);
   const apiKeyEnvVarName = opts.apiKeyEnvVarName?.trim() || "PAPERCLIP_API_KEY";
 
   if (persona === "board") {
-    const company = await chooseCompany(companies, opts.companyId ?? resolvedProfile.profile.companyId, {
-      optional: true,
-    });
     const tokenName = opts.tokenName?.trim() || `cli-board-${new Date().toISOString()}`;
     const key = await boardApi.post<CreatedBoardKey>("/api/board-api-keys", createBoardApiKeySchema.parse({
       name: tokenName,
-      requestedCompanyId: company?.id ?? null,
     }));
     if (!key) throw new Error("Failed to create board token");
     upsertProfile(profileName, {
       apiBase,
-      companyId: company?.id,
       persona: "board",
       agentId: "",
       agentName: "",
@@ -114,25 +107,19 @@ async function connectWizard(opts: ConnectOptions) {
       profile: profileName,
       persona: "board",
       apiBase,
-      companyId: company?.id ?? null,
       key: publicKeyResult(key),
-      exports: buildExports({ apiBase, companyId: company?.id, agentId: undefined, envName: apiKeyEnvVarName, token: key.token }),
+      exports: buildExports({ apiBase, agentId: undefined, envName: apiKeyEnvVarName, token: key.token }),
     };
   }
 
-  const company = await chooseCompany(companies, opts.companyId ?? resolvedProfile.profile.companyId, {
-    optional: false,
-  });
-  if (!company) throw new Error("Company is required for agent profiles");
-  const agents = (await boardApi.get<Agent[]>(apiPath`/api/companies/${company.id}/agents`)) ?? [];
-  if (agents.length === 0) throw new Error(`Company '${company.name}' has no agents to connect.`);
+  const agents = (await boardApi.get<Agent[]>("/api/agents")) ?? [];
+  if (agents.length === 0) throw new Error("The organization has no agents to connect.");
   const agent = await chooseAgent(agents, resolvedProfile.profile.agentId);
   const tokenName = opts.tokenName?.trim() || `cli-agent-${new Date().toISOString()}`;
   const key = await boardApi.post<CreatedAgentKey>(apiPath`/api/agents/${agent.id}/keys`, createAgentKeySchema.parse({ name: tokenName }));
   if (!key) throw new Error("Failed to create agent token");
   upsertProfile(profileName, {
     apiBase,
-    companyId: company.id,
     persona: "agent",
     agentId: agent.id,
     agentName: agent.name,
@@ -148,11 +135,10 @@ async function connectWizard(opts: ConnectOptions) {
     profile: profileName,
     persona: "agent",
     apiBase,
-    companyId: company.id,
     agentId: agent.id,
     agentName: agent.name,
     key: publicKeyResult(key),
-    exports: buildExports({ apiBase, companyId: company.id, agentId: agent.id, envName: apiKeyEnvVarName, token: key.token }),
+    exports: buildExports({ apiBase, agentId: agent.id, envName: apiKeyEnvVarName, token: key.token }),
   };
 }
 
@@ -167,7 +153,7 @@ async function choosePersona(input: string | undefined): Promise<"board" | "agen
     message: "Connect as",
     options: [
       { value: "board", label: "Board operator" },
-      { value: "agent", label: "Agent in a company" },
+      { value: "agent", label: "Agent" },
     ],
   });
   assertNotCancelled(selected);
@@ -183,34 +169,6 @@ async function askProfileName(defaultName: string): Promise<string> {
   const value = String(profile).trim();
   if (!value) throw new Error("Profile name is required");
   return value;
-}
-
-async function chooseCompany(
-  companies: Company[],
-  preferredCompanyId: string | undefined,
-  opts: { optional: boolean },
-): Promise<Company | null> {
-  if (companies.length === 0) {
-    if (opts.optional) return null;
-    throw new Error("No companies are accessible with this board credential.");
-  }
-  const preferred = preferredCompanyId ? companies.find((company) => company.id === preferredCompanyId) : null;
-  if (companies.length === 1 && !opts.optional) return companies[0] ?? null;
-  const selected = await p.select({
-    message: opts.optional ? "Default company for this profile" : "Agent company",
-    initialValue: preferred?.id ?? companies[0]?.id,
-    options: [
-      ...(opts.optional ? [{ value: "", label: "(none)" }] : []),
-      ...companies.map((company) => ({
-        value: company.id,
-        label: company.name,
-        hint: company.id,
-      })),
-    ],
-  });
-  assertNotCancelled(selected);
-  if (!selected) return null;
-  return companies.find((company) => company.id === selected) ?? null;
 }
 
 async function chooseAgent(agents: Agent[], preferredAgentId: string | undefined): Promise<Agent> {
@@ -233,7 +191,6 @@ async function chooseAgent(agents: Agent[], preferredAgentId: string | undefined
 
 function buildExports(input: {
   apiBase: string;
-  companyId?: string;
   agentId?: string;
   envName: string;
   token: string;
@@ -241,7 +198,6 @@ function buildExports(input: {
   const escaped = (value: string) => value.replace(/'/g, "'\"'\"'");
   return [
     `export PAPERCLIP_API_URL='${escaped(input.apiBase)}'`,
-    input.companyId ? `export PAPERCLIP_COMPANY_ID='${escaped(input.companyId)}'` : null,
     input.agentId ? `export PAPERCLIP_AGENT_ID='${escaped(input.agentId)}'` : null,
     `export ${input.envName}='${escaped(input.token)}'`,
   ].filter((line): line is string => Boolean(line)).join("\n");

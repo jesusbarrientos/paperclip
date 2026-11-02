@@ -188,7 +188,6 @@ function boardMember(
     companyIds: ["company-1"],
     memberships: [
       {
-        companyId: "company-1",
         membershipRole,
         status: "active",
       },

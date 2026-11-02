@@ -23,18 +23,16 @@ export function shouldUseIsolatedTaskDirectory(input: {
 
 /** Stable across turns, separate from project roots and shared agent homes. */
 export async function materializeIsolatedTaskDirectory(input: {
-  companyId: string;
   issueId: string;
 }): Promise<string> {
   // Files belong to the task, so reassignment preserves the same workspace.
-  const identities = [input.companyId, input.issueId];
-  if (identities.some((value) => !/^[a-zA-Z0-9_-]+$/.test(value))) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(input.issueId)) {
     throw new Error("Invalid isolated task workspace identity");
   }
   const root = resolvePaperclipInstanceRoot();
   await mkdir(root, { recursive: true });
   let cwd = await realpath(root);
-  for (const segment of ["isolated-workspaces", ...identities]) {
+  for (const segment of ["isolated-workspaces", input.issueId]) {
     cwd = path.join(cwd, segment);
     await mkdir(cwd, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "EEXIST") throw error;

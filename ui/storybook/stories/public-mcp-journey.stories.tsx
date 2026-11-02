@@ -11,10 +11,10 @@ import { installPublicMcpFixture } from "../fixtures/publicMcp";
 
 function ConnectionJourney({ assistant = "opencode" }: { assistant?: "codex" | "claude" | "opencode" | "other" }) {
   return <PluginLauncherProvider><Routes>
-    <Route path="/:companyPrefix" element={<Layout />}>
+    <Route path="/" element={<Layout />}>
       <Route path="apps" element={<Browse />} />
       <Route path="apps/assistant-connection" element={<AssistantConnection initialAssistant={assistant} />} />
-      <Route path="company/settings/instance/experimental" element={<InstanceExperimentalSettings />} />
+      <Route path="organization/settings/instance/experimental" element={<InstanceExperimentalSettings />} />
       <Route path="*" element={<Link className="text-sm underline" to="/apps">Return to Connections</Link>} />
     </Route>
   </Routes></PluginLauncherProvider>;
@@ -24,7 +24,7 @@ const meta = {
   title: "Assistant connections/Start here",
   component: ConnectionJourney,
   parameters: {
-    layout: "fullscreen", initialEntries: ["/PAP/apps"], fixture: { enabled: false, empty: true },
+    layout: "fullscreen", initialEntries: ["/apps"], fixture: { enabled: false, empty: true },
     docs: { description: { component: "Begin inside Paperclip. Open Assistant Connection (MCP), follow its Experimental settings link if needed, then choose your assistant. These are production pages in the real app shell; API responses are fixtures. Follow the displayed commands in a live instance to launch browser sign-in and consent. Storybook does not run a terminal, grant access, or simulate a successful OpenCode conversation. Consent states have their own stories. The Connected checkpoint represents returning after a real grant, not clicking a mock connect button." } },
   },
   beforeEach: ({ parameters }) => installPublicMcpFixture(parameters.fixture),
@@ -33,17 +33,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const GuidedWalkthrough: Story = { render: () => <PublicMcpPresenter /> };
 export const Connections: Story = {};
-export const EnableSetup: Story = { parameters: { initialEntries: ["/PAP/apps/assistant-connection"] } };
+export const EnableSetup: Story = { parameters: { initialEntries: ["/apps/assistant-connection"] } };
 export const ConnectionStatusUnavailable: Story = { parameters: { fixture: { enabled: true, connectionsUnavailable: true } } };
-export const OpenCodeSetup: Story = { parameters: { initialEntries: ["/PAP/apps/assistant-connection"], fixture: { enabled: true, empty: true } } };
+export const OpenCodeSetup: Story = { parameters: { initialEntries: ["/apps/assistant-connection"], fixture: { enabled: true, empty: true } } };
 export const CodexSetup: Story = { ...OpenCodeSetup, args: { assistant: "codex" } };
 export const ClaudeSetup: Story = { ...OpenCodeSetup, args: { assistant: "claude" } };
-export const Connected: Story = { parameters: { initialEntries: ["/PAP/apps/assistant-connection"], fixture: { enabled: true, empty: false, connections: [
+export const Connected: Story = { parameters: { initialEntries: ["/apps/assistant-connection"], fixture: { enabled: true, empty: false, connections: [
   { id: "opencode", companyId: "company-storybook", companyName: "Paperclip", clientName: "OpenCode", scopes: ["paperclip:read", "paperclip:write", "offline_access"], createdAt: "2026-10-05T12:00:00Z", revokedAt: null },
   { id: "other-org", companyId: "another-company", companyName: "Other organization", clientName: "Private other client", scopes: ["paperclip:read"], createdAt: "2026-10-05T12:00:00Z", revokedAt: null },
 ] } } };
-export const Unavailable: Story = { parameters: { initialEntries: ["/PAP/apps/assistant-connection"], fixture: { unavailable: true } } };
-export const Loading: Story = { parameters: { initialEntries: ["/PAP/apps/assistant-connection"], fixture: { loading: true } } };
+export const Unavailable: Story = { parameters: { initialEntries: ["/apps/assistant-connection"], fixture: { unavailable: true } } };
+export const Loading: Story = { parameters: { initialEntries: ["/apps/assistant-connection"], fixture: { loading: true } } };
 export const NavigationCheck: Story = { play: async ({ canvasElement }) => {
   const c = within(canvasElement);
   await userEvent.click(await c.findByRole("button", { name: "Set up Assistant Connection (MCP)" }));

@@ -69,7 +69,6 @@ async function withNativeSlack(
 ) {
   const runtime = createChatSdkEndpointRuntime({
     callbacks: { onMessage() {} },
-    companyId: "bounded-slack-company",
     endpointId: "bounded-slack-endpoint",
     logger: "silent",
     persistence,
@@ -704,7 +703,6 @@ describe("already-approved publication streaming", () => {
     async ({ text, expected, cachedUserId }) => {
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "ready-slack-company",
         endpointId: "ready-slack-endpoint",
         logger: "silent",
         persistence,
@@ -815,7 +813,6 @@ describe("already-approved publication streaming", () => {
       );
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "ready-telegram-company",
         endpointId: "ready-telegram-endpoint",
         logger: "silent",
         persistence,

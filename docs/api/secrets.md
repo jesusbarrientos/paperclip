@@ -121,7 +121,7 @@ treated as unavailable until a fresh proposal executes successfully.
 ## List Secrets
 
 ```
-GET /api/companies/{companyId}/secrets
+GET /api/secrets
 ```
 
 Returns secret metadata (not decrypted values).
@@ -129,7 +129,7 @@ Returns secret metadata (not decrypted values).
 ## Create Secret
 
 ```
-POST /api/companies/{companyId}/secrets
+POST /api/secrets
 {
   "name": "anthropic-api-key",
   "value": "sk-ant-..."
@@ -158,7 +158,7 @@ runtime path that enforces binding context and records access events.
 ## Provider Health
 
 ```
-GET /api/companies/{companyId}/secret-providers/health
+GET /api/secret-providers/health
 ```
 
 Returns provider setup diagnostics, warnings, and local backup guidance. Health
@@ -172,7 +172,7 @@ credentials must not be stored in Paperclip `company_secrets`.
 The equivalent CLI check is:
 
 ```sh
-npx paperclipai secrets doctor --company-id {companyId}
+npx paperclipai secrets doctor
 ```
 
 ## Provider Vaults
@@ -190,7 +190,7 @@ returns provider credential values; submitting credential-shaped fields in
 ### List Vaults
 
 ```
-GET /api/companies/{companyId}/secret-provider-configs
+GET /api/secret-provider-configs
 ```
 
 Returns every vault for the company (including disabled rows for audit), each
@@ -201,7 +201,7 @@ latest health snapshot (`healthStatus`, `healthCheckedAt`, `healthMessage`,
 ### Create Vault
 
 ```
-POST /api/companies/{companyId}/secret-provider-configs
+POST /api/secret-provider-configs
 {
   "provider": "aws_secrets_manager",
   "displayName": "Prod US-East",
@@ -307,7 +307,7 @@ provider modules.
 
 ### Selecting A Vault When Creating Or Rotating Secrets
 
-`POST /api/companies/{companyId}/secrets` and
+`POST /api/secrets` and
 `POST /api/secrets/{secretId}/rotate` both accept an optional
 `providerConfigId` field that pins the secret to a specific vault. When
 omitted (or null), the operation runs through the deployment-level provider
@@ -318,7 +318,7 @@ Coming-soon and disabled vaults are rejected with a 422; a vault that does not
 match the secret's provider is rejected the same way.
 
 ```json
-POST /api/companies/{companyId}/secrets
+POST /api/secrets
 {
   "name": "prod-stripe-key",
   "provider": "aws_secrets_manager",
@@ -346,9 +346,9 @@ Remote import links existing AWS Secrets Manager entries into Paperclip as
 `external_reference` secrets. Import stores provider reference metadata only; it
 does not copy the remote secret plaintext into Paperclip.
 
-The routes are board-only and company-scoped. `providerConfigId` must point to
-a same-company AWS provider vault with status `ready` or `warning`. Disabled,
-coming-soon, non-AWS, and cross-company vaults are rejected. Imported secrets
+The routes are board-only. `providerConfigId` must point to an existing AWS
+provider vault with status `ready` or `warning`. Disabled, coming-soon, non-AWS,
+and unknown vaults are rejected. Imported secrets
 resolve later through the selected vault, so runtime reads still need
 `secretsmanager:GetSecretValue` and any required KMS decrypt permission on the
 selected external secret.
@@ -356,7 +356,7 @@ selected external secret.
 ### Preview Remote Import Candidates
 
 ```
-POST /api/companies/{companyId}/secrets/remote-import/preview
+POST /api/secrets/remote-import/preview
 {
   "providerConfigId": "<aws-vault-uuid>",
   "query": "stripe",
@@ -418,7 +418,7 @@ resources instead.
 ### Import Selected Remote References
 
 ```
-POST /api/companies/{companyId}/secrets/remote-import
+POST /api/secrets/remote-import
 {
   "providerConfigId": "<aws-vault-uuid>",
   "secrets": [
@@ -543,7 +543,7 @@ as declarations in the package manifest. Exports omit secret values, secret IDs,
 provider references, and encrypted provider material. Use:
 
 ```sh
-npx paperclipai secrets declarations --company-id {companyId}
+npx paperclipai secrets declarations
 ```
 
 to inspect the declarations that an export would emit before moving a package.

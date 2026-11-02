@@ -72,7 +72,6 @@ export type RecoveryCauseRouting = {
 };
 
 export type RecoveryObservabilityReport = {
-  companyId: string;
   generatedAt: string;
   window: { weeks: number; since: string };
   thresholdPercent: number;
@@ -162,7 +161,6 @@ function utcWeekStart(now: Date, weeksAgo: number): Date {
 
 export function recoveryObservabilityService(db: Db) {
   async function report(
-    companyId: string,
     opts?: { now?: Date; weeks?: number; thresholdPercent?: number },
   ): Promise<RecoveryObservabilityReport> {
     const now = opts?.now ?? new Date();
@@ -180,8 +178,7 @@ export function recoveryObservabilityService(db: Db) {
         to_char(date_trunc('week', ${heartbeatRuns.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS week_start,
         count(*)::int AS runs
       FROM ${heartbeatRuns}
-      WHERE ${heartbeatRuns.companyId} = ${companyId}
-        AND ${heartbeatRuns.createdAt} >= ${sinceIso}::timestamptz
+      WHERE ${heartbeatRuns.createdAt} >= ${sinceIso}::timestamptz
       GROUP BY week_start
     `)) as unknown as Iterable<{ week_start: string; runs: number | string }>;
 
@@ -191,8 +188,7 @@ export function recoveryObservabilityService(db: Db) {
         to_char(date_trunc('week', ${issueRecoveryActions.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS week_start,
         count(*)::int AS actions
       FROM ${issueRecoveryActions}
-      WHERE ${issueRecoveryActions.companyId} = ${companyId}
-        AND ${issueRecoveryActions.createdAt} >= ${sinceIso}::timestamptz
+      WHERE ${issueRecoveryActions.createdAt} >= ${sinceIso}::timestamptz
       GROUP BY week_start
     `)) as unknown as Iterable<{ week_start: string; actions: number | string }>;
 
@@ -225,8 +221,7 @@ export function recoveryObservabilityService(db: Db) {
         count(*) FILTER (WHERE ${issueRecoveryActions.status} = 'resolved')::int AS resolved_count,
         count(*) FILTER (WHERE ${issueRecoveryActions.status} = 'cancelled')::int AS cancelled_count
       FROM ${issueRecoveryActions}
-      WHERE ${issueRecoveryActions.companyId} = ${companyId}
-        AND ${issueRecoveryActions.createdAt} >= ${sinceIso}::timestamptz
+      WHERE ${issueRecoveryActions.createdAt} >= ${sinceIso}::timestamptz
       GROUP BY cause, error_code
       ORDER BY count DESC
     `)) as unknown as Iterable<{
@@ -263,10 +258,7 @@ export function recoveryObservabilityService(db: Db) {
       .from(issueRecoveryActions)
       .innerJoin(issues, eq(issues.id, issueRecoveryActions.sourceIssueId))
       .where(
-        and(
-          eq(issueRecoveryActions.companyId, companyId),
-          gte(issueRecoveryActions.createdAt, since),
-        ),
+        gte(issueRecoveryActions.createdAt, since),
       );
 
     const handoff: RecoveryHandoffSummary = {
@@ -357,7 +349,6 @@ export function recoveryObservabilityService(db: Db) {
     const perCauseRouting = Array.from(routingByCause.values()).sort((a, b) => b.total - a.total);
 
     return {
-      companyId,
       generatedAt: now.toISOString(),
       window: { weeks, since: sinceIso.slice(0, 10) },
       thresholdPercent,

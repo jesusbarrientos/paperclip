@@ -49,20 +49,20 @@ describe("issuesApi.list", () => {
   it("fetches all pages of tasks created from the source without filtering parentage", async () => {
     const firstPage = Array.from({ length: 500 }, (_, index) => ({ id: `task-${index}` }));
     mockApi.get.mockResolvedValueOnce(firstPage).mockResolvedValueOnce([{ id: "last-task" }]);
-    const result = await issuesApi.listAll("company-1", { createdFromIssueId: "source-1" });
+    const result = await issuesApi.listAll({ createdFromIssueId: "source-1" });
     expect(result).toHaveLength(501);
-    expect(mockApi.get).toHaveBeenNthCalledWith(1, "/companies/company-1/issues?createdFromIssueId=source-1&limit=500&sortField=id&sortDir=asc");
-    expect(mockApi.get).toHaveBeenNthCalledWith(2, "/companies/company-1/issues?createdFromIssueId=source-1&limit=500&sortField=id&sortDir=asc&afterId=task-499");
+    expect(mockApi.get).toHaveBeenNthCalledWith(1, "/issues?createdFromIssueId=source-1&limit=500&sortField=id&sortDir=asc");
+    expect(mockApi.get).toHaveBeenNthCalledWith(2, "/issues?createdFromIssueId=source-1&limit=500&sortField=id&sortDir=asc&afterId=task-499");
   });
 
   it("passes parentId through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", {
+    await issuesApi.list({
       parentId: "issue-parent-1",
       limit: 25,
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?parentId=issue-parent-1&limit=25",
+      "/issues?parentId=issue-parent-1&limit=25",
     );
   });
 
@@ -137,50 +137,50 @@ describe("issuesApi.list", () => {
     },
   );
   it("passes descendantOf through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", {
+    await issuesApi.list({
       descendantOf: "issue-root-1",
       includeBlockedBy: true,
       limit: 25,
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?descendantOf=issue-root-1&includeBlockedBy=true&limit=25",
+      "/issues?descendantOf=issue-root-1&includeBlockedBy=true&limit=25",
     );
   });
 
   it("passes generic workspaceId filters through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", {
+    await issuesApi.list({
       workspaceId: "workspace-1",
       limit: 1000,
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?workspaceId=workspace-1&limit=1000",
+      "/issues?workspaceId=workspace-1&limit=1000",
     );
   });
 
   it("passes pagination offsets through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", { limit: 500, offset: 1500 });
+    await issuesApi.list({ limit: 500, offset: 1500 });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?limit=500&offset=1500",
+      "/issues?limit=500&offset=1500",
     );
   });
 
   it("passes issue list sort options through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", {
+    await issuesApi.list({
       limit: 500,
       sortField: "updated",
       sortDir: "desc",
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?limit=500&sortField=updated&sortDir=desc",
+      "/issues?limit=500&sortField=updated&sortDir=desc",
     );
   });
 
   it("requests the compact issue list view explicitly", async () => {
-    await issuesApi.listCompact("company-1", {
+    await issuesApi.listCompact({
       touchedByUserId: "me",
       includeLiveDescendantSummary: true,
       limit: 100,
@@ -189,26 +189,26 @@ describe("issuesApi.list", () => {
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?touchedByUserId=me&includeLiveDescendantSummary=true&limit=100&sortField=updated&sortDir=desc&view=compact",
+      "/issues?touchedByUserId=me&includeLiveDescendantSummary=true&limit=100&sortField=updated&sortDir=desc&view=compact",
     );
   });
 
   it("passes plan document filters through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", { hasPlanDocument: false, limit: 25 });
+    await issuesApi.list({ hasPlanDocument: false, limit: 25 });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?hasPlanDocument=false&limit=25",
+      "/issues?hasPlanDocument=false&limit=25",
     );
   });
 
   it("passes live descendant summary opt-in through to the company issues endpoint", async () => {
-    await issuesApi.list("company-1", {
+    await issuesApi.list({
       includeLiveDescendantSummary: true,
       limit: 25,
     });
 
     expect(mockApi.get).toHaveBeenCalledWith(
-      "/companies/company-1/issues?includeLiveDescendantSummary=true&limit=25",
+      "/issues?includeLiveDescendantSummary=true&limit=25",
     );
   });
 

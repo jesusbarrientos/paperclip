@@ -15,7 +15,7 @@ An organization is the top-level unit in Paperclip. Each organization has:
 - **Budget** — monthly spend limits in cents
 - **Task hierarchy** — all work traces back to the company goal
 
-One Paperclip instance can run multiple companies.
+Each Paperclip instance runs exactly one organization. To run a second company, run a second instance.
 
 ## Agents
 

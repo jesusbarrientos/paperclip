@@ -278,7 +278,7 @@ export function TaskSidePanel({
   const documents = documentsData ?? EMPTY_ISSUE_DOCUMENTS;
   const { data: planDocument } = useIssuePlanDocument(issue.id);
   const restoredRef = useRef(
-    readTaskSidePanelState(accountScope, issue.companyId, issue.id, fileTabsEnabled),
+    readTaskSidePanelState(accountScope, issue.id, fileTabsEnabled),
   );
   const taskCount = tasksTab?.count ?? childIssues.length;
   const taskLabel = tasksTab ? "Tasks" : "Subtasks";
@@ -328,14 +328,14 @@ export function TaskSidePanel({
   }, []);
 
   const persist = useCallback((state: { tabs: SidePanelTabRecord<TaskSidePanelTabPayload>[]; activeTabId: string | null }) => {
-    writeTaskSidePanelState(accountScope, issue.companyId, issue.id, {
+    writeTaskSidePanelState(accountScope, issue.id, {
       state,
       launcherOpen,
       userInteracted: userInteractedRef.current,
       autoPlanHandled: autoPlanHandledRef.current,
       updatedAt: Date.now(),
     });
-  }, [accountScope, issue.companyId, issue.id, launcherOpen]);
+  }, [accountScope, issue.id, launcherOpen]);
   const controller = useSidePanelTabs<TaskSidePanelTabPayload>({ initialState, onStateChange: persist });
   const browsersQuery = useTaskBrowsers(issue.id);
   const newestLiveBrowser = browsersQuery.data?.findLast((browser) => browser.status === "running" || browser.status === "idle");
@@ -348,10 +348,10 @@ export function TaskSidePanel({
     // Acknowledge only after selection and persistence commit. Clearing the
     // parent request earlier can replace the panel before its tab state lands.
     if (openBrowserId && controller.activeTabId === `browser:${openBrowserId}` &&
-      readTaskSidePanelState(accountScope, issue.companyId, issue.id, fileTabsEnabled)?.state.activeTabId === controller.activeTabId) {
+      readTaskSidePanelState(accountScope, issue.id, fileTabsEnabled)?.state.activeTabId === controller.activeTabId) {
       onBrowserOpened?.();
     }
-  }, [openBrowserId, controller.activeTabId, onBrowserOpened, accountScope, issue.companyId, issue.id, fileTabsEnabled]);
+  }, [openBrowserId, controller.activeTabId, onBrowserOpened, accountScope, issue.id, fileTabsEnabled]);
   const activeTab = controller.tabs.find((tab) => tab.id === controller.activeTabId) ?? null;
   const subtasksAvailable = showRelatedTasks && (taskCount > 0 || tasksTab?.hasError === true);
   const hasSubtasksTab = controller.tabs.some((tab) => tab.id === "subtasks");
@@ -751,10 +751,10 @@ export function TaskSidePanel({
     );
   } else if (activeTab.payload.kind === "agent-tasks") {
     content = conversationAgentId ? (
-      <AgentTasksPanel companyId={issue.companyId} agentId={conversationAgentId} excludeIssueId={issue.id} />
+      <AgentTasksPanel agentId={conversationAgentId} excludeIssueId={issue.id} />
     ) : null;
   } else if (activeTab.payload.kind === "artifacts" && conversationAgentId) {
-    content = <AgentArtifactsPanel companyId={issue.companyId} agentId={conversationAgentId} />;
+    content = <AgentArtifactsPanel agentId={conversationAgentId} />;
   } else if (activeTab.payload.kind === "artifacts") {
     content = <TextAttachmentContext.Provider value={(id, title) => {
       markInteracted();
@@ -774,12 +774,11 @@ export function TaskSidePanel({
   } else if (activeTab.payload.kind === "attachment") {
     content = <TaskAttachmentPanel key={activeTab.payload.attachmentId} issueId={issue.id} attachmentId={activeTab.payload.attachmentId} />;
   } else if (activeTab.payload.kind === "skill") {
-    content = <TaskSkillPanel companyId={issue.companyId} skillId={activeTab.payload.skillId} />;
+    content = <TaskSkillPanel skillId={activeTab.payload.skillId} />;
   } else if (activeTab.payload.kind === "files-browser") {
     content = (
       <WorkspaceFileBrowser
         issueId={issue.id}
-        companyId={issue.companyId}
         onOpen={openWorkspaceFile}
         onBrowseStateChange={(next) => {
           controller.updateTab(activeTab.id, {

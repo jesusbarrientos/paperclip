@@ -51,8 +51,6 @@ describe("native runner file handoff", () => {
   let temporaryRoot: string;
   let workspaceRoot: string;
   let storageRoot: string;
-
-  const companyId = "00000000-0000-4000-8000-000000009101";
   const agentId = "00000000-0000-4000-8000-000000009102";
   const issueId = "00000000-0000-4000-8000-000000009103";
   const runId = "00000000-0000-4000-8000-000000009104";
@@ -70,14 +68,12 @@ describe("native runner file handoff", () => {
     await mkdir(workspaceRoot, { recursive: true });
     await mkdir(storageRoot, { recursive: true });
     await db.insert(companies).values({
-      id: companyId,
       name: "Native file handoff",
       issuePrefix: "NFH",
       issueCounter: 1,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Native file agent",
       adapterType: "paperclip_runner",
       adapterConfig: { provider: "codex" },
@@ -86,7 +82,6 @@ describe("native runner file handoff", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       issueNumber: 1,
       identifier: "NFH-1",
       title: "Prepare a requested file",
@@ -96,7 +91,6 @@ describe("native runner file handoff", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -117,13 +111,11 @@ describe("native runner file handoff", () => {
 
   function authority(
     overrides: Partial<{
-      companyId: string;
       executionTargetKind: "local" | "remote";
       readRemoteWorkspaceFile: (input: { contentRef: string; byteSize: number; sha256: string }) => Promise<Buffer>;
     }> = {},
   ) {
     return new PaperclipRunnerToolAuthority(db, {
-      companyId: overrides.companyId ?? companyId,
       agentId,
       issueId,
       runId,
@@ -159,7 +151,6 @@ describe("native runner file handoff", () => {
     commentBody: string;
   }) {
     const stored = await input.storage.putFile({
-      companyId,
       namespace: `issues/${issueId}`,
       originalFilename: input.filename,
       contentType: "text/plain",
@@ -220,7 +211,7 @@ describe("native runner file handoff", () => {
   });
 
   it("accepts a cited registered work product and respects the current request", async () => {
-    const [product] = await db.insert(issueWorkProducts).values({ companyId, issueId, type: "artifact", provider: "external",
+    const [product] = await db.insert(issueWorkProducts).values({ issueId, type: "artifact", provider: "external",
       title: "Requested report", status: "ready_for_review", url: "https://example.com/report.pdf", createdByRunId: runId }).returning();
     try {
       for (const ref of [product.url!, `work_product:${product.id}`]) {
@@ -316,7 +307,7 @@ describe("native runner file handoff", () => {
     await expect(nativeCompletionFeedback(db, runId, doneReport([`deliverable:${first.entityRefs[0]}`])))
       .resolves.toContain("Completion report accepted");
     const otherIssueId = "00000000-0000-4000-8000-000000009111";
-    await db.insert(issues).values({ id: otherIssueId, companyId, title: "Unrelated file", status: "in_progress" });
+    await db.insert(issues).values({ id: otherIssueId, title: "Unrelated file", status: "in_progress" });
     await db.update(issueAttachments).set({ issueId: otherIssueId }).where(eq(issueAttachments.id, first.entityRefs[0]));
     try {
       await expect(nativeCompletionFeedback(db, runId, doneReport([`deliverable:${first.entityRefs[0]}`])))
@@ -336,7 +327,7 @@ describe("native runner file handoff", () => {
       issueCommentId: expect.any(String),
     });
     await expect(
-      db.select().from(assets).where(eq(assets.companyId, companyId)),
+      db.select().from(assets),
     ).resolves.toEqual([
       expect.objectContaining({
         createdByAgentId: agentId,
@@ -388,7 +379,7 @@ describe("native runner file handoff", () => {
     ]);
   });
 
-  it("fails closed for remote targets, symlinks, traversal, hash drift, and foreign bindings", async () => {
+  it("fails closed for remote targets, symlinks, traversal, and hash drift", async () => {
     const body = Buffer.from("untrusted path checks\n", "utf8");
     await writeFile(path.join(workspaceRoot, "checked.txt"), body);
     await symlink(
@@ -444,11 +435,6 @@ describe("native runner file handoff", () => {
         },
       }),
     ).rejects.toThrow("paperclip_runner_file_handoff_hash_mismatch");
-    await expect(
-      authority({ companyId: "00000000-0000-4000-8000-000000009999" }).execute(
-        callFor("checked.txt", body, "foreign-denied"),
-      ),
-    ).rejects.toThrow("paperclip_runner_tool_binding_not_authorized");
   });
 
   it("registers a verified remote output without reading a controller path", async () => {
@@ -476,7 +462,6 @@ describe("native runner file handoff", () => {
       "utf8",
     );
     const stored = await storage.putFile({
-      companyId,
       namespace: `issues/${issueId}`,
       originalFilename: "inbound.txt",
       contentType: "text/plain",
@@ -527,7 +512,6 @@ describe("native runner file handoff", () => {
     const stage = await stageNativeRunnerWakeAttachments({
       db,
       binding: {
-        companyId,
         issueId,
         runId,
         agentId,
@@ -556,7 +540,6 @@ describe("native runner file handoff", () => {
     const concurrentStage = await stageNativeRunnerWakeAttachments({
       db,
       binding: {
-        companyId,
         issueId,
         runId,
         agentId,
@@ -592,7 +575,6 @@ describe("native runner file handoff", () => {
       const crossProcessStage = await stageNativeRunnerWakeAttachments({
         db,
         binding: {
-          companyId,
           issueId,
           runId,
           agentId,
@@ -617,7 +599,6 @@ describe("native runner file handoff", () => {
       const recycledOwnerStage = await stageNativeRunnerWakeAttachments({
         db,
         binding: {
-          companyId,
           issueId,
           runId,
           agentId,
@@ -661,7 +642,6 @@ describe("native runner file handoff", () => {
       stageNativeRunnerWakeAttachments({
         db,
         binding: {
-          companyId,
           issueId,
           runId,
           agentId,
@@ -681,7 +661,6 @@ describe("native runner file handoff", () => {
     const recoveredStage = await stageNativeRunnerWakeAttachments({
       db,
       binding: {
-        companyId,
         issueId,
         runId,
         agentId,
@@ -693,25 +672,10 @@ describe("native runner file handoff", () => {
     await expect(readFile(crashedResidue)).resolves.toEqual(Buffer.alloc(0));
     await recoveredStage.cleanup();
 
-    await expect(
-      stageNativeRunnerWakeAttachments({
-        db,
-        binding: {
-          companyId: "00000000-0000-4000-8000-000000009999",
-          issueId,
-          runId,
-          agentId,
-          workspaceRoot,
-          executionTargetKind: "local",
-        },
-        storage,
-      }),
-    ).rejects.toThrow("paperclip_runner_attachment_staging_not_authorized");
 
     const remoteStage = await stageNativeRunnerWakeAttachments({
       db,
       binding: {
-        companyId,
         issueId,
         runId,
         agentId,
@@ -783,15 +747,14 @@ describe("native runner file handoff", () => {
     const objectReads: string[] = [];
     const observingStorage: StorageService = {
       ...storage,
-      getObject: async (readCompanyId, objectKey, options) => {
+      getObject: async (objectKey, options) => {
         objectReads.push(objectKey);
-        return storage.getObject(readCompanyId, objectKey, options);
+        return storage.getObject(objectKey, options);
       },
     };
     const stage = await stageNativeRunnerWakeAttachments({
       db,
       binding: {
-        companyId,
         issueId,
         runId,
         agentId,
@@ -863,15 +826,14 @@ describe("native runner file handoff", () => {
     const objectReads: string[] = [];
     const observingStorage: StorageService = {
       ...storage,
-      getObject: async (readCompanyId, objectKey, options) => {
+      getObject: async (objectKey, options) => {
         objectReads.push(objectKey);
-        return storage.getObject(readCompanyId, objectKey, options);
+        return storage.getObject(objectKey, options);
       },
     };
     const stage = await stageNativeRunnerWakeAttachments({
       db,
       binding: {
-        companyId,
         issueId,
         runId,
         agentId,
@@ -903,7 +865,6 @@ describe("native runner file handoff", () => {
     const foreignRunId = "00000000-0000-4000-8000-000000009105";
     await db.insert(heartbeatRuns).values({
       id: foreignRunId,
-      companyId,
       agentId,
       status: "succeeded",
       runtimeMode: "native",
@@ -913,7 +874,6 @@ describe("native runner file handoff", () => {
       contextSnapshot: { issueId },
     });
     await db.insert(issueWorkProducts).values({
-      companyId,
       issueId,
       type: "artifact",
       provider: "paperclip",
@@ -944,13 +904,12 @@ describe("native runner file handoff", () => {
         ...(await realStorage.putFile(input)),
         sha256: "0".repeat(64),
       }),
-      deleteObject: async (deleteCompanyId, objectKey) => {
+      deleteObject: async (objectKey) => {
         deletedObjectKey = objectKey;
-        await realStorage.deleteObject(deleteCompanyId, objectKey);
+        await realStorage.deleteObject(objectKey);
       },
     };
     const mismatchingAuthority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -965,7 +924,7 @@ describe("native runner file handoff", () => {
     ).rejects.toThrow("paperclip_runner_file_handoff_storage_mismatch");
     expect(deletedObjectKey).toEqual(expect.any(String));
     await expect(
-      realStorage.headObject(companyId, deletedObjectKey!),
+      realStorage.headObject(deletedObjectKey!),
     ).resolves.toMatchObject({ exists: false });
 
     const receiptFailureBody = Buffer.from(
@@ -984,8 +943,8 @@ describe("native runner file handoff", () => {
         receiptFailureObjectKey = stored.objectKey;
         return stored;
       },
-      deleteObject: async (deleteCompanyId, objectKey) => {
-        await realStorage.deleteObject(deleteCompanyId, objectKey);
+      deleteObject: async (objectKey) => {
+        await realStorage.deleteObject(objectKey);
       },
     };
     await db.execute(sql`
@@ -1006,7 +965,6 @@ describe("native runner file handoff", () => {
     `);
     try {
       const receiptFailureAuthority = new PaperclipRunnerToolAuthority(db, {
-        companyId,
         agentId,
         issueId,
         runId,
@@ -1044,7 +1002,7 @@ describe("native runner file handoff", () => {
     }
     expect(receiptFailureObjectKey).toEqual(expect.any(String));
     await expect(
-      realStorage.headObject(companyId, receiptFailureObjectKey!),
+      realStorage.headObject(receiptFailureObjectKey!),
     ).resolves.toMatchObject({ exists: false });
   });
 
@@ -1179,10 +1137,10 @@ describe("native runner file handoff", () => {
     const body = Buffer.from("Preserved work from the previous run.\n");
     await writeFile(path.join(workspaceRoot, `${key}.txt`), body);
     const prior = await authority().execute(callFor(`${key}.txt`, body, key)) as { entityRefs: string[] };
-    const [product] = await db.insert(issueWorkProducts).values({ companyId, issueId, type: "artifact", provider: "external",
+    const [product] = await db.insert(issueWorkProducts).values({ issueId, type: "artifact", provider: "external",
       title: "Previous report", status: "ready_for_review", url: "https://example.com/previous.pdf", createdByRunId: runId }).returning();
     const nextRunId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: nextRunId, companyId, agentId, status: "running", runtimeMode: "native",
+    await db.insert(heartbeatRuns).values({ id: nextRunId, agentId, status: "running", runtimeMode: "native",
       nativeIssueId: issueId, invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId } });
     await db.update(issues).set({ executionRunId: nextRunId }).where(eq(issues.id, issueId));
     const ref = kind === "attachment" ? `deliverable:${prior.entityRefs[0]}` : `work_product:${product.id}`;
@@ -1197,7 +1155,7 @@ describe("native runner file handoff", () => {
       await db.update(heartbeatRuns).set({ contextSnapshot: { issueId } }).where(eq(heartbeatRuns.id, nextRunId));
 
       // The replacement can verify and publish the existing bytes itself. No user action is needed.
-      const replacement = new PaperclipRunnerToolAuthority(db, { companyId, agentId, issueId, runId: nextRunId,
+      const replacement = new PaperclipRunnerToolAuthority(db, { agentId, issueId, runId: nextRunId,
         workspaceRoot, executionTargetKind: "local", storage: createStorageService(createLocalDiskStorageProvider(storageRoot)) });
       const current = await replacement.execute(callFor(`${key}.txt`, body, `${key}-verified`)) as { entityRefs: string[] };
       expect(current.entityRefs[0]).not.toBe(prior.entityRefs[0]);
@@ -1207,7 +1165,7 @@ describe("native runner file handoff", () => {
         .resolves.toContain("Completion report accepted");
       await expect(nativeCompletionFeedback(db, nextRunId, doneReport([ref, `deliverable:${current.entityRefs[0]}`])))
         .resolves.toContain("Completion report accepted");
-      const [currentProduct] = await db.insert(issueWorkProducts).values({ companyId, issueId, type: "artifact", provider: "external",
+      const [currentProduct] = await db.insert(issueWorkProducts).values({ issueId, type: "artifact", provider: "external",
         title: "Current report", status: "ready_for_review", url: "https://example.com/current.pdf", createdByRunId: nextRunId }).returning();
       await expect(nativeCompletionFeedback(db, nextRunId, doneReport([ref, `work_product:${currentProduct.id}`])))
         .resolves.toContain("Completion report accepted");

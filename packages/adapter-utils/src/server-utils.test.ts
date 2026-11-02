@@ -3758,19 +3758,17 @@ describe("buildPaperclipEnv", () => {
       },
       () => {
         const env = buildPaperclipEnv({
-          id: "agent-1",
-          companyId: "company-1",
+          id: "agent-1"
         });
         expect(env.PAPERCLIP_API_URL).toBe("http://localhost:3100");
         expect(env.PAPERCLIP_AGENT_ID).toBe("agent-1");
-        expect(env.PAPERCLIP_COMPANY_ID).toBe("company-1");
       },
     );
   });
 
   it("falls back to the derived runtime URL when no explicit override is set", () => {
     withEnv({ PAPERCLIP_RUNTIME_API_URL: "http://203.0.113.7:3100" }, () => {
-      const env = buildPaperclipEnv({ id: "agent-1", companyId: "company-1" });
+      const env = buildPaperclipEnv({ id: "agent-1" });
       expect(env.PAPERCLIP_API_URL).toBe("http://203.0.113.7:3100");
     });
   });
@@ -3780,8 +3778,7 @@ describe("buildPaperclipEnv", () => {
       { PAPERCLIP_LISTEN_HOST: "0.0.0.0", PAPERCLIP_LISTEN_PORT: "3200" },
       () => {
         const env = buildPaperclipEnv({
-          id: "agent-1",
-          companyId: "company-1",
+          id: "agent-1"
         });
         expect(env.PAPERCLIP_API_URL).toBe("http://localhost:3200");
       },
@@ -3808,7 +3805,6 @@ describe("runtime skill assignment boundaries", () => {
 describe("wake continuation comment ownership", () => {
   const continuation = (messages: Array<Record<string, unknown>>, resumeDelta?: Array<Record<string, unknown>>) => ({
     version: 1,
-    companyId: "company-1",
     issueId: "issue-1",
     trigger: { reason: "issue_commented", interactionId: null, sourceRunId: null },
     originCommentIds: [],

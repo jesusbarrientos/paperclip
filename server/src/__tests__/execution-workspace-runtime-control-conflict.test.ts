@@ -84,7 +84,6 @@ let registeredProjectWorkspace: { id: string; cwd: string; metadata: null } | nu
 function buildExecutionWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     id: executionWorkspaceId,
-    companyId: "company-1",
     // Left unset so the handler does not need a real `db` for project/policy lookups; the
     // runtime config below is what the control path actually reads.
     projectId: null,
@@ -131,7 +130,6 @@ async function createApp() {
     (req as any).actor = {
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_key",
       runId: "run-1",
     };
@@ -157,8 +155,10 @@ function createRegisteredRepairFixture(
   prefix: string,
   options: { targetInstanceId?: string; withCli?: boolean } = {},
 ) {
-  const workspaceCwd = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  const baseCwd = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}base-`));
+  // Repair rejects symlink aliases, and macOS tmpdir is one (/var -> /private/var).
+  const tmpRoot = fs.realpathSync(os.tmpdir());
+  const workspaceCwd = fs.mkdtempSync(path.join(tmpRoot, prefix));
+  const baseCwd = fs.mkdtempSync(path.join(tmpRoot, `${prefix}base-`));
   const configDir = path.join(workspaceCwd, ".paperclip");
   const sourceConfigPath = path.join(baseCwd, ".paperclip", "config.json");
   const targetInstanceId = options.targetInstanceId ?? "repair-target";
@@ -521,7 +521,6 @@ describe("execution workspace runtime control conflict and failure reconciliatio
       expect(resolveManagedWorkspaceIdentity({
         workspaceCwd: fixture.workspaceCwd,
         executionWorkspaceId,
-        companyId: "company-1",
         env: { PAPERCLIP_WORKSPACE_HANDOFF_SECRET: "test-root-secret" },
       })?.instanceId).toBe(recordedInstanceId);
       mockEnsurePersistedExecutionWorkspaceAvailable.mockResolvedValue({ cwd: fixture.workspaceCwd });
@@ -536,7 +535,6 @@ describe("execution workspace runtime control conflict and failure reconciliatio
           "--seed-mode", "full", "--yes", "--backup-target",
         ]));
         expect(options.env).toMatchObject({
-          PAPERCLIP_SEED_EXPECTED_COMPANY_ID: "company-1",
           PAPERCLIP_WORKSPACE_BASE_CWD: fixture.baseCwd,
           PAPERCLIP_PROJECT_WORKSPACE_ID: projectWorkspaceId,
         });

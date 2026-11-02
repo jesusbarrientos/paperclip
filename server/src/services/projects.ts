@@ -123,7 +123,6 @@ async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals
 function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeService {
   return {
     id: row.id,
-    companyId: row.companyId,
     projectId: row.projectId ?? null,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
@@ -158,7 +157,6 @@ function toWorkspace(
 ): ProjectWorkspace {
   return {
     id: row.id,
-    companyId: row.companyId,
     projectId: row.projectId,
     name: row.name,
     sourceType: row.sourceType as ProjectWorkspace["sourceType"],
@@ -195,7 +193,6 @@ function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
 }
 
 function deriveProjectCodebase(input: {
-  companyId: string;
   projectId: string;
   primaryWorkspace: ProjectWorkspace | null;
   fallbackWorkspaces: ProjectWorkspace[];
@@ -205,7 +202,6 @@ function deriveProjectCodebase(input: {
   const repoName = deriveRepoNameFromRepoUrl(repoUrl);
   const localFolder = primaryWorkspace?.cwd ?? null;
   const managedFolder = resolveManagedProjectWorkspaceDir({
-    companyId: input.companyId,
     projectId: input.projectId,
     repoName,
   });
@@ -245,7 +241,6 @@ async function attachWorkspaces(db: Db, rows: ProjectWithGoals[]): Promise<Proje
     .orderBy(desc(projectWorkspaces.isPrimary), asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id));
   const runtimeServicesByWorkspaceId = await listCurrentRuntimeServicesForProjectWorkspaces(
     db,
-    rows[0]!.companyId,
     workspaceRows.map((workspace) => workspace.id),
   );
   const sharedRuntimeServicesByWorkspaceId = new Map(
@@ -311,7 +306,6 @@ async function attachWorkspaces(db: Db, rows: ProjectWithGoals[]): Promise<Proje
     return {
       ...row,
       codebase: deriveProjectCodebase({
-        companyId: row.companyId,
         projectId: row.id,
         primaryWorkspace,
         fallbackWorkspaces: workspaces,
@@ -357,7 +351,6 @@ export function buildProjectListMetricMaps(taskCountRows: TaskCountRow[], budget
  */
 async function attachListMetrics(
   db: Db,
-  companyId: string,
   rows: ProjectWithGoals[],
 ): Promise<ProjectWithGoals[]> {
   if (rows.length === 0) return rows;
@@ -371,7 +364,7 @@ async function attachListMetrics(
         count: sql<number>`count(*)::int`,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), inArray(issues.projectId, projectIds), isNull(issues.conversationAgentId)))
+      .where(and(inArray(issues.projectId, projectIds), isNull(issues.conversationAgentId)))
       .groupBy(issues.projectId),
     db
       .select({
@@ -382,7 +375,6 @@ async function attachListMetrics(
       .from(budgetPolicies)
       .where(
         and(
-          eq(budgetPolicies.companyId, companyId),
           eq(budgetPolicies.scopeType, "project"),
           eq(budgetPolicies.metric, "billed_cents"),
           eq(budgetPolicies.isActive, true),
@@ -405,38 +397,35 @@ async function attachListMetrics(
 
 /** Sync the project_goals join table for a single project. */
 /**
- * Every goal a project links to must exist and belong to the same company.
- * Without this check a nonexistent id only dies at the projects.goal_id
- * foreign key — an opaque 500 the caller retries (observed live
- * 2026-09-03: four identical retries of one bad id) — and a goal from
- * another company would link silently, because the foreign key proves
- * existence, not ownership.
+ * Every goal a project links to must exist. Without this check a nonexistent
+ * id only dies at the projects.goal_id foreign key — an opaque 500 the caller
+ * retries (observed live 2026-09-03: four identical retries of one bad id).
  */
-async function assertGoalsBelongToCompany(db: Db, companyId: string, goalIds: string[]): Promise<void> {
+async function assertGoalsExist(db: Db, goalIds: string[]): Promise<void> {
   if (goalIds.length === 0) return;
   const unique = [...new Set(goalIds)];
   const found = await db
     .select({ id: goals.id })
     .from(goals)
-    .where(and(eq(goals.companyId, companyId), inArray(goals.id, unique)));
+    .where(inArray(goals.id, unique));
   const foundIds = new Set(found.map((row) => row.id));
   const unknown = unique.filter((goalId) => !foundIds.has(goalId));
   if (unknown.length > 0) {
     throw unprocessable(
-      `Unknown goal id(s) for this company: ${unknown.join(", ")}`,
+      `Unknown goal id(s): ${unknown.join(", ")}`,
       { unknownGoalIds: unknown },
     );
   }
 }
 
-async function syncGoalLinks(db: Db, projectId: string, companyId: string, goalIds: string[]) {
+async function syncGoalLinks(db: Db, projectId: string, goalIds: string[]) {
   // Delete existing links
   await db.delete(projectGoals).where(eq(projectGoals.projectId, projectId));
 
   // Insert new links
   if (goalIds.length > 0) {
     await db.insert(projectGoals).values(
-      goalIds.map((goalId) => ({ projectId, goalId, companyId })),
+      goalIds.map((goalId) => ({ projectId, goalId })),
     );
   }
 }
@@ -541,7 +530,6 @@ export function resolveProjectNameForUniqueShortname(
 async function ensureSinglePrimaryWorkspace(
   dbOrTx: any,
   input: {
-    companyId: string;
     projectId: string;
     keepWorkspaceId: string;
   },
@@ -550,10 +538,7 @@ async function ensureSinglePrimaryWorkspace(
     .update(projectWorkspaces)
     .set({ isPrimary: false, updatedAt: new Date() })
     .where(
-      and(
-        eq(projectWorkspaces.companyId, input.companyId),
-        eq(projectWorkspaces.projectId, input.projectId),
-      ),
+      eq(projectWorkspaces.projectId, input.projectId),
     );
 
   await dbOrTx
@@ -561,7 +546,6 @@ async function ensureSinglePrimaryWorkspace(
     .set({ isPrimary: true, updatedAt: new Date() })
     .where(
       and(
-        eq(projectWorkspaces.companyId, input.companyId),
         eq(projectWorkspaces.projectId, input.projectId),
         eq(projectWorkspaces.id, input.keepWorkspaceId),
       ),
@@ -570,20 +554,18 @@ async function ensureSinglePrimaryWorkspace(
 
 export function projectService(db: Db, options: { captureWorkspaceUpdates?: boolean } = {}) {
   const createProject = async (
-    companyId: string,
-    data: Omit<typeof projects.$inferInsert, "companyId"> & { goalIds?: string[] },
+    data: typeof projects.$inferInsert & { goalIds?: string[] },
   ): Promise<ProjectWithGoals> => {
     const { goalIds: inputGoalIds, ...projectData } = data;
     const ids = resolveGoalIds({ goalIds: inputGoalIds, goalId: projectData.goalId });
-    if (ids && ids.length > 0) await assertGoalsBelongToCompany(db, companyId, ids);
+    if (ids && ids.length > 0) await assertGoalsExist(db, ids);
 
     // Note: color is intentionally NOT auto-assigned. New projects default to
     // `color = null` (neutral gray) unless an explicit color is supplied. See PAP-68.
 
     const existingProjects = await db
       .select({ id: projects.id, name: projects.name })
-      .from(projects)
-      .where(eq(projects.companyId, companyId));
+      .from(projects);
     projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects);
 
     // Also write goalId to the legacy column (first goal or null)
@@ -597,13 +579,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       const txDb = tx as unknown as Db;
       const row = await tx
         .insert(projects)
-        .values({ ...projectData, goalId: legacyGoalId, companyId })
+        .values({ ...projectData, goalId: legacyGoalId })
         .returning()
         .then((rows) => rows[0]);
       if (ids && ids.length > 0) {
-        await syncGoalLinks(txDb, row.id, companyId, ids);
+        await syncGoalLinks(txDb, row.id, ids);
       }
-      await recordResourceCreationEvent(txDb, companyId, "project", row.id);
+      await recordResourceCreationEvent(txDb, "project", row.id);
       const [withGoals] = await attachGoals(txDb, [row]);
       const [enriched] = withGoals ? await attachWorkspaces(txDb, [withGoals]) : [];
       return enriched!;
@@ -625,7 +607,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
 
   return {
     // Project discovery never reads workspace JSON, goals, metrics, or full descriptions.
-    listSummaries: async (companyId: string, opts: { limit: number; cursor?: string; includeArchived: boolean; candidateIds: string[] | null }): Promise<ProjectDiscoverySummary[]> => {
+    listSummaries: async (opts: { limit: number; cursor?: string; includeArchived: boolean; candidateIds: string[] | null }): Promise<ProjectDiscoverySummary[]> => {
       return db.select({
         id: projects.id,
         name: sql<string>`left(${projects.name}, 500)`,
@@ -633,7 +615,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
         description: sql<string | null>`left(${projects.description}, 1000)`,
         descriptionTruncated: sql<boolean>`coalesce(length(${projects.description}) > 1000, false)`,
       }).from(projects).where(and(
-        eq(projects.companyId, companyId),
         opts.includeArchived ? undefined : isNull(projects.archivedAt),
         opts.cursor ? gt(projects.id, opts.cursor) : undefined,
         opts.candidateIds === null ? undefined : or(
@@ -645,29 +626,29 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       )).orderBy(asc(projects.id)).limit(opts.limit);
     },
 
-    list: async (companyId: string, opts: { includeArchived?: boolean } = {}): Promise<ProjectWithGoals[]> => {
+    list: async (opts: { includeArchived?: boolean } = {}): Promise<ProjectWithGoals[]> => {
       // NOTE: this service default is intentionally the inverse of the HTTP route default.
-      // The route (`GET /companies/:companyId/projects`) defaults `includeArchived` to `false`
+      // The route (`GET /projects`) defaults `includeArchived` to `false`
       // (active-only) for its callers, but the service defaults to `true` so that existing
       // server-internal callers that pass no opts keep their pre-existing "return everything,
       // including archived" behaviour. Pass `{ includeArchived: false }` explicitly for active-only.
       const includeArchived = opts.includeArchived ?? true;
-      const where = includeArchived
-        ? eq(projects.companyId, companyId)
-        : and(eq(projects.companyId, companyId), isNull(projects.archivedAt));
-      const rows = await db.select().from(projects).where(where);
+      const rows = await db
+        .select()
+        .from(projects)
+        .where(includeArchived ? undefined : isNull(projects.archivedAt));
       const withGoals = await attachGoals(db, rows);
       const withWorkspaces = await attachWorkspaces(db, withGoals);
-      return attachListMetrics(db, companyId, withWorkspaces);
+      return attachListMetrics(db, withWorkspaces);
     },
 
-    listByIds: async (companyId: string, ids: string[]): Promise<ProjectWithGoals[]> => {
+    listByIds: async (ids: string[]): Promise<ProjectWithGoals[]> => {
       const dedupedIds = [...new Set(ids)];
       if (dedupedIds.length === 0) return [];
       const rows = await db
         .select()
         .from(projects)
-        .where(and(eq(projects.companyId, companyId), inArray(projects.id, dedupedIds)));
+        .where(inArray(projects.id, dedupedIds));
       const withGoals = await attachGoals(db, rows);
       const withWorkspaces = await attachWorkspaces(db, withGoals);
       const byId = new Map(withWorkspaces.map((project) => [project.id, project]));
@@ -677,7 +658,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
     getById: getProjectById,
 
     resolveManagedProject: async (input: {
-      companyId: string;
       pluginId: string;
       pluginKey: string;
       projectKey: string;
@@ -694,7 +674,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           pluginKey: input.pluginKey,
           resourceKind: "project",
           resourceKey: input.projectKey,
-          companyId: input.companyId,
           projectId: null,
           project: null,
           status: "missing",
@@ -707,7 +686,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           pluginKey: input.pluginKey,
           resourceKind: "project",
           resourceKey: input.projectKey,
-          companyId: input.companyId,
           projectId: null,
           project: null,
           status: "missing",
@@ -719,7 +697,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
         .select()
         .from(pluginManagedResources)
         .where(and(
-          eq(pluginManagedResources.companyId, input.companyId),
           eq(pluginManagedResources.pluginId, input.pluginId),
           eq(pluginManagedResources.resourceKind, "project"),
           eq(pluginManagedResources.resourceKey, input.projectKey),
@@ -730,7 +707,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
         const existingProject = await db
           .select({ id: projects.id })
           .from(projects)
-          .where(and(eq(projects.companyId, input.companyId), eq(projects.id, existingBinding.resourceId)))
+          .where(eq(projects.id, existingBinding.resourceId))
           .then((rows) => rows[0] ?? null);
         if (existingProject) {
           if (input.reset) {
@@ -743,7 +720,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
                 color: declaration.color ?? null,
                 updatedAt: new Date(),
               })
-              .where(and(eq(projects.companyId, input.companyId), eq(projects.id, existingBinding.resourceId)));
+              .where(eq(projects.id, existingBinding.resourceId));
           }
           if (input.createIfMissing !== false) {
             await db
@@ -756,7 +733,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
             pluginKey: input.pluginKey,
             resourceKind: "project",
             resourceKey: input.projectKey,
-            companyId: input.companyId,
             projectId: project?.id ?? existingBinding.resourceId,
             project: project as import("@paperclipai/shared").Project | null,
             status: input.reset ? "reset" : "resolved",
@@ -768,14 +744,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
             pluginKey: input.pluginKey,
             resourceKind: "project",
             resourceKey: input.projectKey,
-            companyId: input.companyId,
             projectId: null,
             project: null,
             status: "missing",
           };
         }
 
-        const project = await createProject(input.companyId, {
+        const project = await createProject({
           name: declaration.displayName,
           description: declaration.description ?? null,
           status: declaration.status ?? "in_progress",
@@ -790,7 +765,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           pluginKey: input.pluginKey,
           resourceKind: "project",
           resourceKey: input.projectKey,
-          companyId: input.companyId,
           projectId: hydrated?.id ?? project.id,
           project: hydrated as import("@paperclipai/shared").Project | null,
           status: "relinked",
@@ -802,21 +776,19 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           pluginKey: input.pluginKey,
           resourceKind: "project",
           resourceKey: input.projectKey,
-          companyId: input.companyId,
           projectId: null,
           project: null,
           status: "missing",
         };
       }
 
-      const project = await createProject(input.companyId, {
+      const project = await createProject({
         name: declaration.displayName,
         description: declaration.description ?? null,
         status: declaration.status ?? "in_progress",
         color: declaration.color ?? undefined,
       });
       await db.insert(pluginManagedResources).values({
-        companyId: input.companyId,
         pluginId: input.pluginId,
         pluginKey: input.pluginKey,
         resourceKind: "project",
@@ -829,17 +801,16 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
         pluginKey: input.pluginKey,
         resourceKind: "project",
         resourceKey: input.projectKey,
-        companyId: input.companyId,
         projectId: hydrated?.id ?? project.id,
         project: hydrated as import("@paperclipai/shared").Project | null,
         status: "created",
       };
     },
 
-    createWithRepositories: async (companyId: string, data: Parameters<typeof createProject>[1], repositories: import("@paperclipai/shared").ProjectRepository[]): Promise<ProjectWithGoals> => {
+    createWithRepositories: async (data: Parameters<typeof createProject>[0], repositories: import("@paperclipai/shared").ProjectRepository[]): Promise<ProjectWithGoals> => {
       return db.transaction(async (tx) => {
         const service = projectService(tx as unknown as Db, { captureWorkspaceUpdates: false });
-        const project = await service.create(companyId, data);
+        const project = await service.create(data);
         for (const repo of repositories) {
           await service.createWorkspace(project.id, { name: repo.fullName, repoUrl: repo.url, metadata: { githubRepositoryId: repo.id } });
         }
@@ -878,7 +849,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           } else await service.createWorkspace(projectId, { name: repo.fullName, repoUrl: repo.url, metadata: { githubRepositoryId: repo.id } });
         }
         await tx.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId));
-        await recordProjectUpdateEvent(tx as unknown as Db, project.companyId, projectId);
+        await recordProjectUpdateEvent(tx as unknown as Db, projectId);
         return service.getById(projectId);
       });
     },
@@ -893,13 +864,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       const { goalIds: inputGoalIds, ...projectData } = data;
       const ids = resolveGoalIds({ goalIds: inputGoalIds, goalId: projectData.goalId });
       const existingProject = await db
-        .select({ id: projects.id, companyId: projects.companyId, name: projects.name })
+        .select({ id: projects.id, name: projects.name })
         .from(projects)
         .where(eq(projects.id, id)).for("update")
         .then((rows) => rows[0] ?? null);
       if (!existingProject) return null;
       if (ids && ids.length > 0) {
-        await assertGoalsBelongToCompany(db, existingProject.companyId, ids);
+        await assertGoalsExist(db, ids);
       }
 
       if (projectData.name !== undefined) {
@@ -908,8 +879,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
         if (existingShortname !== nextShortname) {
           const existingProjects = await db
             .select({ id: projects.id, name: projects.name })
-            .from(projects)
-            .where(eq(projects.companyId, existingProject.companyId));
+            .from(projects);
           projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects, {
             excludeProjectId: id,
           });
@@ -934,11 +904,11 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       if (!row) return null;
 
       if (ids !== undefined) {
-        await syncGoalLinks(db, id, row.companyId, ids);
+        await syncGoalLinks(db, id, ids);
       }
 
       if (Object.entries(projectData).some(([key, value]) => value !== undefined && key !== "archivedAt" && key !== "updatedAt") || ids !== undefined) {
-        await recordProjectUpdateEvent(db, row.companyId, id);
+        await recordProjectUpdateEvent(db, id);
       }
 
       const [withGoals] = await attachGoals(db, [row]);
@@ -946,14 +916,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       return enriched ?? null;
     }),
 
-    clearExecutionWorkspaceEnvironmentSelection: async (companyId: string, environmentId: string) => {
+    clearExecutionWorkspaceEnvironmentSelection: async (environmentId: string) => {
       const rows = await db
         .select({
           id: projects.id,
           executionWorkspacePolicy: projects.executionWorkspacePolicy,
         })
-        .from(projects)
-        .where(eq(projects.companyId, companyId));
+        .from(projects);
 
       let cleared = 0;
       for (const row of rows) {
@@ -989,7 +958,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       if (rows.length === 0) return [];
       const runtimeServicesByWorkspaceId = await listCurrentRuntimeServicesForProjectWorkspaces(
         db,
-        rows[0]!.companyId,
         rows.map((workspace) => workspace.id),
       );
       return rows.map((row) =>
@@ -1041,17 +1009,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
             .update(projectWorkspaces)
             .set({ isPrimary: false, updatedAt: new Date() })
             .where(
-              and(
-                eq(projectWorkspaces.companyId, project.companyId),
-                eq(projectWorkspaces.projectId, projectId),
-              ),
+              eq(projectWorkspaces.projectId, projectId),
             );
         }
 
         const row = await tx
           .insert(projectWorkspaces)
           .values({
-            companyId: project.companyId,
             projectId,
             name,
             sourceType,
@@ -1080,7 +1044,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       });
 
       if (created && options.captureWorkspaceUpdates !== false) {
-        await recordProjectUpdateEvent(db, created.companyId, projectId);
+        await recordProjectUpdateEvent(db, projectId);
       }
       return created ? toWorkspace(created) : null;
     }),
@@ -1164,10 +1128,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
             .update(projectWorkspaces)
             .set({ isPrimary: false, updatedAt: new Date() })
             .where(
-              and(
-                eq(projectWorkspaces.companyId, existing.companyId),
-                eq(projectWorkspaces.projectId, projectId),
-              ),
+              eq(projectWorkspaces.projectId, projectId),
             );
           patch.isPrimary = true;
         } else if (data.isPrimary === false) {
@@ -1189,7 +1150,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           .from(projectWorkspaces)
           .where(
             and(
-              eq(projectWorkspaces.companyId, row.companyId),
               eq(projectWorkspaces.projectId, row.projectId),
               eq(projectWorkspaces.isPrimary, true),
             ),
@@ -1202,7 +1162,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
             .from(projectWorkspaces)
             .where(
               and(
-                eq(projectWorkspaces.companyId, row.companyId),
                 eq(projectWorkspaces.projectId, row.projectId),
                 eq(projectWorkspaces.id, row.id),
               ),
@@ -1212,16 +1171,12 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
             .select({ id: projectWorkspaces.id })
             .from(projectWorkspaces)
             .where(
-              and(
-                eq(projectWorkspaces.companyId, row.companyId),
-                eq(projectWorkspaces.projectId, row.projectId),
-              ),
+              eq(projectWorkspaces.projectId, row.projectId),
             )
             .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id))
             .then((rows) => rows.find((candidate) => candidate.id !== row.id) ?? null);
 
           await ensureSinglePrimaryWorkspace(tx, {
-            companyId: row.companyId,
             projectId: row.projectId,
             keepWorkspaceId: alternateCandidate?.id ?? nextPrimaryCandidate?.id ?? row.id,
           });
@@ -1237,7 +1192,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       });
 
       if (updated && options.captureWorkspaceUpdates !== false) {
-        await recordProjectUpdateEvent(db, updated.companyId, projectId);
+        await recordProjectUpdateEvent(db, projectId);
       }
       return updated ? toWorkspace(updated) : null;
     }),
@@ -1271,10 +1226,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           .select()
           .from(projectWorkspaces)
           .where(
-            and(
-              eq(projectWorkspaces.companyId, row.companyId),
-              eq(projectWorkspaces.projectId, row.projectId),
-            ),
+            eq(projectWorkspaces.projectId, row.projectId),
           )
           .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id))
           .limit(1)
@@ -1282,7 +1234,6 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
 
         if (next) {
           await ensureSinglePrimaryWorkspace(tx, {
-            companyId: row.companyId,
             projectId: row.projectId,
             keepWorkspaceId: next.id,
           });
@@ -1292,12 +1243,12 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       });
 
       if (removed && options.captureWorkspaceUpdates !== false) {
-        await recordProjectUpdateEvent(db, removed.companyId, projectId);
+        await recordProjectUpdateEvent(db, projectId);
       }
       return removed ? toWorkspace(removed) : null;
     }),
 
-    resolveByReference: async (companyId: string, reference: string) => {
+    resolveByReference: async (reference: string) => {
       const raw = reference.trim();
       if (raw.length === 0) {
         return { project: null, ambiguous: false } as const;
@@ -1305,13 +1256,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
 
       if (isUuidLike(raw)) {
         const row = await db
-          .select({ id: projects.id, companyId: projects.companyId, name: projects.name })
+          .select({ id: projects.id, name: projects.name })
           .from(projects)
-          .where(and(eq(projects.id, raw), eq(projects.companyId, companyId)))
+          .where(eq(projects.id, raw))
           .then((rows) => rows[0] ?? null);
         if (!row) return { project: null, ambiguous: false } as const;
         return {
-          project: { id: row.id, companyId: row.companyId, urlKey: deriveProjectUrlKey(row.name, row.id) },
+          project: { id: row.id, urlKey: deriveProjectUrlKey(row.name, row.id) },
           ambiguous: false,
         } as const;
       }
@@ -1322,14 +1273,13 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
       }
 
       const rows = await db
-        .select({ id: projects.id, companyId: projects.companyId, name: projects.name })
-        .from(projects)
-        .where(eq(projects.companyId, companyId));
+        .select({ id: projects.id, name: projects.name })
+        .from(projects);
       const matches = rows.filter((row) => deriveProjectUrlKey(row.name, row.id) === urlKey);
       if (matches.length === 1) {
         const match = matches[0]!;
         return {
-          project: { id: match.id, companyId: match.companyId, urlKey: deriveProjectUrlKey(match.name, match.id) },
+          project: { id: match.id, urlKey: deriveProjectUrlKey(match.name, match.id) },
           ambiguous: false,
         } as const;
       }

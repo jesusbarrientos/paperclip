@@ -12,11 +12,11 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Agents",
     "description": "Agent details + chain of command"
   },
-  "GET /api/companies/{}/agents": {
+  "GET /api/agents": {
     "section": "Agents",
     "description": "List all agents in company"
   },
-  "POST /api/companies/{}/agents": {
+  "POST /api/agents": {
     "section": "Agents",
     "description": "Create agent directly (no approval)"
   },
@@ -44,11 +44,11 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Agents",
     "description": "Manually trigger a heartbeat"
   },
-  "GET /api/companies/{}/org": {
+  "GET /api/org": {
     "section": "Agents",
     "description": "Org chart tree"
   },
-  "GET /api/companies/{}/adapters/{}/models": {
+  "GET /api/adapters/{}/models": {
     "section": "Agents",
     "description": "List selectable models for an adapter type"
   },
@@ -77,7 +77,7 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Agents",
     "description": "Roll back config"
   },
-  "GET /api/companies/{}/issues": {
+  "GET /api/issues": {
     "section": "Issues (Tasks)",
     "description": "List issues, sorted by priority. Filters: `?status=`, `?assigneeAgentId=`, `?assigneeUserId=`, `?projectId=`, `?labelId=`, `?q=` (full-text search across title, identifier, description, comments)"
   },
@@ -101,9 +101,34 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Issues (Tasks)",
     "description": "Read-only subtree diagnostic combining visible child, blocker, and wake edges with `diagnosis`"
   },
-  "POST /api/companies/{}/issues": {
+  "POST /api/issues": {
     "section": "Issues (Tasks)",
-    "description": "Create issue (supports `blockedByIssueIds: string[]` for dependencies)"
+    "description": "Create issue (supports `blockedByIssueIds: string[]` for dependencies)",
+    "examples": [
+      {
+        "body": {
+          "title": "Implement caching layer",
+          "assigneeAgentId": "agent-42",
+          "parentId": "issue-30",
+          "status": "todo",
+          "priority": "high",
+          "goalId": "goal-1"
+        }
+      },
+      {
+        "body": {
+          "title": "Write load test suite",
+          "assigneeAgentId": "agent-55",
+          "parentId": "issue-30",
+          "status": "blocked",
+          "priority": "medium",
+          "goalId": "goal-1",
+          "blockedByIssueIds": [
+            "<caching-layer-issue-id>"
+          ]
+        }
+      }
+    ]
   },
   "PATCH /api/issues/{}": {
     "section": "Issues (Tasks)",
@@ -469,40 +494,28 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Issues (Tasks)",
     "description": "Stop workspace runtime services"
   },
-  "GET /api/companies": {
-    "section": "Companies, Projects, Goals",
-    "description": "List all companies"
+  "GET /api/organization": {
+    "section": "Organization, Projects, Goals",
+    "description": "Organization details"
   },
-  "POST /api/companies": {
-    "section": "Companies, Projects, Goals",
-    "description": "Create company"
+  "PATCH /api/organization": {
+    "section": "Organization, Projects, Goals",
+    "description": "Update organization fields"
   },
-  "GET /api/companies/{}": {
-    "section": "Companies, Projects, Goals",
-    "description": "Company details"
+  "POST /api/organization/logo": {
+    "section": "Organization, Projects, Goals",
+    "description": "Upload organization logo (multipart)"
   },
-  "PATCH /api/companies/{}": {
-    "section": "Companies, Projects, Goals",
-    "description": "Update company fields"
-  },
-  "POST /api/companies/{}/logo": {
-    "section": "Companies, Projects, Goals",
-    "description": "Upload company logo (multipart)"
-  },
-  "POST /api/companies/{}/archive": {
-    "section": "Companies, Projects, Goals",
-    "description": "Archive company"
-  },
-  "GET /api/companies/{}/projects": {
-    "section": "Companies, Projects, Goals",
+  "GET /api/projects": {
+    "section": "Organization, Projects, Goals",
     "description": "List projects"
   },
   "GET /api/projects/{}": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Project details"
   },
-  "POST /api/companies/{}/projects": {
-    "section": "Companies, Projects, Goals",
+  "POST /api/projects": {
+    "section": "Organization, Projects, Goals",
     "description": "Create project (`repositoryIds`/`repositoryUrls` arrays or inline `workspace`; optional `idempotencyKey`)",
     "examples": [
       {
@@ -542,15 +555,15 @@ export const runnerApiReference: Record<string, { section: string; description?:
     ]
   },
   "PATCH /api/projects/{}": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Update project"
   },
   "GET /api/projects/{}/workspaces": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "List project workspaces"
   },
   "POST /api/projects/{}/workspaces": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Create project workspace",
     "examples": [
       {
@@ -564,31 +577,31 @@ export const runnerApiReference: Record<string, { section: string; description?:
     ]
   },
   "PATCH /api/projects/{}/workspaces/{}": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Update project workspace"
   },
   "DELETE /api/projects/{}/workspaces/{}": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Delete project workspace"
   },
-  "GET /api/companies/{}/goals": {
-    "section": "Companies, Projects, Goals",
+  "GET /api/goals": {
+    "section": "Organization, Projects, Goals",
     "description": "List goals"
   },
   "GET /api/goals/{}": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Goal details"
   },
-  "POST /api/companies/{}/goals": {
-    "section": "Companies, Projects, Goals",
+  "POST /api/goals": {
+    "section": "Organization, Projects, Goals",
     "description": "Create goal"
   },
   "PATCH /api/goals/{}": {
-    "section": "Companies, Projects, Goals",
+    "section": "Organization, Projects, Goals",
     "description": "Update goal"
   },
-  "POST /api/companies/{}/openclaw/invite-prompt": {
-    "section": "Companies, Projects, Goals",
+  "POST /api/openclaw/invite-prompt": {
+    "section": "Organization, Projects, Goals",
     "description": "Generate OpenClaw invite prompt (CEO/board only)",
     "examples": [
       {
@@ -598,7 +611,7 @@ export const runnerApiReference: Record<string, { section: string; description?:
       }
     ]
   },
-  "GET /api/companies/{}/routines": {
+  "GET /api/routines": {
     "section": "Routines",
     "description": "List all routines in company"
   },
@@ -606,7 +619,7 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Routines",
     "description": "Routine details including triggers"
   },
-  "POST /api/companies/{}/routines": {
+  "POST /api/routines": {
     "section": "Routines",
     "description": "Create routine (`assigneeAgentId` + `projectId` required; agents: own only)"
   },
@@ -642,11 +655,11 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Routines",
     "description": "Run history (default 50)"
   },
-  "GET /api/companies/{}/approvals": {
+  "GET /api/approvals": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "List approvals (`?status=pending`)"
   },
-  "POST /api/companies/{}/approvals": {
+  "POST /api/approvals": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Create approval request",
     "examples": [
@@ -661,7 +674,7 @@ export const runnerApiReference: Record<string, { section: string; description?:
       }
     ]
   },
-  "POST /api/companies/{}/agent-hires": {
+  "POST /api/agent-hires": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Create hire request/agent draft",
     "examples": [
@@ -737,35 +750,35 @@ export const runnerApiReference: Record<string, { section: string; description?:
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Resubmit revised approval"
   },
-  "POST /api/companies/{}/cost-events": {
+  "POST /api/cost-events": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Report cost event"
   },
-  "GET /api/companies/{}/costs/summary": {
+  "GET /api/costs/summary": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Company cost summary"
   },
-  "GET /api/companies/{}/costs/by-agent": {
+  "GET /api/costs/by-agent": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Costs by agent"
   },
-  "GET /api/companies/{}/costs/by-project": {
+  "GET /api/costs/by-project": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Costs by project"
   },
-  "GET /api/companies/{}/activity": {
+  "GET /api/activity": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Activity log"
   },
-  "GET /api/companies/{}/dashboard": {
+  "GET /api/dashboard": {
     "section": "Approvals, Costs, Activity, Dashboard",
     "description": "Company health summary"
   },
-  "GET /api/companies/{}/secrets": {
+  "GET /api/secrets": {
     "section": "Secrets",
     "description": "List secrets (metadata only)"
   },
-  "POST /api/companies/{}/secrets": {
+  "POST /api/secrets": {
     "section": "Secrets",
     "description": "Create secret"
   },

@@ -8,11 +8,10 @@
     "schemaVersion": { "const": "paperclip.runner.conformance.fixture.v1" },
     "run": {
       "type": "object",
-      "required": ["runId", "sessionId", "companyId", "issueId", "agentId"],
+      "required": ["runId", "sessionId", "issueId", "agentId"],
       "properties": {
         "runId": { "$ref": "#/$defs/id" },
         "sessionId": { "$ref": "#/$defs/id" },
-        "companyId": { "$ref": "#/$defs/id" },
         "issueId": { "$ref": "#/$defs/id" },
         "agentId": { "$ref": "#/$defs/id" }
       },

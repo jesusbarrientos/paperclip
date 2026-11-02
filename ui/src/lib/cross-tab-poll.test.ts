@@ -53,7 +53,7 @@ function startLeaderCoordinator(channel: MemorySharedChannel) {
     tabId: "leader",
     leaseTtlMs: 10_000,
   });
-  const coordinator = new SharedPollingCoordinator("company-1", {
+  const coordinator = new SharedPollingCoordinator({
     tabId: "leader",
     channel,
     election,

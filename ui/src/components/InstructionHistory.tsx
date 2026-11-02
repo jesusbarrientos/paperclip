@@ -6,14 +6,12 @@ import { Button } from "./ui/button";
 
 export function InstructionHistory({
   agentId,
-  companyId,
   path,
   currentRevisionId,
   disabled,
   onRestored,
 }: {
   agentId: string;
-  companyId?: string;
   path: string;
   currentRevisionId: string;
   disabled: boolean;
@@ -24,7 +22,7 @@ export function InstructionHistory({
   const history = useInfiniteQuery({
     queryKey: ["instruction-history", agentId, path, currentRevisionId],
     queryFn: ({ pageParam }) =>
-      agentsApi.instructionHistory(agentId, path, companyId, pageParam),
+      agentsApi.instructionHistory(agentId, path, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: open,
@@ -37,7 +35,6 @@ export function InstructionHistory({
         path,
         selected!,
         currentRevisionId,
-        companyId,
       ),
     enabled: open && Boolean(selected),
   });
@@ -46,7 +43,6 @@ export function InstructionHistory({
       agentsApi.restoreInstructions(
         agentId,
         { path, revisionId: selected!, baseRevisionId: currentRevisionId },
-        companyId,
       ),
     onSuccess: (file) => {
       setSelected(null);

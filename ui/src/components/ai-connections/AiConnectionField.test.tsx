@@ -25,7 +25,7 @@ let container: HTMLDivElement;
 let client: QueryClient;
 const onChange = vi.fn();
 const account = (overrides: Partial<AiManagedConnectionSummary> = {}): AiManagedConnectionSummary => ({
-  id: "old-connection", grantId: "old-grant", companyId: "company",
+  id: "old-connection", grantId: "old-grant",
   provider: "anthropic", method: "subscription", name: "My Claude",
   ownership: "personal", ownerUserId: "owner", isDefault: true,
   status: "needs_attention", ...overrides,
@@ -39,7 +39,7 @@ async function settle() {
 async function mount(connections: AiManagedConnectionSummary[], canManageConnections = true) {
   mocks.list.mockResolvedValue({ currentUserId: "owner", connections, canManageConnections });
   flushSync(() => root.render(<QueryClientProvider client={client}>
-    <AiConnectionField companyId="company" agentId="agent" agentName="Nova" adapterType="claude_local"
+    <AiConnectionField agentId="agent" agentName="Nova" adapterType="claude_local"
       value={{ provider: "anthropic", method: "subscription", mode: "responsible_user" }} onChange={onChange} />
   </QueryClientProvider>));
   await settle();
@@ -79,7 +79,7 @@ it("selects the returned new grant and actual method before adopting the persona
   mocks.setDefault.mockImplementation(() => new Promise<void>(resolve => { resolveDefault = resolve; }));
   credentialProps!.onComplete({ connectionId: "new-connection", grantId: "new-grant", method: "api_key" });
   await settle();
-  expect(mocks.setDefault).toHaveBeenCalledWith("company", "new-grant");
+  expect(mocks.setDefault).toHaveBeenCalledWith("new-grant");
   expect(onChange).not.toHaveBeenCalled();
   resolveDefault();
   await settle();

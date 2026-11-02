@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Copy, MoreVertical, Plus, SlidersHorizontal } from "lucide-react";
-import { Link, Navigate, useCaseHref, useParams } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { Link, Navigate, caseHref, useParams } from "@/lib/router";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { usePanel } from "@/context/PanelContext";
 import { queryKeys } from "@/lib/queryKeys";
@@ -97,7 +96,6 @@ function casePropertyRows(caseData: CaseDetailData) {
 function issueDocumentToCaseDocument(document: IssueDocument): CaseDocument {
   return {
     id: document.id,
-    companyId: document.companyId,
     title: document.title,
     format: document.format,
     latestBody: document.body,
@@ -230,11 +228,9 @@ function CaseStatusPicker({
 
 /** Label editor — the second human write in v1 (§3). Reuses company labels. */
 function CaseLabelsPicker({
-  companyId,
   selected,
   onChange,
 }: {
-  companyId: string;
   selected: IssueLabel[];
   onChange: (labelIds: string[]) => void;
 }) {
@@ -243,15 +239,15 @@ function CaseLabelsPicker({
   const [newColor, setNewColor] = useState<string>(PROJECT_COLORS[0]);
   const queryClient = useQueryClient();
   const labelsQuery = useQuery({
-    queryKey: queryKeys.issues.labels(companyId),
-    queryFn: () => issuesApi.listLabels(companyId),
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
     enabled: open,
   });
   const selectedIds = new Set(selected.map((l) => l.id));
   const createLabel = useMutation({
-    mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(companyId, data),
+    mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(data),
     onSuccess: (label) => {
-      queryClient.setQueryData<IssueLabel[]>(queryKeys.issues.labels(companyId), (prev) =>
+      queryClient.setQueryData<IssueLabel[]>(queryKeys.issues.labels(), (prev) =>
         prev ? [...prev, label] : [label],
       );
       onChange([...selectedIds, label.id]);
@@ -331,14 +327,12 @@ function CaseLabelsPicker({
 function CasePropertiesContent({
   caseData,
   childCases,
-  companyId,
   labelsPending,
   onLabelIdsChange,
   mode,
 }: {
   caseData: CaseDetailData;
   childCases: CaseSummary[];
-  companyId: string | null | undefined;
   labelsPending?: boolean;
   onLabelIdsChange: (labelIds: string[]) => void;
   mode: CasePropertyDisplayMode;
@@ -376,13 +370,10 @@ function CasePropertiesContent({
           ) : (
             <span className="text-xs text-muted-foreground">None</span>
           )}
-          {companyId ? (
-            <CaseLabelsPicker
-              companyId={companyId}
-              selected={caseData.labels}
-              onChange={onLabelIdsChange}
-            />
-          ) : null}
+          <CaseLabelsPicker
+            selected={caseData.labels}
+            onChange={onLabelIdsChange}
+          />
           {labelsPending ? <span className="text-xs text-muted-foreground">Saving...</span> : null}
         </CasePropertyRow>
       </PropertySection>
@@ -447,11 +438,9 @@ function CasePropertiesContent({
 
 export function CaseDetail() {
   const { caseIdentifier } = useParams<{ caseIdentifier: string }>();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { openPanel, closePanel } = usePanel();
   const queryClient = useQueryClient();
-  const caseHref = useCaseHref();
   const [copied, setCopied] = useState(false);
 
   const caseQuery = useQuery({
@@ -473,8 +462,8 @@ export function CaseDetail() {
   // work queue.
   const childrenQuery = useQuery({
     queryKey: queryKeys.cases.children(caseData?.id ?? ""),
-    queryFn: () => casesApi.listChildren(selectedCompanyId!, caseData!.id),
-    enabled: !!selectedCompanyId && !!caseData?.id,
+    queryFn: () => casesApi.listChildren(caseData!.id),
+    enabled: !!caseData?.id,
   });
   const children = useMemo(() => childrenQuery.data ?? [], [childrenQuery.data]);
 
@@ -496,7 +485,7 @@ export function CaseDetail() {
       { label: "Cases", href: caseHref() },
       { label: caseData ? `${caseData.identifier} — ${caseData.title}` : (caseIdentifier ?? "Case") },
     ]);
-  }, [setBreadcrumbs, caseData, caseIdentifier, caseHref]);
+  }, [setBreadcrumbs, caseData, caseIdentifier]);
 
   const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
   const caseDocumentSubject = useMemo(() => {
@@ -569,13 +558,12 @@ export function CaseDetail() {
       <CasePropertiesContent
         caseData={caseData}
         childCases={children}
-        companyId={selectedCompanyId}
         labelsPending={patchMutation.isPending}
         onLabelIdsChange={handleLabelIdsChange}
         mode="compact"
       />
     );
-  }, [caseData, children, selectedCompanyId, patchMutation.isPending, handleLabelIdsChange]);
+  }, [caseData, children, patchMutation.isPending, handleLabelIdsChange]);
 
   useEffect(() => {
     if (!panelContent) return;
@@ -703,7 +691,6 @@ export function CaseDetail() {
           <CasePropertiesContent
             caseData={caseData}
             childCases={children}
-            companyId={selectedCompanyId}
             labelsPending={patchMutation.isPending}
             onLabelIdsChange={handleLabelIdsChange}
             mode="full"

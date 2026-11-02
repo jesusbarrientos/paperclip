@@ -37,13 +37,13 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
       const sourceRunId = randomUUID();
       // Seed the historical incident, then exercise all recovery through the UI.
       // No adapter.invoke or new dispatch identity exists on this pre-upgrade run.
-      await db.insert(heartbeatRuns).values({ id: sourceRunId, companyId: company.id, agentId: agent.id,
+      await db.insert(heartbeatRuns).values({ id: sourceRunId, agentId: agent.id,
         status: "failed", runtimeMode: "legacy", processPid: action === "queued_interrupt" ? process.pid : 999999999,
         responsibleUserId: issue.responsibleUserId, errorCode: "process_lost", error: "Server restarted during startup",
         startedAt: new Date(Date.now() - 10_000), finishedAt: new Date(Date.now() - 5_000),
         contextSnapshot: { issueId: issue.id },
       });
-      await db.insert(issueRecoveryActions).values({ companyId: company.id, sourceIssueId: issue.id,
+      await db.insert(issueRecoveryActions).values({ sourceIssueId: issue.id,
         kind: "active_run_watchdog", cause: "legacy_execution_requires_reconciliation", fingerprint: sourceRunId,
         status: "resolved", outcome: "blocked", nextAction: "Automatic recovery stopped.",
         evidence: { runId: sourceRunId, automaticRecovery: { replay: "blocked", actionOutcome: "unknown" } },
@@ -59,11 +59,11 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
         const commentId = randomUUID();
         // Reproduce a real user comment saved while the failed run was active,
         // including queues originally created by a system wake.
-        await db.insert(issueComments).values({ id: commentId, companyId: company.id, issueId: issue.id,
+        await db.insert(issueComments).values({ id: commentId, issueId: issue.id,
           authorType: "user", authorUserId: action === "queued_interrupt" ? "original-board" : "local-board", body: "Approved",
           createdAt: new Date(Date.now() - 8_000),
         });
-        await db.insert(agentWakeupRequests).values({ companyId: company.id, agentId: agent.id,
+        await db.insert(agentWakeupRequests).values({ agentId: agent.id,
           source: "automation", reason: "issue_commented", status: "deferred_issue_execution",
           requestedByActorType: "system", payload: { issueId: issue.id, commentId,
             _paperclipWakeContext: { issueId: issue.id, wakeCommentIds: [commentId], wakeCommentId: commentId } },
@@ -104,7 +104,7 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
       await expect(page.getByRole("status", { name: "Task recovery" })).toHaveCount(0);
       const completed = await json(await request.get(`/api/issues/${issue.id}`));
       expect(completed).toMatchObject({ status: "done", executionBlocker: null });
-      const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, company.id), eq(heartbeatRuns.agentId, agent.id)));
+      const runs = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, agent.id));
       expect(runs.filter(run => run.id !== sourceRunId)).toHaveLength(1);
       expect(runs.find(run => run.id === sourceRunId)).toMatchObject({ status: "failed", resultJson: null });
       const prompts = await readFile(path.join(root, "prompts"), "utf8");

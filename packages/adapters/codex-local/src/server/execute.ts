@@ -380,7 +380,6 @@ async function sandboxCodexAuthJsonExists(input: {
  */
 export async function assertCodexCredentialsLaunchable(input: {
   runId: string;
-  companyId: string;
   configuredCodexHome: string | null;
   configuredApiKey: string | null;
   effectiveCodexHome: string;
@@ -391,7 +390,6 @@ export async function assertCodexCredentialsLaunchable(input: {
 }): Promise<void> {
   const credentialReadiness = await evaluateCodexCredentialReadiness({
     env: input.env ?? process.env,
-    companyId: input.companyId,
     configuredCodexHome: input.configuredCodexHome,
     configuredApiKey: input.configuredApiKey,
   });
@@ -645,10 +643,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const connectorSkillDigest = typeof config.paperclipConnectorSkillDigest === "string"
     && /^[a-f0-9]{64}$/.test(config.paperclipConnectorSkillDigest) ? config.paperclipConnectorSkillDigest : null;
   if (connectorSkillDigest) {
-    // Never mount assignment-specific skills into the shared company/user home.
+    // Never mount assignment-specific skills into the shared managed/user home.
     // A different skill revision gets a new home, so revoked/changed resources
     // cannot survive as stale symlinks or bleed into another agent's session.
-    configuredCodexHome = path.join(resolveManagedCodexHomeDir(process.env, agent.companyId),
+    configuredCodexHome = path.join(resolveManagedCodexHomeDir(process.env),
       "connector-runtimes", agent.id, connectorSkillDigest);
   }
   const codexSkillEntries = (await readPaperclipRuntimeSkillEntries(config, __moduleDir))
@@ -662,14 +660,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     typeof envConfig.OPENAI_API_KEY === "string" && envConfig.OPENAI_API_KEY.trim().length > 0
       ? envConfig.OPENAI_API_KEY.trim()
       : null;
-  // A configured CODEX_HOME that lives under the Paperclip-managed company tree
+  // A configured CODEX_HOME that lives under the Paperclip-managed organization tree
   // (the per-agent home set by the server isolation guard) still needs auth
   // seeded — it ships with no credentials and OPENAI_API_KEY="" by default.
   // Only a genuine external/user-supplied override is treated as self-managed
   // and left untouched.
   const configuredHomeIsManaged =
     configuredCodexHome != null &&
-    isManagedCodexHomePath(process.env, agent.companyId, configuredCodexHome);
+    isManagedCodexHomePath(process.env, configuredCodexHome);
   // Identity-anchored cache vend (host to sandbox). Before the managed home is
   // seeded from the shared source `auth.json`, refresh the shared credential with
   // a strictly-newer cached copy of the SAME identity. The vend reads the host
@@ -684,7 +682,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     // default for the merge lock root.
     await selectVendCredential(
       sharedHomeAuthPath,
-      (accountId) => resolveCodexAuthCacheEntryPath(process.env, accountId, agent.companyId),
+      (accountId) => resolveCodexAuthCacheEntryPath(process.env, accountId),
       (line) => onLog("stdout", `${line}\n`),
     ).catch(async (error) => {
       // The vend is best-effort and additive. A vend failure must never block a
@@ -697,19 +695,19 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     });
   }
   if (configuredCodexHome == null || (connectorSkillDigest && connectorSourceHome == null)) {
-    await prepareManagedCodexHome(process.env, onLog, agent.companyId, {
+    await prepareManagedCodexHome(process.env, onLog, {
       apiKey: configuredOpenAiApiKey,
     });
   }
   if (configuredHomeIsManaged && configuredCodexHome) {
     const seedEnv = connectorSkillDigest ? {
-      ...process.env, CODEX_HOME: connectorSourceHome ?? resolveManagedCodexHomeDir(process.env, agent.companyId),
+      ...process.env, CODEX_HOME: connectorSourceHome ?? resolveManagedCodexHomeDir(process.env),
     } : process.env;
     await seedManagedCodexHome(configuredCodexHome, seedEnv, onLog, {
       apiKey: configuredOpenAiApiKey,
     });
   }
-  const defaultCodexHome = resolveManagedCodexHomeDir(process.env, agent.companyId);
+  const defaultCodexHome = resolveManagedCodexHomeDir(process.env);
   const effectiveCodexHome = configuredCodexHome ?? defaultCodexHome;
   await fs.mkdir(effectiveCodexHome, { recursive: true });
 
@@ -725,7 +723,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   // probe).
   await assertCodexCredentialsLaunchable({
     runId,
-    companyId: agent.companyId,
     configuredCodexHome,
     configuredApiKey: configuredOpenAiApiKey,
     effectiveCodexHome,
@@ -854,11 +851,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
                     log: (line) => onLog("stdout", `${line}\n`),
                     // Additive cache write (sandbox to host): also cache the
                     // sandbox subscription credential in its per-identity slot,
-                    // keyed by the real `account_id`. Company-scoped root; the
+                    // keyed by the real `account_id`. The
                     // helper ensures the slot directory private and containment-
                     // guarded. The off-switch (default on) is read inside.
                     resolveCacheEntryPath: config.managedAiConnection ? undefined : (accountId) =>
-                      ensureCodexAuthCacheEntryDir(process.env, accountId, agent.companyId),
+                      ensureCodexAuthCacheEntryDir(process.env, accountId),
                     env: process.env,
                   })),
                 // No `exclude` denylist: `stagedCodexHomeDir` already contains
@@ -1108,9 +1105,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     const bootstrapPromptTemplate = asString(config.bootstrapPromptTemplate, "");
     const templateData = {
       agentId: agent.id,
-      companyId: agent.companyId,
       runId,
-      company: { id: agent.companyId },
       agent,
       run: { id: runId, source: "on_demand" },
       context,

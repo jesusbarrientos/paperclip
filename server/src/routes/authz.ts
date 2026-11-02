@@ -4,21 +4,19 @@ import { forbidden, HttpError, unauthorized } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { responsibleUserAuthzShadowMode } from "../services/authorization.js";
 
-function throwOrShadowResponsibleUserCompanyAccessDeny(
+function throwOrShadowResponsibleUserOrgAccessDeny(
   req: Request,
-  companyId: string,
   code: "RESPONSIBLE_USER_UNAUTHORIZED" | "RESPONSIBLE_USER_UNAVAILABLE",
   message: string,
 ) {
   logger.warn({
     authzMode: responsibleUserAuthzShadowMode() ? "shadow" : "enforce",
     code,
-    action: "company_access",
-    companyId,
+    action: "org_access",
     actorAgentId: req.actor.agentId ?? null,
     responsibleUserId: req.actor.onBehalfOfUserId ?? null,
     method: req.method,
-  }, "responsible-user company access intersection denied");
+  }, "responsible-user organization access denied");
   if (responsibleUserAuthzShadowMode()) return;
   throw new HttpError(403, message, { code });
 }
@@ -35,6 +33,15 @@ export function assertBoard(req: Request) {
   }
 }
 
+function activeMembership(memberships: Request["actor"]["memberships"]) {
+  return memberships?.find((item) => item.status === "active") ?? null;
+}
+
+function isSafeMethod(req: Request) {
+  const method = typeof req.method === "string" ? req.method.toUpperCase() : "GET";
+  return ["GET", "HEAD", "OPTIONS"].includes(method);
+}
+
 export function hasBoardOrgAccess(req: Request) {
   if (req.actor.type !== "board") {
     return false;
@@ -42,7 +49,7 @@ export function hasBoardOrgAccess(req: Request) {
   if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
     return true;
   }
-  return Array.isArray(req.actor.companyIds) && req.actor.companyIds.length > 0;
+  return activeMembership(req.actor.memberships) !== null;
 }
 
 export function assertBoardOrgAccess(req: Request) {
@@ -50,7 +57,7 @@ export function assertBoardOrgAccess(req: Request) {
   if (hasBoardOrgAccess(req)) {
     return;
   }
-  throw forbidden("Company membership or instance admin access required");
+  throw forbidden("Organization membership or instance admin access required");
 }
 
 export function assertBoardOrAgent(req: Request) {
@@ -72,125 +79,67 @@ export function assertInstanceAdmin(req: Request) {
   throw forbidden("Instance admin access required");
 }
 
-export function assertCompanyAccess(req: Request, companyId: string) {
+export function assertOrgAccess(req: Request) {
   assertAuthenticated(req);
-  if (req.actor.type === "agent" && req.actor.companyId !== companyId) {
-    throw forbidden("Agent key cannot access another company");
-  }
   if (req.actor.type === "agent" && req.actor.onBehalfOfUserId?.trim()) {
-    const membership = req.actor.onBehalfOfMemberships?.find(
-      (item) => item.companyId === companyId && item.status === "active",
-    );
+    const membership = activeMembership(req.actor.onBehalfOfMemberships);
     if (!membership) {
-      throwOrShadowResponsibleUserCompanyAccessDeny(
+      throwOrShadowResponsibleUserOrgAccessDeny(
         req,
-        companyId,
         "RESPONSIBLE_USER_UNAVAILABLE",
-        "Responsible user is unavailable for this company",
+        "Responsible user is not an active member of this organization",
       );
       return;
     }
-    const method = typeof req.method === "string" ? req.method.toUpperCase() : "GET";
-    const isSafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
-    if (!isSafeMethod && membership.membershipRole === "viewer") {
-      throwOrShadowResponsibleUserCompanyAccessDeny(
+    if (!isSafeMethod(req) && membership.membershipRole === "viewer") {
+      throwOrShadowResponsibleUserOrgAccessDeny(
         req,
-        companyId,
         "RESPONSIBLE_USER_UNAUTHORIZED",
         "Responsible user is not authorized for write access",
       );
     }
   }
   if (req.actor.type === "board" && req.actor.source !== "local_implicit") {
-    const allowedCompanies = req.actor.companyIds ?? [];
-    if (!allowedCompanies.includes(companyId)) {
-      throw forbidden("User does not have access to this company");
+    // Instance admins still need a membership: admin rights cover the instance,
+    // not the organization's data.
+    const membership = activeMembership(req.actor.memberships);
+    if (!membership) {
+      throw forbidden("User is not an active member of this organization");
     }
-    const method = typeof req.method === "string" ? req.method.toUpperCase() : "GET";
-    const isSafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
-    if (!isSafeMethod && !req.actor.isInstanceAdmin && Array.isArray(req.actor.memberships)) {
-      const membership = req.actor.memberships.find((item) => item.companyId === companyId);
-      if (!membership || membership.status !== "active") {
-        throw forbidden("User does not have active company access");
-      }
-      if (membership.membershipRole === "viewer") {
-        throw forbidden("Viewer access is read-only");
-      }
+    if (!isSafeMethod(req) && !req.actor.isInstanceAdmin && membership.membershipRole === "viewer") {
+      throw forbidden("Viewer access is read-only");
     }
   }
 }
 
 /**
- * Non-throwing access check for routes that look up a resource by id
- * before responding. Prefer this over `assertCompanyAccess` whenever the
- * route can reach the access check only after a successful `getById`
- * (i.e. after confirming the resource exists).
- *
- * Using `assertCompanyAccess` in that position leaks resource existence
- * across tenants: a 404 means "no such resource" while a 403 means "exists
- * in another tenant". Any authenticated user can enumerate IDs and
- * distinguish the two responses.
- *
- * Most routes should use `getAccessibleResource` below, which wraps the
- * whole pattern. When composing manually (bespoke not-found responses),
- * the shape is:
- *
- *     const issue = await svc.getById(id);
- *     if (!issue || !hasCompanyAccess(req, issue.companyId)) {
- *       res.status(404).json({ error: "Issue not found" });
- *       return;
- *     }
- *
- * so both "does not exist" and "exists but cross-tenant" return the same
- * 404, removing the oracle.
- *
- * Note: this intentionally does not replicate the write-path membership
- * checks in `assertCompanyAccess` (active membership, viewer read-only).
- * Routes that need those checks for authorized tenants should still call
- * `assertCompanyAccess` after the 404 gate — the oracle concern is only
- * about the existence check.
- *
- * The company-scope semantics must stay in lockstep with
- * `assertCompanyAccess`: in particular, signed-in instance admins do NOT
- * get blanket access to companies they are not a member of.
+ * Non-throwing variant of `assertOrgAccess` without the write-path checks, for
+ * routes that answer 404 when the caller cannot see the organization's data.
  */
-export function hasCompanyAccess(req: Request, companyId: string): boolean {
+export function hasOrgAccess(req: Request): boolean {
   if (req.actor.type === "none") return false;
-  if (req.actor.type === "agent") return req.actor.companyId === companyId;
+  if (req.actor.type === "agent") return true;
   if (req.actor.source === "local_implicit") return true;
-  return (req.actor.companyIds ?? []).includes(companyId);
+  return activeMembership(req.actor.memberships) !== null;
 }
 
 /**
- * Preferred way to fetch a company-scoped resource by id inside a route
- * handler. Wraps the two-step pattern described on `hasCompanyAccess` so
- * new routes cannot accidentally reintroduce the existence oracle:
- *
- *   - missing resource          → 404 `{ error: notFoundMessage }`, returns null
- *   - exists but cross-tenant   → identical 404, returns null
- *   - accessible                → runs `assertCompanyAccess` (write-path
- *     membership checks on non-safe methods) and returns the resource
- *
- * Usage:
- *
- *     const goal = await getAccessibleResource(req, res, svc.getById(id), "Goal not found");
- *     if (!goal) return;
- *
- * Routes with bespoke not-found behavior (legacy `200 []` contracts,
- * audit-logged denials) should still compose `hasCompanyAccess` directly.
+ * Fetches a resource by id inside a route handler: a missing resource and an
+ * inaccessible one both answer the same 404, and accessible ones still go
+ * through `assertOrgAccess` for the write-path membership checks.
  */
-export async function getAccessibleResource<T extends { companyId: string }>(
+export async function getAccessibleResource<T>(
   req: Request,
   res: Response,
   resource: T | null | undefined | Promise<T | null | undefined>,
   notFoundMessage: string,
 ): Promise<T | null> {
   const resolved = await resource;
-  if (!resolved || !hasCompanyAccess(req, resolved.companyId)) {
+  if (!resolved || !hasOrgAccess(req)) {
     res.status(404).json({ error: notFoundMessage });
     return null;
   }
-  assertCompanyAccess(req, resolved.companyId);
+  assertOrgAccess(req);
   return resolved;
 }
 

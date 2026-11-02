@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
 const GIT_TIMEOUT_MS = 10_000;
 
-type WorkspaceInput = Pick<ProjectWorkspace, "id" | "name" | "cwd" | "repoUrl" | "companyId" | "projectId">;
+type WorkspaceInput = Pick<ProjectWorkspace, "id" | "name" | "cwd" | "repoUrl" | "projectId">;
 
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -45,7 +45,6 @@ async function originOf(cwd: string): Promise<string | null> {
  */
 async function resolveManagedPath(workspace: WorkspaceInput): Promise<string> {
   const base = resolveManagedProjectWorkspaceDir({
-    companyId: workspace.companyId,
     projectId: workspace.projectId,
     repoName: repoNameFromUrl(workspace.repoUrl),
   });

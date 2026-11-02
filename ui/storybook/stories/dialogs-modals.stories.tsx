@@ -17,7 +17,7 @@ import { NewGoalDialog } from "@/components/NewGoalDialog";
 import { NewIssueDialog } from "@/components/NewIssueDialog";
 import { NewProjectDialog } from "@/components/NewProjectDialog";
 import { PathInstructionsModal } from "@/components/PathInstructionsModal";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useDialog } from "@/context/DialogContext";
 import { queryKeys } from "@/lib/queryKeys";
 import type { Agent } from "@paperclipai/shared";
@@ -33,13 +33,11 @@ import {
 } from "../fixtures/paperclipData";
 
 const COMPANY_ID = "company-storybook";
-const SELECTED_COMPANY_STORAGE_KEY = "paperclip.selectedCompanyId";
 const ISSUE_DRAFT_STORAGE_KEY = "paperclip:issue-draft";
 
 const storybookGoals: Goal[] = [
   {
     id: "goal-company",
-    companyId: COMPANY_ID,
     title: "Build Paperclip",
     description: "Make autonomous companies easier to run and govern.",
     level: "company",
@@ -51,7 +49,6 @@ const storybookGoals: Goal[] = [
   },
   {
     id: "goal-storybook",
-    companyId: COMPANY_ID,
     title: "Complete Storybook coverage",
     description: "Expose dense board UI states for review before release.",
     level: "team",
@@ -63,7 +60,6 @@ const storybookGoals: Goal[] = [
   },
   {
     id: "goal-governance",
-    companyId: COMPANY_ID,
     title: "Tighten governance review",
     description: "Make review and approval gates visible in every operator flow.",
     level: "team",
@@ -78,7 +74,6 @@ const storybookGoals: Goal[] = [
 const documentRevisions: DocumentRevision[] = [
   {
     id: "revision-plan-1",
-    companyId: COMPANY_ID,
     documentId: "document-plan-storybook",
     issueId: "issue-storybook-1",
     key: "plan",
@@ -99,7 +94,6 @@ const documentRevisions: DocumentRevision[] = [
   },
   {
     id: "revision-plan-2",
-    companyId: COMPANY_ID,
     documentId: "document-plan-storybook",
     issueId: "issue-storybook-1",
     key: "plan",
@@ -121,7 +115,6 @@ const documentRevisions: DocumentRevision[] = [
   },
   {
     id: "revision-plan-3",
-    companyId: COMPANY_ID,
     documentId: "document-plan-storybook",
     issueId: "issue-storybook-1",
     key: "plan",
@@ -215,7 +208,6 @@ const closeReadinessBlocked: ExecutionWorkspaceCloseReadiness = {
 const galleryImages: IssueAttachment[] = [
   {
     id: "attachment-storybook-dashboard",
-    companyId: COMPANY_ID,
     issueId: "issue-storybook-1",
     issueCommentId: null,
     assetId: "asset-dashboard",
@@ -234,7 +226,6 @@ const galleryImages: IssueAttachment[] = [
   },
   {
     id: "attachment-storybook-diff",
-    companyId: COMPANY_ID,
     issueId: "issue-storybook-1",
     issueCommentId: null,
     assetId: "asset-diff",
@@ -331,19 +322,19 @@ function DialogBackdropFrame({
 }
 
 function hydrateDialogQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  queryClient.setQueryData(queryKeys.companies.all, { companies: storybookCompanies, unauthorized: false });
+  queryClient.setQueryData(queryKeys.organization, storybookCompanies[0]);
   queryClient.setQueryData(queryKeys.auth.session, storybookAuthSession);
-  queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), storybookAgents);
-  queryClient.setQueryData(queryKeys.projects.list(COMPANY_ID), storybookProjects);
-  queryClient.setQueryData(queryKeys.goals.list(COMPANY_ID), storybookGoals);
-  queryClient.setQueryData(queryKeys.issues.list(COMPANY_ID), storybookIssues);
-  queryClient.setQueryData(queryKeys.issues.labels(COMPANY_ID), storybookIssueLabels);
+  queryClient.setQueryData(queryKeys.agents.list(), storybookAgents);
+  queryClient.setQueryData(queryKeys.projects.list(), storybookProjects);
+  queryClient.setQueryData(queryKeys.goals.list(), storybookGoals);
+  queryClient.setQueryData(queryKeys.issues.list(), storybookIssues);
+  queryClient.setQueryData(queryKeys.issues.labels(), storybookIssueLabels);
   queryClient.setQueryData(queryKeys.issues.documents("issue-storybook-1"), storybookIssueDocuments);
   queryClient.setQueryData(queryKeys.issues.documentRevisions("issue-storybook-1", "plan"), documentRevisions);
   queryClient.setQueryData(queryKeys.executionWorkspaces.closeReadiness("execution-workspace-storybook"), closeReadinessReady);
   queryClient.setQueryData(queryKeys.executionWorkspaces.closeReadiness("execution-workspace-blocked"), closeReadinessBlocked);
   queryClient.setQueryData(
-    queryKeys.executionWorkspaces.list(COMPANY_ID, {
+    queryKeys.executionWorkspaces.list({
       projectId: "project-board-ui",
       projectWorkspaceId: "workspace-board-ui",
       reuseEligible: true,
@@ -354,7 +345,7 @@ function hydrateDialogQueries(queryClient: ReturnType<typeof useQueryClient>) {
     enableIsolatedWorkspaces: true,
     enableRoutineTriggers: true,
   });
-  queryClient.setQueryData(queryKeys.access.companyUserDirectory(COMPANY_ID), {
+  queryClient.setQueryData(queryKeys.access.companyUserDirectory(), {
     users: [
       {
         principalId: "user-board",
@@ -369,7 +360,7 @@ function hydrateDialogQueries(queryClient: ReturnType<typeof useQueryClient>) {
     ],
   });
   queryClient.setQueryData(
-    queryKeys.sidebarPreferences.projectOrder(COMPANY_ID, storybookAuthSession.user.id),
+    queryKeys.sidebarPreferences.projectOrder(storybookAuthSession.user.id),
     { orderedIds: storybookProjects.map((project) => project.id), updatedAt: null },
   );
   queryClient.setQueryData(queryKeys.adapters.all, [
@@ -404,7 +395,7 @@ function hydrateDialogQueries(queryClient: ReturnType<typeof useQueryClient>) {
       },
     },
   ]);
-  queryClient.setQueryData(queryKeys.agents.adapterModels(COMPANY_ID, "codex_local"), [
+  queryClient.setQueryData(queryKeys.agents.adapterModels("codex_local"), [
     { id: "gpt-5.4", label: "GPT-5.4" },
     { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
   ]);
@@ -414,7 +405,6 @@ function StorybookDialogFixtures({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [ready] = useState(() => {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(SELECTED_COMPANY_STORAGE_KEY, COMPANY_ID);
       window.localStorage.removeItem(ISSUE_DRAFT_STORAGE_KEY);
     }
     hydrateDialogQueries(queryClient);
@@ -437,7 +427,7 @@ function useIssueCreateErrorMock(enabled: boolean) {
             ? input.href
             : input.url;
       const url = new URL(rawUrl, window.location.origin);
-      if (url.pathname === `/api/companies/${COMPANY_ID}/issues` && init?.method === "POST") {
+      if (url.pathname === `/api/issues` && init?.method === "POST") {
         return Response.json(
           { error: "Validation failed: add a reviewer before creating governed release work." },
           { status: 422 },
@@ -473,19 +463,14 @@ function clickButtonByText(text: string) {
   button?.click();
 }
 
-function useOpenWhenCompanyReady(open: () => void) {
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
+function useOpenOnMount(open: () => void) {
   const didOpenRef = useRef(false);
 
   useLayoutEffect(() => {
-    if (selectedCompanyId !== COMPANY_ID) {
-      setSelectedCompanyId(COMPANY_ID);
-      return;
-    }
     if (didOpenRef.current) return;
     didOpenRef.current = true;
     open();
-  }, [open, selectedCompanyId, setSelectedCompanyId]);
+  }, [open]);
 }
 
 function IssueDialogOpener({
@@ -496,7 +481,7 @@ function IssueDialogOpener({
   const { openNewIssue } = useDialog();
   useIssueCreateErrorMock(variant === "validation");
 
-  useOpenWhenCompanyReady(() => {
+  useOpenOnMount(() => {
     openNewIssue(
       variant === "empty"
         ? {}
@@ -533,7 +518,7 @@ function IssueDialogOpener({
 function AgentDialogOpener({ variant = "recommendation" }: { variant?: "recommendation" | "advanced" | "invite" }) {
   const { openNewAgent } = useDialog();
 
-  useOpenWhenCompanyReady(() => {
+  useOpenOnMount(() => {
     openNewAgent();
   });
 
@@ -551,7 +536,7 @@ function AgentDialogOpener({ variant = "recommendation" }: { variant?: "recommen
 function GoalDialogOpener({ populated }: { populated?: boolean }) {
   const { openNewGoal } = useDialog();
 
-  useOpenWhenCompanyReady(() => {
+  useOpenOnMount(() => {
     openNewGoal(populated ? { parentId: "goal-company" } : {});
   });
 
@@ -569,7 +554,7 @@ function GoalDialogOpener({ populated }: { populated?: boolean }) {
 function ProjectDialogOpener({ populated }: { populated?: boolean }) {
   const { openNewProject } = useDialog();
 
-  useOpenWhenCompanyReady(() => {
+  useOpenOnMount(() => {
     openNewProject();
   });
 

@@ -2495,10 +2495,10 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
    Allowlist (sites intentionally left as hardcoded / functional literals,
    NOT converted to tokens — each also carries an inline
    `token-extraction: allowlisted` comment at the site):
-   - pages/CompanyEnvironments.tsx — xterm.js terminal theme config; functional JS values, third-party.
-   - pages/CompanySettings.tsx — <input type="color"> value; functional form control, not a rendered value. REMOVED: the company brand-color setting was deleted, so the control no longer exists.
+   - pages/OrganizationEnvironments.tsx — xterm.js terminal theme config; functional JS values, third-party.
+   - pages/OrganizationSettings.tsx — <input type="color"> value; functional form control, not a rendered value. REMOVED: the company brand-color setting was deleted, so the control no longer exists.
    - components/issue-properties/IssueProperties.tsx (newLabelColor) — color-picker seed persisted into label-create payload.
-   - pages/CompanySkills.tsx (DISCOVERY_ACCENTS) — persisted/compared skill.color JS data, not just rendered.
+   - pages/OrganizationSkills.tsx (DISCOVERY_ACCENTS) — persisted/compared skill.color JS data, not just rendered.
    - components/IssueColumns.tsx (accentColor fallback) — also feeds pickTextColorForPillBg() contrast math.
    - components/CompanyPatternIcon.tsx — canvas fillStyle computed at runtime from numeric props, not a static literal.
    - pages/InviteUxLab.tsx (brandColor prop, x2) — demo/showcase-only prop feeding CompanyPatternIcon's hexToHue() color math, not a rendered CSS value. REMOVED: the brandColor prop was deleted, so the props no longer exist.
@@ -2544,10 +2544,10 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
    Allowlist (sites intentionally left as hardcoded / functional literals,
    NOT converted to tokens — each also carries an inline
    `token-extraction: allowlisted` comment at the site):
-   - pages/CompanyEnvironments.tsx (fontSize: 12) — xterm.js terminal theme
+   - pages/OrganizationEnvironments.tsx (fontSize: 12) — xterm.js terminal theme
      config; functional third-party numeric option, not a rendered CSS value.
      Same allowlisted object as Batch 1's color entry for this file.
-   - pages/CompanySkills.tsx (fontSize: Math.round(size * 0.42)) — computed at
+   - pages/OrganizationSkills.tsx (fontSize: Math.round(size * 0.42)) — computed at
      runtime from a prop; not a static literal, nothing to extract.
 */
 :root {
@@ -2731,19 +2731,19 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --sz-38rem: 38rem; /* Extracted from ui/src/pages/AgentDetail.tsx (max-h-[38rem]). */
   --sz-7rem: 7rem; /* Extracted from ui/src/pages/Agents.test.tsx (min-w-[7rem]). */
   --sz-calc-29: calc(100% + 3rem); /* Extracted from ui/src/pages/BoardChat.tsx (h-[calc(100%+3rem)]). */
-  --sz-22rem: 22rem; /* Extracted from ui/src/pages/CompanyEnvironments.tsx (h-[22rem]). */
+  --sz-22rem: 22rem; /* Extracted from ui/src/pages/OrganizationEnvironments.tsx (h-[22rem]). */
   --sz-560px: 560px; /* Extracted from ui/src/pages/CompanyExport.tsx (min-h-[560px]). */
   --sz-520px: 520px; /* Extracted from ui/src/pages/CompanyExport.tsx (min-h-[520px]). */
   --sz-480px: 480px; /* Extracted from ui/src/pages/CompanyExport.tsx (max-h-[480px]). */
   --sz-calc-30: calc(100vh - 12rem); /* Extracted from ui/src/pages/CompanyExport.tsx (h-[calc(100vh-12rem)]). */
   --sz-calc-31: calc(100vh - 16rem); /* Extracted from ui/src/pages/CompanyImport.tsx (h-[calc(100vh-16rem)]). */
-  --sz-calc-32: min(28rem,70vh); /* Extracted from ui/src/pages/CompanySkills.tsx (max-h-[min(28rem,70vh)]). */
-  --sz-11_5rem: 11.5rem; /* Extracted from ui/src/pages/CompanySkills.tsx (min-h-[11.5rem]). */
+  --sz-calc-32: min(28rem,70vh); /* Extracted from ui/src/pages/OrganizationSkills.tsx (max-h-[min(28rem,70vh)]). */
+  --sz-11_5rem: 11.5rem; /* Extracted from ui/src/pages/OrganizationSkills.tsx (min-h-[11.5rem]). */
   --sz-11_75rem: 11.75rem; /* SkillStudio.tsx file/input browser cap: five min-h-9 rows plus p-1 vertical padding. */
-  --sz-calc-33: calc(100dvh - 6rem); /* Extracted from ui/src/pages/CompanySkills.tsx (h-[calc(100dvh-6rem)]). */
-  --sz-calc-34: clamp(14rem,45vh,28rem); /* Extracted from ui/src/pages/CompanySkills.tsx (h-[clamp(14rem,45vh,28rem)]). */
-  --sz-400px: 400px; /* Extracted from ui/src/pages/CompanySkills.tsx (min-h-[400px]). */
-  --sz-calc-35: min(34rem,55vw); /* Extracted from ui/src/pages/CompanySkills.tsx (max-w-[min(34rem,55vw)]). */
+  --sz-calc-33: calc(100dvh - 6rem); /* Extracted from ui/src/pages/OrganizationSkills.tsx (h-[calc(100dvh-6rem)]). */
+  --sz-calc-34: clamp(14rem,45vh,28rem); /* Extracted from ui/src/pages/OrganizationSkills.tsx (h-[clamp(14rem,45vh,28rem)]). */
+  --sz-400px: 400px; /* Extracted from ui/src/pages/OrganizationSkills.tsx (min-h-[400px]). */
+  --sz-calc-35: min(34rem,55vw); /* Extracted from ui/src/pages/OrganizationSkills.tsx (max-w-[min(34rem,55vw)]). */
   --sz-640px: 640px; /* Extracted from ui/src/pages/DesignGuide.tsx (max-w-[640px]). */
   --sz-28rem: 28rem; /* Extracted from ui/src/pages/DesignGuide.tsx (w-[28rem]). */
   --sz-170px: 170px; /* Extracted from ui/src/pages/Inbox.tsx (w-[170px]). */
@@ -2768,7 +2768,7 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --rad-3: 3px; /* Extracted from ui/src/components/ExternalObjectPill.tsx (ring-[3px]). */
   --rad-4: 4px; /* Extracted from ui/src/components/IssueChatThread.tsx (rounded-br-[4px]). */
   --rad-2: 2px; /* Extracted from ui/src/components/SidebarCompanyMenu.tsx (ring-[2px]). */
-  --rad-14: 14px; /* Extracted from ui/src/pages/CompanySettings.tsx (rounded-[14px]). */
+  --rad-14: 14px; /* Extracted from ui/src/pages/OrganizationSettings.tsx (rounded-[14px]). */
   --rad-28: 28px; /* Extracted from ui/src/pages/InviteUxLab.tsx (rounded-[28px]). */
   --rad-24: 24px; /* Extracted from ui/src/pages/InviteUxLab.tsx (rounded-[24px]). */
   --rad-32: 32px; /* Extracted from ui/src/pages/InviteUxLab.tsx (rounded-[32px]). */
@@ -2856,13 +2856,13 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --gtc-18: auto minmax(0,1fr) minmax(12rem,0.65fr); /* Extracted from ui/src/pages/AgentDetail.tsx (grid-cols-[auto_minmax(0,1fr)_minmax(12rem,0.65fr)]). */
   --gtc-19: 260px minmax(0,1fr); /* Extracted from ui/src/pages/AgentDetail.tsx (grid-cols-[260px_minmax(0,1fr)]). */
   /* --gtc-20 through --gtc-23 retired with the removed Cloud Upstream page. */
-  --gtc-24: minmax(0,1.5fr) 120px 120px 180px; /* Extracted from ui/src/pages/CompanyAccess.tsx (grid-cols-[minmax(0,1.5fr)_120px_120px_180px]). */
+  --gtc-24: minmax(0,1.5fr) 120px 120px 180px; /* Extracted from ui/src/pages/OrganizationAccess.tsx (grid-cols-[minmax(0,1.5fr)_120px_120px_180px]). */
   --gtc-25: 19rem minmax(0,1fr); /* Extracted from ui/src/pages/CompanyExport.tsx (grid-cols-[19rem_minmax(0,1fr)]). */
-  --gtc-26: 7rem minmax(0,1fr); /* Extracted from ui/src/pages/CompanySkills.tsx (grid-cols-[7rem_minmax(0,1fr)]). */
-  --gtc-27: minmax(0,1fr) auto auto; /* Extracted from ui/src/pages/CompanySkills.tsx (grid-cols-[minmax(0,1fr)_auto_auto]). */
-  --gtc-28: 13rem minmax(0,1fr); /* Extracted from ui/src/pages/CompanySkills.tsx (grid-cols-[13rem_minmax(0,1fr)]). */
-  --gtc-29: minmax(0,1fr) 18rem; /* Extracted from ui/src/pages/CompanySkills.tsx (grid-cols-[minmax(0,1fr)_18rem]). */
-  --gtc-30: 14rem minmax(0,1fr); /* Extracted from ui/src/pages/CompanySkills.tsx (grid-cols-[14rem_minmax(0,1fr)]). */
+  --gtc-26: 7rem minmax(0,1fr); /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-cols-[7rem_minmax(0,1fr)]). */
+  --gtc-27: minmax(0,1fr) auto auto; /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-cols-[minmax(0,1fr)_auto_auto]). */
+  --gtc-28: 13rem minmax(0,1fr); /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-cols-[13rem_minmax(0,1fr)]). */
+  --gtc-29: minmax(0,1fr) 18rem; /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-cols-[minmax(0,1fr)_18rem]). */
+  --gtc-30: 14rem minmax(0,1fr); /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-cols-[14rem_minmax(0,1fr)]). */
   --gtc-31: 1.3fr,1fr; /* Extracted from ui/src/pages/Costs.tsx (grid-cols-[1.3fr,1fr]). */
   --gtc-32: 1.25fr,0.95fr; /* Extracted from ui/src/pages/Costs.tsx (grid-cols-[1.25fr,0.95fr]). */
   --gtc-33: 1.2fr,0.95fr; /* Extracted from ui/src/pages/Costs.tsx (grid-cols-[1.2fr,0.95fr]). */
@@ -2905,8 +2905,8 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --gtc-runner-inspector-presentation: minmax(18rem,0.8fr) minmax(20rem,1.2fr);
   --gtc-runner-inspector-trace: 20rem minmax(0,1fr);
   --gtr-1: auto auto; /* Extracted from ui/src/components/ui/card.tsx (grid-rows-[auto_auto]). */
-  --gtr-2: 1fr; /* Extracted from ui/src/pages/CompanySkills.tsx (grid-rows-[1fr]). */
-  --gtr-3: 0fr; /* Extracted from ui/src/pages/CompanySkills.tsx (grid-rows-[0fr]). */
+  --gtr-2: 1fr; /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-rows-[1fr]). */
+  --gtr-3: 0fr; /* Extracted from ui/src/pages/OrganizationSkills.tsx (grid-rows-[0fr]). */
   --tp-background-color-border-color: background-color,border-color; /* Extracted from ui/src/components/ActivityFeed.tsx (transition-[background-color,border-color]). */
   --tp-width-background-color: width,background-color; /* Extracted from ui/src/components/BudgetPolicyCard.tsx (transition-[width,background-color]). */
   --tp-width: width; /* Extracted from ui/src/components/ClaudeSubscriptionPanel.tsx (transition-[width]). */
@@ -2922,7 +2922,7 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --tp-color-background-color-border-color-box-shadow-opacity: color,background-color,border-color,box-shadow,opacity; /* Extracted from ui/src/components/ui/button.tsx (transition-[color,background-color,border-color,box-shadow,opacity]). */
   --tp-border-color-background-color: border-color,background-color; /* Extracted from ui/src/components/ui/radio-card.tsx (transition-[border-color,background-color]). */
   --tp-color-background-color-border-color-box-shadow: color,background-color,border-color,box-shadow; /* Extracted from ui/src/components/ui/tabs.tsx (transition-[color,background-color,border-color,box-shadow]). */
-  --tp-grid-template-rows-opacity: grid-template-rows,opacity; /* Extracted from ui/src/pages/CompanySkills.tsx (transition-[grid-template-rows,opacity]). */
+  --tp-grid-template-rows-opacity: grid-template-rows,opacity; /* Extracted from ui/src/pages/OrganizationSkills.tsx (transition-[grid-template-rows,opacity]). */
   --tp-box-shadow-border-color: box-shadow,border-color; /* Extracted from ui/src/pages/OrgChart.tsx (transition-[box-shadow,border-color]). */
   --tp-box-shadow: box-shadow; /* Extracted from ui/src/pages/ProjectDetail.tsx (transition-[box-shadow]). */
   --tp-transform-box-shadow: transform,box-shadow; /* Extracted from ui/src/pages/ProjectDetail.tsx (transition-[transform,box-shadow]). */
@@ -2976,9 +2976,9 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
    A path may appear more than once if it has more than one distinct
    allowlisted concern. Paths are matched by the gate script as a substring
    of the file being checked (repo-relative, POSIX-style).
-   * allow ui/src/pages/CompanyEnvironments.tsx — xterm.js terminal theme config (background/foreground/cursor/cursorAccent/selectionBackground hex, fontSize: 12); functional third-party option object, not a rendered CSS value
+   * allow ui/src/pages/OrganizationEnvironments.tsx — xterm.js terminal theme config (background/foreground/cursor/cursorAccent/selectionBackground hex, fontSize: 12); functional third-party option object, not a rendered CSS value
    * allow ui/src/components/issue-properties/IssueProperties.tsx — newLabelColor color-picker seed state persisted into the label-create payload sent to the backend; a var() string would corrupt that payload
-   * allow ui/src/pages/CompanySkills.tsx — DISCOVERY_ACCENTS palette array feeds skill.color, persisted/compared JS data (SkillCreateDraft), not just a rendered value; also fontSize: Math.round(size * 0.42), computed at runtime from a prop, not a static literal
+   * allow ui/src/pages/OrganizationSkills.tsx — DISCOVERY_ACCENTS palette array feeds skill.color, persisted/compared JS data (SkillCreateDraft), not just a rendered value; also fontSize: Math.round(size * 0.42), computed at runtime from a prop, not a static literal
    * allow ui/src/components/IssueColumns.tsx — accentColor fallback also feeds pickTextColorForPillBg() contrast math (lib/color-contrast.ts), which needs a real hex string to compute luminance
    * allow ui/src/components/CompanyPatternIcon.tsx — canvas 2D fillStyle built from a runtime-computed template literal, not a static literal at all
    * allow ui/src/components/onboarding/PillGuy.tsx — inline rendering of the approved pill-1 dormant/alive brand SVG assets; their fixed eye, body, tuft, and gradient fills are the illustration artwork rather than themeable interface colors
@@ -2999,7 +2999,7 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
    assertions) — not as Tailwind class strings or CSS-in-JS style
    declarations. These are the test-file counterpart of the same
    "functional/persisted data, not a rendered CSS value" category Batch 1
-   already allowlisted in production source (see CompanySkills.tsx,
+   already allowlisted in production source (see OrganizationSkills.tsx,
    IssueProperties.tsx, IssueColumns.tsx above); tokenizing them would
    replace realistic-looking mock data with `var()` strings that no longer
    resemble what a real API response contains, without touching any
@@ -3013,7 +3013,7 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
    * allow ui/src/components/RoutineRunVariablesDialog.test.tsx — mock label color fixture
    * allow ui/src/components/SidebarProjects.test.tsx — mock project color fixture
    * allow ui/src/components/SidebarStarredProjects.test.tsx — mock project color fixture
-   * allow ui/src/pages/CompanyEnvironments.test.tsx — xterm.js theme-mock assertion values (mirrors the allowlisted xterm.js config in the CompanyEnvironments.tsx source above)
+   * allow ui/src/pages/OrganizationEnvironments.test.tsx — xterm.js theme-mock assertion values (mirrors the allowlisted xterm.js config in the OrganizationEnvironments.tsx source above)
    * allow ui/src/pages/ExecutionWorkspaceDetail.test.tsx — mock project color fixture
    * allow ui/src/pages/InviteLanding.test.tsx — "#NNNN" pull-request references inside explanatory comments, not color literals
    * allow ui/src/pages/IssueDetail.test.tsx — mock project color fixture

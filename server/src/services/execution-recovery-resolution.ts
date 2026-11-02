@@ -26,13 +26,12 @@ import { isSupersededConversationRun } from "./agent-conversations.js";
 /** An operator records observed outcomes; this is not permission to blindly retry. */
 export async function validateExecutionReconciliation(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   agentId: string | null;
   sourceRunId: unknown;
   decision: ExecutionReconciliation | undefined;
 }) {
-  const { db, companyId, issueId, agentId, decision } = input;
+  const { db, issueId, agentId, decision } = input;
   if (!decision || decision.runId !== input.sourceRunId || !agentId) {
     throw conflict(
       "Reconcile the recorded execution and its action outcomes before continuing this task.",
@@ -42,15 +41,12 @@ export async function validateExecutionReconciliation(input: {
     .select()
     .from(heartbeatRuns)
     .where(
-      and(
-        eq(heartbeatRuns.companyId, companyId),
-        eq(heartbeatRuns.id, decision.runId),
-      ),
+      eq(heartbeatRuns.id, decision.runId),
     );
   const [task] = await db
     .select()
     .from(issues)
-    .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)));
+    .where(eq(issues.id, issueId));
   const review =
     task?.status === "in_review"
       ? parseIssueExecutionState(task.executionState)
@@ -96,10 +92,7 @@ export async function validateExecutionReconciliation(input: {
     .select()
     .from(nativeRunFinalizations)
     .where(
-      and(
-        eq(nativeRunFinalizations.companyId, companyId),
-        eq(nativeRunFinalizations.runId, run.id),
-      ),
+      eq(nativeRunFinalizations.runId, run.id),
     );
   if (coordinator?.leaseOwner || coordinator?.failureDetail?.successorRunId)
     throw conflict(
@@ -110,7 +103,6 @@ export async function validateExecutionReconciliation(input: {
     .from(environmentLeases)
     .where(
       and(
-        eq(environmentLeases.companyId, companyId),
         eq(environmentLeases.heartbeatRunId, run.id),
         isNull(environmentLeases.releasedAt),
       ),
@@ -122,7 +114,6 @@ export async function validateExecutionReconciliation(input: {
     );
   await buildExecutionContinuation({
     db,
-    companyId,
     issueId,
     agentId,
     context: { previousRunId: run.id },
@@ -137,7 +128,7 @@ export async function markExecutionReconciliation(
   db: Db,
   action: Pick<
     typeof issueRecoveryActions.$inferSelect,
-    "companyId" | "id" | "evidence" | "sourceIssueId"
+    "id" | "evidence" | "sourceIssueId"
   >,
   decision: ExecutionReconciliation,
   actorId: string,
@@ -148,10 +139,7 @@ export async function markExecutionReconciliation(
       .select()
       .from(chatActions)
       .where(
-        and(
-          eq(chatActions.companyId, action.companyId),
-          eq(chatActions.id, deliveryOwner.actionId),
-        ),
+        eq(chatActions.id, deliveryOwner.actionId),
       );
     if (
       deliveryOwner.kind !== "chat_failed_run_retry" ||
@@ -171,10 +159,7 @@ export async function markExecutionReconciliation(
       failureDetail: sql`coalesce(${nativeRunFinalizations.failureDetail}, '{}'::jsonb) || ${JSON.stringify({ replacementDenied: "operator_reconciled" })}::jsonb`,
     })
     .where(
-      and(
-        eq(nativeRunFinalizations.companyId, action.companyId),
-        eq(nativeRunFinalizations.runId, decision.runId),
-      ),
+      eq(nativeRunFinalizations.runId, decision.runId),
     );
   await db
     .update(issueRecoveryActions)
@@ -192,10 +177,7 @@ export async function markExecutionReconciliation(
       },
     })
     .where(
-      and(
-        eq(issueRecoveryActions.companyId, action.companyId),
-        eq(issueRecoveryActions.id, action.id),
-      ),
+      eq(issueRecoveryActions.id, action.id),
     );
 }
 
@@ -219,7 +201,6 @@ export async function deliverReconciledExecutions(
         ExecutionReconciliation | undefined;
       if (!decision || !action.returnOwnerAgentId) continue;
       const pendingDecision = and(
-        eq(issueRecoveryActions.companyId, action.companyId),
         eq(issueRecoveryActions.id, action.id),
         eq(issueRecoveryActions.status, "resolved"),
         sql`${issueRecoveryActions.evidence}->>'continuationDelivery' = 'pending'`,
@@ -229,10 +210,7 @@ export async function deliverReconciledExecutions(
         .select()
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, action.companyId),
-            eq(issues.id, action.sourceIssueId),
-          ),
+          eq(issues.id, action.sourceIssueId),
         );
       if (
         !task ||
@@ -273,7 +251,6 @@ export async function deliverReconciledExecutions(
             .set({ retryOfRunId: decision.runId })
             .where(
               and(
-                eq(heartbeatRuns.companyId, action.companyId),
                 eq(heartbeatRuns.id, run.id),
                 eq(heartbeatRuns.agentId, action.returnOwnerAgentId!),
                 sql`${heartbeatRuns.contextSnapshot}->>'recoveryActionId' = ${action.id}`,
@@ -325,7 +302,7 @@ export async function settleUnrecoverableExecutions(
     const foldable = await tx.select().from(issueRecoveryActions).where(obsoleteConversationHold)
       .limit(25).for("update", { skipLocked: true });
     for (const candidate of foldable) {
-      if (await getConversationOwnershipBlocker(tx as unknown as Db, candidate.companyId, candidate.sourceIssueId)) continue;
+      if (await getConversationOwnershipBlocker(tx as unknown as Db, candidate.sourceIssueId)) continue;
       const [action] = await tx.update(issueRecoveryActions).set({
         status: "resolved",
         outcome: "cancelled",
@@ -341,7 +318,6 @@ export async function settleUnrecoverableExecutions(
       }).where(and(obsoleteConversationHold, eq(issueRecoveryActions.id, candidate.id))).returning();
       if (!action) continue;
       await persistActivity(tx as unknown as Db, {
-        companyId: action.companyId,
         actorType: "system",
         actorId: "execution-recovery",
         action: "issue.execution_recovery_settled",
@@ -359,17 +335,13 @@ export async function settleUnrecoverableExecutions(
     .innerJoin(
       heartbeatRuns,
       and(
-        eq(heartbeatRuns.companyId, issueRecoveryActions.companyId),
         sql`${heartbeatRuns.id}::text = ${issueRecoveryActions.evidence}->>'runId'`,
         sql`coalesce(${heartbeatRuns.nativeIssueId}::text, ${heartbeatRuns.contextSnapshot}->>'issueId') = ${issueRecoveryActions.sourceIssueId}::text`,
       ),
     )
     .leftJoin(
       nativeRunFinalizations,
-      and(
-        eq(nativeRunFinalizations.companyId, heartbeatRuns.companyId),
-        eq(nativeRunFinalizations.runId, heartbeatRuns.id),
-      ),
+      eq(nativeRunFinalizations.runId, heartbeatRuns.id),
     )
     .where(
       and(
@@ -410,30 +382,21 @@ export async function settleUnrecoverableExecutions(
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.companyId, candidate.companyId),
-              eq(issues.id, candidate.sourceIssueId),
-            ),
+            eq(issues.id, candidate.sourceIssueId),
           )
           .for("update");
         const [coordinator] = await tx
           .select()
           .from(nativeRunFinalizations)
           .where(
-            and(
-              eq(nativeRunFinalizations.companyId, candidate.companyId),
-              eq(nativeRunFinalizations.runId, runId),
-            ),
+            eq(nativeRunFinalizations.runId, runId),
           )
           .for("update");
         const [run] = await tx
           .select()
           .from(heartbeatRuns)
           .where(
-            and(
-              eq(heartbeatRuns.companyId, candidate.companyId),
-              eq(heartbeatRuns.id, runId),
-            ),
+            eq(heartbeatRuns.id, runId),
           )
           .for("update");
         const [action] = await tx
@@ -528,7 +491,6 @@ export async function settleUnrecoverableExecutions(
           })
           .where(eq(issueRecoveryActions.id, action.id));
         await persistActivity(tx as unknown as Db, {
-          companyId: run.companyId,
           actorType: "system",
           actorId: "execution-recovery",
           action: "issue.execution_recovery_settled",
@@ -546,7 +508,6 @@ export async function settleUnrecoverableExecutions(
           .set({ executionStatusDeliveryId: randomUUID() })
           .where(eq(heartbeatRuns.id, run.id));
         await appendHeartbeatRunEvent(tx as unknown as Db, {
-          companyId: run.companyId,
           agentId: run.agentId,
           runId: run.id,
           eventType: "lifecycle",

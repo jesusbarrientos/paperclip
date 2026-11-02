@@ -23,8 +23,8 @@ vi.mock("../context/SidebarContext", () => ({
   }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1", selectedCompany: { issuePrefix: "TES" } }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { issuePrefix: "TES" } }),
 }));
 
 vi.mock("../context/PanelContext", () => ({

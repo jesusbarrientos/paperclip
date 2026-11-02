@@ -122,11 +122,10 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
       .then((rows) => rows[0]!);
   }
 
-  async function createAgent(companyId: string, permissions: Record<string, unknown> = {}) {
+  async function createAgent(permissions: Record<string, unknown> = {}) {
     return db
       .insert(agents)
       .values({
-        companyId,
         name: `Agent ${randomUUID()}`,
         role: "engineer",
         adapterType: "process",
@@ -138,12 +137,11 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
       .then((rows) => rows[0]!);
   }
 
-  function lowTrustExecutionPolicy(companyId: string, rootIssueId: string) {
+  function lowTrustExecutionPolicy(rootIssueId: string) {
     return {
       authorizationPolicy: {
         trustBoundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId,
           rootIssueId,
         },
       },
@@ -152,22 +150,20 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
 
   it("uses the heartbeat run execution-policy snapshot after live issue policy changes", async () => {
     const company = await createCompany();
-    const agent = await createAgent(company.id);
+    const agent = await createAgent();
     const [issue] = await db
       .insert(issues)
       .values({
-        companyId: company.id,
         title: "Run-scoped low-trust issue",
         status: "in_progress",
         priority: "high",
         assigneeAgentId: agent.id,
       })
       .returning();
-    const executionPolicy = lowTrustExecutionPolicy(company.id, issue!.id);
+    const executionPolicy = lowTrustExecutionPolicy(issue!.id);
     const [run] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: company.id,
         agentId: agent.id,
         status: "running",
         contextSnapshot: {
@@ -183,7 +179,6 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
       db,
       issue: {
         id: issue!.id,
-        companyId: company.id,
         projectId: null,
         executionPolicy: null,
       },
@@ -206,12 +201,11 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
 
   it("fails closed when the supplied run id does not belong to the acting agent", async () => {
     const company = await createCompany();
-    const actorAgent = await createAgent(company.id);
-    const runOwnerAgent = await createAgent(company.id);
+    const actorAgent = await createAgent();
+    const runOwnerAgent = await createAgent();
     const [issue] = await db
       .insert(issues)
       .values({
-        companyId: company.id,
         title: "Standard issue",
         status: "in_progress",
         priority: "high",
@@ -221,7 +215,6 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
     const [run] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: company.id,
         agentId: runOwnerAgent.id,
         status: "running",
         contextSnapshot: { issueId: issue!.id },
@@ -232,7 +225,6 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
       db,
       issue: {
         id: issue!.id,
-        companyId: company.id,
         projectId: null,
         executionPolicy: null,
       },
@@ -255,20 +247,18 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
 
   it("surfaces denied trust policy resolution instead of treating it as higher trust", async () => {
     const company = await createCompany();
-    const agent = await createAgent(company.id, {
+    const agent = await createAgent({
       trustPreset: LOW_TRUST_REVIEW_PRESET,
       authorizationPolicy: {
         trustBoundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: randomUUID(),
-          projectIds: [randomUUID()],
+          projectIds: ["not-a-uuid"],
         },
       },
     });
     const [issue] = await db
       .insert(issues)
       .values({
-        companyId: company.id,
         title: "Denied trust policy issue",
         status: "in_progress",
         priority: "high",
@@ -280,7 +270,6 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
       db,
       issue: {
         id: issue!.id,
-        companyId: company.id,
         projectId: null,
         executionPolicy: null,
       },
@@ -292,7 +281,7 @@ describeEmbeddedPostgres("resolveActorSourceTrustForIssue", () => {
       },
     })).rejects.toMatchObject({
       status: 403,
-      message: "Low-trust boundary refers to a different company.",
+      message: "Invalid authorization policy in agent policy.",
     });
   });
 });

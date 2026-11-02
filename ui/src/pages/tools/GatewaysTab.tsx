@@ -112,7 +112,7 @@ function buildTokenExpiresAt(value: string) {
   return value ? `${value}T23:59:59.000Z` : null;
 }
 
-export function GatewaysTab({ companyId }: { companyId: string }) {
+export function GatewaysTab() {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const [creating, setCreating] = useState(false);
@@ -127,20 +127,20 @@ export function GatewaysTab({ companyId }: { companyId: string }) {
   const [confirmingRevokeTokenId, setConfirmingRevokeTokenId] = useState<string | null>(null);
 
   const gatewaysQuery = useQuery({
-    queryKey: queryKeys.tools.gateways(companyId),
-    queryFn: () => toolsApi.listGateways(companyId),
+    queryKey: queryKeys.tools.gateways(),
+    queryFn: () => toolsApi.listGateways(),
   });
   const profilesQuery = useQuery({
-    queryKey: queryKeys.tools.profiles(companyId),
-    queryFn: () => toolsApi.listProfiles(companyId),
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
   });
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects.list(companyId, { includeArchived: true }),
-    queryFn: () => projectsApi.list(companyId, { includeArchived: true }),
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
 
   const origin = useMemo(() => {
@@ -157,11 +157,11 @@ export function GatewaysTab({ companyId }: { companyId: string }) {
     [projectsQuery.data],
   );
 
-  const invalidateGateways = () => queryClient.invalidateQueries({ queryKey: queryKeys.tools.gateways(companyId) });
+  const invalidateGateways = () => queryClient.invalidateQueries({ queryKey: queryKeys.tools.gateways() });
 
   const createGatewayMutation = useMutation({
     mutationFn: () =>
-      toolsApi.createGateway(companyId, {
+      toolsApi.createGateway({
         name: createDraft.name.trim(),
         description: createDraft.description.trim() || null,
         profileId: createDraft.profileId,
@@ -182,7 +182,7 @@ export function GatewaysTab({ companyId }: { companyId: string }) {
   const createTokenMutation = useMutation({
     mutationFn: async (gatewayId: string) => {
       const draft = tokenDrafts[gatewayId] ?? defaultTokenDraft();
-      return toolsApi.createGatewayToken(companyId, gatewayId, {
+      return toolsApi.createGatewayToken(gatewayId, {
         name: draft.name.trim(),
         clientLabel: draft.clientLabel.trim(),
         ownerNote: draft.ownerNote.trim(),
@@ -203,7 +203,7 @@ export function GatewaysTab({ companyId }: { companyId: string }) {
   });
 
   const revokeTokenMutation = useMutation({
-    mutationFn: (tokenId: string) => toolsApi.revokeGatewayToken(companyId, tokenId),
+    mutationFn: (tokenId: string) => toolsApi.revokeGatewayToken(tokenId),
     onSuccess: async (token) => {
       setConfirmingRevokeTokenId(null);
       pushToast({ title: "Token revoked", body: token.name, tone: "success" });

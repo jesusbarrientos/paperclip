@@ -13,10 +13,8 @@ The native `hire_agent` tool shares this availability policy.
 Set `PAPERCLIP_RUNNER_API_TOOLS_ENABLED=false` on the server to disable these
 tools. An explicit `true` also enables them; other explicit values fail closed.
 
-Operators can restrict availability with `PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS`,
-a comma-separated list of company UUIDs. An unset list allows every company;
-an explicitly empty list allows none. IDs must match exactly. This restriction
-also applies when the enabled flag is unset.
+There is no per-company allowlist: an instance serves exactly one organization,
+so `PAPERCLIP_RUNNER_API_TOOLS_ENABLED` is the only availability switch.
 
 A server-owned binding can disable these tools for a baseline eval but cannot
 override an operator restriction. The server checks the policy when advertising
@@ -44,8 +42,7 @@ with their supported parameters. `limit` defaults to five and is capped at ten.
 {"operationId":"PATCH /api/projects/{id}","pathParams":{"id":"PROJECT_UUID"},"body":{"description":"Updated project description"}}
 ```
 
-The catalog determines method and path. `companyId` is filled from the active
-binding. Scalars and arrays are accepted in `query`. `body` defaults to JSON;
+The catalog determines method and path; routes carry no company id. Scalars and arrays are accepted in `query`. `body` defaults to JSON;
 `contentType` supports text and raw uploads. `files` accepts entries containing
 exactly one authorized `artifactId` or task-workspace `path`, and an optional
 multipart `field`. No arbitrary URL, headers, authentication, or remote file URL

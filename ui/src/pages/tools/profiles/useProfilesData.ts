@@ -12,30 +12,30 @@ import { groupCatalogByApp } from "./profile-model";
  * company-wide catalog (there is no aggregate endpoint, so we fan out per
  * connection) and the lookup maps both surfaces need.
  */
-export function useProfilesData(companyId: string) {
+export function useProfilesData() {
   const profiles = useQuery({
-    queryKey: queryKeys.tools.profiles(companyId),
-    queryFn: () => toolsApi.listProfiles(companyId),
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
   });
   const applications = useQuery({
-    queryKey: queryKeys.tools.applications(companyId),
-    queryFn: () => toolsApi.listApplications(companyId),
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const connections = useQuery({
-    queryKey: queryKeys.tools.connections(companyId),
-    queryFn: () => toolsApi.listConnections(companyId),
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const projects = useQuery({
-    queryKey: queryKeys.projects.list(companyId),
-    queryFn: () => projectsApi.list(companyId),
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
   });
   const routines = useQuery({
-    queryKey: queryKeys.routines.list(companyId),
-    queryFn: () => routinesApi.list(companyId),
+    queryKey: queryKeys.routines.list(),
+    queryFn: () => routinesApi.list(),
   });
 
   const connectionList = connections.data?.connections ?? [];

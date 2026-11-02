@@ -48,7 +48,6 @@ describe("provider-owned interaction arbitration", () => {
     await db.insert(agents).values(
       [agentId, otherAgentId].map((id) => ({
         id,
-        companyId,
         name: "Chat agent",
         adapterType: "paperclip_runner",
         status: "active",
@@ -56,21 +55,18 @@ describe("provider-owned interaction arbitration", () => {
     );
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Chat response",
       status: "in_progress",
       assigneeAgentId: agentId,
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "succeeded",
       contextSnapshot: { issueId, source: "chat:discord" },
     });
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId,
       issueId,
       sourceRunId: runId,
       kind: "request_confirmation",
@@ -87,7 +83,7 @@ describe("provider-owned interaction arbitration", () => {
         },
       },
     });
-    return { companyId, agentId, otherAgentId, issueId, runId, interactionId };
+    return { agentId, otherAgentId, issueId, runId, interactionId };
   }
 
   it("does not suppress a chat final for a system or board completion review", async () => {
@@ -115,12 +111,6 @@ describe("provider-owned interaction arbitration", () => {
     expect(
       await hasChatRunOwnedProviderInteraction(db, {
         ...binding,
-        companyId: randomUUID(),
-      }),
-    ).toBe(false);
-    expect(
-      await hasChatRunOwnedProviderInteraction(db, {
-        ...binding,
         runId: randomUUID(),
       }),
     ).toBe(false);
@@ -139,7 +129,6 @@ describe("provider-owned interaction arbitration", () => {
     const conversationId = randomUUID();
     await db.insert(toolApplications).values({
       id: applicationId,
-      companyId: binding.companyId,
       applicationKey: `chat:discord:${endpointId}`,
       name: "Discord",
       type: "chat",
@@ -147,7 +136,6 @@ describe("provider-owned interaction arbitration", () => {
     });
     await db.insert(toolConnections).values({
       id: connectionId,
-      companyId: binding.companyId,
       applicationId,
       uid: endpointId,
       name: "Discord",
@@ -157,7 +145,6 @@ describe("provider-owned interaction arbitration", () => {
     });
     await db.insert(chatEndpoints).values({
       id: endpointId,
-      companyId: binding.companyId,
       connectionId,
       provider: "discord",
       publicId: randomUUID(),
@@ -166,7 +153,6 @@ describe("provider-owned interaction arbitration", () => {
     });
     await db.insert(chatConversations).values({
       id: conversationId,
-      companyId: binding.companyId,
       endpointId,
       issueId: binding.issueId,
       externalConversationId: "discord-thread",
@@ -178,7 +164,6 @@ describe("provider-owned interaction arbitration", () => {
       .set({ createdByAgentId: binding.agentId, status: "accepted" })
       .where(eq(issueThreadInteractions.id, binding.interactionId));
     await db.insert(chatPublications).values({
-      companyId: binding.companyId,
       issueId: binding.issueId,
       endpointId,
       conversationId,

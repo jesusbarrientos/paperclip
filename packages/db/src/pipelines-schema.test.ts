@@ -50,7 +50,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
   it("persists one row per pipeline table and enforces unique keys and required checks", async () => {
     const [company] = await db.insert(companies).values({ name: "Pipeline Co", issuePrefix: "PIP" }).returning();
     const [agent] = await db.insert(agents).values({
-      companyId: company.id,
       name: "Pipeline Agent",
       role: "engineer",
       adapterType: "codex_local",
@@ -59,28 +58,24 @@ describeEmbeddedPostgres("pipeline schema", () => {
       permissions: {},
     }).returning();
     const [routine] = await db.insert(routines).values({
-      companyId: company.id,
       title: "Draft content",
       assigneeAgentId: agent.id,
     }).returning();
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       title: "Work linked to a case",
     }).returning();
     const [document] = await db.insert(documents).values({
-      companyId: company.id,
       title: "Pipeline guidance",
       latestBody: "Use the launch rubric.",
     }).returning();
 
     const [pipeline] = await db.insert(pipelines).values({
-      companyId: company.id,
       key: "content",
       name: "Content",
       createdByAgentId: agent.id,
     }).returning();
     await expectConstraintError(
-      () => db.insert(pipelines).values({ companyId: company.id, key: "content", name: "Duplicate" }),
+      () => db.insert(pipelines).values({ key: "content", name: "Duplicate" }),
     );
 
     const [intakeStage] = await db.insert(pipelineStages).values({
@@ -131,7 +126,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     );
 
     const [rootCase] = await db.insert(pipelineCases).values({
-      companyId: company.id,
       pipelineId: pipeline.id,
       stageId: intakeStage.id,
       caseKey: "release-1",
@@ -141,7 +135,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
       createdByAgentId: agent.id,
     }).returning();
     const [childCase] = await db.insert(pipelineCases).values({
-      companyId: company.id,
       pipelineId: pipeline.id,
       stageId: intakeStage.id,
       caseKey: "release-1/blog",
@@ -150,7 +143,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     }).returning();
     await expectConstraintError(
       () => db.insert(pipelineCases).values({
-        companyId: company.id,
         pipelineId: pipeline.id,
         stageId: intakeStage.id,
         caseKey: "release-1",
@@ -159,7 +151,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     );
 
     const [event] = await db.insert(pipelineCaseEvents).values({
-      companyId: company.id,
       caseId: rootCase.id,
       type: "ingested",
       actorType: "agent",
@@ -170,7 +161,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     }).returning();
     await expectConstraintError(
       () => db.insert(pipelineCaseEvents).values({
-        companyId: company.id,
         caseId: rootCase.id,
         type: "updated",
         actorType: "agent",
@@ -179,7 +169,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     );
 
     await db.insert(pipelineCaseIssueLinks).values({
-      companyId: company.id,
       caseId: rootCase.id,
       issueId: issue.id,
       role: "origin",
@@ -187,7 +176,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     });
     await expectConstraintError(
       () => db.insert(pipelineCaseIssueLinks).values({
-        companyId: company.id,
         caseId: rootCase.id,
         issueId: issue.id,
         role: "work",
@@ -195,47 +183,40 @@ describeEmbeddedPostgres("pipeline schema", () => {
     );
 
     await db.insert(pipelineCaseBlockers).values({
-      companyId: company.id,
       caseId: childCase.id,
       blockedByCaseId: rootCase.id,
     });
     await expectConstraintError(
       () => db.insert(pipelineCaseBlockers).values({
-        companyId: company.id,
         caseId: childCase.id,
         blockedByCaseId: rootCase.id,
       }),
     );
     await expectConstraintError(
       () => db.insert(pipelineCaseBlockers).values({
-        companyId: company.id,
         caseId: rootCase.id,
         blockedByCaseId: rootCase.id,
       }),
     );
 
     await db.insert(pipelineDocuments).values({
-      companyId: company.id,
       pipelineId: pipeline.id,
       documentId: document.id,
       key: "guidance",
     });
     await expectConstraintError(
       () => db.insert(pipelineDocuments).values({
-        companyId: company.id,
         pipelineId: pipeline.id,
         documentId: document.id,
         key: "guidance-duplicate-document",
       }),
     );
     const [secondDocument] = await db.insert(documents).values({
-      companyId: company.id,
       title: "Duplicate guidance",
       latestBody: "Duplicate key.",
     }).returning();
     await expectConstraintError(
       () => db.insert(pipelineDocuments).values({
-        companyId: company.id,
         pipelineId: pipeline.id,
         documentId: secondDocument.id,
         key: "guidance",
@@ -243,7 +224,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     );
 
     await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
       caseId: rootCase.id,
       automationId: "draft-on-enter",
       triggeringEventId: event.id,
@@ -253,7 +233,6 @@ describeEmbeddedPostgres("pipeline schema", () => {
     });
     await expectConstraintError(
       () => db.insert(pipelineAutomationExecutions).values({
-        companyId: company.id,
         caseId: rootCase.id,
         automationId: "draft-on-enter",
         triggeringEventId: event.id,

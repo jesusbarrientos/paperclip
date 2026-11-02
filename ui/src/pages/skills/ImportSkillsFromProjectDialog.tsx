@@ -54,7 +54,6 @@ export type SkillSelection = { workspaceId: string; path: string; slug?: string 
 interface ImportSkillsFromProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  companyId: string;
   /** Opens the legacy "Import from path or URL" dialog (empty-state fallback). */
   onImportFromPath?: () => void;
 }
@@ -278,7 +277,6 @@ function CandidateStatusBadge({
 export function ImportSkillsFromProjectDialog({
   open,
   onOpenChange,
-  companyId,
   onImportFromPath,
 }: ImportSkillsFromProjectDialogProps) {
   const queryClient = useQueryClient();
@@ -297,8 +295,8 @@ export function ImportSkillsFromProjectDialog({
   const scanTokenRef = useRef(0);
 
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects.list(companyId),
-    queryFn: () => projectsApi.list(companyId),
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
     enabled: open,
   });
 
@@ -334,7 +332,7 @@ export function ImportSkillsFromProjectDialog({
     setStep("scanning");
     const token = ++scanTokenRef.current;
     companySkillsApi
-      .scanProjects(companyId, { projectIds: [project.id], mode: "preview" })
+      .scanProjects({ projectIds: [project.id], mode: "preview" })
       .then((result) => {
         if (token !== scanTokenRef.current) return;
         setScanResult(result);
@@ -352,7 +350,7 @@ export function ImportSkillsFromProjectDialog({
     mutationFn: () => {
       if (!selectedProject) throw new Error("No project selected.");
       const selectionInput = Array.from(selection.values());
-      return companySkillsApi.scanProjects(companyId, {
+      return companySkillsApi.scanProjects({
         projectIds: [selectedProject.id],
         mode: "import",
         selection: selectionInput,
@@ -362,7 +360,7 @@ export function ImportSkillsFromProjectDialog({
       setImportResult(result);
       setStep("result");
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.companySkills.list(companyId),
+        queryKey: queryKeys.companySkills.list(),
       });
       const importedCount = result.imported.length;
       toast.pushToast({
@@ -440,7 +438,7 @@ export function ImportSkillsFromProjectDialog({
     const key = selectionKey(workspaceId, skillPath);
     setBrowseAddingKey(key);
     try {
-      const result = await companySkillsApi.scanProjects(companyId, {
+      const result = await companySkillsApi.scanProjects({
         projectIds: [selectedProject.id],
         mode: "preview",
         selection: [{ workspaceId, path: skillPath }],
@@ -555,7 +553,6 @@ export function ImportSkillsFromProjectDialog({
               toggleCandidate={toggleCandidate}
               renameCandidate={renameCandidate}
               project={selectedProject}
-              companyId={companyId}
               browseOpen={browseOpen}
               onBrowseOpenChange={setBrowseOpen}
               onAddBrowsedSkill={addBrowsedSkill}
@@ -778,13 +775,11 @@ function ScanningStep({ projectName }: { projectName: string }) {
 
 
 function ProjectSkillBrowser({
-  companyId,
   project,
   onBack,
   onAddSkill,
   addingKey,
 }: {
-  companyId: string;
   project: Project;
   onBack: () => void;
   onAddSkill: (workspaceId: string, path: string) => void;
@@ -795,8 +790,8 @@ function ProjectSkillBrowser({
   const [workspaceId, setWorkspaceId] = useState(initialWorkspace?.id ?? "");
   const [folderPath, setFolderPath] = useState(".");
   const browseQuery = useQuery({
-    queryKey: ["company-skills", "browse-project", companyId, project.id, workspaceId, folderPath],
-    queryFn: () => companySkillsApi.browseProject(companyId, {
+    queryKey: ["company-skills", "browse-project", project.id, workspaceId, folderPath],
+    queryFn: () => companySkillsApi.browseProject({
       projectId: project.id,
       workspaceId,
       path: folderPath,
@@ -913,7 +908,6 @@ interface SelectStepProps {
   toggleCandidate: (candidate: CompanySkillProjectScanCandidate) => void;
   renameCandidate: (candidate: CompanySkillProjectScanCandidate, slug: string) => void;
   project: Project | null;
-  companyId: string;
   browseOpen: boolean;
   onBrowseOpenChange: (open: boolean) => void;
   onAddBrowsedSkill: (workspaceId: string, path: string) => void;
@@ -932,7 +926,6 @@ function SelectStep({
   toggleCandidate,
   renameCandidate,
   project,
-  companyId,
   browseOpen,
   onBrowseOpenChange,
   onAddBrowsedSkill,
@@ -971,7 +964,6 @@ function SelectStep({
   if (browseOpen && project) {
     return (
       <ProjectSkillBrowser
-        companyId={companyId}
         project={project}
         onBack={() => onBrowseOpenChange(false)}
         onAddSkill={onAddBrowsedSkill}

@@ -9,7 +9,6 @@ import {
 } from "./common.js";
 
 interface AdapterOptions extends BaseClientOptions {
-  companyId?: string;
   payloadJson?: string;
   refresh?: boolean;
   environmentId?: string;
@@ -102,24 +101,22 @@ export function registerAdapterCommands(program: Command): void {
   addCommonClientOptions(
     adapter
       .command("models")
-      .description("List adapter models for a company")
+      .description("List adapter models")
       .argument("<type>", "Adapter type")
-      .option("-C, --company-id <id>", "Company ID")
       .option("--refresh", "Refresh provider model list", false)
       .option("--environment-id <id>", "Environment ID for environment-aware adapters")
       .action(async (type: string, opts: AdapterOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const query = new URLSearchParams();
           if (opts.refresh) query.set("refresh", "true");
           if (opts.environmentId?.trim()) query.set("environmentId", opts.environmentId.trim());
           const suffix = query.size > 0 ? `?${query.toString()}` : "";
-          printOutput(await ctx.api.get(`${apiPath`/api/companies/${ctx.companyId}/adapters/${type}/models`}${suffix}`), { json: ctx.json });
+          printOutput(await ctx.api.get(`${apiPath`/api/adapters/${type}/models`}${suffix}`), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCompanyAdapterGet(adapter, "detect-model", "Detect adapter model", "detect-model");
@@ -181,16 +178,14 @@ function addCompanyAdapterGet(parent: Command, name: string, description: string
       .command(name)
       .description(description)
       .argument("<type>", "Adapter type")
-      .option("-C, --company-id <id>", "Company ID")
       .action(async (type: string, opts: AdapterOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          printOutput(await ctx.api.get(`${apiPath`/api/companies/${ctx.companyId}/adapters/${type}`}/${suffix}`), { json: ctx.json });
+          const ctx = resolveCommandContext(opts);
+          printOutput(await ctx.api.get(`${apiPath`/api/adapters/${type}`}/${suffix}`), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -200,20 +195,18 @@ function addCompanyAdapterPost(parent: Command, name: string, description: strin
       .command(name)
       .description(description)
       .argument("<type>", "Adapter type")
-      .option("-C, --company-id <id>", "Company ID")
       .option("--payload-json <json>", "JSON payload", "{}")
       .action(async (type: string, opts: AdapterOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           printOutput(
-            await ctx.api.post(`${apiPath`/api/companies/${ctx.companyId}/adapters/${type}`}/${suffix}`, parseJson(opts.payloadJson ?? "{}")),
+            await ctx.api.post(`${apiPath`/api/adapters/${type}`}/${suffix}`, parseJson(opts.payloadJson ?? "{}")),
             { json: ctx.json },
           );
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

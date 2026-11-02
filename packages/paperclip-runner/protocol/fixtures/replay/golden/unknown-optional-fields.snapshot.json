@@ -3,7 +3,6 @@
   "fixtureName": "Unknown optional fields",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_replay",
     "issueId": "issue_replay_future",
     "runId": "run_replay_future",
     "environmentLeaseId": "lease_replay_future",

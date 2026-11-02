@@ -17,8 +17,8 @@ const mockAccessService = vi.hoisted(() => ({
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config })),
+  normalizeAdapterConfigForPersistence: vi.fn(async (config: Record<string, unknown>) => config),
+  resolveAdapterConfigForRuntime: vi.fn(async (config: Record<string, unknown>) => ({ config })),
   collectMissingRuntimeBindings: vi.fn(async () => [] as Array<Record<string, unknown>>),
   resolveEnvBindings: vi.fn(async () => ({
     env: {} as Record<string, string>,
@@ -30,7 +30,6 @@ const mockSecretService = vi.hoisted(() => ({
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
   releaseLease: vi.fn(),
-  listBoundCompanyIds: vi.fn(async () => [] as string[]),
   findManagedSandboxEnvironment: vi.fn(async () => null as Record<string, unknown> | null),
 }));
 
@@ -167,7 +166,6 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -197,14 +195,10 @@ describe("agent test-environment route", () => {
     });
     mockEnvironmentService.getById.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       name: "Sandbox QA",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
-    // Default to an instance-global environment with no company binding, so the
-    // tenant-binding guard passes unless a test overrides it.
-    mockEnvironmentService.listBoundCompanyIds.mockResolvedValue([]);
     mockEnvironmentRuntime.acquireRunLease.mockResolvedValue({
       lease: {
         id: "lease-1",
@@ -258,7 +252,7 @@ describe("agent test-environment route", () => {
     mockResolveEnvironmentExecutionTarget.mockResolvedValue(target);
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ adapterConfig: {}, environmentId: null });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockEnvironmentRuntime.acquireRunLease).toHaveBeenCalled();
@@ -273,7 +267,7 @@ describe("agent test-environment route", () => {
   ])("resolves the saved agent environment when the request selection is $selection", async ({ environmentId, expectedId }) => {
     const agentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     mockAgentService.getById.mockResolvedValue({
-      id: agentId, companyId: "company-1", adapterType: "external_test",
+      id: agentId, adapterType: "external_test",
       adapterConfig: {}, runtimeConfig: {}, defaultEnvironmentId: "22222222-2222-4222-8222-222222222222",
     });
     mockInstanceSettingsService.get.mockResolvedValue({ defaultEnvironmentId: "11111111-1111-4111-8111-111111111111" });
@@ -284,14 +278,14 @@ describe("agent test-environment route", () => {
     mockResolveEnvironmentExecutionTarget.mockResolvedValue(target);
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ agentId, adapterConfig: {}, ...(environmentId === undefined ? {} : { environmentId }) });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockEnvironmentRuntime.acquireRunLease).toHaveBeenCalledWith(expect.objectContaining({
       environment: expect.objectContaining({ id: expectedId }),
     }));
     expect(mockSecretService.resolveAdapterConfigForRuntime).toHaveBeenCalledWith(
-      "company-1", {}, expect.objectContaining({ consumerType: "environment", consumerId: expectedId }),
+      {}, expect.objectContaining({ consumerType: "environment", consumerId: expectedId }),
       expect.any(Object),
     );
     expect(testEnvironmentSpy).toHaveBeenCalledWith(expect.objectContaining({ executionTarget: target }));
@@ -302,7 +296,7 @@ describe("agent test-environment route", () => {
     mockEnvironmentService.getById.mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333", name: "Local", driver: "local", status: "active", config: {} });
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ environmentId: "33333333-3333-4333-8333-333333333333" });
     expect(res.status).toBe(200);
     expect(mockInstanceSettingsService.get).not.toHaveBeenCalled();
@@ -317,22 +311,10 @@ describe("agent test-environment route", () => {
     mockResolveEnvironmentExecutionTarget.mockResolvedValue(target);
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ environmentId: null });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(testEnvironmentSpy).toHaveBeenCalledWith(expect.objectContaining({ executionTarget: target }));
-  });
-
-  it("checks the inherited environment's company before resolving credentials", async () => {
-    mockInstanceSettingsService.get.mockResolvedValue({ defaultEnvironmentId: "11111111-1111-4111-8111-111111111111" });
-    mockEnvironmentService.listBoundCompanyIds.mockResolvedValue(["company-2"]);
-    const app = await createApp();
-    const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
-      .send({ adapterConfig: {} });
-    expect(res.status).toBe(403);
-    expect(mockSecretService.normalizeAdapterConfigForPersistence).not.toHaveBeenCalled();
-    expect(testEnvironmentSpy).not.toHaveBeenCalled();
   });
 
   it("never probes the host when an inherited environment is missing", async () => {
@@ -340,7 +322,7 @@ describe("agent test-environment route", () => {
     mockEnvironmentService.getById.mockResolvedValue(null);
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ adapterConfig: {} });
     expect(res.body.checks).toEqual([expect.objectContaining({ code: "environment_not_found" })]);
     expect(testEnvironmentSpy).not.toHaveBeenCalled();
@@ -350,7 +332,7 @@ describe("agent test-environment route", () => {
     mockInstanceSettingsService.getExperimental.mockResolvedValue({ enableManagedSandboxOnly: true });
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ adapterConfig: {} });
     expect(res.status).toBe(422);
     expect(res.body.details.code).toBe("managed_sandbox_unavailable");
@@ -359,23 +341,23 @@ describe("agent test-environment route", () => {
 
   it("tests a prospective adapter switch before saving the agent", async () => {
     mockAgentService.getById.mockResolvedValue({
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", companyId: "company-1",
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {},
     });
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", adapterConfig: { model: "prospective-model" } });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(testEnvironmentSpy).toHaveBeenCalledWith(expect.objectContaining({ config: { model: "prospective-model" } }));
   });
 
   it("requires agent update permission to test a prospective adapter switch", async () => {
-    mockAgentService.getById.mockResolvedValue({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", companyId: "company-1", adapterType: "codex_local", adapterConfig: {} });
+    mockAgentService.getById.mockResolvedValue({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", adapterType: "codex_local", adapterConfig: {} });
     mockAccessService.decide.mockImplementation(async ({ action }) => ({ allowed: action !== "agent_config:update", reason: "test", explanation: "Update denied" }));
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", adapterConfig: {} });
     expect(res.status).toBe(403);
     expect(testEnvironmentSpy).not.toHaveBeenCalled();
@@ -384,10 +366,10 @@ describe("agent test-environment route", () => {
   it.each(["CURSOR_API_KEY", "KIMI_MODEL_API_KEY", "ZAI_API_KEY", "KIMI_API_KEY", "MINIMAX_API_KEY"])("accepts %s as a probe-only credential", async (key) => {
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ testCredentials: { [key]: "probe-only-key" } });
     expect(res.status).toBe(200);
-    expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[1]).toEqual({});
+    expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[0]).toEqual({});
     expect(testEnvironmentSpy.mock.calls[0]?.[0].config.env).toEqual({ [key]: "probe-only-key" });
   });
 
@@ -399,10 +381,10 @@ describe("agent test-environment route", () => {
     try {
       const app = await createApp();
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/hermes_gateway/test-environment")
+        .post("/api/adapters/hermes_gateway/test-environment")
         .send({ adapterConfig: { apiBaseUrl: "https://hermes.example.com" }, testCredentials: { API_SERVER_KEY: "gateway-probe-key" } });
       expect(res.status).toBe(200);
-      expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[1]).toEqual({ apiBaseUrl: "https://hermes.example.com" });
+      expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[0]).toEqual({ apiBaseUrl: "https://hermes.example.com" });
       expect(testEnvironmentSpy.mock.calls[0]?.[0].config.apiKey).toBe("gateway-probe-key");
       expect(JSON.stringify(res.body)).not.toContain("gateway-probe-key");
     } finally {
@@ -436,7 +418,7 @@ describe("agent test-environment route", () => {
     try {
       const app = await createApp();
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({
           adapterConfig: { cwd: "/" },
           aiConnection: { provider: "anthropic", method: "api_key", mode: "responsible_user" },
@@ -462,7 +444,7 @@ describe("agent test-environment route", () => {
     }));
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({
         adapterConfig: { cwd: "/" },
         aiConnection: { provider: "anthropic", method: "api_key", mode: "responsible_user" },
@@ -471,7 +453,6 @@ describe("agent test-environment route", () => {
     expect(res.body.status).toBe("fail");
     expect(res.body.checks.map((check: { code: string }) => check.code)).toContain("ai_connection_api_key_rejected");
     expect(mockMarkAuthenticationFailed).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       attribution: expect.objectContaining({ connectionId: "conn-1", grantId: "grant-1" }),
     }));
   });
@@ -491,7 +472,7 @@ describe("agent test-environment route", () => {
     try {
       const app = await createApp();
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({
           adapterConfig: { cwd: "/" },
           aiConnection: { provider: "anthropic", method: "subscription", mode: "responsible_user" },
@@ -510,10 +491,10 @@ describe("agent test-environment route", () => {
   it("passes one-shot provider credentials only to the probe, never persistence normalization", async () => {
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ adapterConfig: { env: { KEEP: "value" } }, testCredentials: { OPENROUTER_API_KEY: "probe-only-key" } });
     expect(res.status).toBe(200);
-    expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[1]).toEqual({ env: { KEEP: "value" } });
+    expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[0]).toEqual({ env: { KEEP: "value" } });
     expect(testEnvironmentSpy.mock.calls[0]?.[0].config.env).toEqual({ KEEP: "value", OPENROUTER_API_KEY: "probe-only-key" });
     expect(JSON.stringify(res.body)).not.toContain("probe-only-key");
   });
@@ -521,7 +502,7 @@ describe("agent test-environment route", () => {
   it("rejects non-provider variables in one-shot credentials", async () => {
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({ testCredentials: { NODE_OPTIONS: "--require unsafe" } });
     expect(res.status).toBe(400);
     expect(testEnvironmentSpy).not.toHaveBeenCalled();
@@ -531,7 +512,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "11111111-1111-4111-8111-111111111111",
@@ -571,7 +552,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "22222222-2222-4222-8222-222222222222",
@@ -616,7 +597,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "11111111-1111-4111-8111-111111111111",
@@ -629,9 +610,6 @@ describe("agent test-environment route", () => {
     expect(mockEnvironmentRuntime.acquireRunLease).toHaveBeenCalledWith(
       expect.objectContaining({
         applyCustomImageTemplate: true,
-        // The Test lease re-checks the company binding, so a binding change
-        // between the route guard and the lease cannot open a foreign sandbox.
-        assertCompanyBinding: true,
         environment: expect.objectContaining({
           config: expect.objectContaining({
             reuseLease: false,
@@ -680,7 +658,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/adapters/external_test/test-environment")
+      .post("/api/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "11111111-1111-4111-8111-111111111111",
@@ -718,7 +696,6 @@ describe("agent test-environment route", () => {
     it("merges resolved environment envVars under the agent adapterConfig env", async () => {
       mockEnvironmentService.getById.mockResolvedValue({
         id: environmentId,
-        companyId: "company-1",
         name: "Sandbox QA",
         driver: "sandbox",
         config: { provider: "fake-plugin" },
@@ -737,7 +714,7 @@ describe("agent test-environment route", () => {
       const app = await createApp();
 
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({
           adapterConfig: { env: { FOO: "agent-foo" } },
           environmentId,
@@ -745,7 +722,6 @@ describe("agent test-environment route", () => {
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       expect(mockSecretService.resolveEnvBindings).toHaveBeenCalledWith(
-        "company-1",
         {
           CLAUDE_CODE_OAUTH_TOKEN: { type: "secret_ref", secretId: "secret-1" },
           FOO: { type: "plain", value: "env-foo" },
@@ -767,7 +743,6 @@ describe("agent test-environment route", () => {
     it("skips env vars with missing secret bindings and fails the test", async () => {
       mockEnvironmentService.getById.mockResolvedValue({
         id: environmentId,
-        companyId: "company-1",
         name: "Sandbox QA",
         driver: "sandbox",
         config: { provider: "fake-plugin" },
@@ -795,13 +770,12 @@ describe("agent test-environment route", () => {
       const app = await createApp();
 
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({ adapterConfig: {}, environmentId });
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       // The unresolved key is excluded from resolution; the rest still flows.
       expect(mockSecretService.resolveEnvBindings).toHaveBeenCalledWith(
-        "company-1",
         { GOOD: { type: "plain", value: "ok" } },
         expect.objectContaining({ consumerType: "environment" }),
       );
@@ -824,7 +798,6 @@ describe("agent test-environment route", () => {
     it("includes environment env checks when the environment cannot produce an execution target", async () => {
       mockEnvironmentService.getById.mockResolvedValue({
         id: environmentId,
-        companyId: "company-1",
         name: "Sandbox QA",
         driver: "sandbox",
         config: { provider: "fake-plugin" },
@@ -845,7 +818,7 @@ describe("agent test-environment route", () => {
       const app = await createApp();
 
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({ adapterConfig: {}, environmentId });
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -858,81 +831,10 @@ describe("agent test-environment route", () => {
     });
   });
 
-  describe("tenant-binding guard", () => {
-    async function postForeignEnvironmentTest() {
-      const app = await createApp();
-      return request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
-        .send({
-          adapterConfig: { env: { FOO: "bar" } },
-          environmentId: "11111111-1111-4111-8111-111111111111",
-        });
-    }
-
-    function expectCompanyMismatch(res: request.Response) {
-      expect(res.status, JSON.stringify(res.body)).toBe(403);
-      expect(JSON.stringify(res.body)).toContain("environment_company_mismatch");
-      // The guard rejects before any secret resolution, target resolution,
-      // sandbox lease, or adapter test runs.
-      expect(mockSecretService.normalizeAdapterConfigForPersistence).not.toHaveBeenCalled();
-      expect(mockSecretService.resolveAdapterConfigForRuntime).not.toHaveBeenCalled();
-      expect(mockEnvironmentRuntime.acquireRunLease).not.toHaveBeenCalled();
-      expect(testEnvironmentSpy).not.toHaveBeenCalled();
-    }
-
-    it("rejects an active environment bound to another company", async () => {
-      mockEnvironmentService.listBoundCompanyIds.mockResolvedValue(["company-2"]);
-      expectCompanyMismatch(await postForeignEnvironmentTest());
-    });
-
-    it("rejects an archived environment bound to another company without revealing its status", async () => {
-      mockEnvironmentService.getById.mockResolvedValue({
-        id: "11111111-1111-4111-8111-111111111111",
-        companyId: "company-2",
-        name: "Sandbox QA",
-        driver: "sandbox",
-        status: "archived",
-        config: { provider: "fake-plugin" },
-      });
-      mockEnvironmentService.listBoundCompanyIds.mockResolvedValue(["company-2"]);
-      expectCompanyMismatch(await postForeignEnvironmentTest());
-    });
-
-    it("rejects a disallowed-driver environment bound to another company without revealing its driver", async () => {
-      mockEnvironmentService.getById.mockResolvedValue({
-        id: "11111111-1111-4111-8111-111111111111",
-        companyId: "company-2",
-        name: "Plugin Env",
-        driver: "plugin",
-        status: "active",
-        config: {},
-      });
-      mockEnvironmentService.listBoundCompanyIds.mockResolvedValue(["company-2"]);
-      expectCompanyMismatch(await postForeignEnvironmentTest());
-    });
-
-    it("allows an instance-global environment with no company binding", async () => {
-      mockEnvironmentService.listBoundCompanyIds.mockResolvedValue([]);
-      const res = await postForeignEnvironmentTest();
-      // The guard passes and the route proceeds to secret resolution.
-      expect(res.status, JSON.stringify(res.body)).toBe(200);
-      expect(mockSecretService.normalizeAdapterConfigForPersistence).toHaveBeenCalled();
-    });
-
-    it("allows an environment bound to the caller company", async () => {
-      mockEnvironmentService.listBoundCompanyIds.mockResolvedValue(["company-1"]);
-      const res = await postForeignEnvironmentTest();
-      // The guard passes and the route proceeds to secret resolution.
-      expect(res.status, JSON.stringify(res.body)).toBe(200);
-      expect(mockSecretService.normalizeAdapterConfigForPersistence).toHaveBeenCalled();
-    });
-  });
-
   describe("managed-sandbox-only redirect", () => {
     const localEnvironmentId = "33333333-3333-4333-8333-333333333333";
     const managedSandboxEnvironment = {
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: null,
       name: "Managed sandbox",
       driver: "sandbox",
       status: "active",
@@ -940,7 +842,6 @@ describe("agent test-environment route", () => {
     };
     const localEnvironment = {
       id: localEnvironmentId,
-      companyId: null,
       name: "Local host",
       driver: "local",
       status: "active",
@@ -965,7 +866,7 @@ describe("agent test-environment route", () => {
       const app = await createApp();
 
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({ adapterConfig: {}, environmentId: localEnvironmentId });
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -992,7 +893,7 @@ describe("agent test-environment route", () => {
       const app = await createApp();
 
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({ adapterConfig: {}, environmentId: localEnvironmentId });
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -1013,7 +914,7 @@ describe("agent test-environment route", () => {
       const app = await createApp();
 
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/external_test/test-environment")
+        .post("/api/adapters/external_test/test-environment")
         .send({ adapterConfig: {}, environmentId: localEnvironmentId });
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);

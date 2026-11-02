@@ -139,7 +139,6 @@ describe("opencode remote execution", () => {
       runId: "run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "OpenCode Builder",
         adapterType: "opencode_local",
         adapterConfig: {},
@@ -293,7 +292,6 @@ describe("opencode remote execution", () => {
         runId: "run-ssh-model-missing",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "OpenCode Builder",
           adapterType: "opencode_local",
           adapterConfig: {},
@@ -346,7 +344,6 @@ describe("opencode remote execution", () => {
       runId: "run-ssh-resume",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "OpenCode Builder",
         adapterType: "opencode_local",
         adapterConfig: {},

@@ -110,7 +110,7 @@ Trust boundaries:
 
 ### Connection Creation And Authentication
 
-Threats: spoofed OAuth callback, state replay, cross-company secret binding,
+Threats: spoofed OAuth callback, state replay, binding secrets the caller cannot use,
 forged app-installation metadata, forged remote MCP metadata, and token leakage.
 
 Required controls:
@@ -144,7 +144,7 @@ Required controls:
 
 ### Profile, Binding, And Policy Changes
 
-Threats: non-admin actors widening access, IDOR against another company's agent
+Threats: non-admin actors widening access, IDOR against an agent
 or connection, implicit writes, and transient broadening during replacement.
 
 Required controls:
@@ -233,30 +233,31 @@ Required controls:
 
 ### Import, Export, And Portability
 
-Threats: secret disclosure, cross-company principal binding, and imports starting
+Threats: secret disclosure, binding principals from the source instance, and imports starting
 with broad active access.
 
 Required controls:
 
-- Company export includes provider declarations, display metadata, redacted
+- Organization export includes provider declarations, display metadata, redacted
   secret refs, profiles, and policy shape only. It excludes secret values and
   refresh tokens.
-- Import restores connections in an unusable state until destination-company
+- Import restores connections in an unusable state until destination-instance
   secret refs are remapped and validated.
 - Imported profiles/bindings/policies become active only when referenced
-  principals and connections resolve inside the destination company.
+  principals and connections resolve inside the destination organization.
 
 ## Required Negative Tests
 
-Cross-company isolation:
+Organization access (an instance serves exactly one organization, so isolation
+between companies is isolation between instances):
 
-- Board user from company A cannot read/update/delete company B's app,
-  connection, catalog entry, profile, policy, action request, or gateway session.
-- Agent from company A cannot list or invoke company B tools.
+- A user without active organization membership cannot read/update/delete the
+  organization's apps, connections, catalog entries, profiles, policies, action
+  requests, or gateway sessions.
 - Create/update routes reject secret, agent, user, project, routine, issue, app,
-  and connection ids from another company.
-- Webhooks for company A cannot mutate company B entities even if external ids
-  collide.
+  and connection ids that do not exist in the instance.
+- Webhooks cannot mutate entities other than the ones their connection resolves
+  to, even if external ids collide.
 
 Ungoverned or overbroad access:
 

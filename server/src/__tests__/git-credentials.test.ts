@@ -17,11 +17,11 @@ import {
 const fakeDb = null as unknown as Db;
 
 function buildSecretsFake(byName: Record<string, string | Error>) {
-  const getByName = vi.fn(async (_companyId: string, name: string) => {
+  const getByName = vi.fn(async (name: string) => {
     if (!(name in byName)) return null;
     return { id: `secret-${name}` };
   });
-  const resolveSecretValue = vi.fn(async (_companyId: string, secretId: string) => {
+  const resolveSecretValue = vi.fn(async (secretId: string, ..._rest: unknown[]) => {
     const name = secretId.replace(/^secret-/, "");
     const value = byName[name];
     if (value instanceof Error) throw value;
@@ -52,7 +52,7 @@ describe("createGitRemoteAuthProvider", () => {
 
   it("prefers company secrets in declared order", async () => {
     const secrets = buildSecretsFake({ GH_TOKEN: "gh-token", PAPERCLIP_GITHUB_TOKEN: "pc-token" });
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets,
       env: { GITHUB_TOKEN: "env-token" },
     });
@@ -61,11 +61,11 @@ describe("createGitRemoteAuthProvider", () => {
     expect(invocation?.source).toBe("company_secret");
     expect(invocation?.secretName).toBe("GH_TOKEN");
     // GITHUB_TOKEN is probed first even though only GH_TOKEN exists.
-    expect(secrets.getByName.mock.calls.map((call) => call[1])).toEqual(["GITHUB_TOKEN", "GH_TOKEN"]);
+    expect(secrets.getByName.mock.calls.map((call) => call[0])).toEqual(["GITHUB_TOKEN", "GH_TOKEN"]);
   });
 
   it("falls back to the server env, GITHUB_TOKEN before GH_TOKEN", async () => {
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets: buildSecretsFake({}),
       env: { GITHUB_TOKEN: "env-github", GH_TOKEN: "env-gh" },
     });
@@ -76,7 +76,7 @@ describe("createGitRemoteAuthProvider", () => {
   });
 
   it("returns null when no token is available anywhere", async () => {
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets: buildSecretsFake({}),
       env: {},
     });
@@ -85,7 +85,7 @@ describe("createGitRemoteAuthProvider", () => {
 
   it("accepts GitHub SSH remotes for process-scoped HTTPS rewriting", async () => {
     const secrets = buildSecretsFake({ GITHUB_TOKEN: "token" });
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets,
       env: {},
     });
@@ -96,7 +96,7 @@ describe("createGitRemoteAuthProvider", () => {
 
   it("returns null for non-GitHub URLs without touching the secret store", async () => {
     const secrets = buildSecretsFake({ GITHUB_TOKEN: "token" });
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets,
       env: {},
     });
@@ -106,7 +106,7 @@ describe("createGitRemoteAuthProvider", () => {
 
   it("memoizes the credential lookup across calls", async () => {
     const secrets = buildSecretsFake({ GITHUB_TOKEN: "token" });
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets,
       env: {},
     });
@@ -121,12 +121,11 @@ describe("createGitRemoteAuthProvider", () => {
     const secrets = buildSecretsFake({ GITHUB_TOKEN: "token" });
     const provider = createGitRemoteAuthProvider(
       fakeDb,
-      "company-1",
       { issueId: "issue-1", heartbeatRunId: "run-1" },
       { secrets, env: {} },
     );
     await provider(githubUrl);
-    expect(secrets.resolveSecretValue).toHaveBeenCalledWith("company-1", "secret-GITHUB_TOKEN", "latest", {
+    expect(secrets.resolveSecretValue).toHaveBeenCalledWith("secret-GITHUB_TOKEN", "latest", {
       accessContext: expect.objectContaining({
         consumerType: "system",
         consumerId: "workspace-git-credential",
@@ -142,7 +141,7 @@ describe("createGitRemoteAuthProvider", () => {
       GITHUB_TOKEN: new Error("provider outage"),
       GH_TOKEN: "gh-token",
     });
-    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
+    const provider = createGitRemoteAuthProvider(fakeDb, undefined, {
       secrets,
       env: {},
     });
@@ -152,26 +151,24 @@ describe("createGitRemoteAuthProvider", () => {
 
   it("ignores a managed connection installed only for another agent", async () => {
     const query = (rows: unknown[]) => ({
-      from: () => ({ where: async () => rows }),
+      from: () => Object.assign(Promise.resolve(rows), { where: async () => rows }),
     });
     const db = {
       select: vi.fn()
         .mockReturnValueOnce(query([{
           id: "github-connection",
-          companyId: "company-1",
           enabled: true,
           status: "active",
           config: { sourceTemplateKey: "github" },
         }]))
         .mockReturnValueOnce(query([{
           connectionId: "github-connection",
-          companyId: "company-1",
           targetType: "agent",
           targetId: "agent-a",
         }])),
     } as unknown as Db;
     const secrets = buildSecretsFake({ GH_TOKEN: "agent-b-legacy-token" });
-    const provider = createGitRemoteAuthProvider(db, "company-1", { agentId: "agent-b" }, {
+    const provider = createGitRemoteAuthProvider(db, { agentId: "agent-b" }, {
       secrets,
       env: {},
     });
@@ -328,7 +325,7 @@ describe("describeGitAuthFailure", () => {
     expect(describeGitAuthFailure({
       error: "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
       used: null,
-    })).toContain("add a GITHUB_TOKEN or GH_TOKEN company secret");
+    })).toContain("add a GITHUB_TOKEN or GH_TOKEN secret");
   });
 
   it("stays silent for non-auth failures without a credential", () => {

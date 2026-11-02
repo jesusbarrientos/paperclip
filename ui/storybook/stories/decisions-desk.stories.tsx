@@ -56,16 +56,14 @@ function item(
 ): AttentionItem {
   const base: AttentionItem = {
     id,
-    companyId,
     sourceKind,
     subject: {
       kind: "issue",
       id: `${id}-subject`,
-      companyId,
       title,
       identifier: null,
       status: "pending",
-      href: "/PAP/issues/PAP-1000",
+      href: "/issues/PAP-1000",
       metadata: {},
     },
     whyNow,
@@ -87,11 +85,10 @@ function item(
     relatedIssue: {
       kind: "issue",
       id: "issue-1000",
-      companyId,
       title: "Ship the decisions desk",
       identifier: "PAP-1000",
       status: "in_progress",
-      href: "/PAP/issues/PAP-1000",
+      href: "/issues/PAP-1000",
       metadata: {},
     },
     project: null,
@@ -121,11 +118,10 @@ function approval(id: string, title: string, whyNow: string, overrides: Partial<
     subject: {
       kind: "approval",
       id: `${id}-approval`,
-      companyId,
       title,
       identifier: null,
       status: "pending",
-      href: `/PAP/approvals/${id}`,
+      href: `/approvals/${id}`,
       metadata: { type: "merge_pr" },
     },
     decisionVerbs: [
@@ -149,7 +145,6 @@ function feed(items: AttentionItem[]): AttentionFeed {
       (it.decideBy === "today" || new Date(it.createdAt).getTime() >= startOfToday),
   ).length;
   return {
-    companyId,
     generatedAt: iso(NOW),
     totalCount: items.length,
     deskBadgeCount,
@@ -161,7 +156,6 @@ function feed(items: AttentionItem[]): AttentionFeed {
 
 const PRS_QUEUE: DecisionQueueDto = {
   id: "queue-prs",
-  companyId,
   key: "prs",
   title: "PRs to review",
   description: "Pull requests waiting on a merge decision.",
@@ -247,11 +241,10 @@ const DESK_ITEMS: AttentionItem[] = [
       subject: {
         kind: "interaction",
         id: "intx-plan",
-        companyId,
         title: "Approve plan: heartbeat.ts split",
         identifier: null,
         status: "pending",
-        href: "/PAP/issues/PAP-1000#plan",
+        href: "/issues/PAP-1000#plan",
         metadata: { kind: "request_confirmation", issueId: "issue-1000" },
       },
       decisionVerbs: [
@@ -313,11 +306,10 @@ const AGING_ITEMS: AttentionItem[] = [
     relatedIssue: {
       kind: "issue",
       id: "issue-legacy",
-      companyId,
       title: "Legacy exporter cleanup",
       identifier: "PAP-812",
       status: "backlog",
-      href: "/PAP/issues/PAP-812",
+      href: "/issues/PAP-812",
       metadata: {},
     },
   }),
@@ -365,11 +357,11 @@ function PrimeDeskFixtures({
 }) {
   const queryClient = useQueryClient();
   useMemo(() => {
-    queryClient.setQueryData(queryKeys.decisionQueues.list(companyId), QUEUES);
-    queryClient.setQueryData(queryKeys.agents.list(companyId), AGENTS);
+    queryClient.setQueryData(queryKeys.decisionQueues.list(), QUEUES);
+    queryClient.setQueryData(queryKeys.agents.list(), AGENTS);
     if (items) {
       queryClient.setQueryData(
-        [...queryKeys.attention(companyId), "with-dismissed", null, null],
+        [...queryKeys.attention(), "with-dismissed", null, null],
         feed(items),
       );
     }
@@ -377,7 +369,7 @@ function PrimeDeskFixtures({
       // The queue feed key carries the resolved activity bounds (null/null for
       // the default "all" range), matching the page's real query key.
       queryClient.setQueryData(
-        [...queryKeys.attention(companyId), "queue", "prs", null, null],
+        [...queryKeys.attention(), "queue", "prs", null, null],
         feed(queueItems),
       );
     }
@@ -397,11 +389,10 @@ function interactionRow(
     subject: {
       kind: "interaction",
       id,
-      companyId,
       title,
       identifier: null,
       status: "pending",
-      href: `/PAP/issues/PAP-1000#interaction-${id}`,
+      href: `/issues/PAP-1000#interaction-${id}`,
       metadata: { kind: "request_confirmation", issueId: "issue-1000" },
     },
     decisionVerbs: [
@@ -554,7 +545,6 @@ export const CollapsedInteractionAudience: Story = {
           <AttentionQueueRow
             key={row.id}
             item={row}
-            companyId={companyId}
             agents={AGENTS}
             expanded={false}
             onToggleExpand={() => {}}
@@ -577,7 +567,6 @@ export const CardTriageStrip: Story = {
       <div className="max-w-3xl space-y-2 p-6">
         <AttentionQueueRow
           item={TRIAGE_ITEM}
-          companyId={companyId}
           agents={AGENTS}
           showTriage
           expanded

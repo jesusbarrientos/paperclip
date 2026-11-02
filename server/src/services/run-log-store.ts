@@ -36,7 +36,7 @@ export interface RunLogFinalizeSummary {
 }
 
 export interface RunLogStore {
-  begin(input: { companyId: string; agentId: string; runId: string }): Promise<RunLogHandle>;
+  begin(input: { agentId: string; runId: string }): Promise<RunLogHandle>;
   append(
     handle: RunLogHandle,
     event: { stream: "stdout" | "stderr" | "system"; chunk: string; ts: string; seq?: number },
@@ -291,9 +291,7 @@ export function createDurableRunLogStore(options: DurableRunLogStoreOptions): Ru
 
   return {
     async begin(input) {
-      const [companyId, agentId] = safeSegments(input.companyId, input.agentId);
-      const runId = safeSegments(input.runId)[0]!;
-      const relDir = path.join(companyId, agentId);
+      const [relDir, runId] = safeSegments(input.agentId, input.runId);
       const relPath = path.join(relDir, `${runId}.ndjson`);
       await ensureDir(relDir);
       const absPath = resolveWithin(basePath, relPath);

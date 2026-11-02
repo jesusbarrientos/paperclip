@@ -94,7 +94,6 @@ function makeHeartbeatRun(overrides: Partial<HeartbeatRun>): HeartbeatRun {
   const createdAt = overrides.createdAt ?? daysAgo(1);
   const run: HeartbeatRun = {
     id: "run-fixture",
-    companyId,
     agentId: "agent-codex",
     responsibleUserId: null,
     invocationSource: "on_demand",
@@ -329,7 +328,7 @@ function OpenOnboardingOnMount({ initialStep }: { initialStep: 1 | 2 }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    queryClient.setQueryData(queryKeys.agents.adapterModels(companyId, "claude_local"), [
+    queryClient.setQueryData(queryKeys.agents.adapterModels("claude_local"), [
       { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
       { id: "claude-opus-4-1", label: "Claude Opus 4.1" },
     ]);
@@ -498,7 +497,7 @@ function EntityRowsDemo({ empty = false }: { empty?: boolean }) {
               subtitle={row.subtitle}
               trailing={row.trailing}
               selected={row.selected}
-              to={row.id === "issue" ? "/PAP/issues/PAP-1677" : undefined}
+              to={row.id === "issue" ? "/issues/PAP-1677" : undefined}
             />
           ))}
           {rows.length === 0 && (

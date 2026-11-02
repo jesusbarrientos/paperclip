@@ -3574,7 +3574,7 @@ describe("sandbox adapter execution targets", () => {
       // it never admits a binary body, and it never forwards the request to
       // the host.
       const uploadResponse = await fetch(
-        `${bridge!.env.PAPERCLIP_API_URL}/api/companies/co-1/issues/issue-1/attachments`,
+        `${bridge!.env.PAPERCLIP_API_URL}/api/issues/issue-1/attachments`,
         {
           method: "POST",
           headers: {
@@ -4081,7 +4081,7 @@ describe("sandbox adapter execution targets", () => {
       const upload = buildMultipartAttachmentUpload(uploadBytes);
       const uploadResponse = await http2TestRequest(sessionRef.current!, {
         method: "POST",
-        path: "/api/companies/co-1/issues/issue-1/attachments",
+        path: "/api/issues/issue-1/attachments",
         headers: {
           authorization: `Bearer ${bridgeToken}`,
           "content-type": upload.contentType,
@@ -4092,7 +4092,7 @@ describe("sandbox adapter execution targets", () => {
       expect(api.requests).toHaveLength(2);
       expect(api.requests[1]).toMatchObject({
         method: "POST",
-        url: "/api/companies/co-1/issues/issue-1/attachments",
+        url: "/api/issues/issue-1/attachments",
       });
       expect(api.requests[1].headers["content-type"]).toBe(upload.contentType);
       expect(api.requests[1].body.equals(upload.body)).toBe(true);

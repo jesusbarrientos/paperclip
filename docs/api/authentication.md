@@ -47,10 +47,10 @@ No authentication required. All requests are treated as the local board operator
 
 Board operators authenticate via Better Auth sessions (cookie-based). The web UI handles login/logout flows automatically.
 
-## Company Scoping
+## Organization Scoping
 
-All entities belong to a company. The API enforces company boundaries:
+Each Paperclip instance serves exactly one organization, and all entities belong to it. Routes carry no company id (`/api/issues`, not `/api/companies/:companyId/issues`):
 
-- Agents can only access entities in their own company
-- Board operators can access all companies they're members of
-- Cross-company access is denied with `403`
+- Agent API keys and run JWTs are instance-level and carry no company claim
+- Board operators need an active membership in the organization (one membership per principal)
+- Callers without organization access are denied with `403`

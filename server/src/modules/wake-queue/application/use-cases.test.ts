@@ -22,7 +22,6 @@ import type {
 
 const RUN: RunSnapshot = {
   id: "run-1",
-  companyId: "company-1",
   agentId: "finishing-agent",
   status: "failed",
   runtimeMode: "process",
@@ -34,7 +33,6 @@ const RUN: RunSnapshot = {
 
 const ISSUE: IssueSnapshot = {
   id: "issue-1",
-  companyId: "company-1",
   identifier: "ISSUE-1",
   status: "in_progress",
   assigneeAgentId: "finishing-agent",
@@ -51,7 +49,6 @@ const ISSUE: IssueSnapshot = {
 
 const AGENT: InvokableAgentSnapshot = {
   id: "deferred-agent",
-  companyId: "company-1",
   name: "Deferred Agent",
   invokable: true,
 };
@@ -59,7 +56,6 @@ const AGENT: InvokableAgentSnapshot = {
 function wakeCandidate(overrides: Partial<DeferredWakeCandidate> = {}): DeferredWakeCandidate {
   return {
     id: overrides.id ?? "wake-1",
-    companyId: "company-1",
     agentId: "deferred-agent",
     reason: "issue_commented",
     source: "automation",
@@ -79,7 +75,6 @@ function wakeCandidate(overrides: Partial<DeferredWakeCandidate> = {}): Deferred
 function runSummary(id: string): RunSummary {
   return {
     id,
-    companyId: "company-1",
     agentId: "deferred-agent",
     invocationSource: "automation",
     triggerDetail: null,
@@ -168,10 +163,10 @@ describe("releaseIssueExecution", () => {
       const release = createReleaseIssueExecution({
         issueLock: createFakeIssueLock(createFakeHost(), transaction, issue, run), recovery: createFakeRecovery(),
       });
-      const result = await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() });
+      const result = await release({ runId: RUN.id, now: new Date() });
       if (scenario === "closing" || scenario === "mixed_comments") {
         expect(transaction.isCompletedDelegationMention).toHaveBeenCalledWith({
-          companyId: RUN.companyId, issueId: ISSUE.id, finishingRunId: RUN.id,
+          issueId: ISSUE.id, finishingRunId: RUN.id,
           wakeAgentId: AGENT.id, commentIds: originalCommentIds,
         });
       } else {
@@ -199,7 +194,7 @@ describe("releaseIssueExecution", () => {
     const release = createReleaseIssueExecution({
       issueLock: createFakeIssueLock(createFakeHost(), transaction, assignedIssue), recovery: createFakeRecovery(),
     });
-    expect((await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() })).outcome.kind).toBe("promoted");
+    expect((await release({ runId: RUN.id, now: new Date() })).outcome.kind).toBe("promoted");
     expect(transaction.cancelDeferredWake).not.toHaveBeenCalled();
     expect(transaction.finalizePromotedWake).toHaveBeenCalledWith(expect.objectContaining({
       source: "assignment", deferredAgent: expect.objectContaining({ id: AGENT.id }),
@@ -210,7 +205,7 @@ describe("releaseIssueExecution", () => {
     const stale = wakeCandidate({ agentId: RUN.agentId, queuedCommentIds: ["saved-user-direction"] });
     const current = wakeCandidate({ id: "wake-new-owner", agentId: "new-agent" });
     const transaction = createFakeTransaction({
-      findNextDeferredWake: vi.fn(async (input: { companyId: string; issueId: string; excludedWakeIds?: string[] }) =>
+      findNextDeferredWake: vi.fn(async (input: { issueId: string; excludedWakeIds?: string[] }) =>
         input.excludedWakeIds?.includes(stale.id) ? current : stale),
       getQueuedCommentLiveness: vi.fn(async () => ({ liveNonSelfCommentIds: ["saved-user-direction"], containedSelfAuthoredComment: false })),
     });
@@ -218,7 +213,7 @@ describe("releaseIssueExecution", () => {
       issueLock: createFakeIssueLock(createFakeHost(), transaction, { ...ISSUE, assigneeAgentId: "new-agent" }),
       recovery: createFakeRecovery(),
     });
-    const result = await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() });
+    const result = await release({ runId: RUN.id, now: new Date() });
     expect(result.outcome.kind).toBe("promoted");
     expect(transaction.finalizePromotedWake).toHaveBeenCalledWith(expect.objectContaining({ wakeId: current.id }));
     expect(transaction.cancelDeferredWake).not.toHaveBeenCalled();
@@ -241,7 +236,7 @@ describe("releaseIssueExecution", () => {
       issueLock: createFakeIssueLock(createFakeHost(), transaction, { ...ISSUE, status }),
       recovery: createFakeRecovery(),
     });
-    await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date(), suppressImmediateRecovery: true });
+    await release({ runId: RUN.id, now: new Date(), suppressImmediateRecovery: true });
     expect(transaction.cancelDeferredWake).toHaveBeenCalledWith(expect.objectContaining({ wakeId: "wake-1" }));
     expect(transaction.claimDeferredWakeForPromotion).not.toHaveBeenCalled();
     expect(transaction.finalizePromotedWake).not.toHaveBeenCalled();
@@ -262,7 +257,7 @@ describe("releaseIssueExecution", () => {
       getQueuedCommentLiveness: vi.fn(async () => ({ liveNonSelfCommentIds: queuedCommentIds, containedSelfAuthoredComment: false })),
     });
     const release = createReleaseIssueExecution({ issueLock: createFakeIssueLock(createFakeHost(), transaction), recovery: createFakeRecovery() });
-    expect((await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() })).outcome.kind).toBe("promoted");
+    expect((await release({ runId: RUN.id, now: new Date() })).outcome.kind).toBe("promoted");
     expect(transaction.cancelDeferredWake).not.toHaveBeenCalled();
   });
 
@@ -296,7 +291,6 @@ describe("releaseIssueExecution", () => {
       });
 
       const result = await release({
-        companyId: RUN.companyId,
         runId: RUN.id,
         now: new Date(),
       });
@@ -341,7 +335,6 @@ describe("releaseIssueExecution", () => {
       });
 
       const result = await release({
-        companyId: RUN.companyId,
         runId: RUN.id,
         now: new Date(),
       });
@@ -352,7 +345,6 @@ describe("releaseIssueExecution", () => {
         expect(result.outcome.kind).toBe("promoted");
       } else {
         expect(transaction.isImmediateRecoverySourceBlocked).toHaveBeenCalledWith({
-          companyId: RUN.companyId,
           runId: RUN.id,
         });
         expect(result.outcome.kind).toBe("blocked");
@@ -376,7 +368,7 @@ describe("releaseIssueExecution", () => {
     const issueLock = createFakeIssueLock(host, transaction);
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
-    await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(claimOrder).toEqual(["wake-earliest", "wake-latest"]);
     expect(transaction.failDeferredWake).toHaveBeenCalledTimes(2);
@@ -389,7 +381,7 @@ describe("releaseIssueExecution", () => {
     const issueLock = createFakeIssueLock(host, transaction);
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(result.outcome.kind).toBe("promoted");
     expect(findNextDeferredWake).toHaveBeenCalledTimes(1);
@@ -418,7 +410,7 @@ describe("releaseIssueExecution", () => {
     const issueLock = createFakeIssueLock(host, transaction, { ...ISSUE, assigneeAgentId: AGENT.id });
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(transaction.cancelDeferredWake).toHaveBeenCalledTimes(1);
     expect(transaction.failDeferredWake).toHaveBeenCalledTimes(1);
@@ -440,7 +432,7 @@ describe("releaseIssueExecution", () => {
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
     await expect(
-      releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() }),
+      releaseIssueExecution({ runId: "run-1", now: new Date() }),
     ).rejects.toMatchObject({
       constructor: WakeQueueApplicationError,
       code: "deferred_wake_not_advanced",
@@ -455,7 +447,7 @@ describe("releaseIssueExecution", () => {
     const recovery = createFakeRecovery();
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(result.postCommitEffects).toEqual([{ kind: "run_queued", run: runSummary("wake-1") }]);
     expect(recovery.escalateStrandedAssignedIssue).not.toHaveBeenCalled();
@@ -487,7 +479,7 @@ describe("releaseIssueExecution", () => {
     const issueLock = createFakeIssueLock(host, transaction);
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(result.outcome.kind).toBe("promoted");
     expect(finalizePromotedWake).toHaveBeenCalledTimes(1);
@@ -517,7 +509,7 @@ describe("releaseIssueExecution", () => {
       recovery: createFakeRecovery(),
     });
 
-    const result = await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() });
+    const result = await release({ runId: RUN.id, now: new Date() });
 
     expect(transaction.cancelDeferredWake).toHaveBeenCalledWith(expect.objectContaining({
       wakeId: "wake-1",
@@ -542,7 +534,7 @@ describe("releaseIssueExecution", () => {
         status: scenario === "cancelled" ? "cancelled" : "done" }),
       recovery: createFakeRecovery(),
     });
-    const result = await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() });
+    const result = await release({ runId: RUN.id, now: new Date() });
     expect(result.outcome.kind).toBe(scenario === "verified" ? "promoted" : "released");
     expect(transaction.reopenIssue).not.toHaveBeenCalled();
     expect(transaction.finalizePromotedWake).toHaveBeenCalledTimes(scenario === "verified" ? 1 : 0);
@@ -564,7 +556,7 @@ describe("releaseIssueExecution", () => {
       recovery: createFakeRecovery(),
     });
 
-    const result = await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() });
+    const result = await release({ runId: RUN.id, now: new Date() });
 
     expect(transaction.cancelDeferredWake).not.toHaveBeenCalled();
     expect(transaction.reopenIssue).toHaveBeenCalledTimes(1);
@@ -597,7 +589,7 @@ describe("releaseIssueExecution", () => {
       recovery: createFakeRecovery(),
     });
 
-    const result = await release({ companyId: RUN.companyId, runId: RUN.id, now: new Date() });
+    const result = await release({ runId: RUN.id, now: new Date() });
 
     if (scenario === "done_live") {
       expect(transaction.cancelDeferredWake).not.toHaveBeenCalled();
@@ -637,7 +629,7 @@ describe("releaseIssueExecution", () => {
     };
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(reopenIssue).not.toHaveBeenCalled();
     expect(claimDeferredWakeForPromotion).toHaveBeenCalledTimes(2);
@@ -652,7 +644,7 @@ describe("releaseIssueExecution", () => {
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
     await expect(
-      releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() }),
+      releaseIssueExecution({ runId: "run-1", now: new Date() }),
     ).rejects.toMatchObject({
       constructor: WakeQueueApplicationError,
       code: "responsible_user_unresolved",
@@ -671,7 +663,7 @@ describe("releaseIssueExecution", () => {
     const issueLock = createFakeIssueLock(host, transaction);
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(result.outcome.kind).toBe("queued_recovery");
     expect(resolveResponsibleUserId).toHaveBeenCalledTimes(1);
@@ -705,7 +697,7 @@ describe("releaseIssueExecution", () => {
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery: createFakeRecovery() });
 
     await expect(
-      releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() }),
+      releaseIssueExecution({ runId: "run-1", now: new Date() }),
     ).rejects.toMatchObject({
       constructor: WakeQueueApplicationError,
       code: "responsible_user_unresolved",
@@ -726,7 +718,7 @@ describe("releaseIssueExecution", () => {
     const recovery = createFakeRecovery();
     const releaseIssueExecution = createReleaseIssueExecution({ issueLock, recovery });
 
-    const result = await releaseIssueExecution({ companyId: "company-1", runId: "run-1", now: new Date() });
+    const result = await releaseIssueExecution({ runId: "run-1", now: new Date() });
 
     expect(result.outcome.kind).toBe("blocked");
     expect(result.outcome.kind === "blocked" && result.outcome.noticeKind).toBe("immediate_execution_path");
@@ -748,7 +740,6 @@ function admissionInput(
   overrides: Partial<AdmitWakeBehindIssueExecutionInput> = {},
 ): AdmitWakeBehindIssueExecutionInput {
   return {
-    companyId: "company-1",
     issueId: "issue-1",
     agentId: "wake-agent",
     agentNameKey: "codexcoder",
@@ -917,7 +908,6 @@ describe("admitWakeBehindIssueExecution", () => {
     expect(reader.matchesActiveWakeActor).toHaveBeenCalledExactlyOnceWith(
       SCOPE,
       {
-        companyId: "company-1",
         wakeupRequestId: "active-wake",
         requestedByActorType: "user",
         requestedByActorId: "other-user",
@@ -927,7 +917,6 @@ describe("admitWakeBehindIssueExecution", () => {
     expect(reader.findExistingDeferredWake).toHaveBeenCalledExactlyOnceWith(
       SCOPE,
       {
-        companyId: "company-1",
         agentId: "wake-agent",
         issueId: "issue-1",
         durableActor: { type: "user", id: "other-user" },
@@ -968,7 +957,6 @@ describe("admitWakeBehindIssueExecution", () => {
     expect(reader.matchesActiveWakeActor).toHaveBeenCalledExactlyOnceWith(
       SCOPE,
       {
-        companyId: "company-1",
         wakeupRequestId: "active-wake",
         requestedByActorType: "user",
         requestedByActorId: "user-1",

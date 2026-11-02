@@ -26,7 +26,7 @@ Open the printed `Dashboard URL` (includes `#token=...`) in your browser.
 
 Security/control note:
 - The OpenClaw invite prompt is created from a controlled endpoint:
-  - `POST /api/companies/{companyId}/openclaw/invite-prompt`
+  - `POST /api/openclaw/invite-prompt`
   - board users with invite permission can call it
   - agent callers are limited to the company CEO agent
 

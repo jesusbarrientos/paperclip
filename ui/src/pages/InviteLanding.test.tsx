@@ -14,13 +14,18 @@ const getSessionMock = vi.hoisted(() => vi.fn());
 const signInEmailMock = vi.hoisted(() => vi.fn());
 const signUpEmailMock = vi.hoisted(() => vi.fn());
 const healthGetMock = vi.hoisted(() => vi.fn());
-const listCompaniesMock = vi.hoisted(() => vi.fn());
-const setSelectedCompanyIdMock = vi.hoisted(() => vi.fn());
+const boardAccessMock = vi.hoisted(() => vi.fn());
+const MEMBER_ACCESS = {
+  userId: "user-1", isInstanceAdmin: false, source: "session", keyId: null, user: null,
+  memberships: [{ membershipRole: "operator", status: "active" }],
+};
+const NON_MEMBER_ACCESS = { ...MEMBER_ACCESS, memberships: [] };
 
 vi.mock("../api/access", () => ({
   accessApi: {
     getInvite: (token: string) => getInviteMock(token),
     acceptInvite: (token: string, input: unknown) => acceptInviteMock(token, input),
+    getCurrentBoardAccess: () => boardAccessMock(),
   },
 }));
 
@@ -36,27 +41,6 @@ vi.mock("../api/health", () => ({
   healthApi: {
     get: () => healthGetMock(),
   },
-}));
-
-vi.mock("../api/companies", () => ({
-  companiesApi: {
-    list: () => listCompaniesMock(),
-    detachInflightList: () => undefined,
-  },
-}));
-
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompany: null,
-    selectedCompanyId: null,
-    companies: [],
-    selectionSource: "manual",
-    loading: false,
-    error: null,
-    setSelectedCompanyId: setSelectedCompanyIdMock,
-    reloadCompanies: vi.fn(),
-    createCompany: vi.fn(),
-  }),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,7 +86,6 @@ describe("InviteLandingPage", () => {
 
     getInviteMock.mockResolvedValue({
       id: "invite-1",
-      companyId: "company-1",
       companyName: "Acme Robotics",
       companyLogoUrl: "/api/invites/pcp_invite_test/logo",
       inviteType: "company_join",
@@ -116,11 +99,10 @@ describe("InviteLandingPage", () => {
       status: "ok",
       deploymentMode: "authenticated",
     });
-    listCompaniesMock.mockResolvedValue([]);
+    boardAccessMock.mockResolvedValue(NON_MEMBER_ACCESS);
     getSessionMock.mockResolvedValue(null);
     signInEmailMock.mockResolvedValue(undefined);
     signUpEmailMock.mockResolvedValue(undefined);
-    setSelectedCompanyIdMock.mockReset();
   });
 
   afterEach(() => {
@@ -132,7 +114,6 @@ describe("InviteLandingPage", () => {
   it("keeps agent-invite onboarding on legacy adapters", async () => {
     getInviteMock.mockResolvedValue({
       id: "invite-1",
-      companyId: "company-1",
       companyName: "Acme Robotics",
       companyLogoUrl: null,
       inviteType: "company_join",
@@ -393,7 +374,7 @@ describe("InviteLandingPage", () => {
     queryClient.setQueryData(queryKeys.access.currentBoardAccess, {
       userId: "user-1",
       isInstanceAdmin: false,
-      companyIds: [],
+      memberships: [],
     });
 
     await act(async () => {
@@ -472,7 +453,6 @@ describe("InviteLandingPage", () => {
     });
     acceptInviteMock.mockResolvedValue({
       id: "join-1",
-      companyId: "company-1",
       requestType: "human",
       status: "approved",
     });
@@ -481,10 +461,11 @@ describe("InviteLandingPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     queryClient.setQueryData(queryKeys.access.currentBoardAccess, {
       userId: "user-1",
       isInstanceAdmin: false,
-      companyIds: [],
+      memberships: [],
     });
 
     await act(async () => {
@@ -537,12 +518,7 @@ describe("InviteLandingPage", () => {
       password: "supersecret",
     });
     expect(acceptInviteMock).toHaveBeenCalledWith("pcp_invite_test", { requestType: "human" });
-    expect(setSelectedCompanyIdMock).toHaveBeenCalledWith("company-1", { source: "manual" });
-    expect(queryClient.getQueryState(queryKeys.access.currentBoardAccess)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryData(queryKeys.companies.list("user-1"))).toMatchObject({
-      companies: [],
-      unauthorized: false,
-    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.access.currentBoardAccess });
     expect(localStorage.getItem("paperclip:pending-invite-token")).toBeNull();
 
     await act(async () => {
@@ -553,7 +529,6 @@ describe("InviteLandingPage", () => {
   it("shows the pending approval page with the company icon and non-clickable access instructions", async () => {
     acceptInviteMock.mockResolvedValue({
       id: "join-1",
-      companyId: "company-1",
       requestType: "human",
       status: "pending_approval",
     });
@@ -595,11 +570,11 @@ describe("InviteLandingPage", () => {
       "Ask them to visit Settings → Members to approve your request.",
     );
     expect(container.querySelector('img[alt="Acme Robotics logo"]')).not.toBeNull();
-    expect(container.textContent).not.toContain("http://localhost/company/settings/members");
+    expect(container.textContent).not.toContain("http://localhost/organization/settings/members");
 
     // The "Settings → Members" guidance addresses the company admin,
     // not the requester. It must render as plain text so the requester cannot
-    // navigate themselves to /company/settings/members — a route they have no
+    // navigate themselves to /organization/settings/members — a route they have no
     // permission to view, which renders a misleading "No company access"
     // panel and makes the invite flow look broken. See #6784.
     const approvalAnchors = Array.from(container.querySelectorAll("a")).filter(
@@ -618,7 +593,6 @@ describe("InviteLandingPage", () => {
   it("auto-completes a previously accepted human invite after sign-in", async () => {
     getInviteMock.mockResolvedValue({
       id: "invite-1",
-      companyId: "company-1",
       companyName: "Acme Robotics",
       companyLogoUrl: "/api/invites/pcp_invite_test/logo",
       inviteType: "company_join",
@@ -631,7 +605,6 @@ describe("InviteLandingPage", () => {
     });
     acceptInviteMock.mockResolvedValue({
       id: "join-1",
-      companyId: "company-1",
       requestType: "human",
       status: "approved",
     });
@@ -649,10 +622,11 @@ describe("InviteLandingPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     queryClient.setQueryData(queryKeys.access.currentBoardAccess, {
       userId: "user-1",
       isInstanceAdmin: false,
-      companyIds: [],
+      memberships: [],
     });
 
     await act(async () => {
@@ -672,8 +646,7 @@ describe("InviteLandingPage", () => {
     await flushReact();
 
     expect(acceptInviteMock).toHaveBeenCalledWith("pcp_invite_test", { requestType: "human" });
-    expect(setSelectedCompanyIdMock).toHaveBeenCalledWith("company-1", { source: "manual" });
-    expect(queryClient.getQueryState(queryKeys.access.currentBoardAccess)?.isInvalidated).toBe(true);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.access.currentBoardAccess });
     expect(localStorage.getItem("paperclip:pending-invite-token")).toBeNull();
 
     await act(async () => {
@@ -684,7 +657,6 @@ describe("InviteLandingPage", () => {
   it("asks unauthenticated users to sign in before completing an accepted human invite", async () => {
     getInviteMock.mockResolvedValue({
       id: "invite-1",
-      companyId: "company-1",
       companyName: "Acme Robotics",
       companyLogoUrl: "/api/invites/pcp_invite_test/logo",
       inviteType: "company_join",
@@ -736,7 +708,7 @@ describe("InviteLandingPage", () => {
         image: null,
       },
     });
-    listCompaniesMock.mockResolvedValue([{ id: "company-1", name: "Acme Robotics" }]);
+    boardAccessMock.mockResolvedValue(MEMBER_ACCESS);
 
     const root = createRoot(container);
     const queryClient = new QueryClient({
@@ -796,11 +768,6 @@ describe("InviteLandingPage", () => {
       password: "supersecret",
     });
     expect(acceptInviteMock).not.toHaveBeenCalled();
-    expect(setSelectedCompanyIdMock).toHaveBeenCalledWith("company-1", { source: "manual" });
-    expect(queryClient.getQueryData(queryKeys.companies.list("user-1"))).toMatchObject({
-      companies: [{ id: "company-1", name: "Acme Robotics" }],
-      unauthorized: false,
-    });
     expect(localStorage.getItem("paperclip:pending-invite-token")).toBeNull();
 
     await act(async () => {
@@ -808,28 +775,18 @@ describe("InviteLandingPage", () => {
     });
   });
 
-  // The `["companies"]` cache entry is shared app-wide and carries no account
-  // identity, so a list fetched moments ago for a different account is still inside
-  // the app-wide staleTime. Membership decisions on this page — the post-sign-in
-  // redirect, the "already a member" panel, and clearing the pending invite token —
-  // must run against a list fetched for the account that is signed in now.
-  describe("membership checks against a previous account's cached company list", () => {
-    const PREVIOUS_ACCOUNT_COMPANIES = [{ id: "company-1", name: "Acme Robotics" }];
-
+  // The board-access cache entry carries no account identity, so an answer
+  // fetched moments ago for a different account is still inside the app-wide
+  // staleTime. Membership decisions on this page must run against an answer
+  // fetched for the account that is signed in now.
+  describe("membership checks against a previous account's cached board access", () => {
     // Mirrors the app-wide default in main.tsx. Without it every cache entry is
     // stale on read and the staleness these tests cover cannot occur.
-    // `ownerId` is whose list this warm entry is. Since #11488 the entry is keyed
-    // by account, so "a list left by a previous account" means putting it under
-    // that account's key — which is also why the page can no longer reach it.
-    // `null` is the signed-out / local_trusted key.
-    function createAppLikeQueryClient(ownerId: string | null) {
+    function createAppLikeQueryClient() {
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
       });
-      queryClient.setQueryData(queryKeys.companies.list(ownerId), {
-        companies: PREVIOUS_ACCOUNT_COMPANIES,
-        unauthorized: false,
-      });
+      queryClient.setQueryData(queryKeys.access.currentBoardAccess, MEMBER_ACCESS);
       return queryClient;
     }
 
@@ -844,17 +801,16 @@ describe("InviteLandingPage", () => {
           image: null,
         },
       });
-      // The account signing in here has no companies of its own.
-      listCompaniesMock.mockResolvedValue([]);
+      // The account signing in here is not a member.
+      boardAccessMock.mockResolvedValue(NON_MEMBER_ACCESS);
       acceptInviteMock.mockResolvedValue({
         id: "join-1",
-        companyId: "company-1",
         requestType: "human",
         status: "pending_approval",
       });
 
       const root = createRoot(container);
-      const queryClient = createAppLikeQueryClient("user-1");
+      const queryClient = createAppLikeQueryClient();
 
       await act(async () => {
         root.render(
@@ -902,17 +858,8 @@ describe("InviteLandingPage", () => {
         email: "sam@example.com",
         password: "supersecret",
       });
-      // The cached list was refused, not read as proof of membership.
-      expect(listCompaniesMock).toHaveBeenCalled();
-      expect(queryClient.getQueryData(queryKeys.companies.list("user-2"))).toMatchObject({
-        companies: [],
-        unauthorized: false,
-      });
-      // The previous account's entry is untouched — and unreachable from here.
-      expect(queryClient.getQueryData(queryKeys.companies.list("user-1"))).toMatchObject({
-        companies: PREVIOUS_ACCOUNT_COMPANIES,
-      });
-      expect(setSelectedCompanyIdMock).not.toHaveBeenCalled();
+      // The cached answer was refused, not read as proof of membership.
+      expect(boardAccessMock).toHaveBeenCalled();
       expect(acceptInviteMock).toHaveBeenCalledWith("pcp_invite_test", { requestType: "human" });
       expect(container.textContent).toContain("Request to join Acme Robotics");
 
@@ -931,16 +878,15 @@ describe("InviteLandingPage", () => {
           image: null,
         },
       });
-      listCompaniesMock.mockResolvedValue([]);
+      boardAccessMock.mockResolvedValue(NON_MEMBER_ACCESS);
       acceptInviteMock.mockResolvedValue({
         id: "join-1",
-        companyId: "company-1",
         requestType: "human",
         status: "pending_approval",
       });
 
       const root = createRoot(container);
-      const queryClient = createAppLikeQueryClient("user-1");
+      const queryClient = createAppLikeQueryClient();
 
       await act(async () => {
         root.render(
@@ -958,7 +904,7 @@ describe("InviteLandingPage", () => {
       await flushReact();
       await flushReact();
 
-      expect(listCompaniesMock).toHaveBeenCalled();
+      expect(boardAccessMock).toHaveBeenCalled();
       expect(container.textContent).not.toContain("Already in this organization");
       expect(acceptInviteMock).toHaveBeenCalledWith("pcp_invite_test", { requestType: "human" });
       expect(container.textContent).toContain("Request to join Acme Robotics");
@@ -969,13 +915,13 @@ describe("InviteLandingPage", () => {
     });
 
     it("keeps the pending invite token when the session has lapsed", async () => {
-      // Session gone server-side, previous account's list still warm in the cache.
+      // Session gone server-side, previous account's access still warm in the cache.
       // Nobody is signed in, so nothing here proves membership — the token has to
       // survive for the sign-in that follows.
       getSessionMock.mockResolvedValue(null);
 
       const root = createRoot(container);
-      const queryClient = createAppLikeQueryClient("user-1");
+      const queryClient = createAppLikeQueryClient();
 
       await act(async () => {
         root.render(
@@ -1000,14 +946,12 @@ describe("InviteLandingPage", () => {
       });
     });
 
-    it("still reads the shared list as membership on a local_trusted instance", async () => {
-      // No accounts exist in this mode, so the shared list cannot belong to anyone
-      // else and stays authoritative.
+    it("treats a local_trusted visitor as an existing member", async () => {
       healthGetMock.mockResolvedValue({ status: "ok", deploymentMode: "local_trusted" });
       getSessionMock.mockResolvedValue(null);
 
       const root = createRoot(container);
-      const queryClient = createAppLikeQueryClient(null);
+      const queryClient = createAppLikeQueryClient();
 
       await act(async () => {
         root.render(
@@ -1043,7 +987,7 @@ describe("InviteLandingPage", () => {
         image: null,
       },
     });
-    listCompaniesMock.mockResolvedValue([{ id: "company-1", name: "Acme Robotics" }]);
+    boardAccessMock.mockResolvedValue(MEMBER_ACCESS);
 
     const root = createRoot(container);
     const queryClient = new QueryClient({
@@ -1078,8 +1022,6 @@ describe("InviteLandingPage", () => {
       openButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
-
-    expect(setSelectedCompanyIdMock).toHaveBeenCalledWith("company-1", { source: "manual" });
 
     await act(async () => {
       root.unmount();
@@ -1122,10 +1064,9 @@ describe("InviteLandingPage", () => {
     });
   });
 
-  it("normalizes the shared company cache envelope before checking membership", async () => {
+  it("ignores a cached board-access answer until it is refetched", async () => {
     acceptInviteMock.mockResolvedValue({
       id: "join-1",
-      companyId: "company-1",
       requestType: "human",
       status: "pending_approval",
     });
@@ -1143,10 +1084,7 @@ describe("InviteLandingPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    queryClient.setQueryData(queryKeys.companies.list("user-1"), {
-      companies: [],
-      unauthorized: false,
-    });
+    queryClient.setQueryData(queryKeys.access.currentBoardAccess, MEMBER_ACCESS);
 
     await act(async () => {
       root.render(
@@ -1172,17 +1110,16 @@ describe("InviteLandingPage", () => {
   });
 
   it("waits for the membership check before showing invite acceptance to signed-in users", async () => {
-    let resolveCompanies: ((value: Array<{ id: string; name: string }>) => void) | null = null;
+    let resolveAccess: ((value: typeof NON_MEMBER_ACCESS) => void) | null = null;
     acceptInviteMock.mockResolvedValue({
       id: "join-1",
-      companyId: "company-1",
       requestType: "human",
       status: "pending_approval",
     });
-    listCompaniesMock.mockImplementation(
+    boardAccessMock.mockImplementation(
       () =>
-        new Promise<Array<{ id: string; name: string }>>((resolve) => {
-          resolveCompanies = resolve;
+        new Promise<typeof NON_MEMBER_ACCESS>((resolve) => {
+          resolveAccess = resolve;
         }),
     );
     getSessionMock.mockResolvedValue({
@@ -1218,7 +1155,7 @@ describe("InviteLandingPage", () => {
     expect(acceptInviteMock).not.toHaveBeenCalled();
 
     await act(async () => {
-      resolveCompanies?.([]);
+      resolveAccess?.(NON_MEMBER_ACCESS);
     });
     await flushReact();
     await flushReact();

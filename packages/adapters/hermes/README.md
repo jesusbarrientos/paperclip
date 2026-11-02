@@ -183,7 +183,6 @@ PAPERCLIP_BRIDGE_API_KEY=<task-bridge-scoped-agent-api-key>
 
 Optional env values:
 
-- `PAPERCLIP_COMPANY_ID`
 - `PAPERCLIP_AGENT_ID`
 - `PAPERCLIP_RUN_ID`
 
@@ -261,7 +260,6 @@ Use `{{variable}}` syntax in `promptTemplate`:
 |----------|-------------|
 | `{{agentId}}` | Paperclip agent ID |
 | `{{agentName}}` | Agent display name |
-| `{{companyId}}` | Company ID |
 | `{{companyName}}` | Company name |
 | `{{runId}}` | Current heartbeat run ID |
 | `{{taskId}}` | Assigned task/issue ID |

@@ -364,8 +364,8 @@ async function executeTurn(ctx: AdapterExecutionContext): Promise<AdapterExecuti
     }
     // Held before the remote block below, so the remote lane can stage this
     // same host home into the sandbox without re-resolving it.
-    const hostGrokHome = config.managedAiConnection ? asString(env.GROK_HOME, "") : resolveManagedGrokHomeDir(process.env, agent.companyId);
-    // Subscription mode (no XAI_API_KEY): pin GROK_HOME to the company-scoped
+    const hostGrokHome = config.managedAiConnection ? asString(env.GROK_HOME, "") : resolveManagedGrokHomeDir(process.env);
+    // Subscription mode (no XAI_API_KEY): pin GROK_HOME to the managed
     // home a completed device login wrote. Do not pin an empty local home —
     // that shadows the host `~/.grok` login and fails with "Not signed in"
     // (#13568). Remote/sandbox runs and managed AI connections still pin so
@@ -535,9 +535,7 @@ async function executeTurn(ctx: AdapterExecutionContext): Promise<AdapterExecuti
 
     const templateData = {
       agentId: agent.id,
-      companyId: agent.companyId,
       runId,
-      company: { id: agent.companyId },
       agent,
       run: { id: runId, source: "on_demand" },
       context,

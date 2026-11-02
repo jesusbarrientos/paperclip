@@ -220,7 +220,6 @@ describe("Capability live projection", () => {
       tasks: [
         {
           id: "task-31",
-          companyId: "company-1",
           identifier: "MCK-31",
           title: "Wire the runner spike to the mock control plane",
           description: null,
@@ -241,7 +240,6 @@ describe("Capability live projection", () => {
       identity: {
         runId: "run-7g-1",
         sessionId: "session-7g-1",
-        companyId: "company-1",
         issueId: "task-31",
         agentId: "actor-1",
       },
@@ -267,7 +265,6 @@ describe("Capability live projection", () => {
       authority: {
         active: true,
         runId: "run-7g-1",
-        companyId: "company-1",
         actorId: "actor-1",
         taskId: "task-31",
         sessionId: "session-7g-1",

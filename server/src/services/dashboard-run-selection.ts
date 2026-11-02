@@ -6,7 +6,7 @@ const MAX_CANDIDATES_PER_POOL = 1_000;
 const ACTIVE_STATUSES = ["queued", "running"];
 
 /** Select recent dashboard cards without ranking the company's full run history. */
-export async function selectDashboardRunIds(db: Db, companyId: string, limit: number): Promise<string[]> {
+export async function selectDashboardRunIds(db: Db, limit: number): Promise<string[]> {
   if (limit <= 0) return [];
 
   const columns = {
@@ -18,12 +18,11 @@ export async function selectDashboardRunIds(db: Db, companyId: string, limit: nu
   const [activeRuns, recentRuns] = await Promise.all([
     db.select(columns)
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.companyId, companyId), inArray(heartbeatRuns.status, ACTIVE_STATUSES)))
+      .where(inArray(heartbeatRuns.status, ACTIVE_STATUSES))
       .orderBy(desc(heartbeatRuns.createdAt), desc(heartbeatRuns.id))
       .limit(MAX_CANDIDATES_PER_POOL),
     db.select(columns)
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, companyId))
       .orderBy(desc(heartbeatRuns.createdAt), desc(heartbeatRuns.id))
       .limit(MAX_CANDIDATES_PER_POOL),
   ]);

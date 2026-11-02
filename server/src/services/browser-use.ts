@@ -48,7 +48,6 @@ import { forbidden, notFound, conflict } from "../errors.js";
 
 type Session = typeof sessions.$inferSelect;
 type Binding = {
-  companyId: string;
   agentId: string | null;
   runId: string | null;
   issueId: string | null;
@@ -78,7 +77,7 @@ export function browserUseService(
   const budgets = budgetService(db, budgetHooks);
   const secrets = secretService(db);
   async function credentials(
-    s: Pick<Session, "companyId" | "connectionId" | "grantId">,
+    s: Pick<Session, "connectionId" | "grantId">,
     cleanup = false,
   ) {
     const [row] = await db
@@ -91,8 +90,6 @@ export function browserUseService(
       .where(
         and(
           eq(connectionGrants.id, s.grantId),
-          eq(connectionGrants.companyId, s.companyId),
-          eq(toolConnections.companyId, s.companyId),
           eq(toolConnections.id, s.connectionId),
         ),
       )
@@ -117,10 +114,7 @@ export function browserUseService(
         .select()
         .from(companySecrets)
         .where(
-          and(
-            eq(companySecrets.id, ref.secretId),
-            eq(companySecrets.companyId, s.companyId),
-          ),
+          eq(companySecrets.id, ref.secretId),
         )
         .limit(1);
       if (
@@ -133,7 +127,6 @@ export function browserUseService(
       }
     }
     const key = await secrets.resolveSecretValue(
-      s.companyId,
       ref.secretId,
       ref.versionSelector ?? "latest",
       {
@@ -166,7 +159,6 @@ export function browserUseService(
       .where(
         and(
           eq(sessions.id, id),
-          eq(sessions.companyId, binding.companyId),
           eq(sessions.issueId, binding.issueId!),
           eq(sessions.agentId, binding.agentId!),
           eq(sessions.grantId, grant.id),
@@ -189,10 +181,7 @@ export function browserUseService(
       .select()
       .from(issues)
       .where(
-        and(
-          eq(issues.id, binding.issueId),
-          eq(issues.companyId, binding.companyId),
-        ),
+        eq(issues.id, binding.issueId),
       )
       .limit(1);
     const [run] = await db
@@ -201,7 +190,6 @@ export function browserUseService(
       .where(
         and(
           eq(heartbeatRuns.id, binding.runId),
-          eq(heartbeatRuns.companyId, binding.companyId),
           eq(heartbeatRuns.agentId, binding.agentId),
         ),
       )
@@ -217,13 +205,11 @@ export function browserUseService(
       );
     if (
       await issueTreeControlService(db).getActivePauseHoldGate(
-        binding.companyId,
         issue.id,
       )
     )
       throw forbidden("This task is paused.");
     const blocked = await budgets.getInvocationBlock(
-      binding.companyId,
       binding.agentId,
       { issueId: issue.id, projectId: issue.projectId },
     );
@@ -231,14 +217,13 @@ export function browserUseService(
     return issue;
   }
   async function getSettings(
-    companyId: string,
     grantId: string,
   ): Promise<BrowserUseSettings> {
     const [s] = await db
       .select()
       .from(settings)
       .where(
-        and(eq(settings.grantId, grantId), eq(settings.companyId, companyId)),
+        and(eq(settings.grantId, grantId)),
       )
       .limit(1);
     return {
@@ -251,7 +236,7 @@ export function browserUseService(
       await db
         .select()
         .from(runs)
-        .where(and(eq(runs.companyId, s.companyId), eq(runs.sessionId, s.id)))
+        .where(and(eq(runs.sessionId, s.id)))
         .orderBy(desc(runs.createdAt))
         .limit(1)
     )[0];
@@ -262,7 +247,7 @@ export function browserUseService(
       .select({ id: browsers.id, status: browsers.status })
       .from(browsers)
       .where(
-        and(eq(browsers.companyId, s.companyId), eq(browsers.sessionId, s.id)),
+        and(eq(browsers.sessionId, s.id)),
       );
     return {
       sessionId: s.id,
@@ -282,7 +267,6 @@ export function browserUseService(
     actorType: "system" | "user" = "system",
   ) {
     await logActivity(db, {
-      companyId: s.companyId,
       actorType,
       actorId,
       action,
@@ -299,9 +283,8 @@ export function browserUseService(
     value: unknown,
   ) {
     const args = argsSchema.parse(value ?? {});
-    const config = await getSettings(binding.companyId, grant.id);
+    const config = await getSettings(grant.id);
     const scope = {
-      companyId: binding.companyId,
       connectionId: grant.connectionId,
       grantId: grant.id,
     };
@@ -327,7 +310,6 @@ export function browserUseService(
         .where(
           and(
             eq(toolInvocations.id, invocationId),
-            eq(toolInvocations.companyId, binding.companyId),
             eq(toolInvocations.agentId, binding.agentId!),
             eq(toolInvocations.runId, binding.runId!),
             eq(toolInvocations.issueId, binding.issueId!),
@@ -345,7 +327,6 @@ export function browserUseService(
         .from(sessions)
         .where(
           and(
-            eq(sessions.companyId, binding.companyId),
             eq(sessions.issueId, binding.issueId!),
             eq(sessions.agentId, binding.agentId!),
             eq(sessions.grantId, grant.id),
@@ -367,7 +348,6 @@ export function browserUseService(
             .where(
               and(
                 eq(runs.sessionId, s.id),
-                eq(runs.companyId, s.companyId),
                 sql`${runs.detachedUntil} is not null`,
               ),
             );
@@ -394,7 +374,6 @@ export function browserUseService(
       .from(runs)
       .where(
         and(
-          eq(runs.companyId, binding.companyId),
           eq(runs.invocationId, invocationId),
         ),
       )
@@ -402,7 +381,7 @@ export function browserUseService(
     if (existing[0])
       return snapshot(await owned(binding, grant, existing[0].sessionId));
     const issue = await assertBinding(binding, approved);
-    const { policies } = await budgets.overview(binding.companyId);
+    const { policies } = await budgets.overview();
     const caps = policies
       .filter(
         (p) =>
@@ -435,7 +414,6 @@ export function browserUseService(
           .where(
             and(
               eq(sessions.id, sid),
-              eq(sessions.companyId, binding.companyId),
               eq(sessions.status, "idle"),
               isNull(sessions.stopRequested),
               or(
@@ -460,7 +438,6 @@ export function browserUseService(
           .returning();
       }
       await tx.insert(runs).values({
-        companyId: binding.companyId,
         sessionId: row.id,
         heartbeatRunId: binding.runId!,
         invocationId,
@@ -552,7 +529,6 @@ export function browserUseService(
         .where(
           and(
             eq(sessions.id, s.id),
-            eq(sessions.companyId, s.companyId),
             eq(sessions.status, "idle"),
             isNull(sessions.stopRequested),
             or(
@@ -594,7 +570,6 @@ export function browserUseService(
     );
   }
   async function humanGrant(
-    companyId: string,
     grantId: string,
     userId: string,
     cleanup = false,
@@ -603,10 +578,7 @@ export function browserUseService(
       .select()
       .from(connectionGrants)
       .where(
-        and(
-          eq(connectionGrants.id, grantId),
-          eq(connectionGrants.companyId, companyId),
-        ),
+        eq(connectionGrants.id, grantId),
       )
       .limit(1);
     if (!grant || (!cleanup && grant.status !== "active"))
@@ -636,10 +608,7 @@ export function browserUseService(
       .select()
       .from(connectionGrantMembers)
       .where(
-        and(
-          eq(connectionGrantMembers.companyId, companyId),
-          eq(connectionGrantMembers.grantId, grantId),
-        ),
+        eq(connectionGrantMembers.grantId, grantId),
       );
     if (
       members.length &&
@@ -649,7 +618,6 @@ export function browserUseService(
     return grant;
   }
   async function list(
-    companyId: string,
     issueId: string,
     userId: string,
   ): Promise<TaskBrowser[]> {
@@ -658,13 +626,13 @@ export function browserUseService(
       .from(sessions)
       .leftJoin(browsers, eq(browsers.sessionId, sessions.id))
       .where(
-        and(eq(sessions.companyId, companyId), eq(sessions.issueId, issueId)),
+        and(eq(sessions.issueId, issueId)),
       )
       .orderBy(sessions.createdAt);
     const out: TaskBrowser[] = [];
     for (const { s, b } of rows) {
       try {
-        await humanGrant(companyId, s.grantId, userId);
+        await humanGrant(s.grantId, userId);
       } catch {
         continue;
       }
@@ -691,7 +659,6 @@ export function browserUseService(
     return out;
   }
   async function humanSession(
-    companyId: string,
     issueId: string,
     browserId: string,
     userId: string,
@@ -699,7 +666,7 @@ export function browserUseService(
     const [b] = await db
       .select()
       .from(browsers)
-      .where(and(eq(browsers.id, browserId), eq(browsers.companyId, companyId)))
+      .where(and(eq(browsers.id, browserId)))
       .limit(1);
     const [s] = await db
       .select()
@@ -707,23 +674,21 @@ export function browserUseService(
       .where(
         and(
           eq(sessions.id, b?.sessionId ?? browserId),
-          eq(sessions.companyId, companyId),
           eq(sessions.issueId, issueId),
         ),
       )
       .limit(1);
     if (!s) throw notFound("Browser not found.");
-    await humanGrant(companyId, s.grantId, userId);
+    await humanGrant(s.grantId, userId);
     return { s, b };
   }
   async function viewer(
-    companyId: string,
     issueId: string,
     browserId: string,
     userId: string,
     viewerId?: string,
   ) {
-    const { s, b } = await humanSession(companyId, issueId, browserId, userId);
+    const { s, b } = await humanSession(issueId, browserId, userId);
     if (
       !b ||
       b.status !== "active" ||
@@ -749,12 +714,11 @@ export function browserUseService(
     };
   }
   async function presence(
-    companyId: string,
     issueId: string,
     browserId: string,
     userId: string,
   ) {
-    const { s, b } = await humanSession(companyId, issueId, browserId, userId);
+    const { s, b } = await humanSession(issueId, browserId, userId);
     if (
       !b ||
       b.status !== "active" ||
@@ -780,7 +744,6 @@ export function browserUseService(
       .where(
         and(
           eq(sessions.id, s.id),
-          eq(sessions.companyId, companyId),
           eq(sessions.status, "idle"),
           isNull(sessions.stopRequested),
           // The reconciler holds this lease while deciding whether to close.
@@ -795,13 +758,12 @@ export function browserUseService(
     return { accepted: updated.length > 0 };
   }
   async function resize(
-    companyId: string,
     issueId: string,
     browserId: string,
     userId: string,
     request: BrowserUseViewportRequest,
   ) {
-    const { s, b } = await humanSession(companyId, issueId, browserId, userId);
+    const { s, b } = await humanSession(issueId, browserId, userId);
     if (
       !b ||
       b.status !== "active" ||
@@ -829,7 +791,6 @@ export function browserUseService(
     );
     if (result.applied)
       await logActivity(db, {
-        companyId,
         actorType: "user",
         actorId: userId,
         action: "browser.resized",
@@ -846,13 +807,12 @@ export function browserUseService(
     return result;
   }
   async function releaseViewport(
-    companyId: string,
     issueId: string,
     browserId: string,
     userId: string,
     viewerId: string,
   ) {
-    const { b } = await humanSession(companyId, issueId, browserId, userId);
+    const { b } = await humanSession(issueId, browserId, userId);
     if (b)
       await browserUseViewports.releaseLease(
         b.providerBrowserId,
@@ -877,7 +837,6 @@ export function browserUseService(
         const rows = await db
           .insert(browsers)
           .values({
-            companyId: s.companyId,
             sessionId: s.id,
             providerBrowserId: item.id,
             status: detail.status,
@@ -891,7 +850,6 @@ export function browserUseService(
           .set({ status: detail.status })
           .where(
             and(
-              eq(browsers.companyId, s.companyId),
               eq(browsers.sessionId, s.id),
               eq(browsers.providerBrowserId, item.id),
             ),
@@ -913,7 +871,7 @@ export function browserUseService(
     const [issue] = await db
       .select({ projectId: issues.projectId })
       .from(issues)
-      .where(and(eq(issues.id, s.issueId), eq(issues.companyId, s.companyId)));
+      .where(eq(issues.id, s.issueId));
     const event = await db.transaction(async (tx) => {
       const [current] = await tx
         .select()
@@ -924,7 +882,6 @@ export function browserUseService(
       const [e] = await tx
         .insert(costEvents)
         .values({
-          companyId: s.companyId,
           agentId: s.agentId,
           issueId: s.issueId,
           projectId: issue?.projectId,
@@ -939,7 +896,6 @@ export function browserUseService(
         })
         .returning();
       await tx.insert(financeEvents).values({
-        companyId: e.companyId,
         agentId: e.agentId,
         issueId: e.issueId,
         projectId: e.projectId,
@@ -966,19 +922,16 @@ export function browserUseService(
       .update(agents)
       .set({
         spentMonthlyCents: await getMonthlySpendTotal(db, {
-          companyId: s.companyId,
           agentId: s.agentId,
         }),
       })
-      .where(and(eq(agents.companyId, s.companyId), eq(agents.id, s.agentId)));
+      .where(eq(agents.id, s.agentId));
     await db
       .update(companies)
       .set({
         spentMonthlyCents: await getMonthlySpendTotal(db, {
-          companyId: s.companyId,
-        }),
-      })
-      .where(eq(companies.id, s.companyId));
+}),
+      });
     // Re-evaluate on retries too: accounting may have committed immediately
     // before a crash interrupted budget enforcement.
     const lastEvent =
@@ -988,10 +941,7 @@ export function browserUseService(
           .select()
           .from(costEvents)
           .where(
-            and(
-              eq(costEvents.companyId, s.companyId),
-              eq(costEvents.billingCode, `browser-use-cloud:${run.id}`),
-            ),
+            eq(costEvents.billingCode, `browser-use-cloud:${run.id}`),
           )
           .orderBy(desc(costEvents.createdAt))
           .limit(1)
@@ -1009,11 +959,11 @@ export function browserUseService(
     const [issue] = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.id, s.issueId), eq(issues.companyId, s.companyId)));
+      .where(eq(issues.id, s.issueId));
     const [agent] = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.id, s.agentId), eq(agents.companyId, s.companyId)));
+      .where(eq(agents.id, s.agentId));
     if (
       !issue ||
       issue.assigneeAgentId !== s.agentId ||
@@ -1024,13 +974,12 @@ export function browserUseService(
       end = true;
     if (
       await issueTreeControlService(db).getActivePauseHoldGate(
-        s.companyId,
         s.issueId,
       )
     )
       end = true;
     if (
-      await budgets.getInvocationBlock(s.companyId, s.agentId, {
+      await budgets.getInvocationBlock(s.agentId, {
         issueId: s.issueId,
         projectId: issue?.projectId,
       })
@@ -1039,7 +988,7 @@ export function browserUseService(
     const allRuns = await db
       .select()
       .from(runs)
-      .where(and(eq(runs.sessionId, s.id), eq(runs.companyId, s.companyId)))
+      .where(and(eq(runs.sessionId, s.id)))
       .orderBy(desc(runs.createdAt));
     if (
       allRuns[0] &&
@@ -1338,9 +1287,8 @@ export function browserUseService(
     presence,
     control,
     getSettings,
-    async stopBeforeCredentialRemoval(companyId: string, connectionId: string) {
+    async stopBeforeCredentialRemoval(connectionId: string) {
       const scope = and(
-        eq(sessions.companyId, companyId),
         eq(sessions.connectionId, connectionId),
         inArray(sessions.status, ["starting", "running", "idle", "stopping"]),
       );
@@ -1364,13 +1312,11 @@ export function browserUseService(
         );
     },
     async availableProfiles(
-      companyId: string,
       grantId: string,
       userId: string,
     ) {
-      const grant = await humanGrant(companyId, grantId, userId);
+      const grant = await humanGrant(grantId, userId);
       const { client } = await credentials({
-        companyId,
         grantId,
         connectionId: grant.connectionId,
       });
@@ -1388,17 +1334,15 @@ export function browserUseService(
       return profiles;
     },
     async saveSettings(
-      companyId: string,
       grantId: string,
       userId: string,
       value: BrowserUseSettings,
     ) {
-      const grant = await humanGrant(companyId, grantId, userId);
+      const grant = await humanGrant(grantId, userId);
       const managesShared =
         grant.kind === "organization" &&
         (userId === "board" ||
           (await accessService(db).hasPermission(
-            companyId,
             "user",
             userId,
             "tools:manage_connections",
@@ -1412,7 +1356,6 @@ export function browserUseService(
           "Only the credential owner or a shared connection manager can change browser settings.",
         );
       const { client } = await credentials({
-        companyId,
         grantId,
         connectionId: grant.connectionId,
       });
@@ -1429,7 +1372,6 @@ export function browserUseService(
           );
       }
       const row = {
-        companyId,
         grantId,
         allowedProfileIds: value.allowedProfileIds,
         maxCostUsd: value.maxCostUsd?.toString() ?? null,
@@ -1439,7 +1381,6 @@ export function browserUseService(
         .values(row)
         .onConflictDoUpdate({ target: settings.grantId, set: row });
       await logActivity(db, {
-        companyId,
         actorType: "user",
         actorId: userId,
         action: "browser.settings_updated",

@@ -4,7 +4,6 @@ import { ShieldAlert } from "lucide-react";
 import { Link } from "@/lib/router";
 import { accessApi } from "@/api/access";
 import { queryKeys } from "@/lib/queryKeys";
-import { useCompany } from "@/context/CompanyContext";
 
 /**
  * Best-effort admin gate for the access-profiles surface, mirroring
@@ -13,7 +12,6 @@ import { useCompany } from "@/context/CompanyContext";
  * index and the create wizard guard identically.
  */
 export function ToolsAdminGate({ children }: { children: ReactNode }) {
-  const { selectedCompanyId } = useCompany();
   const boardAccess = useQuery({
     queryKey: queryKeys.access.currentBoardAccess,
     queryFn: () => accessApi.getCurrentBoardAccess(),
@@ -25,7 +23,7 @@ export function ToolsAdminGate({ children }: { children: ReactNode }) {
   }
 
   const data = boardAccess.data;
-  const membership = data?.memberships?.find((m) => m.companyId === selectedCompanyId);
+  const membership = data?.memberships?.find((m) => m.status === "active");
   const isAdmin =
     Boolean(data?.isInstanceAdmin) ||
     membership?.membershipRole === "owner" ||

@@ -9,7 +9,7 @@ import {
 } from "@paperclipai/shared";
 import type { Db } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
-import { assertBoard, assertCompanyAccess, hasCompanyAccess } from "./authz.js";
+import { assertBoard, assertOrgAccess, hasOrgAccess } from "./authz.js";
 import { emailConnectionService } from "../services/email-connections.js";
 import { accessService } from "../services/access.js";
 import { badRequest, forbidden, HttpError, notFound } from "../errors.js";
@@ -86,17 +86,16 @@ const agentmailErrorHandler: ErrorRequestHandler = (error, _req, res, next) => {
 
 export function emailRoutes(db: Db, service: EmailChannelService) {
   const router = Router();
-  async function manager(req: Request, companyId: string) {
+  async function manager(req: Request) {
     assertBoard(req);
-    if (!hasCompanyAccess(req, companyId))
+    if (!hasOrgAccess(req))
       throw notFound("Email inbox not found");
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)
       return;
     if (
       !req.actor.userId ||
       !(await accessService(db).hasPermission(
-        companyId,
         "user",
         req.actor.userId,
         "tools:manage_connections",
@@ -104,24 +103,21 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     )
       throw forbidden("Missing permission: tools:manage_connections");
   }
-  router.get("/companies/:companyId/email/connections", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await manager(req, companyId);
+  router.get("/email/connections", async (req, res) => {
+    await manager(req);
     res.set("Cache-Control", "no-store").json(
-      await emailConnectionService(db).listCredentials(companyId, actor(req)),
+      await emailConnectionService(db).listCredentials(actor(req)),
     );
   });
   router.post(
-    "/companies/:companyId/email/connections",
+    "/email/connections",
     validate(emailConnectionSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await manager(req, companyId);
+      await manager(req);
       res
         .status(201)
         .json(
           await emailConnectionService(db).connect(
-            companyId,
             req.body,
             actor(req),
           ),
@@ -129,12 +125,10 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     },
   );
   router.post(
-    "/companies/:companyId/email/connections/:connectionId/inspect",
+    "/email/connections/:connectionId/inspect",
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await manager(req, companyId);
+      await manager(req);
       const saved = await emailConnectionService(db).credential(
-        companyId,
         req.params.connectionId as string,
         actor(req),
       );
@@ -144,22 +138,20 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     },
   );
   router.post(
-    "/companies/:companyId/email/connections/:connectionId/check-address",
+    "/email/connections/:connectionId/check-address",
     validate(emailAddressCheckSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await manager(req, companyId);
+      await manager(req);
       const saved = await emailConnectionService(db).credential(
-        companyId, req.params.connectionId as string, actor(req),
+        req.params.connectionId as string, actor(req),
       );
       res.set("Cache-Control", "no-store").json(await agentmailApi(saved.value)
         .checkAddress(`${req.body.username}@${req.body.domain}`));
     },
   );
-  router.get("/companies/:companyId/email/inboxes", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    const rows = await service.list(companyId);
+  router.get("/email/inboxes", async (req, res) => {
+    assertOrgAccess(req);
+    const rows = await service.list();
     res.json(
       req.actor.type === "agent"
         ? rows.filter((r) => r.assignedAgentId === req.actor.agentId)
@@ -167,24 +159,23 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     );
   });
   router.post(
-    "/companies/:companyId/email/inspect",
+    "/email/inspect",
     validate(z.object({ apiKey: z.string().min(1).max(4096) }).strict()),
     async (req, res) => {
-      await manager(req, req.params.companyId as string);
+      await manager(req);
       res.set("Cache-Control", "no-store");
       res.json(await service.inspect(req.body.apiKey));
     },
   );
   router.post(
-    "/companies/:companyId/email/inboxes",
+    "/email/inboxes",
     validate(emailEndpointSetupSchema),
     async (req, res) => {
-      await manager(req, req.params.companyId as string);
+      await manager(req);
       res
         .status(201)
         .json(
           await service.setup(
-            req.params.companyId as string,
             req.body,
             actor(req),
           ),
@@ -200,7 +191,7 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
       const endpoint = await service.getEndpoint(
         req.params.endpointId as string,
       );
-      await manager(req, endpoint.companyId);
+      await manager(req);
       res.json(await service.control(endpoint.id, req.body.action, actor(req)));
     },
   );
@@ -218,7 +209,7 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
       const endpoint = await service.getEndpoint(
         req.params.endpointId as string,
       );
-      await manager(req, endpoint.companyId);
+      await manager(req);
       res.json(
         await service.reconnect(
           endpoint.id,
@@ -230,7 +221,7 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     },
   );
   router.post(
-    "/companies/:companyId/email/deliveries/:publicationId/resolve",
+    "/email/deliveries/:publicationId/resolve",
     validate(
       z
         .object({
@@ -240,11 +231,9 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
         .strict(),
     ),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await manager(req, companyId);
+      await manager(req);
       res.json(
         await service.resolveUncertain(
-          companyId,
           req.params.publicationId as string,
           req.body,
           actor(req),
@@ -253,30 +242,26 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     },
   );
   router.post(
-    "/companies/:companyId/email/send",
+    "/email/send",
     validate(emailSendSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       res
         .status(202)
-        .json(await service.queueSend(companyId, req.body, actor(req)));
+        .json(await service.queueSend(req.body, actor(req)));
     },
   );
-  router.get("/companies/:companyId/email/tasks/:issueId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/email/tasks/:issueId", async (req, res) => {
+    assertOrgAccess(req);
     const issueId = req.params.issueId as string;
     if (issueId !== issueId.trim() || !isUuidLike(issueId)) {
       throw badRequest("Task ID must be a UUID");
     }
     await service.authorizeRead(
-      companyId,
       issueId,
       actor(req),
     );
     const thread = await service.thread(
-      companyId,
       issueId,
     );
     if (
@@ -288,16 +273,14 @@ export function emailRoutes(db: Db, service: EmailChannelService) {
     res.json(thread);
   });
   router.get(
-    "/companies/:companyId/email/deliveries/:publicationId",
+    "/email/deliveries/:publicationId",
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       const delivery = await service.publication(
         req.params.publicationId as string,
-        companyId,
       );
-      await service.authorizeRead(companyId, delivery.issueId, actor(req));
-      const thread = await service.thread(companyId, delivery.issueId);
+      await service.authorizeRead(delivery.issueId, actor(req));
+      const thread = await service.thread(delivery.issueId);
       if (
         req.actor.type === "agent" &&
         thread?.endpoint.assignedAgentId !== req.actor.agentId

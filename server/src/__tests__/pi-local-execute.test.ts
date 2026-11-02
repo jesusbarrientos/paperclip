@@ -62,7 +62,6 @@ describe("pi_local execute", () => {
         runId: "run-pi-quota-exhausted",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Pi Agent",
           adapterType: "pi_local",
           adapterConfig: {},
@@ -113,7 +112,6 @@ describe("pi_local execute", () => {
         runId: "run-pi-skill-path",
         agent: {
           id: "agent-skill-path",
-          companyId: "company-skill-path",
           name: "Pi Agent",
           adapterType: "pi_local",
           adapterConfig: {},
@@ -172,7 +170,6 @@ describe("pi_local execute", () => {
         runId: "run-pi-skill-path-neg",
         agent: {
           id: "agent-skill-path-neg",
-          companyId: "company-skill-path-neg",
           name: "Pi Agent",
           adapterType: "pi_local",
           adapterConfig: {},

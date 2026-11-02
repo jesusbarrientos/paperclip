@@ -12,6 +12,6 @@ export function HiddenSettingsPageGate({ pageKey }: { pageKey: string }) {
   const { hidden, loaded } = useHiddenSettings();
 
   if (!loaded) return null;
-  if (hidden.has(pageKey)) return <Navigate to="/company/settings" replace />;
+  if (hidden.has(pageKey)) return <Navigate to="/organization/settings" replace />;
   return <Outlet />;
 }

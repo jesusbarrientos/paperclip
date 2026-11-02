@@ -25,7 +25,6 @@ const NOW = new Date("2026-06-16T12:00:00.000Z").getTime();
 function token(overrides: Partial<ToolMcpGatewayToken> = {}): ToolMcpGatewayToken {
   return {
     id: "t",
-    companyId: "c",
     gatewayId: "g",
     name: "tok",
     tokenPrefix: "pcgw_abc",
@@ -52,7 +51,6 @@ function token(overrides: Partial<ToolMcpGatewayToken> = {}): ToolMcpGatewayToke
 function gateway(overrides: Partial<ToolMcpGatewayWithTokens> = {}): ToolMcpGatewayWithTokens {
   return {
     id: "gateway-1",
-    companyId: "c",
     gatewayPublicId: "gw",
     name: "CTO agents",
     displaySlug: "cto-agents",
@@ -175,7 +173,6 @@ describe("orderedSnippets", () => {
 describe("deriveGatewayApps", () => {
   const profile: ToolProfileWithDetails = {
     id: "profile-1",
-    companyId: "c",
     profileKey: "eng",
     name: "Engineering",
     description: null,

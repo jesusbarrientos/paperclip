@@ -26,7 +26,6 @@ import {
   useAdapterRegistryLoaded,
   useDisabledAdaptersSync,
 } from "../adapters/use-disabled-adapters";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -932,7 +931,6 @@ export const EMPTY_INSTALL_FORM: TeamInstallFormState = {
 };
 
 export interface UseInstallTeamCatalogEntryOptions {
-  companyId: string;
   team: CatalogTeam;
   /**
    * Run the simplified onboarding flow: no target-manager step, source policy
@@ -961,7 +959,6 @@ export interface UseInstallTeamCatalogEntryResult {
 }
 
 export function useInstallTeamCatalogEntry({
-  companyId,
   team,
   simplified = false,
   onInstalled,
@@ -1008,7 +1005,7 @@ export function useInstallTeamCatalogEntry({
 
   const previewMutation = useMutation({
     mutationFn: (form: TeamInstallFormState) =>
-      teamCatalogApi.preview(companyId, team.id, buildPreviewOptions(form)),
+      teamCatalogApi.preview(team.id, buildPreviewOptions(form)),
     onSuccess: (result) => {
       setPreviewResult(result);
       setPreviewError(null);
@@ -1020,7 +1017,7 @@ export function useInstallTeamCatalogEntry({
 
   const installMutation = useMutation({
     mutationFn: (form: TeamInstallFormState) =>
-      teamCatalogApi.install(companyId, team.id, buildInstallOptions(form)),
+      teamCatalogApi.install(team.id, buildInstallOptions(form)),
     onMutate: () => {
       setPhase("applying");
       setApplyError(null);
@@ -1064,14 +1061,12 @@ export function useInstallTeamCatalogEntry({
 
 function TeamInstallerDialog({
   team,
-  companyId,
   agents,
   open,
   onClose,
   onInstalled,
 }: {
   team: CatalogTeam;
-  companyId: string;
   agents: Agent[];
   open: boolean;
   onClose: () => void;
@@ -1189,7 +1184,7 @@ function TeamInstallerDialog({
   };
 
   const previewMutation = useMutation({
-    mutationFn: () => teamCatalogApi.preview(companyId, team.id, buildPreviewOptions()),
+    mutationFn: () => teamCatalogApi.preview(team.id, buildPreviewOptions()),
     onSuccess: (result) => {
       setPreviewResult(result);
       setPreviewError(null);
@@ -1200,7 +1195,7 @@ function TeamInstallerDialog({
   });
 
   const installMutation = useMutation({
-    mutationFn: () => teamCatalogApi.install(companyId, team.id, buildInstallOptions()),
+    mutationFn: () => teamCatalogApi.install(team.id, buildInstallOptions()),
     onMutate: () => {
       setPhase("applying");
       setApplyError(null);
@@ -2257,7 +2252,6 @@ export function TeamCatalog() {
   const { "*": routePath } = useParams<{ "*": string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
@@ -2295,7 +2289,6 @@ export function TeamCatalog() {
   const catalogQuery = useQuery({
     queryKey: queryKeys.teamCatalog.catalog({ kind: kindFilter === "all" ? undefined : kindFilter }),
     queryFn: () => teamCatalogApi.catalogList(kindFilter === "all" ? {} : { kind: kindFilter }),
-    enabled: Boolean(selectedCompanyId),
   });
 
   const teams = catalogQuery.data ?? [];
@@ -2336,18 +2329,16 @@ export function TeamCatalog() {
   });
 
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId ?? ""),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   // Server-computed installed/out-of-date state. Drives the `INSTALLED · N`
   // group, the per-row out-of-date badge, and the detail header chip from a
   // real server signal (design §3.2 + §5 / PAP-10256).
   const installedQuery = useQuery({
-    queryKey: queryKeys.teamCatalog.installed(selectedCompanyId ?? ""),
-    queryFn: () => teamCatalogApi.installed(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.teamCatalog.installed(),
+    queryFn: () => teamCatalogApi.installed(),
   });
 
   const installedById = useMemo(() => {
@@ -2381,13 +2372,6 @@ export function TeamCatalog() {
 
   const canInstall = true; // server enforces; UI shows the affordance to operators
 
-  if (!selectedCompanyId) {
-    return (
-      <div className="p-8">
-        <EmptyState icon={Users2} message="Select an organization to browse the team catalog." />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full flex-col">
@@ -2604,7 +2588,6 @@ export function TeamCatalog() {
       {selectedTeam && installOpen && (
         <TeamInstallerDialog
           team={selectedTeam}
-          companyId={selectedCompanyId}
           agents={agentsQuery.data ?? []}
           open={installOpen}
           onClose={() => setInstallOpen(false)}
@@ -2612,9 +2595,9 @@ export function TeamCatalog() {
             pushToast({ tone: "success", title: "Team installed", body: `${selectedTeam.name} was imported.` });
             // Provenance now lives on the new agents — refresh installed/out-of-date state.
             void queryClient.invalidateQueries({
-              queryKey: queryKeys.teamCatalog.installed(selectedCompanyId),
+              queryKey: queryKeys.teamCatalog.installed(),
             });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
           }}
         />
       )}

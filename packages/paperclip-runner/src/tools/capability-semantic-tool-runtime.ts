@@ -1463,7 +1463,7 @@ export class CapabilitySemanticToolRuntime {
         ));
       }
       case "company_actors":
-        return toJsonValue(snapshot.actors.map(({ id, companyId, name, role, status }) => ({ id, companyId, name, role, status })));
+        return toJsonValue(snapshot.actors.map(({ id, name, role, status }) => ({ id, name, role, status })));
       case "company_approvals":
         return toJsonValue(snapshot.approvals);
       case "active_task_workspace":

@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function JoinRequestQueue() {
-  const { selectedCompany, selectedCompanyId } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
@@ -21,44 +21,39 @@ export function JoinRequestQueue() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Organization", href: "/dashboard" },
+      { label: organization?.name ?? "Organization", href: "/dashboard" },
       { label: "Inbox", href: "/inbox" },
       { label: "Join Requests" },
     ]);
-  }, [selectedCompany?.name, setBreadcrumbs]);
+  }, [organization?.name, setBreadcrumbs]);
 
   const requestsQuery = useQuery({
-    queryKey: queryKeys.access.joinRequests(selectedCompanyId ?? "", `${status}:${requestType}`),
+    queryKey: queryKeys.access.joinRequests(`${status}:${requestType}`),
     queryFn: () =>
       accessApi.listJoinRequests(
-        selectedCompanyId!,
         status,
         requestType === "all" ? undefined : requestType,
       ),
-    enabled: !!selectedCompanyId,
   });
 
   const approveMutation = useMutation({
-    mutationFn: (requestId: string) => accessApi.approveJoinRequest(selectedCompanyId!, requestId),
+    mutationFn: (requestId: string) => accessApi.approveJoinRequest(requestId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests(selectedCompanyId!, `${status}:${requestType}`) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.access.companyMembers(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests(`${status}:${requestType}`) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.access.companyMembers() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.access.companyUserDirectory() });
       pushToast({ title: "Join request approved", tone: "success" });
     },
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (requestId: string) => accessApi.rejectJoinRequest(selectedCompanyId!, requestId),
+    mutationFn: (requestId: string) => accessApi.rejectJoinRequest(requestId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests(selectedCompanyId!, `${status}:${requestType}`) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests(`${status}:${requestType}`) });
       pushToast({ title: "Join request rejected", tone: "success" });
     },
   });
 
-  if (!selectedCompanyId) {
-    return <div className="text-sm text-muted-foreground">Select an organization to review join requests.</div>;
-  }
 
   if (requestsQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading join requests…</div>;

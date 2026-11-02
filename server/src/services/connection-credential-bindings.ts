@@ -14,7 +14,6 @@ export async function syncConnectionCredentialBindings(
       .delete(companySecretBindings)
       .where(
         and(
-          eq(companySecretBindings.companyId, connection.companyId),
           eq(companySecretBindings.targetType, "tool_connection"),
           eq(companySecretBindings.targetId, connection.id),
         ),
@@ -23,7 +22,6 @@ export async function syncConnectionCredentialBindings(
     // active personal/dedicated grant, not just connection-owned credentials.
     const activeGrants = await dbClient.select({ refs: connectionGrants.credentialSecretRefs })
       .from(connectionGrants).where(and(
-        eq(connectionGrants.companyId, connection.companyId),
         eq(connectionGrants.connectionId, connection.id),
         eq(connectionGrants.status, "active"),
       ));
@@ -58,20 +56,14 @@ export async function syncConnectionCredentialBindings(
           id: companySecrets.id,
           scope: companySecrets.scope,
           userSecretDefinitionId: companySecrets.userSecretDefinitionId,
-        }).from(companySecrets).where(and(
-          eq(companySecrets.companyId, connection.companyId),
-          inArray(companySecrets.id, [...new Set(bindings.map((ref) => ref.secretId))]),
-        ))
+        }).from(companySecrets).where(inArray(companySecrets.id, [...new Set(bindings.map((ref) => ref.secretId))]))
       : [];
     const secretById = new Map(secretRows.map((row) => [row.id, row]));
     const definitionIds = [...new Set(secretRows.flatMap((row) => row.userSecretDefinitionId ? [row.userSecretDefinitionId] : []))];
     const definitions = definitionIds.length > 0
       ? await dbClient.select({ id: userSecretDefinitions.id, key: userSecretDefinitions.key })
           .from(userSecretDefinitions)
-          .where(and(
-            eq(userSecretDefinitions.companyId, connection.companyId),
-            inArray(userSecretDefinitions.id, definitionIds),
-          ))
+          .where(inArray(userSecretDefinitions.id, definitionIds))
       : [];
     const definitionKeyById = new Map(definitions.map((row) => [row.id, row.key]));
     const userDeclarations = [...new Map(bindings.flatMap((ref) => {
@@ -91,7 +83,6 @@ export async function syncConnectionCredentialBindings(
         : [];
     }).map((ref) => [`${ref.definitionKey}:${ref.configPath}`, ref])).values()];
     await secrets.syncUserSecretDeclarationsForTarget(
-      connection.companyId,
       { targetType: "tool_connection", targetId: connection.id },
       userDeclarations,
       { replaceAll: true, db: dbClient },
@@ -99,7 +90,6 @@ export async function syncConnectionCredentialBindings(
     const companyBindings = bindings.filter((ref) => secretById.get(ref.secretId)?.scope !== "user");
     if (companyBindings.length === 0) return;
     await dbClient.insert(companySecretBindings).values(companyBindings.map((ref) => ({
-      companyId: connection.companyId,
       secretId: ref.secretId,
       targetType: "tool_connection" as const,
       targetId: connection.id,

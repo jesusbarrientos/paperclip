@@ -120,7 +120,6 @@ function availableAllResponse(
 function createWorkspace(overrides: Partial<ProjectWorkspace> = {}): ProjectWorkspace {
   return {
     id: "workspace-content",
-    companyId: "company-1",
     projectId: "project-content",
     name: "Paperclip Content",
     sourceType: "local_path",
@@ -147,7 +146,6 @@ function createProject(overrides: Partial<Project> = {}): Project {
   const workspace = createWorkspace();
   return {
     id: "project-content",
-    companyId: "company-1",
     urlKey: "paperclip-content",
     goalId: null,
     goalIds: [],
@@ -659,7 +657,6 @@ describe("WorkspaceFileBrowser", () => {
     });
 
     const { onOpen } = renderBrowser(vi.fn(), {
-      companyId: "company-1",
       initialProjectId: "project-content",
       initialWorkspaceId: "workspace-content",
     });
@@ -706,7 +703,6 @@ describe("WorkspaceFileBrowser", () => {
     });
 
     const { onOpen } = renderBrowser(vi.fn(), {
-      companyId: "company-1",
       initialProjectId: "project-content",
       initialWorkspaceId: "workspace-content",
       initialFolderPath: folderPath,

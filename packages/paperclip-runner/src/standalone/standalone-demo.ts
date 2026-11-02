@@ -144,7 +144,6 @@ export async function runStandaloneStandaloneDemo(
       fixtureName: `standalone-${resolution.resolvedMode}-standalone-demo`,
       identity: {
         schema: "paperclip.prp.identity.v1",
-        companyId: CONTROL_PLANE_CONFORMANCE_OPEN.identity.companyId,
         issueId: CONTROL_PLANE_CONFORMANCE_OPEN.identity.issueId,
         runId: CONTROL_PLANE_CONFORMANCE_OPEN.identity.runId,
         environmentLeaseId: "standalone-demo-lease",

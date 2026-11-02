@@ -20,11 +20,11 @@ vi.mock("@/api/tools", () => ({
     getTestAgentAccess: (connectionId: string, agentId: string) => getTestAgentAccessMock(connectionId, agentId),
     runTestCall: (connectionId: string, input: unknown) => runTestCallMock(connectionId, input),
     getTestCallStatus: (connectionId: string, requestId: string) => getTestCallStatusMock(connectionId, requestId),
-    declineActionRequest: (companyId: string, requestId: string) => declineActionRequestMock(companyId, requestId),
+    declineActionRequest: (requestId: string) => declineActionRequestMock(requestId),
   },
 }));
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 vi.mock("@/lib/router", () => ({
   Link: ({ to, children, ...props }: { to: string; children: ReactNode }) => <a href={to} {...props}>{children}</a>,
@@ -35,7 +35,6 @@ vi.mock("@/lib/router", () => ({
 
 const entry = {
   id: "asana-list-projects",
-  companyId: "company-1",
   applicationId: "app-asana",
   connectionId: "conn-1",
   entryKind: "tool",

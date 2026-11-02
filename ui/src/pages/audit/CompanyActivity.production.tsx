@@ -1,7 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { History } from "lucide-react";
 import { useSearchParams } from "@/lib/router";
-import { useCompany } from "../../context/CompanyContext";
 import { useBreadcrumbs } from "../../context/BreadcrumbContext";
 import { EmptyState } from "../../components/EmptyState";
 import { AuditFeed, type AuditFeedMode } from "./AuditFeed.production";
@@ -15,7 +14,6 @@ import { AuditFeed, type AuditFeedMode } from "./AuditFeed.production";
  * links stay shareable. The server enforces both tiers regardless.
  */
 export function CompanyActivity() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [searchParams, setSearchParams] = useSearchParams();
   const mode: AuditFeedMode = searchParams.get("mode") === "agents" ? "agents" : "all";
@@ -41,9 +39,6 @@ export function CompanyActivity() {
     [setSearchParams],
   );
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={History} message="Select a company to view activity." />;
-  }
 
-  return <AuditFeed companyId={selectedCompanyId} mode={mode} onModeChange={handleModeChange} />;
+  return <AuditFeed mode={mode} onModeChange={handleModeChange} />;
 }

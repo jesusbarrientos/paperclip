@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { issuesApi } from "../api/issues";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { StatusIcon } from "../components/StatusIcon";
@@ -15,7 +14,6 @@ import { useStreamlinedUiEnabled } from "../hooks/useStreamlinedUiEnabled";
 
 export function MyIssues() {
   const { enabled: streamlinedUiEnabled } = useStreamlinedUiEnabled();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
 
   useEffect(() => {
@@ -23,21 +21,10 @@ export function MyIssues() {
   }, [setBreadcrumbs]);
 
   const { data: issues, isLoading, error } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.list(),
+    queryFn: () => issuesApi.list(),
   });
 
-  if (!selectedCompanyId) {
-    return (
-      <EmptyState
-        icon={ListTodo}
-        message={streamlinedUiEnabled
-          ? "Select an organization to view your tasks."
-          : "Select a company to view your tasks."}
-      />
-    );
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="list" />;

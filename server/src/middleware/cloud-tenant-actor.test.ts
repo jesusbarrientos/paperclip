@@ -14,13 +14,13 @@ import { cloudActorHeaderSourceFromHeaders, resolveCloudTenantActor } from "./au
 // where-conditions captured in selectWheres). The chain is awaitable so
 // directly-awaited statements resolve.
 function createFakeDb(options: {
-  membershipRow?: { companyId: string; membershipRole: string; status: string };
-  membershipQueryRows?: Array<{ companyId: string; membershipRole: string | null; status: string }>;
+  membershipRow?: { membershipRole: string; status: string };
+  membershipQueryRows?: Array<{ membershipRole: string | null; status: string }>;
   settingsRow?: Record<string, unknown> | null;
   selectThrows?: boolean;
 } = {}) {
   const membershipRow =
-    options.membershipRow ?? { companyId: "company-x", membershipRole: "owner", status: "active" };
+    options.membershipRow ?? { membershipRole: "owner", status: "active" };
   const settingsRow =
     options.settingsRow === undefined
       ? {
@@ -52,25 +52,27 @@ function createFakeDb(options: {
       deletedTables.push(table);
       return chain;
     },
-    select: () => {
-      if (options.selectThrows) throw new Error("select unavailable");
-      return {
-        from: (table: unknown) => ({
+    select: () => ({
+      from: (table: unknown) => {
+        if (options.selectThrows && table === instanceSettings) throw new Error("select unavailable");
+        const rows =
+          table === instanceSettings && settingsRow
+            ? [settingsRow]
+            : table === companyMemberships
+              ? (options.membershipQueryRows ?? [])
+              : [];
+        const query: Record<string, unknown> = {
           where: (condition: unknown) => {
             selectWheres.push({ table, condition });
-            const rows =
-              table === instanceSettings && settingsRow
-                ? [settingsRow]
-                : table === companyMemberships
-                  ? (options.membershipQueryRows ?? [])
-                  : [];
-            return {
-              then: (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve),
-            };
+            return query;
           },
-        }),
-      };
-    },
+          orderBy: () => query,
+          limit: () => query,
+          then: (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve),
+        };
+        return query;
+      },
+    }),
   } as unknown as Db;
   return { db, insertedTables, deletedTables, selectWheres };
 }
@@ -134,12 +136,10 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
     expect(insertedTables).not.toContain(instanceUserRoles);
   });
 
-  it("stays scoped to exactly the stack's company when the user has no other membership rows", async () => {
+  it("carries exactly the stack membership", async () => {
     const { db } = createFakeDb();
     const actor = await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
-    expect(actor!.companyIds).toHaveLength(1);
     expect(actor!.memberships).toHaveLength(1);
-    expect(actor?.memberships?.[0]?.companyId).toBe(actor?.companyIds?.[0]);
     expect(actor?.memberships?.[0]?.membershipRole).toBe("owner");
     expect(actor!.source).toBe("cloud_tenant");
   });
@@ -191,12 +191,12 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
     expect(actor).not.toBeNull();
     expect(actor!.userId).toBe("user-123");
     expect(actor!.userName).toBe("Cloud Owner");
-    expect(actor!.companyIds).toHaveLength(1);
+    expect(actor!.memberships).toHaveLength(1);
   });
 
   it("maps a non-owner stack role through to the membership without elevating", async () => {
     const { db } = createFakeDb({
-      membershipRow: { companyId: "company-y", membershipRole: "member", status: "active" },
+      membershipRow: { membershipRole: "member", status: "active" },
     });
     const actor = await resolveCloudTenantActor(
       db,
@@ -232,7 +232,7 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
       "never elevates the %s stack role even with the flag enabled",
       async (stackRole) => {
         const { db } = createFakeDb({
-          membershipRow: { companyId: "company-y", membershipRole: "member", status: "active" },
+          membershipRow: { membershipRole: "member", status: "active" },
           settingsRow: settingsRowWith({ enableOwnerInstanceAdmin: true }),
         });
         const actor = await resolveCloudTenantActor(

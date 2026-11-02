@@ -16,7 +16,6 @@ type ResolutionActor = Parameters<ReturnType<typeof issueThreadInteractionServic
  * gates must still reject this agent, even when the referenced text says yes.
  */
 export async function resolveConfirmationFromComment(db: Db, args: {
-  companyId: string;
   issueId: string;
   interactionId: string;
   input: ResolveConfirmationFromComment;
@@ -28,13 +27,11 @@ export async function resolveConfirmationFromComment(db: Db, args: {
   const result = await db.transaction(async (transaction) => {
     const tx = transaction as unknown as Db;
     // Match task mutation/Stop/reset lock ordering, including replay checks.
-    const [issue] = await tx.select().from(issues).where(and(
-      eq(issues.id, args.issueId), eq(issues.companyId, args.companyId),
-    )).for("update");
+    const [issue] = await tx.select().from(issues).where(eq(issues.id, args.issueId)).for("update");
     if (!issue) throw notFound("Issue not found");
-    await assertAgentRunWriteAllowed(tx, args.companyId, args.actor);
+    await assertAgentRunWriteAllowed(tx, args.actor);
     const [run] = await tx.select().from(heartbeatRuns).where(and(
-      eq(heartbeatRuns.id, args.actor.runId), eq(heartbeatRuns.companyId, args.companyId),
+      eq(heartbeatRuns.id, args.actor.runId),
       eq(heartbeatRuns.agentId, args.actor.agentId),
     )).for("share");
     if (!run || run.status !== "running" || issue.executionRunId !== run.id
@@ -43,7 +40,7 @@ export async function resolveConfirmationFromComment(db: Db, args: {
       throw forbidden("Only the active responding run can record a conversational decision");
     }
     const [card] = await tx.select().from(issueThreadInteractions).where(and(
-      eq(issueThreadInteractions.id, args.interactionId), eq(issueThreadInteractions.companyId, args.companyId),
+      eq(issueThreadInteractions.id, args.interactionId),
       eq(issueThreadInteractions.issueId, issue.id),
     )).for("update");
     if (!card) throw notFound("Interaction not found");
@@ -55,7 +52,7 @@ export async function resolveConfirmationFromComment(db: Db, args: {
       throw forbidden("Governed actions must use their dedicated approval controls");
     }
     const [comment] = await tx.select().from(issueComments).where(and(
-      eq(issueComments.id, input.commentId), eq(issueComments.companyId, args.companyId),
+      eq(issueComments.id, input.commentId),
       eq(issueComments.issueId, issue.id),
     )).for("share");
     if (!comment || comment.deletedAt || comment.authorType !== "user"
@@ -74,7 +71,7 @@ export async function resolveConfirmationFromComment(db: Db, args: {
       }
       if (issue.conversationBoundaryCommentId) {
         const [boundary] = await tx.select().from(issueComments).where(and(
-          eq(issueComments.id, issue.conversationBoundaryCommentId), eq(issueComments.companyId, args.companyId),
+          eq(issueComments.id, issue.conversationBoundaryCommentId),
           eq(issueComments.issueId, issue.id),
         ));
         if (!boundary || card.createdAt <= boundary.createdAt || comment.createdAt <= boundary.createdAt) {
@@ -83,7 +80,7 @@ export async function resolveConfirmationFromComment(db: Db, args: {
       }
     }
     const [latest] = await tx.select({ id: issueComments.id }).from(issueComments).where(and(
-      eq(issueComments.companyId, args.companyId), eq(issueComments.issueId, issue.id),
+      eq(issueComments.issueId, issue.id),
       eq(issueComments.authorType, "user"), isNull(issueComments.deletedAt),
     )).orderBy(desc(issueComments.createdAt), desc(issueComments.id)).limit(1);
     if (latest?.id !== comment.id) throw conflict("A newer user message must be considered before resolving this confirmation");
@@ -123,9 +120,9 @@ export async function resolveConfirmationFromComment(db: Db, args: {
     }
     await tx.update(issueThreadInteractions).set({
       result: { ...interaction.result, commentId: comment.id },
-    }).where(and(eq(issueThreadInteractions.id, card.id), eq(issueThreadInteractions.companyId, args.companyId)));
+    }).where(eq(issueThreadInteractions.id, card.id));
     publication = (await persistActivity(tx, {
-      companyId: args.companyId, actorType: "agent", actorId: args.actor.agentId,
+      actorType: "agent", actorId: args.actor.agentId,
       agentId: args.actor.agentId, runId: args.actor.runId,
       action: `issue.thread_interaction_${expected}`, entityType: "issue", entityId: issue.id,
       details: { interactionId: card.id, interactionKind: card.kind, interactionStatus: expected,

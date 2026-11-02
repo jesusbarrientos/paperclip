@@ -6,7 +6,7 @@ import { forbidden, notFound } from "../errors.js";
 import { accessService, instanceSettingsService, logActivity } from "../services/index.js";
 import { builtInAgentService } from "../services/built-in-agents.js";
 import { authorizationDeniedDetails } from "../services/authorization.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getActorInfo } from "./authz.js";
 import type { BuiltInAgentState } from "../services/built-in-agents.js";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -82,24 +82,24 @@ export function builtInAgentRoutes(db: Db) {
     }
   }
 
-  async function assertCanProvisionBuiltInAgents(req: Request, companyId: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertCanProvisionBuiltInAgents(req: Request) {
+    assertOrgAccess(req);
     const decision = await access.decide({
       actor: req.actor,
       action: "agents:create",
-      resource: { type: "company", companyId },
+      resource: { type: "company" },
     });
     if (decision.allowed) return;
     throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
   }
 
-  async function assertCanControlBuiltInRoutine(req: Request, companyId: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertCanControlBuiltInRoutine(req: Request) {
+    assertOrgAccess(req);
     if (req.actor.type !== "board") {
       throw forbidden("Only board operators can control built-in routines.");
     }
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
-    const allowed = await access.canUser(companyId, req.actor.userId, "tasks:assign");
+    const allowed = await access.canUser(req.actor.userId, "tasks:assign");
     if (!allowed) {
       throw forbidden("Missing permission: tasks:assign");
     }
@@ -108,7 +108,6 @@ export function builtInAgentRoutes(db: Db) {
   async function logBuiltInAgentMutation(
     req: Request,
       input: {
-        companyId: string;
       action:
         | "built_in_agent.provision_requested"
         | "built_in_agent.reconcile"
@@ -127,7 +126,6 @@ export function builtInAgentRoutes(db: Db) {
   ) {
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       action: input.action,
@@ -145,30 +143,26 @@ export function builtInAgentRoutes(db: Db) {
     });
   }
 
-  router.get("/companies/:companyId/built-in-agents", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/built-in-agents", async (req, res) => {
+    assertOrgAccess(req);
     await assertBuiltInAgentsEnabled();
-    const states = await svc.list(companyId);
+    const states = await svc.list();
     res.json(states.map(redactBuiltInAgentListState));
   });
 
-  router.get("/companies/:companyId/built-in-agents/:key/status", async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.get("/built-in-agents/:key/status", async (req, res) => {
     const key = req.params.key as string;
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     await assertBuiltInAgentsEnabled();
-    res.json(redactBuiltInAgentListState(await svc.get(companyId, key)));
+    res.json(redactBuiltInAgentListState(await svc.get(key)));
   });
 
-  router.post("/companies/:companyId/built-in-agents/:key/reconcile", validate(builtInAgentEmptyMutationSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.post("/built-in-agents/:key/reconcile", validate(builtInAgentEmptyMutationSchema), async (req, res) => {
     const key = req.params.key as string;
     await assertBuiltInAgentsEnabled();
-    await assertCanProvisionBuiltInAgents(req, companyId);
-    const state = await svc.ensure(companyId, key);
+    await assertCanProvisionBuiltInAgents(req);
+    const state = await svc.ensure(key);
     await logBuiltInAgentMutation(req, {
-      companyId,
       action: "built_in_agent.reconcile",
       key,
       agentId: state.agentId,
@@ -178,21 +172,19 @@ export function builtInAgentRoutes(db: Db) {
   });
 
   router.post(
-    "/companies/:companyId/built-in-agents/:key/provision",
+    "/built-in-agents/:key/provision",
     validate(builtInAgentProvisionSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
       const key = req.params.key as string;
       await assertBuiltInAgentsEnabled();
-      await assertCanProvisionBuiltInAgents(req, companyId);
+      await assertCanProvisionBuiltInAgents(req);
       const actor = getActorInfo(req);
-      const result = await svc.provision(companyId, key, req.body, {
+      const result = await svc.provision(key, req.body, {
         requestedByAgentId: actor.actorType === "agent" ? actor.actorId : null,
         requestedByUserId: actor.actorType === "user" ? actor.actorId : null,
       });
       const { state, approval } = result;
       await logBuiltInAgentMutation(req, {
-        companyId,
         action: "built_in_agent.provision_requested",
         key,
         agentId: state.agentId,
@@ -200,7 +192,6 @@ export function builtInAgentRoutes(db: Db) {
       });
       if (approval) {
         await logBuiltInAgentMutation(req, {
-          companyId,
           action: "approval.created",
           key,
           agentId: state.agentId,
@@ -212,14 +203,12 @@ export function builtInAgentRoutes(db: Db) {
     },
   );
 
-  router.post("/companies/:companyId/built-in-agents/:key/reset", validate(builtInAgentResetSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.post("/built-in-agents/:key/reset", validate(builtInAgentResetSchema), async (req, res) => {
     const key = req.params.key as string;
     await assertBuiltInAgentsEnabled();
-    await assertCanProvisionBuiltInAgents(req, companyId);
-    const state = await svc.reset(companyId, key, req.body, req.actor);
+    await assertCanProvisionBuiltInAgents(req);
+    const state = await svc.reset(key, req.body, req.actor);
     await logBuiltInAgentMutation(req, {
-      companyId,
       action: "built_in_agent.reset",
       key,
       agentId: state.agentId,
@@ -229,23 +218,21 @@ export function builtInAgentRoutes(db: Db) {
   });
 
   router.post(
-    "/companies/:companyId/built-in-agents/:key/routines/:routineKey/enable",
+    "/built-in-agents/:key/routines/:routineKey/enable",
     validate(builtInAgentEmptyMutationSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
       const key = req.params.key as string;
       const routineKey = req.params.routineKey as string;
       await assertBuiltInAgentsEnabled();
-      assertCompanyAccess(req, companyId);
-      await assertCanControlBuiltInRoutine(req, companyId);
+      assertOrgAccess(req);
+      await assertCanControlBuiltInRoutine(req);
       const actor = getActorInfo(req);
-      const state = await svc.enableRoutineSchedule(companyId, key, routineKey, {
+      const state = await svc.enableRoutineSchedule(key, routineKey, {
         agentId: actor.actorType === "agent" ? actor.actorId : null,
         userId: actor.actorType === "user" ? actor.actorId : null,
         runId: actor.runId ?? null,
       });
       await logBuiltInAgentMutation(req, {
-        companyId,
         action: "built_in_agent.routine_schedule_enabled",
         key,
         agentId: state.agentId,
@@ -257,23 +244,21 @@ export function builtInAgentRoutes(db: Db) {
   );
 
   router.post(
-    "/companies/:companyId/built-in-agents/:key/routines/:routineKey/disable",
+    "/built-in-agents/:key/routines/:routineKey/disable",
     validate(builtInAgentEmptyMutationSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
       const key = req.params.key as string;
       const routineKey = req.params.routineKey as string;
       await assertBuiltInAgentsEnabled();
-      assertCompanyAccess(req, companyId);
-      await assertCanControlBuiltInRoutine(req, companyId);
+      assertOrgAccess(req);
+      await assertCanControlBuiltInRoutine(req);
       const actor = getActorInfo(req);
-      const state = await svc.disableRoutineSchedule(companyId, key, routineKey, {
+      const state = await svc.disableRoutineSchedule(key, routineKey, {
         agentId: actor.actorType === "agent" ? actor.actorId : null,
         userId: actor.actorType === "user" ? actor.actorId : null,
         runId: actor.runId ?? null,
       });
       await logBuiltInAgentMutation(req, {
-        companyId,
         action: "built_in_agent.routine_schedule_disabled",
         key,
         agentId: state.agentId,
@@ -285,24 +270,22 @@ export function builtInAgentRoutes(db: Db) {
   );
 
   router.post(
-    "/companies/:companyId/built-in-agents/:key/routines/:routineKey/run",
+    "/built-in-agents/:key/routines/:routineKey/run",
     validate(builtInAgentEmptyMutationSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
       const key = req.params.key as string;
       const routineKey = req.params.routineKey as string;
       await assertBuiltInAgentsEnabled();
-      assertCompanyAccess(req, companyId);
-      const current = await svc.get(companyId, key);
-      await assertCanControlBuiltInRoutine(req, companyId);
+      assertOrgAccess(req);
+      const current = await svc.get(key);
+      await assertCanControlBuiltInRoutine(req);
       const actor = getActorInfo(req);
-      const run = await svc.runRoutine(companyId, key, routineKey, {
+      const run = await svc.runRoutine(key, routineKey, {
         agentId: actor.actorType === "agent" ? actor.actorId : null,
         userId: actor.actorType === "user" ? actor.actorId : null,
         runId: actor.runId ?? null,
       });
       await logBuiltInAgentMutation(req, {
-        companyId,
         action: "built_in_agent.routine_run_triggered",
         key,
         agentId: current.agentId,

@@ -154,7 +154,7 @@ export async function applyExecutionPolicyBootstrap(
       configured += 1;
     } catch (err) {
       logger.error(
-        { err, companyId },
+        { err },
         "failed to ensure managed Kubernetes environment during execution-policy bootstrap",
       );
       failedCompanyIds.push(companyId);

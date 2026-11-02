@@ -18,7 +18,7 @@ import {
   useParams,
 } from "@/lib/router";
 import { Sidebar } from "./Sidebar.production";
-import { CompanySettingsSidebar } from "./CompanySettingsSidebar.production";
+import { OrganizationSettingsSidebar } from "./OrganizationSettingsSidebar.production";
 import { CompanySettingsNav } from "./access/CompanySettingsNav";
 import { AppsSidebar } from "./AppsSidebar.production";
 import { AppDetailSidebar } from "./AppConnectionSidebar.production";
@@ -41,17 +41,11 @@ import { SecondarySidebar } from "./SecondarySidebar.production";
 import { SidebarAccountMenu } from "./SidebarAccountMenu.production";
 import { useDialogActions } from "../context/DialogContext";
 import { usePanel } from "../context/PanelContext";
-import { useCompany } from "../context/CompanyContext";
+import { useOrganization } from "../context/OrganizationContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { useMobileNavVisibility } from "../hooks/useMobileNavVisibility";
 import { healthApi } from "../api/health";
-import {
-  resolveArchivedCompanyBounce,
-  shouldSyncCompanySelectionFromRoute,
-} from "../lib/company-selection";
-import { useOptionalToastActions } from "../context/ToastContext";
 import {
   applyMainContentScrollTop,
   NavigationScrollMemory,
@@ -63,32 +57,13 @@ import { scheduleMainContentFocus } from "../lib/main-content-focus";
 import { pinDocumentScrollToZero } from "../lib/pin-document-scroll";
 import { cn } from "../lib/utils";
 import { classifyShellRoute } from "../lib/shell-navigation";
-import { NotFoundPage } from "../pages/NotFound";
 import {
   PluginSlotMount,
   resolveRouteSidebarSlot,
   usePluginSlots,
 } from "../plugins/slots";
 
-function getCompanyRouteSegment(
-  pathname: string,
-  companyPrefix: string | undefined,
-): string | null {
-  return (
-    getCompanyPathSegments(pathname, companyPrefix)[0]?.toLowerCase() ?? null
-  );
-}
-
-function getCompanyPathSegments(
-  pathname: string,
-  companyPrefix: string | undefined,
-): string[] {
-  if (!companyPrefix) return [];
-  const segments = pathname.split("/").filter(Boolean);
-  if (segments.length < 2) return [];
-  if (segments[0]?.toUpperCase() !== companyPrefix.toUpperCase()) return [];
-  return segments.slice(1);
-}
+const ROUTE_SIDEBAR_CONTEXT = {};
 
 const RESERVED_APP_SUBPATHS = new Set([
   "browse",
@@ -102,17 +77,8 @@ const RESERVED_APP_SUBPATHS = new Set([
   "app",
 ]);
 
-function isSkillsStoreRoute(
-  pathname: string,
-  companyPrefix: string | undefined,
-) {
-  const segments = pathname.split("/").filter(Boolean);
-  if (segments[0]?.toLowerCase() === "skills") return true;
-  if (!companyPrefix) return false;
-  return (
-    segments[0]?.toUpperCase() === companyPrefix.toUpperCase() &&
-    segments[1]?.toLowerCase() === "skills"
-  );
+function isSkillsStoreRoute(pathname: string) {
+  return pathname.split("/").filter(Boolean)[0]?.toLowerCase() === "skills";
 }
 
 export function Layout() {
@@ -128,50 +94,38 @@ export function Layout() {
   } = useSidebar();
   const { openNewIssue, openOnboarding } = useDialogActions();
   const { togglePanelVisible } = usePanel();
-  // Optional: Layout also renders in harnesses without a ToastProvider.
-  const pushToast = useOptionalToastActions()?.pushToast ?? null;
-  const {
-    companies,
-    loading: companiesLoading,
-    selectedCompany,
-    selectedCompanyId,
-    selectionSource,
-    setSelectedCompanyId,
-  } = useCompany();
-  const { companyPrefix, pluginRoutePath: matchedPluginRoutePath } = useParams<{
-    companyPrefix: string;
+  const { loading: organizationLoading, organization } = useOrganization();
+  const { pluginRoutePath: matchedPluginRoutePath } = useParams<{
     pluginRoutePath?: string;
   }>();
   const navigate = useNavigate();
   const location = useLocation();
   const navigationType = useNavigationType();
-  const isTaskDetailRoute = classifyShellRoute(location.pathname, companyPrefix).isTaskDetail;
+  const shellRoute = classifyShellRoute(location.pathname);
+  const isTaskDetailRoute = shellRoute.isTaskDetail;
   const isCompanySettingsRoute = [
-    "/company/settings",
-    "/company/export",
-    "/company/import",
+    "/organization/settings",
+    "/organization/export",
+    "/organization/import",
   ].some((settingsPath) => location.pathname.includes(settingsPath));
-  const companyPathSegments = getCompanyPathSegments(
-    location.pathname,
-    companyPrefix,
-  );
-  const isToolsRoute = companyPathSegments[0]?.toLowerCase() === "tools";
-  const isAppsRoute = companyPathSegments[0]?.toLowerCase() === "apps";
+  const pathSegments = shellRoute.segments;
+  const isToolsRoute = pathSegments[0]?.toLowerCase() === "tools";
+  const isAppsRoute = pathSegments[0]?.toLowerCase() === "apps";
   const appDetailConnectionId =
     isAppsRoute &&
-    companyPathSegments[1] &&
-    !RESERVED_APP_SUBPATHS.has(companyPathSegments[1].toLowerCase())
-      ? companyPathSegments[1]
+    pathSegments[1] &&
+    !RESERVED_APP_SUBPATHS.has(pathSegments[1].toLowerCase())
+      ? pathSegments[1]
       : null;
   const appDetailApplicationId =
     isAppsRoute &&
-    companyPathSegments[1]?.toLowerCase() === "app" &&
-    companyPathSegments[2]
-      ? companyPathSegments[2]
+    pathSegments[1]?.toLowerCase() === "app" &&
+    pathSegments[2]
+      ? pathSegments[2]
       : null;
   // The Skills Store renders its own secondary (category) sidebar, so the main
   // app nav collapses to its rail throughout the Skills Store section (PAP-10879).
-  const isSkillsRoute = isSkillsStoreRoute(location.pathname, companyPrefix);
+  const isSkillsRoute = isSkillsStoreRoute(location.pathname);
   const onboardingTriggered = useRef(false);
   const previousPathname = useRef<string | null>(null);
   const mainContentRef = useRef<HTMLElement | null>(null);
@@ -179,50 +133,21 @@ export function Layout() {
   const activeScrollKey = useRef<string>(location.key);
   const mobileNavVisible = useMobileNavVisibility(isMobile, location.pathname);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const matchedCompany = useMemo(() => {
-    if (!companyPrefix) return null;
-    const requestedPrefix = companyPrefix.toUpperCase();
-    return (
-      companies.find(
-        (company) => company.issuePrefix.toUpperCase() === requestedPrefix,
-      ) ?? null
-    );
-  }, [companies, companyPrefix]);
-  const hasUnknownCompanyPrefix =
-    Boolean(companyPrefix) &&
-    !companiesLoading &&
-    companies.length > 0 &&
-    !matchedCompany;
-  const pluginRoutePath = useMemo(
-    () =>
-      matchedPluginRoutePath?.toLowerCase() ??
-      getCompanyRouteSegment(location.pathname, companyPrefix),
-    [companyPrefix, location.pathname, matchedPluginRoutePath],
-  );
-  const routeSidebarCompanyId = matchedCompany?.id ?? null;
-  const routeSidebarCompanyPrefix = matchedCompany?.issuePrefix ?? null;
+  const pluginRoutePath = matchedPluginRoutePath?.toLowerCase() ?? pathSegments[0]?.toLowerCase() ?? null;
   const { slots: routeSidebarSlots } = usePluginSlots({
     slotTypes: ["page", "routeSidebar"],
-    companyId: routeSidebarCompanyId,
-    enabled: Boolean(routeSidebarCompanyId && pluginRoutePath),
+    enabled: Boolean(organization && pluginRoutePath),
   });
   const routeSidebarSlot = useMemo(
     () => resolveRouteSidebarSlot(routeSidebarSlots, pluginRoutePath),
     [pluginRoutePath, routeSidebarSlots],
-  );
-  const sidebarContext = useMemo(
-    () => ({
-      companyId: routeSidebarCompanyId,
-      companyPrefix: routeSidebarCompanyPrefix,
-    }),
-    [routeSidebarCompanyId, routeSidebarCompanyPrefix],
   );
   // Takeover routes (company settings, plugin `routeSidebar`) no longer replace
   // the app `<Sidebar/>`. Instead the host collapses it to its rail and renders
   // the contextual sidebar in a second pane (PAP-10695). One resolver drives
   // both desktop (SecondarySidebar) and mobile (off-canvas drawer).
   const secondarySidebar = isCompanySettingsRoute ? (
-    <CompanySettingsSidebar />
+    <OrganizationSettingsSidebar />
   ) : appDetailConnectionId ? (
     <AppDetailSidebar kind="connection" connectionId={appDetailConnectionId} />
   ) : appDetailApplicationId ? (
@@ -235,7 +160,7 @@ export function Layout() {
   ) : routeSidebarSlot ? (
     <PluginSlotMount
       slot={routeSidebarSlot}
-      context={sidebarContext}
+      context={ROUTE_SIDEBAR_CONTEXT}
       className="h-full w-full"
       missingBehavior="placeholder"
     />
@@ -265,90 +190,16 @@ export function Layout() {
   }, [forceRailCollapsed, setForceCollapsed]);
 
   useEffect(() => {
-    if (companiesLoading || onboardingTriggered.current) return;
+    if (organizationLoading || onboardingTriggered.current) return;
     if (health?.deploymentMode === "authenticated") return;
-    // Cloud provisions the single company for a stack, and POST /companies is a
-    // 403 floor there — auto-opening the wizard could only dead-end.
+    // Cloud provisions the organization for a stack, and POST /organization is
+    // a 403 floor there — auto-opening the wizard could only dead-end.
     if (health?.cloud) return;
-    if (companies.length === 0) {
+    if (!organization) {
       onboardingTriggered.current = true;
       openOnboarding();
     }
-  }, [
-    companies,
-    companiesLoading,
-    openOnboarding,
-    health?.cloud,
-    health?.deploymentMode,
-  ]);
-
-  useEffect(() => {
-    if (!companyPrefix || companiesLoading || companies.length === 0) return;
-
-    if (!matchedCompany) {
-      const fallback =
-        (selectedCompanyId
-          ? companies.find((company) => company.id === selectedCompanyId)
-          : null) ??
-        companies[0] ??
-        null;
-      if (fallback && selectedCompanyId !== fallback.id) {
-        setSelectedCompanyId(fallback.id, { source: "route_sync" });
-      }
-      return;
-    }
-
-    if (companyPrefix !== matchedCompany.issuePrefix) {
-      const suffix = location.pathname.replace(/^\/[^/]+/, "");
-      navigate(`/${matchedCompany.issuePrefix}${suffix}${location.search}`, {
-        replace: true,
-      });
-      return;
-    }
-
-    // Stale state (remembered paths, history, bookmarks, restored tabs)
-    // deposits users into archived companies long after archiving; a cold
-    // arrival bounces to an active company instead of dwelling there.
-    // Deliberate visits (the company is already the selection) stay put.
-    const bounce = resolveArchivedCompanyBounce({
-      matchedCompany,
-      selectedCompanyId,
-      companies,
-    });
-    if (bounce) {
-      pushToast?.({
-        title: `${matchedCompany.name} is archived`,
-        body: `Switched to ${bounce.name}.`,
-        tone: "info",
-        dedupeKey: `archived-company-bounce:${matchedCompany.id}`,
-      });
-      setSelectedCompanyId(bounce.id, { source: "route_sync" });
-      navigate(`/${bounce.issuePrefix}/dashboard`, { replace: true });
-      return;
-    }
-
-    if (
-      shouldSyncCompanySelectionFromRoute({
-        selectionSource,
-        selectedCompanyId,
-        routeCompanyId: matchedCompany.id,
-      })
-    ) {
-      setSelectedCompanyId(matchedCompany.id, { source: "route_sync" });
-    }
-  }, [
-    companyPrefix,
-    companies,
-    companiesLoading,
-    matchedCompany,
-    location.pathname,
-    location.search,
-    navigate,
-    pushToast,
-    selectionSource,
-    selectedCompanyId,
-    setSelectedCompanyId,
-  ]);
+  }, [organization, organizationLoading, openOnboarding, health?.cloud, health?.deploymentMode]);
 
   const togglePanel = togglePanelVisible;
   const openSearch = useCallback(() => {
@@ -458,7 +309,6 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [peeking, clearPeekTimer, setPeeking]);
 
-  useCompanyPageMemory();
 
   useKeyboardShortcuts({
     onNewIssue: () => openNewIssue(),
@@ -715,18 +565,9 @@ export function Layout() {
                     : "overflow-auto [scrollbar-gutter:stable]",
                 )}
               >
-                {hasUnknownCompanyPrefix ? (
-                  <NotFoundPage
-                    scope="invalid_company_prefix"
-                    requestedPrefix={
-                      companyPrefix ?? selectedCompany?.issuePrefix
-                    }
-                  />
-                ) : (
-                  <RouteErrorBoundary>
-                    <Outlet />
-                  </RouteErrorBoundary>
-                )}
+                <RouteErrorBoundary>
+                  <Outlet />
+                </RouteErrorBoundary>
               </main>
               <PropertiesPanel />
             </div>

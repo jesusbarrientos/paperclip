@@ -1,6 +1,6 @@
 # Persistent agent files
 
-Each managed agent has one current directory, scoped by company and agent. The
+Each managed agent has one current directory, scoped by agent under the instance's organization root. The
 Instructions Editor reads and writes this directory. `AGENTS.md` (or the
 configured entry) is one file in it. Agents may create ordinary files and nested
 folders for notes, memory, and other personal working material. Files in the
@@ -8,15 +8,15 @@ task working directory remain task files.
 
 Agents can edit their own managed files under the responsible user’s current
 target permissions. Access to another agent’s files additionally requires the
-caller’s own target-scoped configuration permission; shared company membership
+caller’s own target-scoped configuration permission; shared organization membership
 or a responsible user alone does not grant peer access.
 
 ## Layout
 
-The canonical host directory keeps its existing physical location:
+The canonical host directory lives under the organization root:
 
 ```
-<instance>/companies/<company>/agents/<agent>/
+<instance>/organization/agents/<agent>/
   instructions/                 current agent files (editor)
     AGENTS.md
     notes/

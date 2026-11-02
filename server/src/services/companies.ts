@@ -83,19 +83,13 @@ export function companyService(db: Db) {
         pausedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(and(
-        eq(agents.companyId, id),
-        notInArray(agents.status, ["paused", "terminated", "pending_approval"]),
-      ))
+      .where(notInArray(agents.status, ["paused", "terminated", "pending_approval"]))
       .returning({ id: agents.id });
 
     const activeRunIds = await tx
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
-      .where(and(
-        eq(heartbeatRuns.companyId, id),
-        inArray(heartbeatRuns.status, ["queued", "running"]),
-      ))
+      .where(inArray(heartbeatRuns.status, ["queued", "running"]))
       .then((rows) => rows.map((row) => row.id));
 
     await tx
@@ -107,7 +101,6 @@ export function companyService(db: Db) {
         updatedAt: new Date(),
       })
       .where(and(
-        eq(agentWakeupRequests.companyId, id),
         inArray(agentWakeupRequests.status, ["queued", "deferred_issue_execution", "claimed"]),
         isNull(agentWakeupRequests.runId),
       ));
@@ -125,7 +118,6 @@ export function companyService(db: Db) {
     }
 
     await logActivity(db, {
-      companyId: id,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId ?? null,
@@ -177,38 +169,29 @@ export function companyService(db: Db) {
     };
   }
 
-  async function getMonthlySpendByCompanyIds(
-    companyIds: string[],
-    database: Pick<Db, "select"> = db,
-  ) {
-    if (companyIds.length === 0) return new Map<string, number>();
+  async function getMonthlySpend(database: Pick<Db, "select"> = db) {
     const { start, end } = currentUtcMonthWindow();
-    const rows = await database
-        .select({
-          companyId: costEvents.companyId,
-          spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
-        })
+    const [row] = await database
+      .select({
+        spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
+      })
       .from(costEvents)
       .where(
         and(
-          inArray(costEvents.companyId, companyIds),
           gte(costEvents.occurredAt, start),
           lt(costEvents.occurredAt, end),
         ),
-      )
-      .groupBy(costEvents.companyId);
-    return new Map(rows.map((row) => [row.companyId, Number(row.spentMonthlyCents ?? 0)]));
+      );
+    return Number(row?.spentMonthlyCents ?? 0);
   }
 
   async function hydrateCompanySpend<T extends { id: string; spentMonthlyCents: number }>(
     rows: T[],
     database: Pick<Db, "select"> = db,
   ) {
-    const spendByCompanyId = await getMonthlySpendByCompanyIds(rows.map((row) => row.id), database);
-    return rows.map((row) => ({
-      ...row,
-      spentMonthlyCents: spendByCompanyId.get(row.id) ?? 0,
-    }));
+    if (rows.length === 0) return rows;
+    const spentMonthlyCents = await getMonthlySpend(database);
+    return rows.map((row) => ({ ...row, spentMonthlyCents }));
   }
 
   function getCompanyQuery(database: Pick<Db, "select">) {
@@ -231,7 +214,6 @@ export function companyService(db: Db) {
    */
   async function resolveRenamedIssuePrefix(
     tx: CompanyTx,
-    companyId: string,
     companyPatch: Partial<typeof companies.$inferInsert>,
   ): Promise<{ fromPrefix: string; toPrefix: string } | null> {
     // Only patch and environment facts gate the lock. Every comparison against
@@ -260,7 +242,7 @@ export function companyService(db: Db) {
     const locked = await tx
       .select({ name: companies.name, issuePrefix: companies.issuePrefix })
       .from(companies)
-      .where(eq(companies.id, companyId))
+      .limit(1)
       .for("update")
       .then((rows) => rows[0] ?? null);
     if (!locked || nextName === locked.name) return null;
@@ -303,10 +285,8 @@ export function companyService(db: Db) {
     },
 
     getById: async (id: string) => {
-      // Non-UUID refs previously reached the uuid-typed query and threw a
-      // DrizzleQueryError ("invalid input syntax for type uuid"), surfacing
-      // as HTTP 500 from GET /api/companies/:companyId. Treat them as
-      // not-found so the route returns 404.
+      // A non-UUID ref would reach the uuid-typed query and throw a
+      // DrizzleQueryError (HTTP 500); treat it as not-found instead.
       if (!UUID_RE.test(id)) return null;
       const row = await getCompanyQuery(db)
         .where(eq(companies.id, id))
@@ -320,7 +300,7 @@ export function companyService(db: Db) {
       await assertCanCreateOrganization(db);
       const created = await createCompanyWithUniquePrefix(data);
       await environmentsSvc.ensureLocalEnvironment(created.id);
-      await builtInAgents.autoProvisionBundledAgents(created.id);
+      await builtInAgents.autoProvisionBundledAgents();
       const row = await getCompanyQuery(db)
         .where(eq(companies.id, created.id))
         .then((rows) => rows[0] ?? null);
@@ -346,17 +326,14 @@ export function companyService(db: Db) {
 
         if (logoAssetId !== undefined && logoAssetId !== null) {
           const nextLogoAsset = await tx
-            .select({ id: assets.id, companyId: assets.companyId })
+            .select({ id: assets.id })
             .from(assets)
             .where(eq(assets.id, logoAssetId))
             .then((rows) => rows[0] ?? null);
           if (!nextLogoAsset) throw notFound("Logo asset not found");
-          if (nextLogoAsset.companyId !== existing.id) {
-            throw unprocessable("Logo asset must belong to the same company");
-          }
         }
 
-        const renamedPrefix = await resolveRenamedIssuePrefix(tx, id, companyPatch);
+        const renamedPrefix = await resolveRenamedIssuePrefix(tx, companyPatch);
 
         const updated = await tx
           .update(companies)
@@ -378,7 +355,6 @@ export function companyService(db: Db) {
         } | null = null;
         if (renamedPrefix) {
           const rekeyed = await rekeyCompanyIssueIdentifiers(tx, {
-            companyId: id,
             fromPrefix: renamedPrefix.fromPrefix,
             toPrefix: renamedPrefix.toPrefix,
           });
@@ -401,7 +377,6 @@ export function companyService(db: Db) {
               updatedAt: new Date(),
             })
             .where(and(
-              eq(agents.companyId, id),
               eq(agents.status, "paused"),
               eq(agents.pauseReason, "company_archived"),
             ))
@@ -457,11 +432,10 @@ export function companyService(db: Db) {
       // committed, so a later cascade or activity-log failure must not
       // leave Cloud unaware of a company that is in fact archived.
       if (result.archiveCascade || result.unarchived) {
-        void notifyCloudOfPrimaryCompanyLifecycleChange(id);
+        void notifyCloudOfPrimaryCompanyLifecycleChange();
       }
       if (result.issuePrefixRederived) {
         await logActivity(db, {
-          companyId: id,
           actorType: actor.actorType,
           actorId: actor.actorId,
           agentId: actor.agentId ?? null,
@@ -478,7 +452,6 @@ export function companyService(db: Db) {
       }
       if (result.reactivated) {
         await logActivity(db, {
-          companyId: id,
           actorType: actor.actorType,
           actorId: actor.actorId,
           agentId: actor.agentId ?? null,
@@ -530,7 +503,7 @@ export function companyService(db: Db) {
       // Same doorbell rule as update(): the archive is committed, so ring
       // before finalization, which can throw without undoing it.
       if (result.cascade) {
-        void notifyCloudOfPrimaryCompanyLifecycleChange(id);
+        void notifyCloudOfPrimaryCompanyLifecycleChange();
         await finalizeArchive(id, actor, result.cascade);
       }
 
@@ -542,45 +515,44 @@ export function companyService(db: Db) {
         // Delete from child tables in dependency order
         const companyRunIds = await tx
           .select({ id: heartbeatRuns.id })
-          .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, id));
+          .from(heartbeatRuns);
 
-        await tx.delete(heartbeatRunEvents).where(eq(heartbeatRunEvents.companyId, id));
+        await tx.delete(heartbeatRunEvents);
         if (companyRunIds.length > 0) {
           await tx
             .delete(heartbeatRunEvents)
             .where(inArray(heartbeatRunEvents.runId, companyRunIds.map((run) => run.id)));
         }
-        await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.companyId, id));
-        await tx.delete(activityLog).where(eq(activityLog.companyId, id));
-        await tx.delete(runIdentityContexts).where(eq(runIdentityContexts.companyId, id));
-        await tx.delete(heartbeatRuns).where(eq(heartbeatRuns.companyId, id));
-        await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id));
+        await tx.delete(agentTaskSessions);
+        await tx.delete(activityLog);
+        await tx.delete(runIdentityContexts);
+        await tx.delete(heartbeatRuns);
+        await tx.delete(agentWakeupRequests);
         await tx.delete(agentApiKeys);
-        await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
-        await tx.delete(issueComments).where(eq(issueComments.companyId, id));
-        await tx.delete(costEvents).where(eq(costEvents.companyId, id));
-        await tx.delete(financeEvents).where(eq(financeEvents.companyId, id));
-        await tx.delete(approvalComments).where(eq(approvalComments.companyId, id));
-        await tx.delete(approvals).where(eq(approvals.companyId, id));
-        await tx.delete(companySecrets).where(eq(companySecrets.companyId, id));
+        await tx.delete(agentRuntimeState);
+        await tx.delete(issueComments);
+        await tx.delete(costEvents);
+        await tx.delete(financeEvents);
+        await tx.delete(approvalComments);
+        await tx.delete(approvals);
+        await tx.delete(companySecrets);
         await tx.delete(joinRequests);
         await tx.delete(invites);
         await tx.delete(principalPermissionGrants);
         await tx.delete(companyMemberships);
-        await tx.delete(companySkills).where(eq(companySkills.companyId, id));
-        await tx.delete(routineRuns).where(eq(routineRuns.companyId, id));
-        await tx.delete(routineTriggers).where(eq(routineTriggers.companyId, id));
-        await tx.delete(routineRevisions).where(eq(routineRevisions.companyId, id));
-        await tx.delete(routines).where(eq(routines.companyId, id));
-        await tx.delete(issueReadStates).where(eq(issueReadStates.companyId, id));
-        await tx.delete(documents).where(eq(documents.companyId, id));
-        await tx.delete(issues).where(eq(issues.companyId, id));
+        await tx.delete(companySkills);
+        await tx.delete(routineRuns);
+        await tx.delete(routineTriggers);
+        await tx.delete(routineRevisions);
+        await tx.delete(routines);
+        await tx.delete(issueReadStates);
+        await tx.delete(documents);
+        await tx.delete(issues);
         await tx.delete(companyLogos).where(eq(companyLogos.companyId, id));
-        await tx.delete(assets).where(eq(assets.companyId, id));
-        await tx.delete(goals).where(eq(goals.companyId, id));
-        await tx.delete(projects).where(eq(projects.companyId, id));
-        await tx.delete(agents).where(eq(agents.companyId, id));
+        await tx.delete(assets);
+        await tx.delete(goals);
+        await tx.delete(projects);
+        await tx.delete(agents);
         const rows = await tx
           .delete(companies)
           .where(eq(companies.id, id))
@@ -590,27 +562,11 @@ export function companyService(db: Db) {
 
     stats: () =>
       Promise.all([
-        db
-          .select({ companyId: agents.companyId, count: count() })
-          .from(agents)
-          .groupBy(agents.companyId),
-        db
-          .select({ companyId: issues.companyId, count: count() })
-          .from(issues)
-          .groupBy(issues.companyId),
-      ]).then(([agentRows, issueRows]) => {
-        const result: Record<string, { agentCount: number; issueCount: number }> = {};
-        for (const row of agentRows) {
-          result[row.companyId] = { agentCount: row.count, issueCount: 0 };
-        }
-        for (const row of issueRows) {
-          if (result[row.companyId]) {
-            result[row.companyId].issueCount = row.count;
-          } else {
-            result[row.companyId] = { agentCount: 0, issueCount: row.count };
-          }
-        }
-        return result;
-      }),
+        db.select({ count: count() }).from(agents),
+        db.select({ count: count() }).from(issues),
+      ]).then(([[agentRow], [issueRow]]) => ({
+        agentCount: agentRow?.count ?? 0,
+        issueCount: issueRow?.count ?? 0,
+      })),
   };
 }

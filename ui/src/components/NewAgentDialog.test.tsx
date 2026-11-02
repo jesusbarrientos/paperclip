@@ -13,7 +13,7 @@ vi.mock("@/api/instanceSettings", () => ({
 const invites = vi.hoisted(() => ({ createCompanyInvite: vi.fn(), getInviteOnboarding: vi.fn(), copy: vi.fn() }));
 vi.mock("../api/access", () => ({ accessApi: invites }));
 vi.mock("../lib/clipboard", () => ({ copyTextToClipboard: invites.copy }));
-vi.mock("../context/CompanyContext", () => ({ useCompany: () => ({ selectedCompanyId: "company-1" }) }));
+vi.mock("../context/OrganizationContext", () => ({ useOrganization: () => ({ }) }));
 const state = vi.hoisted(() => ({
   adapters: [] as object[],
   navigate: vi.fn(),
@@ -180,7 +180,7 @@ it("keeps agent-only invitations reachable from the new-agent flow", async () =>
   });
   await click("Generate onboarding prompt");
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
-  expect(invites.createCompanyInvite).toHaveBeenCalledWith("company-1", {
+  expect(invites.createCompanyInvite).toHaveBeenCalledWith({
     allowedJoinTypes: "agent", humanRole: null, agentMessage: "Help with research",
   });
   expect(document.querySelector<HTMLTextAreaElement>('textarea[readonly]')?.value).toContain("/api/invites/one-time-token/onboarding.txt");

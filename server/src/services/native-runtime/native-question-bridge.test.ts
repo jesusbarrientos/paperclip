@@ -70,7 +70,6 @@ describeEmbeddedPostgres("native question bridge", () => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let db: ReturnType<typeof createDb>;
   let heartbeat: ReturnType<typeof heartbeatService>;
-  let companyId: string;
   let issueId: string;
   let agentId: string;
   let runId: string;
@@ -111,16 +110,14 @@ describeEmbeddedPostgres("native question bridge", () => {
   });
 
   async function seed() {
-    companyId = randomUUID();
     issueId = randomUUID();
     agentId = randomUUID();
     runId = randomUUID();
     sessionId = randomUUID();
     runnerInstanceId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
       name: "Native questions",
-      issuePrefix: `NQ${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: `NQ${issueId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(authUsers).values({
@@ -132,7 +129,6 @@ describeEmbeddedPostgres("native question bridge", () => {
     }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Native Codex",
       adapterType: "paperclip_runner",
       status: "running",
@@ -141,7 +137,6 @@ describeEmbeddedPostgres("native question bridge", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Answer a native question",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -149,7 +144,6 @@ describeEmbeddedPostgres("native question bridge", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -162,7 +156,6 @@ describeEmbeddedPostgres("native question bridge", () => {
     });
     await db.insert(nativeRunFinalizations).values({
       runId,
-      companyId,
       issueId,
       phase: "observed",
     });
@@ -212,7 +205,6 @@ describeEmbeddedPostgres("native question bridge", () => {
 
   function binding() {
     return {
-      companyId,
       issueId,
       runId,
       agentId,
@@ -243,7 +235,7 @@ describeEmbeddedPostgres("native question bridge", () => {
       await projectNativeRuntimeRequest({ db, binding: binding(), event: committed });
     });
     const port = new PaperclipControlPlanePort(db, {
-      companyId, issueId, runId, agentId, sessionId,
+      issueId, runId, agentId, sessionId,
       completionContractId: binding().completionContractId,
       completionContractSha256: binding().completionContractSha256,
       sourceInstanceId: runnerInstanceId, controlPlaneSourceInstanceId: "control-1",
@@ -255,9 +247,8 @@ describeEmbeddedPostgres("native question bridge", () => {
     const [persisted] = await db.select().from(heartbeatRunEvents).where(eq(heartbeatRunEvents.runId, runId));
     expect(persisted?.payload).toEqual({ prpEvent: event }); // task-chat's exact source, with only offered decisions
     expect(await port.appendEvent(event)).toMatchObject({ disposition: "duplicate" });
-    const pending = await readPendingNativeRuntimeRequest(db, { companyId, runId, requestId: "permission-1" });
+    const pending = await readPendingNativeRuntimeRequest(db, { runId, requestId: "permission-1" });
     expect(pending).toMatchObject({ requestKind: "permission_approval", turnId: "turn-1", resolverPolicy: "instance_admin" });
-    expect(await readPendingNativeRuntimeRequest(db, { companyId: randomUUID(), runId, requestId: "permission-1" })).toBeNull();
 
     const stateDirectory = mkdtempSync(join(tmpdir(), "native-permission-authority-"));
     const server = createServer();
@@ -267,14 +258,12 @@ describeEmbeddedPostgres("native question bridge", () => {
       identity: { runnerInstanceId, environmentLeaseId: "lease-1", runId, normalizedSessionId: sessionId, turnId: "turn-1", itemId: "item-1" },
       expectedRunnerVersion: "0.3.0", expectedRunnerDigest: `sha256:${"a".repeat(64)}`,
     });
-    const registration = await registerRunnerPrpAuthority({ companyId, runId, authority });
+    const registration = await registerRunnerPrpAuthority({ runId, authority });
     try {
-      const commandInput = { companyId, runId, pendingRequest: pending!, resolution: { action: "accept" as const },
+      const commandInput = { runId, pendingRequest: pending!, resolution: { action: "accept" as const },
         actor: { type: "user" as const, userId: "admin-1", isInstanceAdmin: true } };
       expect(() => queueRunnerPrpRuntimeRequestResolution({ ...commandInput, actor: { ...commandInput.actor, isInstanceAdmin: false } }))
         .toThrow("native_runtime_request_resolver_denied");
-      expect(() => queueRunnerPrpRuntimeRequestResolution({ ...commandInput, companyId: randomUUID() }))
-        .toThrow("runner_prp_authority_not_active");
       const queued = queueRunnerPrpRuntimeRequestResolution(commandInput);
       expect(queueRunnerPrpRuntimeRequestResolution(commandInput)).toEqual(queued);
       expect(authority.store.state.commands).toHaveLength(1);
@@ -286,11 +275,11 @@ describeEmbeddedPostgres("native question bridge", () => {
         .toThrow("runtime_request_resolution_conflict");
       // Queueing is not delivery: only the runner's post-write receipt closes
       // the request. ACP sidecar delivery tests exercise that provider edge.
-      expect(await readPendingNativeRuntimeRequest(db, { companyId, runId, requestId: "permission-1" })).toEqual(pending);
+      expect(await readPendingNativeRuntimeRequest(db, { runId, requestId: "permission-1" })).toEqual(pending);
       await port.appendEvent({ ...event, sourceEventId: "permission-delivered", sourceSeq: 2,
         eventType: "runtime_request.resolved", payload: { requestId: "permission-1", requestKind: "permission_approval",
           turnId: "turn-1", itemId: "item-1", status: "delivered", action: "accept" } });
-      expect(await readPendingNativeRuntimeRequest(db, { companyId, runId, requestId: "permission-1" })).toBeNull();
+      expect(await readPendingNativeRuntimeRequest(db, { runId, requestId: "permission-1" })).toBeNull();
     } finally {
       await registration.release();
       await authority.stop();
@@ -313,7 +302,7 @@ describeEmbeddedPostgres("native question bridge", () => {
   it("projects an executor question immediately and routes its durable answer into the same live turn", async () => {
     await seed();
     const event = runtimeRequestEvent();
-    await db.insert(heartbeatRunEvents).values({ companyId, agentId, runId, seq: 1,
+    await db.insert(heartbeatRunEvents).values({ agentId, runId, seq: 1,
       eventType: event.eventType, stream: "system", level: "info", payload: { prpEvent: event } });
     const resolve = vi.fn(async (input: any) => { await input.authorizeBeforeDispatch(); return { commandId: "live-response" }; });
     const bridge = createLocalNativeQuestionBridge({ db, binding: binding(), resolve });
@@ -325,7 +314,7 @@ describeEmbeddedPostgres("native question bridge", () => {
       expect(cards).toHaveLength(1);
       expect(cards[0]).toMatchObject({ status: "pending", sourceRunId: runId, continuationPolicy: "none" });
       const answered = await issueThreadInteractionService(db).answerQuestions(
-        { id: issueId, companyId, status: "in_progress" }, cards[0]!.id,
+        { id: issueId, status: "in_progress" }, cards[0]!.id,
         { answers: [{ questionId: "color", optionIds: ["green"] }] }, { userId: "operator-1" },
       );
       if (answered.kind !== "ask_user_questions") throw new Error("wrong question kind");
@@ -344,12 +333,12 @@ describeEmbeddedPostgres("native question bridge", () => {
     (event.payload.request as any).input.questions = [{ id: "url", prompt: "URL?", required: true, answerMode: "text" }];
     const interaction = await projectNativeRuntimeRequest({ db, binding: binding(), event });
     const answered = await issueThreadInteractionService(db).answerQuestions(
-      { id: issueId, companyId, status: "in_progress" }, interaction!.id,
+      { id: issueId, status: "in_progress" }, interaction!.id,
       { answers: [{ questionId: "url", optionIds: [], otherText: "https://example.test" }] }, { userId: "operator-1" },
     );
     if (answered.kind !== "ask_user_questions") throw new Error("expected questions");
     const queueCommand = vi.fn(() => ({ commandId: "question", controllerSeq: 1 }));
-    const release = registerNativeQuestionCommandTarget({ binding: { companyId, issueId, runId, agentId }, queueCommand });
+    const release = registerNativeQuestionCommandTarget({ binding: { issueId, runId, agentId }, queueCommand });
     const busy = vi.spyOn(questionPatternValidation, "validateQuestionPatterns").mockRejectedValue(new Error("Question format validation is busy; try again"));
     try {
       await flushNativeQuestionResponses(db, runId);
@@ -405,14 +394,14 @@ describeEmbeddedPostgres("native question bridge", () => {
     })).rejects.toThrow(/unknown option red/);
 
     const answered = await issueThreadInteractionService(db).answerQuestions(
-      { id: issueId, companyId, status: "in_progress" },
+      { id: issueId, status: "in_progress" },
       interaction!.id,
       answer,
       { userId: "operator-1" },
     );
     const queueCommand = vi.fn(() => ({ commandId: "question", controllerSeq: 1 }));
     const release = registerNativeQuestionCommandTarget({
-      binding: { companyId, issueId, runId, agentId },
+      binding: { issueId, runId, agentId },
       queueCommand,
     });
 
@@ -447,12 +436,12 @@ describeEmbeddedPostgres("native question bridge", () => {
     await db.update(issues).set({ conversationAgentId: agentId, conversationUserId: "operator-1", conversationState: "active", conversationSessionGeneration: 1, executionRunId: null }).where(eq(issues.id, issueId));
     const interaction = await projectNativeRuntimeRequest({ db, binding: binding(), event: runtimeRequestEvent() });
     await db.update(heartbeatRuns).set({ status, finishedAt: new Date() }).where(eq(heartbeatRuns.id, runId));
-    await issueThreadInteractionService(db).answerQuestions({ id: issueId, companyId, status: "in_progress" }, interaction!.id,
+    await issueThreadInteractionService(db).answerQuestions({ id: issueId, status: "in_progress" }, interaction!.id,
       { answers: [{ questionId: "color", optionIds: ["green"] }] }, { userId: "operator-1" });
     const queueCommand = vi.fn();
-    const release = registerNativeQuestionCommandTarget({ binding: { companyId, issueId, runId, agentId }, queueCommand });
+    const release = registerNativeQuestionCommandTarget({ binding: { issueId, runId, agentId }, queueCommand });
     const targetRunId = randomUUID();
-    const wakeup = vi.fn(async () => db.insert(heartbeatRuns).values({ id: targetRunId, companyId, agentId, status: "queued",
+    const wakeup = vi.fn(async () => db.insert(heartbeatRuns).values({ id: targetRunId, agentId, status: "queued",
       contextSnapshot: { issueId } }).returning().then(rows => rows[0]!));
     const service = questionResponseDeliveryService(db, { heartbeat: { wakeup } as never,
       resolveNativeQuestion: candidate => deliverNativeQuestionResponse(db, candidate) });
@@ -481,7 +470,7 @@ describeEmbeddedPostgres("native question bridge", () => {
       event: runtimeRequestEvent(),
     });
     const answered = await issueThreadInteractionService(db).answerQuestions(
-      { id: issueId, companyId, status: "in_progress" },
+      { id: issueId, status: "in_progress" },
       interaction!.id,
       { answers: [{ questionId: "color", optionIds: ["green"] }] },
       { userId: "operator-1" },
@@ -615,7 +604,7 @@ describeEmbeddedPostgres("native question bridge", () => {
       event: runtimeRequestEvent(),
     });
     await issueThreadInteractionService(db).withdrawInteraction(
-      { id: issueId, companyId },
+      { id: issueId },
       interaction!.id,
       { reason: "No longer needed" },
       { userId: "operator-1" },
@@ -679,7 +668,7 @@ describeEmbeddedPostgres("native question bridge", () => {
     };
     await validateNativeQuestionResponseInput(interaction!, answer);
     const answered = await issueThreadInteractionService(db).answerQuestions(
-      { id: issueId, companyId, status: "in_progress" },
+      { id: issueId, status: "in_progress" },
       interaction!.id,
       answer,
       { userId: "operator-1" },
@@ -689,7 +678,7 @@ describeEmbeddedPostgres("native question bridge", () => {
 
     const queueCommand = vi.fn(() => ({ commandId: "question", controllerSeq: 1 }));
     registerNativeQuestionCommandTarget({
-      binding: { companyId, issueId, runId, agentId },
+      binding: { issueId, runId, agentId },
       queueCommand,
     });
     await expect(deliverNativeQuestionResponse(db, answered)).resolves.toBe("queued");

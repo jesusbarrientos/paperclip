@@ -2,12 +2,13 @@ const SILENCED_SUCCESS_METHODS = new Set(["GET", "HEAD"]);
 
 const SILENCED_SUCCESS_API_PATHS = [
   /^\/api\/health(?:\/|$)/,
-  /^\/api\/companies\/[^/]+\/activity(?:\/|$)/,
-  /^\/api\/companies\/[^/]+\/dashboard(?:\/|$)/,
-  /^\/api\/companies\/[^/]+\/heartbeat-runs(?:\/|$)/,
-  /^\/api\/companies\/[^/]+\/issues(?:\/|$)/,
-  /^\/api\/companies\/[^/]+\/live-runs(?:\/|$)/,
-  /^\/api\/companies\/[^/]+\/sidebar-badges(?:\/|$)/,
+  /^\/api\/activity(?:\/|$)/,
+  /^\/api\/dashboard(?:\/|$)/,
+  // Lists only: `/api/issues/:id` and `/api/heartbeat-runs/:id` are ordinary reads that must stay logged.
+  /^\/api\/heartbeat-runs$/,
+  /^\/api\/issues$/,
+  /^\/api\/live-runs(?:\/|$)/,
+  /^\/api\/sidebar-badges(?:\/|$)/,
   /^\/api\/heartbeat-runs\/[^/]+\/log(?:\/|$)/,
 ];
 

@@ -18,8 +18,8 @@ export type {
 /**
  * Company-level Artifacts client (PAP-10359).
  *
- * Talks to the company-scoped artifacts projection endpoint
- * (`GET /api/companies/:companyId/artifacts`) defined by the approved
+ * Talks to the organization artifacts projection endpoint
+ * (`GET /api/organization/artifacts`) defined by the approved
  * Artifacts plan (PAP-10353). The endpoint flattens agent-produced issue
  * documents, direct attachments, and `artifact` work products into a single
  * card-ready list so the UI never has to stitch issue-specific endpoints
@@ -79,9 +79,9 @@ function normalizeArtifactsResponse(
 }
 
 export const artifactsApi = {
-  list: async (companyId: string, params?: ListArtifactsParams): Promise<CompanyArtifactsResponse> => {
+  list: async (params?: ListArtifactsParams): Promise<CompanyArtifactsResponse> => {
     const raw = await api.get<CompanyArtifactsResponse | CompanyArtifact[]>(
-      `/companies/${companyId}/artifacts${buildArtifactsQuery(params)}`,
+      `/organization/artifacts${buildArtifactsQuery(params)}`,
     );
     return normalizeArtifactsResponse(raw);
   },

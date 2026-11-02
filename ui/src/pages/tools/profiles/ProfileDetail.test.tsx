@@ -55,7 +55,6 @@ function summary(partial: Partial<ToolProfileSummary> = {}): ToolProfileSummary 
 function entry(partial: Partial<ToolProfileEntry>): ToolProfileEntry {
   return {
     id: partial.id ?? "entry-1",
-    companyId: "c1",
     profileId: "p1",
     selectorType: "application",
     effect: "include",
@@ -74,7 +73,6 @@ function entry(partial: Partial<ToolProfileEntry>): ToolProfileEntry {
 function profile(partial: Partial<ToolProfileWithDetails> & { id?: string; name?: string } = {}): ToolProfileWithDetails {
   return {
     id: partial.id ?? "p1",
-    companyId: "c1",
     profileKey: "everyday",
     name: partial.name ?? "Everyday work",
     description: "Routine work tools.",
@@ -88,7 +86,6 @@ function profile(partial: Partial<ToolProfileWithDetails> & { id?: string; name?
     bindings: [
       {
         id: "b1",
-        companyId: "c1",
         profileId: "p1",
         targetType: "agent",
         targetId: "a1",
@@ -108,7 +105,6 @@ function profile(partial: Partial<ToolProfileWithDetails> & { id?: string; name?
 function tool(partial: Partial<ToolCatalogEntry>): ToolCatalogEntry {
   return {
     id: partial.id ?? "t1",
-    companyId: "c1",
     applicationId: "app-gmail",
     connectionId: "conn-gmail",
     entryKind: "tool",
@@ -203,7 +199,7 @@ describe("ProfileDetail", () => {
     flushSync(() => {
       root.render(
         <QueryClientProvider client={client}>
-          <ProfileDetail companyId="c1" profileId="p1" />
+          <ProfileDetail profileId="p1" />
         </QueryClientProvider>,
       );
     });

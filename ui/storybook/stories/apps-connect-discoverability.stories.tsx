@@ -31,7 +31,7 @@ function seededClient() {
       queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false },
     },
   });
-  c.setQueryData(queryKeys.apps.gallery(COMPANY), { apps: GALLERY });
+  c.setQueryData(queryKeys.apps.gallery(), { apps: GALLERY });
   return c;
 }
 
@@ -51,7 +51,7 @@ function PasteConfigHost() {
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-3xl p-6">
-        <PasteConfigTab companyId={COMPANY} />
+        <PasteConfigTab />
       </div>
     </QueryClientProvider>
   );
@@ -131,7 +131,7 @@ function PreviewHost({ preview, snippet }: { preview: McpJsonImportPreview; snip
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-3xl p-6">
-        <PasteConfigTab companyId={COMPANY} />
+        <PasteConfigTab />
       </div>
     </QueryClientProvider>
   );

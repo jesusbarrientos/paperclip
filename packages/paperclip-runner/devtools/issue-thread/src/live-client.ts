@@ -35,7 +35,6 @@ const CREDENTIALS = "same-origin" as const;
 export interface CapabilityCleanRoomIdentity {
   token: string;
   sequence: number;
-  companyId: string;
   actorId: string;
   taskId: string;
   identifier: string;

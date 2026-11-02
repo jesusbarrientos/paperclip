@@ -13,7 +13,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
 import { assets } from "./assets.js";
-import { companies } from "./companies.js";
 import { documents } from "./documents.js";
 import { issues } from "./issues.js";
 import { labels } from "./labels.js";
@@ -23,7 +22,6 @@ export const cases = pgTable(
   "cases",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     caseNumber: integer("case_number").notNull(),
     identifier: text("identifier").notNull(),
@@ -41,12 +39,11 @@ export const cases = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyCaseNumberUq: uniqueIndex("cases_company_case_number_uq").on(table.companyId, table.caseNumber),
+    companyCaseNumberUq: uniqueIndex("cases_company_case_number_uq").on(table.caseNumber),
     identifierUq: uniqueIndex("cases_identifier_uq").on(table.identifier),
-    companyTypeKeyUq: uniqueIndex("cases_company_type_key_uq").on(table.companyId, table.caseType, table.key),
-    companyStatusIdx: index("cases_company_status_idx").on(table.companyId, table.status),
-    companyTypeIdx: index("cases_company_type_idx").on(table.companyId, table.caseType),
-    companyProjectIdx: index("cases_company_project_idx").on(table.companyId, table.projectId),
+    companyTypeKeyUq: uniqueIndex("cases_company_type_key_uq").on(table.caseType, table.key),
+    companyStatusIdx: index("cases_company_status_idx").on(table.status),
+    companyProjectIdx: index("cases_company_project_idx").on(table.projectId),
     parentIdx: index("cases_parent_idx").on(table.parentCaseId),
     titleSearchIdx: index("cases_title_search_idx").using("gin", table.title.op("gin_trgm_ops")),
     identifierSearchIdx: index("cases_identifier_search_idx").using("gin", table.identifier.op("gin_trgm_ops")),
@@ -62,7 +59,6 @@ export const caseIssueLinks = pgTable(
   "case_issue_links",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => cases.id, { onDelete: "cascade" }),
     issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
@@ -72,7 +68,6 @@ export const caseIssueLinks = pgTable(
   },
   (table) => ({
     caseIssueUq: uniqueIndex("case_issue_links_case_issue_uq").on(table.caseId, table.issueId),
-    companyCaseIdx: index("case_issue_links_company_case_idx").on(table.companyId, table.caseId),
     issueIdx: index("case_issue_links_issue_idx").on(table.issueId),
     roleCheck: check("case_issue_links_role_check", sql`${table.role} in ('origin', 'work', 'reference')`),
   }),
@@ -82,7 +77,6 @@ export const caseEvents = pgTable(
   "case_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => cases.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     actorType: text("actor_type").notNull(),
@@ -95,7 +89,6 @@ export const caseEvents = pgTable(
   },
   (table) => ({
     caseCreatedIdx: index("case_events_case_created_idx").on(table.caseId, table.createdAt),
-    companyCaseIdx: index("case_events_company_case_idx").on(table.companyId, table.caseId),
     kindCheck: check(
       "case_events_kind_check",
       sql`${table.kind} in (
@@ -120,7 +113,6 @@ export const caseDocuments = pgTable(
   "case_documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => cases.id, { onDelete: "cascade" }),
     documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
@@ -128,9 +120,9 @@ export const caseDocuments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyCaseKeyUq: uniqueIndex("case_documents_company_case_key_uq").on(table.companyId, table.caseId, table.key),
+    companyCaseKeyUq: uniqueIndex("case_documents_company_case_key_uq").on(table.caseId, table.key),
     documentUq: uniqueIndex("case_documents_document_uq").on(table.documentId),
-    companyCaseUpdatedIdx: index("case_documents_company_case_updated_idx").on(table.companyId, table.caseId, table.updatedAt),
+    companyCaseUpdatedIdx: index("case_documents_company_case_updated_idx").on(table.caseId, table.updatedAt),
   }),
 );
 
@@ -138,7 +130,6 @@ export const caseLabels = pgTable(
   "case_labels",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => cases.id, { onDelete: "cascade" }),
     labelId: uuid("label_id").notNull().references(() => labels.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -146,7 +137,6 @@ export const caseLabels = pgTable(
   },
   (table) => ({
     caseLabelUq: uniqueIndex("case_labels_case_label_uq").on(table.caseId, table.labelId),
-    companyCaseIdx: index("case_labels_company_case_idx").on(table.companyId, table.caseId),
     labelIdx: index("case_labels_label_idx").on(table.labelId),
   }),
 );
@@ -155,14 +145,13 @@ export const caseAttachments = pgTable(
   "case_attachments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => cases.id, { onDelete: "cascade" }),
     assetId: uuid("asset_id").notNull().references(() => assets.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyCaseIdx: index("case_attachments_company_case_idx").on(table.companyId, table.caseId),
+    companyCaseIdx: index("case_attachments_company_case_idx").on(table.caseId),
     assetUq: uniqueIndex("case_attachments_asset_uq").on(table.assetId),
   }),
 );

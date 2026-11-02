@@ -322,7 +322,6 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
 
     const persistedDefaults = await prepareAgentDefaultsPayloadForJoinPersistence({
       db,
-      companyId,
       adapterType: "hermes_gateway",
       normalized: joinDefaults.normalized,
     });

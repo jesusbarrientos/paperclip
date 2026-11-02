@@ -30,7 +30,6 @@ describe("fake sandbox provider plugin", () => {
     });
     const base = {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { image: "fake:test", reuseLease: false },
     };
@@ -191,7 +190,6 @@ describe("fake sandbox provider plugin", () => {
     });
     const base = {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "env-setup",
       config: { image: "fake:setup", reuseLease: false },
     };
@@ -336,7 +334,6 @@ describe("fake sandbox provider plugin", () => {
     });
     const base = {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "env-redaction",
       config: { image: "fake:redaction", reuseLease: false },
     };
@@ -376,7 +373,6 @@ describe("fake sandbox provider plugin", () => {
       });
       const base = {
         driverKey: "fake-plugin",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { image: "fake:test", reuseLease: false },
       };
@@ -430,7 +426,6 @@ describe("fake sandbox provider plugin", () => {
     });
     const base = {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { image: "fake:test", reuseLease: false },
     };
@@ -472,7 +467,6 @@ describe("fake sandbox provider plugin", () => {
     });
     const base = {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { image: "fake:test", reuseLease: false },
     };

@@ -8,7 +8,7 @@ import {
 } from "@paperclipai/adapter-utils/execution-target";
 import { githubBrokerEnvironment } from "@paperclipai/adapter-utils/github-launcher";
 
-type Binding = { companyId: string; agentId: string; issueId: string; runId: string };
+type Binding = { agentId: string; issueId: string; runId: string };
 type LauncherInput = Parameters<typeof prepareGitHubOperationLaunchers>[0];
 export type NativeGitHubAccess = Awaited<ReturnType<typeof createNativeGitHubAccess>>;
 
@@ -131,7 +131,7 @@ export async function createNativeGitHubAccess(input: {
       ready,
       activate(binding: Binding) {
         if (stopped || active) throw new Error("GitHub session is closed or busy");
-        if (binding.companyId !== input.scope.companyId || binding.agentId !== input.scope.agentId ||
+        if ((binding.agentId !== input.scope.agentId) ||
             binding.issueId !== input.scope.issueId) throw new Error("GitHub session scope mismatch");
         const owner = { ...binding };
         active = owner;

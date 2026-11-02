@@ -40,7 +40,7 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       throw notFound("GitHub bot not found");
     return row;
   }
-  async function member(companyId: string, userId: string) {
+  async function member(userId: string) {
     const [row] = await db
       .select()
       .from(companyMemberships)
@@ -63,15 +63,11 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       .select()
       .from(chatGitHubConfigurations)
       .where(
-        and(
-          eq(chatGitHubConfigurations.companyId, bot.companyId),
-          eq(chatGitHubConfigurations.endpointId, endpointId),
-        ),
+        eq(chatGitHubConfigurations.endpointId, endpointId),
       );
     return (
       saved ?? {
         endpointId,
-        companyId: bot.companyId,
         revision: 0,
         configuration: {
           version: 1,
@@ -91,16 +87,16 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
     userId: string,
   ) {
     const bot = await endpoint(endpointId);
-    await member(bot.companyId, userId);
+    await member(userId);
     const parsed = updateGitHubChatConfigurationSchema.parse(input);
     const config = parsed.configuration;
-    await member(bot.companyId, config.responsibleUserId);
+    await member(config.responsibleUserId);
     for (const person of config.people) {
       if (person.kind === "guest") {
-        await member(bot.companyId, person.sponsorUserId);
+        await member(person.sponsorUserId);
         continue;
       }
-      await member(bot.companyId, person.userId);
+      await member(person.userId);
       const [linked] = await db
         .select({ externalId: chatExternalPrincipals.externalId })
         .from(chatIdentityLinks)
@@ -110,7 +106,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         )
         .where(
           and(
-            eq(chatIdentityLinks.companyId, bot.companyId),
             eq(chatIdentityLinks.endpointId, endpointId),
             eq(chatIdentityLinks.paperclipUserId, person.userId),
             eq(chatIdentityLinks.status, "linked"),
@@ -126,10 +121,7 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       .select()
       .from(chatEndpointResources)
       .where(
-        and(
-          eq(chatEndpointResources.companyId, bot.companyId),
-          eq(chatEndpointResources.endpointId, endpointId),
-        ),
+        eq(chatEndpointResources.endpointId, endpointId),
       );
     const repositoryIds = new Set(
       resources.map((resource) =>
@@ -157,7 +149,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       if ((current?.revision ?? 0) !== parsed.expectedRevision)
         throw conflict("This configuration changed. Refresh before saving.");
       const values = {
-        companyId: bot.companyId,
         endpointId,
         revision: parsed.expectedRevision + 1,
         configuration: config,
@@ -183,7 +174,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         .where(eq(chatEndpoints.id, endpointId));
       await syncGitHubBotTools(tx, bot, userId, config.toolsEnabled);
       await logActivity(tx as unknown as Db, {
-        companyId: bot.companyId,
         actorType: "user",
         actorId: userId,
         action: "chat_github.configuration_updated",
@@ -196,20 +186,16 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
   }
   async function personalConnections(endpointId: string, userId: string) {
     const bot = await endpoint(endpointId);
-    await member(bot.companyId, userId);
+    await member(userId);
     const rows = await db
       .select({ connection: toolConnections, grant: connectionGrants })
       .from(connectionGrants)
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, connectionGrants.connectionId),
-          eq(toolConnections.companyId, bot.companyId),
-        ),
+        eq(toolConnections.id, connectionGrants.connectionId),
       )
       .where(
         and(
-          eq(connectionGrants.companyId, bot.companyId),
           eq(connectionGrants.kind, "user"),
           eq(connectionGrants.subjectUserId, userId),
         ),
@@ -235,11 +221,10 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
     confirmedGithubUserId?: string,
   ) {
     const bot = await endpoint(endpointId);
-    await member(bot.companyId, userId);
+    await member(userId);
     if (!bot.providerAccountId)
       throw conflict("Verify the bot App installation first");
     const verified = await toolAccessService(db).verifyPersonalGitHubIdentity(
-      bot.companyId,
       connectionId,
       userId,
     );
@@ -252,7 +237,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       const [principal] = await tx
         .insert(chatExternalPrincipals)
         .values({
-          companyId: bot.companyId,
           provider: "github",
           providerAccountId: bot.providerAccountId!,
           externalId: verified.githubUserId,
@@ -262,7 +246,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         })
         .onConflictDoUpdate({
           target: [
-            chatExternalPrincipals.companyId,
             chatExternalPrincipals.provider,
             chatExternalPrincipals.providerAccountId,
             chatExternalPrincipals.externalId,
@@ -271,7 +254,7 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         })
         .returning();
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${bot.companyId}:${principal!.id}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principal!.id}`}, 0))`,
       );
       const [prior] = await tx
         .select()
@@ -292,7 +275,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         .from(connectionGrants)
         .where(
           and(
-            eq(connectionGrants.companyId, bot.companyId),
             eq(connectionGrants.id, verified.grantId),
             eq(connectionGrants.status, "active"),
             eq(connectionGrants.subjectUserId, userId),
@@ -302,7 +284,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       if (!grant)
         throw forbidden("Your personal GitHub connection was revoked");
       const values = {
-        companyId: bot.companyId,
         endpointId,
         principalId: principal!.id,
         paperclipUserId: userId,
@@ -321,7 +302,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
           set: values,
         });
       await logActivity(tx as unknown as Db, {
-        companyId: bot.companyId,
         actorType: "user",
         actorId: userId,
         action: "chat_github.identity_confirmed",
@@ -355,7 +335,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       });
       const credentials = await githubBotCredentials(
         db,
-        bot.companyId,
         endpointId,
       );
       const app = await githubBotRequest<{
@@ -403,7 +382,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         .from(chatEndpointResources)
         .where(
           and(
-            eq(chatEndpointResources.companyId, bot.companyId),
             eq(chatEndpointResources.endpointId, endpointId),
             eq(chatEndpointResources.enabled, true),
           ),
@@ -464,10 +442,7 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         .select()
         .from(agents)
         .where(
-          and(
-            eq(agents.companyId, bot.companyId),
-            eq(agents.id, bot.assignedAgentId),
-          ),
+          eq(agents.id, bot.assignedAgentId),
         );
       checks.push({
         key: "runtime",
@@ -492,9 +467,9 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         const settings = instanceSettingsService(db);
         const experimental = await settings.getExperimental();
         const environments = environmentService(db);
-        const local = await environments.ensureLocalEnvironment(bot.companyId);
+        const local = await environments.ensureLocalEnvironment();
         const managed = experimental.enableManagedSandboxOnly
-          ? await environments.findManagedSandboxEnvironment(bot.companyId)
+          ? await environments.findManagedSandboxEnvironment()
           : null;
         const selected = resolveExecutionWorkspaceEnvironmentId({
           agentDefaultEnvironmentId: agent.defaultEnvironmentId,
@@ -505,14 +480,10 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
           managedSandboxEnvironmentId: managed?.id,
         });
         const environment = await environments.getById(selected.environmentId);
-        const owners = environment
-          ? await environments.listBoundCompanyIds(environment.id)
-          : [];
         const sandboxOk =
           experimental.enableIsolatedWorkspaces &&
           environment?.driver === "sandbox" &&
-          environment.status === "active" &&
-          (!owners.length || owners.includes(bot.companyId));
+          environment.status === "active";
         checks.push({
           key: "isolation",
           label: "Low-trust and guest execution",
@@ -527,7 +498,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         .from(toolCatalogEntries)
         .where(
           and(
-            eq(toolCatalogEntries.companyId, bot.companyId),
             eq(toolCatalogEntries.connectionId, bot.connectionId),
             eq(toolCatalogEntries.status, "active"),
           ),
@@ -548,7 +518,6 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
       let toolsOk = denied.length === 0;
       for (const entry of entries) {
         const decision = await toolAccessPolicyService(db).decide({
-          companyId: bot.companyId,
           actor: {
             actorType: "agent",
             actorId: bot.assignedAgentId,
@@ -616,10 +585,7 @@ export function githubChatManagementService(db: Db, fetchImpl = fetch) {
         .select()
         .from(chatGitHubReviews)
         .where(
-          and(
-            eq(chatGitHubReviews.companyId, bot.companyId),
-            eq(chatGitHubReviews.endpointId, endpointId),
-          ),
+          eq(chatGitHubReviews.endpointId, endpointId),
         )
         .orderBy(desc(chatGitHubReviews.createdAt))
         .limit(100);

@@ -20,11 +20,11 @@ vi.mock("@/api/instanceSettings", () => ({
 
 vi.mock("@/api/smokeLab", () => ({
   smokeLabApi: {
-    listServices: (c: string) => listServicesMock(c),
-    listRuns: (c: string) => listRunsMock(c),
-    getRun: (c: string, r: string) => getRunMock(c, r),
-    createRun: (c: string, i: unknown) => createRunMock(c, i),
-    startServices: (c: string) => startServicesMock(c),
+    listServices: () => listServicesMock(),
+    listRuns: () => listRunsMock(),
+    getRun: (r: string) => getRunMock(r),
+    createRun: (i: unknown) => createRunMock(i),
+    startServices: () => startServicesMock(),
     stopServices: vi.fn(),
     installFixtures: vi.fn(),
     reset: vi.fn(),
@@ -61,7 +61,6 @@ async function flushReact() {
 
 const RUN = {
   id: "run-1",
-  companyId: "company-1",
   trigger: "manual",
   status: "passed",
   startedAt: "2026-07-10T00:00:00Z",
@@ -74,7 +73,6 @@ const RUN = {
 const STEPS = [
   {
     id: "s1",
-    companyId: "company-1",
     runId: "run-1",
     path: "P1",
     scenarioStep: "oauth-login",
@@ -87,7 +85,6 @@ const STEPS = [
   },
   {
     id: "s2",
-    companyId: "company-1",
     runId: "run-1",
     path: "P7",
     scenarioStep: "schema-change-quarantine",
@@ -137,7 +134,7 @@ describe("SmokeLabTab", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
-          <SmokeLabTab companyId="company-1" />
+          <SmokeLabTab />
         </QueryClientProvider>,
       );
     });
@@ -189,6 +186,6 @@ describe("SmokeLabTab", () => {
     });
     await flushReact();
 
-    expect(createRunMock).toHaveBeenCalledWith("company-1", { trigger: "manual", summary: {} });
+    expect(createRunMock).toHaveBeenCalledWith({ trigger: "manual", summary: {} });
   });
 });

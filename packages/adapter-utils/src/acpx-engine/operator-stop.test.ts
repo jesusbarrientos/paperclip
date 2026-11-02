@@ -17,7 +17,7 @@ async function setup(tool?: string) {
   let ready!: () => void;
   const started = new Promise<void>(resolve => { ready = resolve; });
   const ctx = {
-    runId: 'stop-test', agent: { id: 'agent', companyId: 'company' }, runtime: {},
+    runId: 'stop-test', agent: { id: 'agent' }, runtime: {},
     config: { agent: 'custom', agentCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)}`, mode: 'persistent',
       stateDir: path.join(root, 'state'), cwd: root, graceSec: 5,
       env: { PAPERCLIP_STOP_FIXTURE_ROOT: root, ...(tool ? { PAPERCLIP_STOP_FIXTURE_TOOL: tool } : {}) } },

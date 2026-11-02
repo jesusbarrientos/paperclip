@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import express from "express";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, companyMemberships, connectionGrants, createDb, issues, toolApplications, toolCatalogEntries, toolConnections, toolConnectionAppSnapshots } from "@paperclipai/db";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { agents, companies, companyMemberships, connectionGrants, createDb, issues, toolApplications, toolCatalogEntries, toolConnections, toolConnectionAppSnapshots, toolProfileBindings, toolProfileEntries, toolProfiles } from "@paperclipai/db";
 import { composioAppSetupSchema } from "@paperclipai/shared";
 import { composioAppAccounts, composioAppSetupResult } from "../services/composio-app-setup.js";
 import { toolAccessService } from "../services/tool-access.js";
@@ -56,20 +56,28 @@ const support = await getEmbeddedPostgresTestSupport();
     const database = await startEmbeddedPostgresTestDatabase("paperclip-composio-setup-");
     db = createDb(database.connectionString);
     cleanup = database.cleanup;
+    await db.insert(companies).values({ name: "Composio direct setup", issuePrefix: "CMP" });
   }, 20_000);
   afterAll(async () => { await cleanup?.(); });
+  beforeEach(async () => {
+    await db.delete(toolProfileBindings);
+    await db.delete(toolProfileEntries);
+    await db.delete(toolProfiles);
+    await db.delete(toolConnections);
+    await db.delete(toolApplications);
+  });
 
   async function fixture(syncToolkits: string[] = ["circleback_mcp", "notion", "hubspot"]) {
-    const [company] = await db.insert(companies).values({ name: "Composio direct setup", issuePrefix: randomUUID().slice(0, 6).toUpperCase() }).returning();
+    const [company] = await db.select().from(companies);
     const userId = randomUUID();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "admin", status: "active" }).onConflictDoUpdate(membershipUpsert);
-    const [agent, otherAgent] = await db.insert(agents).values(["Default agent", "Other agent"].map(name => ({ companyId: company.id, name, role: "general" as const, status: "idle" as const, adapterType: "codex_local" }))).returning();
-    const [app] = await db.insert(toolApplications).values({ companyId: company.id, applicationKey: randomUUID(), name: "Composio", type: "mcp_http", metadata: { sourceTemplateKey: "composio" } }).returning();
-    const [connection] = await db.insert(toolConnections).values({ companyId: company.id, applicationId: app.id, uid: randomUUID(), name: "Composio account", transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", status: "active", enabled: true, config: { sourceTemplateKey: "composio", url: "https://connect.composio.dev/mcp" } }).returning();
-    await db.insert(connectionGrants).values({ companyId: company.id, connectionId: connection.id, kind: "organization", isDefault: true, status: "active" });
+    const [agent, otherAgent] = await db.insert(agents).values(["Default agent", "Other agent"].map(name => ({ name, role: "general" as const, status: "idle" as const, adapterType: "codex_local" }))).returning();
+    const [app] = await db.insert(toolApplications).values({ applicationKey: randomUUID(), name: `Composio ${randomUUID()}`, type: "mcp_http", metadata: { sourceTemplateKey: "composio" } }).returning();
+    const [connection] = await db.insert(toolConnections).values({ applicationId: app.id, uid: randomUUID(), name: "Composio account", transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", status: "active", enabled: true, config: { sourceTemplateKey: "composio", url: "https://connect.composio.dev/mcp" } }).returning();
+    await db.insert(connectionGrants).values({ connectionId: connection.id, kind: "organization", isDefault: true, status: "active" });
     const catalog = await db.insert(toolCatalogEntries).values([
       ["COMPOSIO_SEARCH_TOOLS", "read"], ["COMPOSIO_GET_TOOL_SCHEMAS", "read"], ["COMPOSIO_MULTI_EXECUTE_TOOL", "destructive"], ["COMPOSIO_MANAGE_CONNECTIONS", "destructive"],
-    ].map(([toolName, riskLevel]) => ({ companyId: company.id, connectionId: connection.id, name: toolName, toolName, versionHash: "v1", status: "active" as const, riskLevel: riskLevel as "read" | "destructive" }))).returning();
+    ].map(([toolName, riskLevel]) => ({ connectionId: connection.id, name: toolName, toolName, versionHash: "v1", status: "active" as const, riskLevel: riskLevel as "read" | "destructive" }))).returning();
     const accountId = randomUUID();
     let accounts = [{ id: accountId, alias: "Work", status: "initiated", is_default: true, access_token: "never-store-this-token" }];
     let onList = async () => {};
@@ -113,7 +121,7 @@ const support = await getEmbeddedPostgresTestSupport();
   async function configureAccess(f: Awaited<ReturnType<typeof fixture>>, agentId?: string) {
     await f.access.putConnectionInstalls(f.connection.id, { installs: agentId
       ? [{ targetType: "agent", targetId: agentId }] : [{ targetType: "company", targetId: f.company.id }] }, f.actor);
-    await f.access.finishGalleryAppConnection(f.company.id, f.connection.id, {
+    await f.access.finishGalleryAppConnection(f.connection.id, {
       enabledCatalogEntryIds: f.catalog.map(tool => tool.id),
       askFirstCatalogEntryIds: f.catalog.filter(tool => ["COMPOSIO_MULTI_EXECUTE_TOOL", "COMPOSIO_MANAGE_CONNECTIONS"].includes(tool.toolName)).map(tool => tool.id),
       access: agentId ? { agentIds: [agentId] } : "all_agents",
@@ -124,21 +132,21 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await fixture();
     await configureAccess(f);
     const grants = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connection.id));
-    const installs = await f.access.listConnectionInstalls(f.connection.id, f.company.id);
-    const before = (await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools;
+    const installs = await f.access.listConnectionInstalls(f.connection.id);
+    const before = (await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools;
     expect(await f.access.setupComposioApp(f.connection.id, "circleback_mcp", { action: "start" }, f.actor)).toMatchObject({ status: "authorization_required" });
     expect(f.operations).toEqual(["list", "add"]);
-    expect(await db.select().from(issues).where(eq(issues.companyId, f.company.id))).toHaveLength(0);
+    expect(await db.select().from(issues)).toHaveLength(0);
     await expect(f.access.setupComposioApp(f.connection.id, "circleback_mcp", { action: "complete" }, f.actor)).rejects.toThrow("Finish connecting");
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools).toEqual(before);
+    expect((await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools).toEqual(before);
     f.activate();
     await f.access.setupComposioApp(f.connection.id, "circleback_mcp", { action: "complete" }, f.actor);
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools).toEqual(before);
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.otherAgent.id)).allowedTools.map(t => t.toolName).sort()).toEqual(f.catalog.map(t => t.toolName).sort());
+    expect((await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools).toEqual(before);
+    expect((await f.access.getEffectiveProfilesForAgent(f.otherAgent.id)).allowedTools.map(t => t.toolName).sort()).toEqual(f.catalog.map(t => t.toolName).sort());
     expect(await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connection.id))).toEqual(grants);
-    expect(await f.access.listConnectionInstalls(f.connection.id, f.company.id)).toEqual(installs);
+    expect(await f.access.listConnectionInstalls(f.connection.id)).toEqual(installs);
     const tool = f.catalog.find(t => t.toolName === "COMPOSIO_MULTI_EXECUTE_TOOL")!;
-    const decision = await toolAccessPolicyService(db).decide({ companyId: f.company.id, actor: { actorType: "agent", actorId: f.agent.id, agentId: f.agent.id }, request: { connectionId: f.connection.id, catalogEntryId: tool.id, toolName: tool.toolName, arguments: {} } });
+    const decision = await toolAccessPolicyService(db).decide({ actor: { actorType: "agent", actorId: f.agent.id, agentId: f.agent.id }, request: { connectionId: f.connection.id, catalogEntryId: tool.id, toolName: tool.toolName, arguments: {} } });
     expect(decision.decision).toBe("require_approval");
     expect(f.operations.filter(action => action === "add")).toHaveLength(1);
   });
@@ -156,7 +164,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await configureAccess(f);
     f.activate();
     await f.access.setupComposioApp(f.connection.id, "circleback_mcp", { action: "complete" }, f.actor);
-    const decision = await toolAccessPolicyService(db).decide({ companyId: f.company.id, actor: { actorType: "agent", actorId: f.agent.id, agentId: f.agent.id }, request: { connectionId: f.connection.id, catalogEntryId: tool.id, toolName: tool.toolName, arguments: {} } });
+    const decision = await toolAccessPolicyService(db).decide({ actor: { actorType: "agent", actorId: f.agent.id, agentId: f.agent.id }, request: { connectionId: f.connection.id, catalogEntryId: tool.id, toolName: tool.toolName, arguments: {} } });
     expect(decision.decision).toBe("require_approval");
   });
   it("does not complete app setup if the gateway is disabled while checking Composio", async () => {
@@ -164,27 +172,27 @@ const support = await getEmbeddedPostgresTestSupport();
     f.activate();
     f.onList(async () => { await db.update(toolConnections).set({ enabled: false }).where(eq(toolConnections.id, f.connection.id)); });
     await expect(f.access.setupComposioApp(f.connection.id, "circleback_mcp", { action: "complete" }, f.actor)).rejects.toThrow("no longer active");
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools).toHaveLength(0);
+    expect((await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools).toHaveLength(0);
   });
   it("preserves a saved gateway's restricted access when another app is connected", async () => {
     const f = await fixture();
     await configureAccess(f, f.agent.id);
-    const before = (await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools;
+    const before = (await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools;
     f.activate();
     await f.access.setupComposioApp(f.connection.id, "circleback_mcp", { action: "complete" }, f.actor);
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools).toEqual(before);
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.otherAgent.id)).allowedTools).toHaveLength(0);
+    expect((await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools).toEqual(before);
+    expect((await f.access.getEffectiveProfilesForAgent(f.otherAgent.id)).allowedTools).toHaveLength(0);
   });
-  it("rejects agents, non-managers, and other companies before calling Composio", async () => {
+  it("rejects agents, non-managers, and non-members before calling Composio", async () => {
     const f = await fixture();
     const userId = randomUUID();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "member", status: "active" }).onConflictDoUpdate(membershipUpsert);
     let providerCalls = 0;
-    const member: Express.Request["actor"] = { type: "board", userId, source: "session", isInstanceAdmin: false, companyIds: [f.company.id], memberships: [{ companyId: f.company.id, membershipRole: "member", status: "active" }] };
+    const member: Express.Request["actor"] = { type: "board", userId, source: "session", isInstanceAdmin: false, memberships: [{ membershipRole: "member", status: "active" }] };
     const actors: [Express.Request["actor"], number][] = [
       [member, 403],
-      [{ ...member, companyIds: [randomUUID()], memberships: [] }, 404],
-      [{ type: "agent", agentId: f.agent.id, companyId: f.company.id, source: "agent_key" }, 403],
+      [{ ...member, memberships: [] }, 404],
+      [{ type: "agent", agentId: f.agent.id, source: "agent_key" }, 403],
     ];
     for (const [actor, status] of actors) {
       const app = express();
@@ -212,7 +220,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const refreshed = await f.access.refreshComposioApps(f.connection.id, [], f.actor);
     expect(f.operations).toEqual(["list"]);
     expect(refreshed.apps.find(app => app.toolkit === "circleback_mcp")).toMatchObject({ status: "not_connected", accounts: [] });
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools).toEqual([]);
+    expect((await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools).toEqual([]);
   });
   it("rechecks apps from earlier direct setup and hides observations after a gateway identity changes", async () => {
     const f = await fixture();
@@ -238,7 +246,7 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(f.batches.flat().map(tool => tool.name)).toEqual(["circleback_mcp", "notion", "hubspot"]);
     expect(f.operations.every(action => action === "list")).toBe(true);
     expect(await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connection.id))).toEqual(grants);
-    expect(await db.select().from(issues).where(eq(issues.companyId, f.company.id))).toHaveLength(0);
+    expect(await db.select().from(issues)).toHaveLength(0);
     await f.access.syncComposioApps(f.connection.id, false, f.actor);
     expect(f.operations).toHaveLength(3); // Fresh inventory does not start another scan.
     f.disconnect();
@@ -313,8 +321,8 @@ const support = await getEmbeddedPostgresTestSupport();
     const result = await f.access.manageComposioAppAccount(f.connection.id, "circleback_mcp", { action: "add" }, f.actor);
     expect(result.authorizationUrl).toBe("https://connect.composio.dev/link/test");
     expect(f.operations).toEqual(["add"]);
-    expect(await db.select().from(issues).where(eq(issues.companyId, f.company.id))).toHaveLength(0);
-    expect((await f.access.getEffectiveProfilesForAgent(f.company.id, f.agent.id)).allowedTools).toEqual([]);
+    expect(await db.select().from(issues)).toHaveLength(0);
+    expect((await f.access.getEffectiveProfilesForAgent(f.agent.id)).allowedTools).toEqual([]);
   });
   it("retains previous observations when a list result is incomplete or fails", async () => {
     const f = await fixture(); f.activate();

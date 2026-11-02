@@ -53,18 +53,9 @@ export class PaperclipApiClient {
 
   get defaults() {
     return {
-      companyId: this.config.companyId,
       agentId: this.config.agentId,
       runId: this.config.runId,
     };
-  }
-
-  resolveCompanyId(companyId?: string | null): string {
-    const resolved = companyId?.trim() || this.config.companyId;
-    if (!resolved) {
-      throw new Error("companyId is required because PAPERCLIP_COMPANY_ID is not set");
-    }
-    return resolved;
   }
 
   resolveAgentId(agentId?: string | null): string {

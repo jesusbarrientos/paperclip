@@ -27,9 +27,7 @@ import { getSdkUiRuntimeValue } from "./runtime.js";
  * @example
  * ```tsx
  * function SyncWidget({ context }: PluginWidgetProps) {
- *   const { data, loading, error } = usePluginData<SyncHealth>("sync-health", {
- *     companyId: context.companyId,
- *   });
+ *   const { data, loading, error } = usePluginData<SyncHealth>("sync-health");
  *
  *   if (loading) return <div>Loading…</div>;
  *   if (error) return <div>Error: {error.message}</div>;
@@ -71,7 +69,7 @@ export function usePluginData<T = unknown>(
  *
  *   async function handleClick() {
  *     try {
- *       await resync({ companyId: context.companyId });
+ *       await resync();
  *     } catch (err) {
  *       setError((err as PluginBridgeError).message);
  *     }
@@ -94,7 +92,7 @@ export function usePluginAction(key: string): PluginActionFn {
 // ---------------------------------------------------------------------------
 
 /**
- * Read the current host context (active company, project, entity, user).
+ * Read the current host context (active project, entity, user).
  *
  * Use this to know which context the plugin component is being rendered in
  * so you can scope data requests and actions accordingly.
@@ -104,7 +102,7 @@ export function usePluginAction(key: string): PluginActionFn {
  * @example
  * ```tsx
  * function IssueTab() {
- *   const { companyId, entityId } = useHostContext();
+ *   const { entityId } = useHostContext();
  *   const { data } = usePluginData("linear-link", { issueId: entityId });
  *   return <div>{data?.linearIssueUrl}</div>;
  * }
@@ -181,7 +179,6 @@ export function useHostLocation(): HostLocation {
  *
  * @template T The expected shape of each streamed event
  * @param channel - The stream channel name (must match what the worker uses in `ctx.streams.emit`)
- * @param options - Optional configuration for the stream
  * @returns `PluginStreamResult<T>` with `events`, `lastEvent`, connection status, and `close()`
  *
  * @example
@@ -201,14 +198,11 @@ export function useHostLocation(): HostLocation {
  *
  * @see PLUGIN_SPEC.md §19.8 — Real-Time Streaming
  */
-export function usePluginStream<T = unknown>(
-  channel: string,
-  options?: { companyId?: string },
-): PluginStreamResult<T> {
+export function usePluginStream<T = unknown>(channel: string): PluginStreamResult<T> {
   const impl = getSdkUiRuntimeValue<
-    (nextChannel: string, nextOptions?: { companyId?: string }) => PluginStreamResult<T>
+    (nextChannel: string) => PluginStreamResult<T>
   >("usePluginStream");
-  return impl(channel, options);
+  return impl(channel);
 }
 
 // ---------------------------------------------------------------------------

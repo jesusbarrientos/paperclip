@@ -72,7 +72,6 @@ function makeIssue(
 ): Issue {
   return {
     id,
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,
@@ -120,7 +119,6 @@ function renderWithClient(node: React.ReactNode, container: HTMLDivElement) {
 }
 
 const blockedViewProps = {
-  companyId: "company-1",
   searchQuery: "",
   agentNameById: new Map<string, string>(),
   issueLinkState: null,
@@ -232,7 +230,7 @@ describe("BlockedInboxView", () => {
     expect(titles[0]).toContain("Critical stalled row");
     expect(titles[1]).toContain("Stalled chain row");
 
-    expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockIssuesApi.list).toHaveBeenCalledWith(expect.objectContaining({
       attention: "blocked",
       includeBlockedInboxAttention: true,
       includeBlockedBy: true,

@@ -15,7 +15,6 @@ import {
   Wrench,
 } from "lucide-react";
 import { agentsApi } from "@/api/agents";
-import { useCompany } from "@/context/CompanyContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { ContextualSidebarFrame } from "./ContextualSidebarFrame";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -58,12 +57,11 @@ export function AgentContextualSidebar({
   agentName?: string;
   labels?: Partial<Record<AgentLocalDetailView, string>>;
 }) {
-  const { selectedCompanyId } = useCompany();
   const shouldResolveAgent = !agentId || !agentName;
   const { data: resolvedAgent } = useQuery({
-    queryKey: [...queryKeys.agents.detail(agentRef), selectedCompanyId ?? null, "contextual-sidebar"],
-    queryFn: () => agentsApi.get(agentRef, selectedCompanyId ?? undefined),
-    enabled: shouldResolveAgent && Boolean(agentRef && selectedCompanyId),
+    queryKey: [...queryKeys.agents.detail(agentRef), "contextual-sidebar"],
+    queryFn: () => agentsApi.get(agentRef),
+    enabled: shouldResolveAgent && Boolean(agentRef),
   });
   const resolvedId = agentId ?? resolvedAgent?.id;
   const resolvedName = agentName ?? resolvedAgent?.name ?? "Agent";

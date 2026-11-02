@@ -134,7 +134,6 @@ describe("cursor execute", () => {
         runId: "run-1",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},
@@ -174,7 +173,6 @@ describe("cursor execute", () => {
           "PAPERCLIP_AGENT_ID",
           "PAPERCLIP_API_KEY",
           "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
           "PAPERCLIP_RUN_ID",
         ]),
       );
@@ -208,7 +206,6 @@ describe("cursor execute", () => {
         runId: "run-2",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},
@@ -271,7 +268,6 @@ describe("cursor execute", () => {
         runId: "run-3",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},
@@ -345,7 +341,6 @@ describe("cursor execute", () => {
         runId: "run-sandbox-1",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},
@@ -411,7 +406,6 @@ describe("cursor execute", () => {
         runId: "run-sandbox-2",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},

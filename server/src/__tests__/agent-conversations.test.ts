@@ -65,8 +65,8 @@ const support = await getEmbeddedPostgresTestSupport();
   () => {
     let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
     let db: ReturnType<typeof createDb>;
-    let companyId: string;
     let agentId: string;
+    let companyId: string;
     beforeAll(async () => {
       database = await startEmbeddedPostgresTestDatabase(
         "paperclip-agent-conversations-",
@@ -96,7 +96,6 @@ const support = await getEmbeddedPostgresTestSupport();
         .insert(agents)
         .values({
           id: agentId,
-          companyId,
           name: "Planner",
           role: "engineer",
           status: "idle",
@@ -111,7 +110,7 @@ const support = await getEmbeddedPostgresTestSupport();
       await database?.cleanup();
     });
     const create = (user = randomUUID()) =>
-      issueService(db).create(companyId, {
+      issueService(db).create({
         title: "Conversation",
         conversationAgentId: agentId,
         conversationUserId: user,
@@ -124,7 +123,6 @@ const support = await getEmbeddedPostgresTestSupport();
         await db
           .insert(heartbeatRuns)
           .values({
-            companyId,
             agentId,
             status: "running",
             contextSnapshot: {
@@ -141,7 +139,7 @@ const support = await getEmbeddedPostgresTestSupport();
     it("atomically resolves one task per person and agent and excludes it from ordinary lists", async () => {
       const user = randomUUID();
       expect(
-        await issueService(db).getConversation(companyId, agentId, user),
+        await issueService(db).getConversation(agentId, user),
       ).toBeNull();
       const results = await Promise.all(
         Array.from({ length: 6 }, () => create(user)),
@@ -149,13 +147,13 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(new Set(results.map((issue) => issue.id)).size).toBe(1);
       expect((await create()).id).not.toBe(results[0].id);
       expect(
-        (await issueService(db).list(companyId)).some(
+        (await issueService(db).list()).some(
           (issue) => issue.id === results[0].id,
         ),
       ).toBe(false);
       expect(
         (
-          await issueService(db).list(companyId, { q: results[0].identifier! })
+          await issueService(db).list({ q: results[0].identifier! })
         ).some((issue) => issue.id === results[0].id),
       ).toBe(true);
       expect(
@@ -180,7 +178,7 @@ const support = await getEmbeddedPostgresTestSupport();
               type: "board",
               source: "session",
               userId,
-              companyIds: allowed ? [companyId] : [],
+              memberships: allowed ? [{ membershipRole: "member", status: "active" }] : [],
             };
             next();
           });
@@ -188,7 +186,7 @@ const support = await getEmbeddedPostgresTestSupport();
         app.use(errorHandler);
         return app;
       };
-      const path = `/api/companies/${companyId}/chats/${agentId}`;
+      const path = `/api/chats/${agentId}`;
       const owner = randomUUID();
       const colleague = randomUUID();
       const app = appFor(owner);
@@ -209,7 +207,7 @@ const support = await getEmbeddedPostgresTestSupport();
       }
       expect((await request(app).get(path)).body).toBeNull();
       expect(
-        await issueService(db).getConversation(companyId, agentId, owner),
+        await issueService(db).getConversation(agentId, owner),
       ).toBeNull();
       const resolved = await Promise.all([
         request(app).post(path).send({ conversationUserId: "spoof" }),
@@ -218,7 +216,7 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(resolved.every((response) => response.status === 200)).toBe(true);
       expect(resolved[0].body.id).toBe(resolved[1].body.id);
       expect(resolved[0].body.conversationUserId).toBe(owner);
-      const listPath = `/api/companies/${companyId}/chats`;
+      const listPath = `/api/chats`;
       const owned = await request(app).get(listPath);
       expect(owned.status).toBe(200);
       expect(owned.body.map((chat: { id: string }) => chat.id)).toEqual([resolved[0].body.id]);
@@ -253,18 +251,18 @@ const support = await getEmbeddedPostgresTestSupport();
           .send({ body, clientRequestId: randomUUID() })).status).toBe(403);
       }
       expect((await request(appFor(colleague))
-        .post(`/api/companies/${companyId}/issues/${chatId}/attachments`)
+        .post(`/api/issues/${chatId}/attachments`)
         .attach("file", Buffer.from("foreign upload"), "note.txt")).status).toBe(403);
 
       const [planReview] = await db.insert(issueThreadInteractions).values({
-        companyId, issueId: chatId, kind: "request_confirmation", status: "pending",
+        issueId: chatId, kind: "request_confirmation", status: "pending",
         continuationPolicy: "wake_assignee_on_accept", payload: { version: 1, prompt: "Hand off this plan?" },
       }).returning();
       expect((await request(appFor(colleague))
         .post(`/api/issues/${chatId}/interactions/${planReview.id}/accept`).send({})).status).toBe(403);
       expect((await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, planReview.id)))[0].status).toBe("pending");
       const [pause] = await db.insert(issueTreeHolds).values({
-        companyId, rootIssueId: chatId, mode: "pause", status: "active",
+        rootIssueId: chatId, mode: "pause", status: "active",
         createdByActorType: "user", createdByUserId: owner,
         releasePolicy: { strategy: "manual", note: "leaf_pause" },
       }).returning();
@@ -314,7 +312,7 @@ const support = await getEmbeddedPostgresTestSupport();
       );
       expect(new Set(messages.map((message) => message.id)).size).toBe(1);
       expect(
-        await undeliveredConversationComments(db, companyId, issue.id),
+        await undeliveredConversationComments(db, issue.id),
       ).toHaveLength(1);
       await expect(
         issueService(db).addComment(
@@ -339,7 +337,6 @@ const support = await getEmbeddedPostgresTestSupport();
         await db
           .insert(agentTaskSessions)
           .values({
-            companyId,
             agentId,
             adapterType: "process",
             taskKey: target.id,
@@ -404,7 +401,7 @@ const support = await getEmbeddedPostgresTestSupport();
           )[0]!,
         ),
       ).rejects.toThrow(/older turn/);
-      expect(await applyRunnerGoalPrpEvent(db, { companyId, agentId, issueId: issue.id, adapterType: "process" }, {
+      expect(await applyRunnerGoalPrpEvent(db, { agentId, issueId: issue.id, adapterType: "process" }, {
         eventType: "session.capabilities.updated", sourceRunId: oldRun.id, sourceSeq: 500, payload: {},
       })).toBeNull();
       expect(await db.select().from(agentTaskSessions).where(eq(agentTaskSessions.taskKey, issue.id))).toHaveLength(0);
@@ -414,10 +411,10 @@ const support = await getEmbeddedPostgresTestSupport();
         { userId: "local-board" },
       );
       expect(
-        await conversationReplay(db, companyId, issue.id, next.id),
+        await conversationReplay(db, issue.id, next.id),
       ).not.toContain("Old session");
       const payload = await buildPaperclipWakePayload({
-        db, companyId,
+        db,
         contextSnapshot: { issueId: issue.id, conversationMode: true, wakeCommentId: next.id },
         continuationSummary: { key: "summary", title: null, body: "Old session summary", updatedAt: new Date() },
         issueSummary: { ...issue, description: "Old session description" },
@@ -431,10 +428,10 @@ const support = await getEmbeddedPostgresTestSupport();
         { userId: "local-board" },
       );
       expect(
-        await conversationReplay(db, companyId, issue.id, later.id),
+        await conversationReplay(db, issue.id, later.id),
       ).toContain("Fresh context");
       expect(
-        await conversationReplay(db, companyId, issue.id, next.id),
+        await conversationReplay(db, issue.id, next.id),
       ).not.toContain("Following turn");
     });
     it("projects the resolved chat plan review into fresh and resumed prompts without replaying old reviews", async () => {
@@ -443,12 +440,12 @@ const support = await getEmbeddedPostgresTestSupport();
         issueId: issue.id, key: "plan", title: "Plan", format: "markdown", body: "Draft plan",
       });
       const [interaction] = await db.insert(issueThreadInteractions).values({
-        companyId, issueId: issue.id, kind: "request_confirmation", status: "rejected",
+        issueId: issue.id, kind: "request_confirmation", status: "rejected",
         payload: { version: 1, target: { type: "issue_document", key: "plan", documentId: document.id,
           revisionId: document.latestRevisionId!, revisionNumber: document.latestRevisionNumber } },
         result: { outcome: "rejected", reason: "Include CHAT_REVIEW_MARKER in the revised plan." },
       }).returning();
-      const input = { db, companyId, issueSummary: { ...issue, workMode: "planning" },
+      const input = { db, issueSummary: { ...issue, workMode: "planning" },
         contextSnapshot: { issueId: issue.id, conversationMode: true, interactionId: interaction!.id,
           interactionKind: "request_confirmation", interactionStatus: "rejected" } };
       const payload = await buildPaperclipWakePayload(input);
@@ -472,13 +469,13 @@ const support = await getEmbeddedPostgresTestSupport();
       expect((await buildPaperclipWakePayload(input))?.planReviewContext).toBeNull();
     });
     it("includes an initial handoff plan in the first execution prompt and pins approved revisions", async () => {
-      const task = await issueService(db).create(companyId, {
+      const task = await issueService(db).create({
         title: "Execute handed-off work",
         assigneeAgentId: agentId,
         status: "todo",
         initialPlan: "Write an output document containing HANDOFF_ACCEPTANCE_PHRASE.",
       });
-      const initial = await getTaskPlanContext({ db, companyId, issueId: task.id });
+      const initial = await getTaskPlanContext({ db, issueId: task.id });
       expect(task.description).toBeNull();
       expect(initial?.body).toContain("HANDOFF_ACCEPTANCE_PHRASE");
       for (const includeDescription of [true, false]) {
@@ -497,22 +494,21 @@ const support = await getEmbeddedPostgresTestSupport();
         body: "A later unapproved draft.",
         baseRevisionId: initial!.revisionId,
       });
-      expect((await getTaskPlanContext({ db, companyId, issueId: task.id }))?.revisionId)
+      expect((await getTaskPlanContext({ db, issueId: task.id }))?.revisionId)
         .toBe(revision.latestRevisionId);
       const approved = await getTaskPlanContext({
-        db, companyId, issueId: task.id, approvedRevisionId: initial!.revisionId,
+        db, issueId: task.id, approvedRevisionId: initial!.revisionId,
       });
       expect(approved?.body).toContain("HANDOFF_ACCEPTANCE_PHRASE");
       expect(approved?.body).not.toContain("unapproved");
-      expect(await getTaskPlanContext({ db, companyId: randomUUID(), issueId: task.id })).toBeNull();
       expect(await getTaskPlanContext({
-        db, companyId, issueId: task.id, approvedRevisionId: randomUUID(),
+        db, issueId: task.id, approvedRevisionId: randomUUID(),
       })).toBeNull();
       const conversation = await create();
       await documentService(db).upsertIssueDocument({
         issueId: conversation.id, key: "plan", format: "markdown", body: "Pre-reset chat draft",
       });
-      expect(await getTaskPlanContext({ db, companyId, issueId: conversation.id })).toBeNull();
+      expect(await getTaskPlanContext({ db, issueId: conversation.id })).toBeNull();
       await documentService(db).upsertIssueDocument({
         issueId: task.id,
         key: "plan",
@@ -527,10 +523,10 @@ const support = await getEmbeddedPostgresTestSupport();
           sourceAgentId: agentId,
         },
       });
-      expect((await getTaskPlanContext({ db, companyId, issueId: task.id }))?.body)
+      expect((await getTaskPlanContext({ db, issueId: task.id }))?.body)
         .not.toContain("QUARANTINED_PLAN_BODY");
       expect((await getTaskPlanContext({
-        db, companyId, issueId: task.id, exposeLowTrustRaw: true,
+        db, issueId: task.id, exposeLowTrustRaw: true,
       }))?.body).toBe("QUARANTINED_PLAN_BODY");
     });
     it("keeps concurrent delivery and multiple resets in separate ordered queue entries", async () => {
@@ -584,7 +580,7 @@ const support = await getEmbeddedPostgresTestSupport();
           ),
         ).toEqual(commands.map((comment) => comment.id));
         expect(
-          await undeliveredConversationComments(db, companyId, issue.id),
+          await undeliveredConversationComments(db, issue.id),
         ).toHaveLength(0);
         for (const command of commands.slice(1, 3)) {
           const reset = await runFor(issue.id, command.id);
@@ -650,7 +646,6 @@ const support = await getEmbeddedPostgresTestSupport();
         .insert(agents)
         .values({
           id: runtimeAgent,
-          companyId: runtimeCompany,
           name: "Conversation runtime",
           role: "engineer",
           status: "idle",
@@ -662,7 +657,7 @@ const support = await getEmbeddedPostgresTestSupport();
           },
           runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true } },
         });
-      const chat = await issueService(db).create(runtimeCompany, {
+      const chat = await issueService(db).create({
         title: "Runtime chat",
         conversationAgentId: runtimeAgent,
         conversationUserId: "local-board",
@@ -707,24 +702,21 @@ const support = await getEmbeddedPostgresTestSupport();
         expect(generations).toEqual([0]);
         // Stop leaves a pause and a no-replay recovery disposition. /new must
         // get through dispatch, release the chat pause, and reset in queue order.
-        await db.insert(issueTreeHolds).values({ companyId: runtimeCompany,
-          rootIssueId: chat.id, mode: "pause", status: "active", createdByActorType: "user",
+        await db.insert(issueTreeHolds).values({ rootIssueId: chat.id, mode: "pause", status: "active", createdByActorType: "user",
           createdByUserId: "local-board", releasePolicy: { strategy: "manual", note: "leaf_pause" },
         });
-        await db.insert(issueRecoveryActions).values({ companyId: runtimeCompany,
-          sourceIssueId: chat.id, kind: "active_run_watchdog", ownerType: "board",
+        await db.insert(issueRecoveryActions).values({ sourceIssueId: chat.id, kind: "active_run_watchdog", ownerType: "board",
           cause: "uncertain_provider_action", status: "resolved", fingerprint: randomUUID(),
           evidence: { automaticRecovery: { replay: "blocked" } }, nextAction: "Do not replay the stopped turn.",
         });
-        await db.insert(issueThreadInteractions).values({ companyId: runtimeCompany, issueId: chat.id,
+        await db.insert(issueThreadInteractions).values({ issueId: chat.id,
           kind: "ask_user_questions", status: "pending", title: "Old topic", payload: { version: 1, questions: [{ id: "old", prompt: "Old topic?", options: [{ id: "yes", label: "Yes" }], selectionMode: "single", required: true }], supersedeOnUserComment: false },
         });
         let stoppedQueuedWakeId: string | null = null;
         if (queuedBeforeStop) {
-          const [pending] = await db.insert(issueComments).values({ companyId: runtimeCompany,
-            issueId: chat.id, authorUserId: "local-board", body: "Old topic queued before Stop",
+          const [pending] = await db.insert(issueComments).values({ issueId: chat.id, authorUserId: "local-board", body: "Old topic queued before Stop",
           }).returning();
-          const [stoppedQueuedWake] = await db.insert(agentWakeupRequests).values({ companyId: runtimeCompany, agentId: runtimeAgent,
+          const [stoppedQueuedWake] = await db.insert(agentWakeupRequests).values({ agentId: runtimeAgent,
             source: "on_demand", reason: "issue_execution_deferred", status: "deferred_issue_execution",
             requestedByActorType: "user", requestedByActorId: "local-board",
             payload: { issueId: chat.id, commentId: pending.id,
@@ -768,7 +760,7 @@ const support = await getEmbeddedPostgresTestSupport();
       const prepared = await prepareConversationTurn(db, run);
       const succeeded = { ...run, contextSnapshot: prepared.context, status: "succeeded" };
       const [interaction] = await db.insert(issueThreadInteractions).values({
-        companyId, issueId: chat.id, sourceRunId: run.id, createdByAgentId: agentId,
+        issueId: chat.id, sourceRunId: run.id, createdByAgentId: agentId,
         kind: "request_confirmation", status: "answered", payload: { version: 1 },
       }).returning();
       expect(await settleConversationTurn(db, succeeded)).toBe(false);
@@ -807,7 +799,7 @@ const support = await getEmbeddedPostgresTestSupport();
         const app = express();
         app.use(actorMiddleware(db, { deploymentMode: "local_trusted" }));
         app.post("/mutate", (_req, res) => res.sendStatus(204));
-        const token = createLocalAgentJwt(agentId, companyId, "process", run.id)!;
+        const token = createLocalAgentJwt(agentId, "process", run.id)!;
         expect((await request(app).post("/mutate").set("Authorization", `Bearer ${token}`)).status).toBe(403);
       } finally {
         if (previousSecret === undefined) delete process.env.PAPERCLIP_AGENT_JWT_SECRET;
@@ -815,16 +807,16 @@ const support = await getEmbeddedPostgresTestSupport();
       }
       await expect(issueService(db).addComment(chat.id, "Late old reply", { agentId, runId: run.id }))
         .rejects.toThrow(/cancelled/);
-      expect(await applyRunnerGoalPrpEvent(db, { companyId, agentId, issueId: chat.id, adapterType: "process" }, {
+      expect(await applyRunnerGoalPrpEvent(db, { agentId, issueId: chat.id, adapterType: "process" }, {
         eventType: "session.capabilities.updated", sourceRunId: run.id, sourceSeq: 500, payload: {},
       })).toBeNull();
     });
     it("ignores execution dependency wakes during active and idle chat turns", async () => {
       const chat = await create();
       const heartbeat = heartbeatService(db);
-      const blocker = await issueService(db).create(companyId, { title: "Linked execution", status: "done" });
+      const blocker = await issueService(db).create({ title: "Linked execution", status: "done" });
       await issueService(db).update(chat.id, { blockedByIssueIds: [blocker.id] });
-      const ordinary = await issueService(db).create(companyId, {
+      const ordinary = await issueService(db).create({
         title: "Ordinary dependent",
         status: "in_review",
         assigneeAgentId: agentId,
@@ -857,7 +849,7 @@ const support = await getEmbeddedPostgresTestSupport();
       { name: "ordinary review task", generation: 0, sourceGeneration: 0, waiting: true, ordinary: true, superseded: false },
     ])("guards delayed cancelled-run recovery for $name", async (scenario) => {
       const task = scenario.ordinary
-        ? await issueService(db).create(companyId, { title: "Ordinary review", status: "in_review", assigneeAgentId: agentId })
+        ? await issueService(db).create({ title: "Ordinary review", status: "in_review", assigneeAgentId: agentId })
         : await create();
       const status = scenario.waiting ? "in_review" : "in_progress";
       await db.update(issues).set({
@@ -876,7 +868,7 @@ const support = await getEmbeddedPostgresTestSupport();
       // Also exercise an action queued before /new or the newer reply settled.
       if (!actions.length) {
         actions = await db.insert(issueRecoveryActions).values({
-          companyId, sourceIssueId: task.id, kind: "active_run_watchdog",
+          sourceIssueId: task.id, kind: "active_run_watchdog",
           ownerType: "board", returnOwnerAgentId: agentId,
           cause: LEGACY_RECOVERY_CAUSE, fingerprint: `legacy-execution:${run.id}`,
           evidence: { runId: run.id }, nextAction: "Reconcile stopped work",
@@ -896,7 +888,7 @@ const support = await getEmbeddedPostgresTestSupport();
       const svc = issueService(db);
       const first = await svc.addComment(chat.id, "Which color?", { userId: "local-board" });
       const original = await runFor(chat.id, first.id);
-      const [question] = await db.insert(issueThreadInteractions).values({ companyId, issueId: chat.id,
+      const [question] = await db.insert(issueThreadInteractions).values({ issueId: chat.id,
         kind: "ask_user_questions", status: "answered", continuationPolicy: "wake_assignee", sourceRunId: original.id,
         createdByAgentId: agentId, resolvedByUserId: "local-board", payload: { version: 1, questions: [] }, result: { version: 1, answers: [] } }).returning();
       if (scenario === "failed-gap" || scenario === "missing-gap") {
@@ -925,7 +917,7 @@ const support = await getEmbeddedPostgresTestSupport();
       const [settled] = await db.select().from(issues).where(eq(issues.id, chat.id));
       expect(settled.conversationState).toBe(scenario === "answered" ? "waiting" : "active");
       expect(retry.context.conversationReplayThroughCommentId).toBe(prepared.context.conversationReplayThroughCommentId);
-      const replay = await conversationReplay(db, companyId, chat.id, first.id,
+      const replay = await conversationReplay(db, chat.id, first.id,
         prepared.context.conversationReplayThroughCommentId as string);
       if (["answered", "new-message"].includes(scenario)) {
         expect(replay).toContain("What is the capital of France?");
@@ -988,7 +980,7 @@ const support = await getEmbeddedPostgresTestSupport();
       await instanceSettingsService(db).updateExperimental({
         enableAgentChat: true,
       });
-      const child = await issueService(db).create(companyId, { title: "Execute work", status: "done" });
+      const child = await issueService(db).create({ title: "Execute work", status: "done" });
       await db.update(issues).set({ parentId: issue.id }).where(eq(issues.id, child.id));
       expect(
         await issueService(db).getWakeableParentAfterChildCompletion(issue.id, {

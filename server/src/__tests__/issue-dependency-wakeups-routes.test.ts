@@ -186,7 +186,6 @@ describe("issue dependency wakeups in issue routes", () => {
   it("wakes dependents when the final blocker transitions to done", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       identifier: "PAP-100",
       title: "Finish blocker",
       description: null,
@@ -203,7 +202,6 @@ describe("issue dependency wakeups in issue routes", () => {
     });
     mockIssueService.update.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       identifier: "PAP-100",
       title: "Finish blocker",
       description: null,
@@ -247,7 +245,6 @@ describe("issue dependency wakeups in issue routes", () => {
     const childIssueId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     mockIssueService.getById.mockResolvedValue({
       id: parentIssueId,
-      companyId: "company-1",
       identifier: "PAP-200",
       title: "Blocked after completion",
       description: null,
@@ -264,7 +261,6 @@ describe("issue dependency wakeups in issue routes", () => {
     });
     mockIssueService.update.mockResolvedValue({
       id: parentIssueId,
-      companyId: "company-1",
       identifier: "PAP-200",
       title: "Blocked after completion",
       description: null,
@@ -319,7 +315,6 @@ describe("issue dependency wakeups in issue routes", () => {
   it("wakes the parent when all direct children become terminal", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: "child-1",
-      companyId: "company-1",
       identifier: "PAP-101",
       title: "Last child",
       description: null,
@@ -336,7 +331,6 @@ describe("issue dependency wakeups in issue routes", () => {
     });
     mockIssueService.update.mockResolvedValue({
       id: "child-1",
-      companyId: "company-1",
       identifier: "PAP-101",
       title: "Last child",
       description: null,
@@ -409,7 +403,6 @@ describe("issue dependency wakeups in issue routes", () => {
   function issueRecord(overrides: Record<string, unknown> = {}) {
     return {
       id: "issue-1",
-      companyId: "company-1",
       identifier: "PAP-100",
       title: "Issue",
       description: null,
@@ -459,7 +452,6 @@ describe("issue dependency wakeups in issue routes", () => {
       expect(mockFindExistingIssueBlockersResolvedWakeForReadyState).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
-          companyId: "company-1",
           dependentIssueId: releaseIssueId,
           blockerIssueIds: [reviewIssueId],
           blockedTransitionAt: releaseBlockedAt,

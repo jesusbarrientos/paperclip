@@ -7,10 +7,9 @@ Remote import lets the board link existing AWS Secrets Manager entries as
 Paperclip `external_reference` secrets without copying plaintext into
 Paperclip.
 
-Both routes are board-only and company-scoped. The selected provider vault must
-belong to the company, use `aws_secrets_manager`, and have a selectable status
-(`ready` or `warning`). Disabled, coming-soon, or cross-company vaults are
-rejected.
+Both routes are board-only. The selected provider vault must exist, use
+`aws_secrets_manager`, and have a selectable status (`ready` or `warning`).
+Disabled, coming-soon, or unknown vaults are rejected.
 
 Remote import is an inventory and metadata workflow. Preview calls AWS
 `ListSecrets` only and import stores a Paperclip external reference plus
@@ -21,7 +20,7 @@ remote metadata, or copies secret plaintext into Paperclip.
 ## Preview Remote AWS Secrets
 
 ```
-POST /api/companies/{companyId}/secrets/remote-import/preview
+POST /api/secrets/remote-import/preview
 {
   "providerConfigId": "<aws-vault-uuid>",
   "query": "stripe",
@@ -69,13 +68,13 @@ Candidate `status` values:
 
 Conflict `type` values are `exact_reference`, `name`, `key`, and
 `provider_guardrail`. AWS refs under Paperclip's own managed namespace are
-blocked as external references so one company cannot import another company's
+blocked as external references so one instance cannot import another instance's
 Paperclip-managed AWS secret through a broad runtime role.
 
 ## Import Remote AWS Secret References
 
 ```
-POST /api/companies/{companyId}/secrets/remote-import
+POST /api/secrets/remote-import
 {
   "providerConfigId": "<aws-vault-uuid>",
   "secrets": [

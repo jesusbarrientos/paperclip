@@ -14,12 +14,10 @@ export function registerEmailCommands(program: Command) {
     .description(
       "Explicitly send and inspect task-bound AgentMail conversations",
     );
-  addCommonClientOptions(email.command("inboxes"), {
-    includeCompany: true,
-  }).action(async (opts: BaseClientOptions) => {
-    const ctx = resolveCommandContext(opts, { requireCompany: true });
+  addCommonClientOptions(email.command("inboxes")).action(async (opts: BaseClientOptions) => {
+    const ctx = resolveCommandContext(opts);
     printOutput(
-      await ctx.api.get(`/api/companies/${ctx.companyId}/email/inboxes`),
+      await ctx.api.get(`/api/email/inboxes`),
       { json: true },
     );
   });
@@ -30,10 +28,9 @@ export function registerEmailCommands(program: Command) {
         .requiredOption(
           "--file <path>",
           "JSON request file, including a stable idempotencyKey",
-        ),
-      { includeCompany: true },
+        )
     ).action(async (opts: BaseClientOptions & { file: string }) => {
-      const ctx = resolveCommandContext(opts, { requireCompany: true });
+      const ctx = resolveCommandContext(opts);
       const input = emailSendSchema.parse(
         JSON.parse(await readFile(opts.file, "utf8")),
       );
@@ -42,19 +39,18 @@ export function registerEmailCommands(program: Command) {
           `${verb} requires ${verb === "reply" ? "an existing conversation" : "a parent task and a new conversation"}`,
         );
       printOutput(
-        await ctx.api.post(`/api/companies/${ctx.companyId}/email/send`, input),
+        await ctx.api.post(`/api/email/send`, input),
         { json: true },
       );
     });
   }
   addCommonClientOptions(
-    email.command("thread").argument("<issueId>", "Email task ID"),
-    { includeCompany: true },
+    email.command("thread").argument("<issueId>", "Email task ID")
   ).action(async (issueId: string, opts: BaseClientOptions) => {
-    const ctx = resolveCommandContext(opts, { requireCompany: true });
+    const ctx = resolveCommandContext(opts);
     printOutput(
       await ctx.api.get(
-        `/api/companies/${ctx.companyId}/email/tasks/${encodeURIComponent(issueId)}`,
+        `/api/email/tasks/${encodeURIComponent(issueId)}`,
       ),
       { json: true },
     );
@@ -62,13 +58,12 @@ export function registerEmailCommands(program: Command) {
   addCommonClientOptions(
     email
       .command("delivery")
-      .argument("<publicationId>", "Publication ID returned by send"),
-    { includeCompany: true },
+      .argument("<publicationId>", "Publication ID returned by send")
   ).action(async (publicationId: string, opts: BaseClientOptions) => {
-    const ctx = resolveCommandContext(opts, { requireCompany: true });
+    const ctx = resolveCommandContext(opts);
     printOutput(
       await ctx.api.get(
-        `/api/companies/${ctx.companyId}/email/deliveries/${encodeURIComponent(publicationId)}`,
+        `/api/email/deliveries/${encodeURIComponent(publicationId)}`,
       ),
       { json: true },
     );

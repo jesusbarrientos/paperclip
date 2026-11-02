@@ -5,7 +5,7 @@ import { inboxDismissals, joinRequests } from "@paperclipai/db";
 import { sidebarBadgeService } from "../services/sidebar-badges.js";
 import { accessService } from "../services/access.js";
 import { collapseDuplicatePendingHumanJoinRequests } from "../lib/join-request-dedupe.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertOrgAccess } from "./authz.js";
 
 function buildDismissedAtByKey(
   dismissals: Array<{ itemKey: string; kind: string; dismissedAt: Date | string; snoozedUntil: Date | string | null }>,
@@ -28,17 +28,16 @@ export function sidebarBadgeRoutes(db: Db) {
   const svc = sidebarBadgeService(db);
   const access = accessService(db);
 
-  router.get("/companies/:companyId/sidebar-badges", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/sidebar-badges", async (req, res) => {
+    assertOrgAccess(req);
     let canApproveJoins = false;
     if (req.actor.type === "board") {
       canApproveJoins =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
-        (await access.canUser(companyId, req.actor.userId, "joins:approve"));
+        (await access.canUser(req.actor.userId, "joins:approve"));
     } else if (req.actor.type === "agent" && req.actor.agentId) {
-      canApproveJoins = await access.hasPermission(companyId, "agent", req.actor.agentId, "joins:approve");
+      canApproveJoins = await access.hasPermission("agent", req.actor.agentId, "joins:approve");
     }
 
     const visibleJoinRequests = canApproveJoins
@@ -72,12 +71,12 @@ export function sidebarBadgeRoutes(db: Db) {
             snoozedUntil: inboxDismissals.snoozedUntil,
           })
           .from(inboxDismissals)
-          .where(and(eq(inboxDismissals.companyId, companyId), eq(inboxDismissals.userId, req.actor.userId)))
+          .where(eq(inboxDismissals.userId, req.actor.userId))
           .then(buildDismissedAtByKey)
         : new Map<string, number>();
 
     // Company health alerts belong in All, not the personal inbox badge.
-    const badges = await svc.get(companyId, {
+    const badges = await svc.get({
       currentUserId: req.actor.type === "board"
         ? req.actor.userId ?? null
         : req.actor.onBehalfOfUserId ?? null,

@@ -79,7 +79,7 @@ async function captureTerminalRunFailure(
     const agent = await db
       .select({ adapterType: agents.adapterType })
       .from(agents)
-      .where(and(eq(agents.id, run.agentId), eq(agents.companyId, run.companyId)))
+      .where(eq(agents.id, run.agentId))
       .then((rows) => rows[0] ?? null);
 
     const taskId = readTaskId(run);
@@ -93,7 +93,7 @@ async function captureTerminalRunFailure(
     let redacted = snapshot;
     if (Array.isArray(run.contextSnapshot?.paperclipSecretRedactions)) {
       const { createRunSecretRedactionRegistry } = await import("./run-secret-redaction.js");
-      redacted = await createRunSecretRedactionRegistry(db).redactForRun(run.companyId, run.id, snapshot);
+      redacted = await createRunSecretRedactionRegistry(db).redactForRun(run.id, snapshot);
     }
     captureRunFailure({
       taskId,

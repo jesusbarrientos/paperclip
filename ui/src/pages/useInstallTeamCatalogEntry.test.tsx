@@ -45,7 +45,6 @@ let captured: UseInstallTeamCatalogEntryResult | null = null;
 
 function Harness({ simplified }: { simplified: boolean }) {
   captured = useInstallTeamCatalogEntry({
-    companyId: "company-1",
     team: sampleTeam,
     simplified,
   });
@@ -133,7 +132,6 @@ describe("useInstallTeamCatalogEntry", () => {
     await flushReact();
     expect(mockTeamCatalogApi.install).toHaveBeenCalledTimes(1);
     expect(mockTeamCatalogApi.install).toHaveBeenCalledWith(
-      "company-1",
       sampleTeam.id,
       expect.objectContaining({ targetManagerAgentId: null }),
     );

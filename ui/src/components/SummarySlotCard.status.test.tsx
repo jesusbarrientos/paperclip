@@ -86,7 +86,6 @@ function readySummarizer(): BuiltInAgentState {
 function slot(overrides: Partial<SummarySlot> = {}): SummarySlot {
   return {
     id: "slot-1",
-    companyId: "company-1",
     scopeKind: "project",
     scopeId: "project-1",
     slotKey: "header",
@@ -116,7 +115,6 @@ function issue(overrides: Partial<SummarySlotIssueRef> = {}): SummarySlotIssueRe
 function progressEvent(payload: Record<string, unknown>): LiveEvent {
   return {
     id: 1,
-    companyId: "company-1",
     type: "heartbeat.run.progress",
     createdAt: "2026-07-15T00:00:00.000Z",
     payload,
@@ -139,7 +137,6 @@ function renderCard(container: HTMLDivElement, subscribers: Set<CompanyLiveEvent
       <QueryClientProvider client={queryClient}>
         <LiveEventSubscriptionContext.Provider value={subscription}>
           <SummarySlotCard
-            companyId="company-1"
             scopeKind="project"
             scopeId="project-1"
             title="Project summary"
@@ -220,7 +217,6 @@ describe("SummarySlotCard live status line", () => {
     await act(async () => {
       dispatchLiveEventToSubscribers(
         subscribers,
-        "company-1",
         progressEvent({ issueId: "issue-1", message: "reviewing 14 open issues" }),
       );
     });
@@ -239,7 +235,6 @@ describe("SummarySlotCard live status line", () => {
     await act(async () => {
       dispatchLiveEventToSubscribers(
         subscribers,
-        "company-1",
         progressEvent({ issueId: "issue-999", message: "unrelated run" }),
       );
     });

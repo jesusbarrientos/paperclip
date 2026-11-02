@@ -94,7 +94,6 @@ function publicCompanyState(serialized: string): CapabilityJsonValue {
     budgets: state.budgets,
     runs: state.runs.map((run) => ({
       id: run.id,
-      companyId: run.companyId,
       actorId: run.actorId,
       taskId: run.taskId,
       sessionId: run.sessionId,

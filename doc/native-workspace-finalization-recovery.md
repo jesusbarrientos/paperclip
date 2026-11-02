@@ -40,8 +40,8 @@ sandbox, accepted native result, and workspace descriptor. Do not run a new
 provider turn, delete workspace contents, or relax archive confinement.
 
 After that platform verification, use a database maintenance transaction to
-release only the exact receipt shown by the recovery action. Replace the four
-placeholders with the action's company, run, token, and source issue. The advisory
+release only the exact receipt shown by the recovery action. Replace the three
+placeholders with the action's run, token, and source issue. The advisory
 lock prevents concurrent acquisition during this change; the token comparison
 prevents clearing a newer owner. A zero-row update means ownership changed and
 requires fresh inspection. This maintenance operation is for a full-control
@@ -50,11 +50,10 @@ instance operator, not an agent tool.
 ```sql
 BEGIN;
 SELECT pg_advisory_xact_lock(hashtextextended(
-  'native-workspace-finalization:<company-id>:<run-id>', 0));
+  'native-workspace-finalization:<run-id>', 0));
 UPDATE heartbeat_runs
 SET runner_profile_json = runner_profile_json - 'nativeWorkspaceFinalizationOwner'
-WHERE company_id = '<company-id>'::uuid
-  AND id = '<run-id>'::uuid
+WHERE id = '<run-id>'::uuid
   AND native_issue_id = '<issue-id>'::uuid
   AND runtime_mode = 'native'
   AND runner_profile_json->'nativeWorkspaceFinalizationOwner'->>'token' = '<owner-token>'

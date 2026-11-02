@@ -7,7 +7,6 @@ import {
 
 function agent(partial: Partial<AgentOrgRow> & Pick<AgentOrgRow, "id">): AgentOrgRow {
   return {
-    companyId: "company-1",
     name: partial.id,
     reportsTo: null,
     status: "active",

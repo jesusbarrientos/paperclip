@@ -237,7 +237,6 @@ export async function advanceDelegationReturnMockState(input: {
     identity: {
       runId: childRunId,
       sessionId: childSessionId,
-      companyId: child.companyId,
       issueId: child.id,
       agentId: actorId,
     },
@@ -267,7 +266,6 @@ export async function advanceDelegationReturnMockState(input: {
     identity: {
       runId: returnRunId,
       sessionId: input.parentSessionId,
-      companyId: initial.company.id,
       issueId: input.parentTaskId,
       agentId: initial.actors[0]!.id,
     },
@@ -841,7 +839,6 @@ export async function executeLiveRunnerWorkflow(input: {
         actors: [
           {
             id: "actor-1",
-            companyId: "company-1",
             name: "Workflow eval actor",
             role: "engineer",
             status: "active",

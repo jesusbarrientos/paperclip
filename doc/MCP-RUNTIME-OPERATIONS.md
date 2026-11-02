@@ -43,7 +43,7 @@ The board runtime health API summarizes one-hour event windows plus current dura
 ```sh
 curl -fsS \
   -H "Authorization: Bearer $BOARD_API_KEY" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/runtime-health" | jq .
+  "$PAPERCLIP_URL/api/tools/runtime-health" | jq .
 ```
 
 Metrics surfaced there include:
@@ -77,7 +77,7 @@ Metrics surfaced there include:
    ```sh
    curl -fsS \
      -H "Authorization: Bearer $BOARD_API_KEY" \
-     "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/runtime-health" | jq '{status, metrics, alerts}'
+     "$PAPERCLIP_URL/api/tools/runtime-health" | jq '{status, metrics, alerts}'
    ```
 
 2. List durable runtime slots:
@@ -85,7 +85,7 @@ Metrics surfaced there include:
    ```sh
    curl -fsS \
      -H "Authorization: Bearer $BOARD_API_KEY" \
-     "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/runtime-slots" | jq .
+     "$PAPERCLIP_URL/api/tools/runtime-slots" | jq .
    ```
 
 3. Inspect recent gateway audit events without printing secrets:
@@ -107,7 +107,7 @@ Stop the slot first when it is stale, idle, failed, or confirmed not to be servi
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/runtime-slots/$SLOT_ID/stop" \
+  "$PAPERCLIP_URL/api/tools/runtime-slots/$SLOT_ID/stop" \
   -d '{}' | jq .
 ```
 
@@ -117,7 +117,7 @@ Restart once when the template/config is expected to recover:
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/runtime-slots/$SLOT_ID/restart" \
+  "$PAPERCLIP_URL/api/tools/runtime-slots/$SLOT_ID/restart" \
   -d '{}' | jq .
 ```
 
@@ -158,7 +158,7 @@ curl -fsS -X PATCH \
    ```sh
    curl -fsS \
      -H "Authorization: Bearer $BOARD_API_KEY" \
-     "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/runtime-health" | jq '{status, metrics, alerts}'
+     "$PAPERCLIP_URL/api/tools/runtime-health" | jq '{status, metrics, alerts}'
    ```
 
 Recovery is complete when stuck-slot alerts clear, timeout/error rates return below threshold, the connection is healthy or intentionally disabled, and audit events show no new restart suppression or capacity deferrals.

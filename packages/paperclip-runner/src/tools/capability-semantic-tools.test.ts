@@ -27,7 +27,6 @@ const OPEN = {
   identity: {
     runId: "run-tools",
     sessionId: "session-tools",
-    companyId: "company-1",
     issueId: "task-1",
     agentId: "actor-1",
   },
@@ -48,7 +47,6 @@ async function runtimeFor(options: {
 } = {}) {
   const actor = {
     id: "actor-1",
-    companyId: "company-1",
     name: "Fixture Actor",
     role: options.role ?? "engineer",
     status: "active" as const,
@@ -61,7 +59,6 @@ async function runtimeFor(options: {
       actors: [actor],
       tasks: options.seed?.tasks ?? [{
         id: "task-1",
-        companyId: "company-1",
         identifier: "MCK-1",
         title: "Tool boundary fixture",
         description: "Protected task details",
@@ -177,7 +174,6 @@ describe("Capability exposure and authorization", () => {
     const protectedValue = "protected-approval-payload";
     const approval: CapabilityFixtureApproval = {
       id: "approval-protected",
-      companyId: "company-1",
       taskIds: ["task-1"],
       type: "request_board_approval",
       status: "pending",
@@ -1934,7 +1930,6 @@ describe("Capability security policy", () => {
   it("prohibits self approval even with the role and explicit decision claim", async () => {
     const approval: CapabilityFixtureApproval = {
       id: "approval-self",
-      companyId: "company-1",
       taskIds: ["task-1"],
       type: "request_board_approval",
       status: "pending",

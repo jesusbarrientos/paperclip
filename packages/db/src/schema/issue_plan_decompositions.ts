@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, uuid, text, integer, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { documentRevisions } from "./document_revisions.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issueThreadInteractions } from "./issue_thread_interactions.js";
@@ -11,7 +10,6 @@ export const issuePlanDecompositions = pgTable(
   "issue_plan_decompositions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     sourceIssueId: uuid("source_issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     acceptedPlanRevisionId: uuid("accepted_plan_revision_id")
       .notNull()
@@ -32,15 +30,13 @@ export const issuePlanDecompositions = pgTable(
   },
   (table) => ({
     companySourceStatusIdx: index("issue_plan_decompositions_company_source_status_idx").on(
-      table.companyId,
       table.sourceIssueId,
       table.status,
     ),
     activeOwnerIdx: index("issue_plan_decompositions_active_owner_idx")
-      .on(table.companyId, table.ownerAgentId)
+      .on(table.ownerAgentId)
       .where(sql`${table.status} = 'in_flight'`),
     sourceRevisionUq: uniqueIndex("issue_plan_decompositions_source_revision_uq").on(
-      table.companyId,
       table.sourceIssueId,
       table.acceptedPlanRevisionId,
     ),

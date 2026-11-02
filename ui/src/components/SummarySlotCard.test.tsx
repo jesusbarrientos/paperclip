@@ -140,7 +140,6 @@ function pausedSummarizer(): BuiltInAgentState {
 function slot(overrides: Partial<SummarySlot> = {}): SummarySlot {
   return {
     id: "slot-1",
-    companyId: "company-1",
     scopeKind: "project",
     scopeId: "project-1",
     slotKey: "header",
@@ -160,7 +159,6 @@ function slot(overrides: Partial<SummarySlot> = {}): SummarySlot {
 function summaryDocument(overrides: Partial<SummarySlotDocument> = {}): SummarySlotDocument {
   return {
     id: "doc-1",
-    companyId: "company-1",
     title: "Project summary",
     format: "markdown",
     body: "## Needs you\nLatest body",
@@ -189,7 +187,6 @@ function issue(overrides: Partial<SummarySlotIssueRef> = {}): SummarySlotIssueRe
 function revision(overrides: Partial<SummarySlotRevision> = {}): SummarySlotRevision {
   return {
     id: "rev-1",
-    companyId: "company-1",
     documentId: "doc-1",
     revisionNumber: 1,
     title: "Project summary",
@@ -211,7 +208,6 @@ function renderCard(container: HTMLDivElement) {
     root.render(
       <QueryClientProvider client={queryClient}>
         <SummarySlotCard
-          companyId="company-1"
           scopeKind="project"
           scopeId="project-1"
           title="Project summary"
@@ -349,7 +345,6 @@ describe("SummarySlotCard", () => {
     await flushQueries();
 
     expect(mockSummarySlotsApi.generate).toHaveBeenCalledWith({
-      companyId: "company-1",
       scopeKind: "project",
       scopeId: "project-1",
       slotKey: "header",

@@ -12,7 +12,7 @@ function act(callback: () => void) {
   flushSync(callback);
 }
 
-const companyState = vi.hoisted(() => ({ selectedCompanyId: "company-1" }));
+const companyState = vi.hoisted(() => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }));
 const mockCasesApi = vi.hoisted(() => ({
   get: vi.fn(),
   listEvents: vi.fn(),
@@ -31,7 +31,7 @@ const mockIssuesApi = vi.hoisted(() => ({ listLabels: vi.fn(), createLabel: vi.f
 const panelState = vi.hoisted(() => ({ openPanel: vi.fn(), closePanel: vi.fn() }));
 const mockCopyTextToClipboard = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
-vi.mock("@/context/CompanyContext", () => ({ useCompany: () => companyState }));
+vi.mock("@/context/OrganizationContext", () => ({ useOrganization: () => companyState }));
 vi.mock("@/context/BreadcrumbContext", () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }) }));
 vi.mock("@/context/PanelContext", () => ({ usePanel: () => panelState }));
 vi.mock("@/api/cases", async (importOriginal) => ({
@@ -55,8 +55,8 @@ vi.mock("@/lib/router", () => ({
   Link: ({ children, to, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
     <a href={to} {...props}>{children}</a>
   ),
-  useCaseHref: () => (...segments: string[]) =>
-    `/PAP/${["cases", ...segments].filter(Boolean).join("/")}`,
+  caseHref: (...segments: string[]) =>
+    `/${["cases", ...segments].filter(Boolean).join("/")}`,
 }));
 
 async function flush() {
@@ -83,7 +83,6 @@ async function waitForAssertion(assertion: () => void, attempts = 20) {
 function detail(): CaseDetailData {
   return {
     id: "case-1",
-    companyId: "company-1",
     projectId: null,
     caseNumber: 7,
     identifier: "PAP-C7",
@@ -129,7 +128,6 @@ function detail(): CaseDetailData {
         key: "body",
         document: {
           id: "doc-1",
-          companyId: "company-1",
           title: "body",
           format: "markdown",
           latestBody: "# Draft body\n\nSome content.",
@@ -150,7 +148,6 @@ function detail(): CaseDetailData {
         key: "runbook",
         document: {
           id: "doc-2",
-          companyId: "company-1",
           title: "runbook",
           format: "markdown",
           latestBody: "# Runbook\n\nSteps.",
@@ -175,7 +172,6 @@ function detail(): CaseDetailData {
 function childCase(index: number): CaseSummary {
   return {
     id: `child-${index}`,
-    companyId: "company-1",
     projectId: null,
     caseNumber: index,
     identifier: `PAP-C${index}`,

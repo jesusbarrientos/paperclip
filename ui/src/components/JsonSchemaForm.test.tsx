@@ -26,7 +26,7 @@ class ResizeObserverStub {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).ResizeObserver = (globalThis as any).ResizeObserver ?? ResizeObserverStub;
 
-// SecretBindingPicker pulls in CompanyContext + react-query. Stub it so we can
+// SecretBindingPicker pulls in OrganizationContext + react-query. Stub it so we can
 // exercise SecretField in isolation. The stub renders a select with the same
 // onChange contract as the real picker.
 vi.mock("./SecretBindingPicker", () => ({

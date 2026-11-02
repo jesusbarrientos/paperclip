@@ -98,7 +98,6 @@ describe("codex sandbox auth precedence warning", () => {
       runId: "run-auth-precedence",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: { engine: "cli" },

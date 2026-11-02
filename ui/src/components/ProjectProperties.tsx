@@ -10,7 +10,6 @@ import { environmentsApi } from "../api/environments";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
 import { secretsApi } from "../api/secrets";
-import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -207,7 +206,6 @@ function ArchiveDangerZone({
 
 export function ProjectProperties({ project, repositories, onUpdate, onFieldUpdate, getFieldSaveState, onArchive, archivePending }: ProjectPropertiesProps) {
   const { visible: workspaceIsolationControlsVisible } = useWorkspaceIsolationControls();
-  const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const [executionWorkspaceAdvancedOpen, setExecutionWorkspaceAdvancedOpen] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"local" | null>(null);
@@ -230,32 +228,24 @@ export function ProjectProperties({ project, repositories, onUpdate, onFieldUpda
   });
   const environmentsEnabled = experimentalSettings?.enableEnvironments === true;
   const { data: availableSecrets = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
-    queryFn: () => secretsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
   });
   const { data: userSecretDefinitions = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.userDefinitions(selectedCompanyId)
-      : ["user-secret-definitions", "none"],
-    queryFn: () => secretsApi.listUserSecretDefinitions(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.userDefinitions(),
+    queryFn: () => secretsApi.listUserSecretDefinitions(),
     retry: false,
   });
   const createSecret = useMutation({
-    mutationFn: (input: { name: string; value: string }) => {
-      if (!selectedCompanyId) throw new Error("Select an organization to create secrets");
-      return secretsApi.create(selectedCompanyId, input);
-    },
+    mutationFn: (input: { name: string; value: string }) => secretsApi.create(input),
     onSuccess: () => {
-      if (!selectedCompanyId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
     },
   });
   const { data: environments } = useQuery({
-    queryKey: queryKeys.environments.list(selectedCompanyId!),
-    queryFn: () => environmentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && environmentsEnabled,
+    queryKey: queryKeys.environments.list(),
+    queryFn: () => environmentsApi.list(),
+    enabled: environmentsEnabled,
   });
 
   const workspaces = project.workspaces ?? [];
@@ -301,9 +291,7 @@ export function ProjectProperties({ project, repositories, onUpdate, onFieldUpda
     if (project.urlKey !== project.id) {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.urlKey) });
     }
-    if (selectedCompanyId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all(selectedCompanyId) });
-    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });
   };
 
   const createWorkspace = useMutation({

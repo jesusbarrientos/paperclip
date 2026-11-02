@@ -76,7 +76,6 @@ function reduce(events: readonly PrpEvent[]): SessionSnapshot {
       fixtureName: "live-console-demo",
       identity: {
         schema: "paperclip.prp.identity.v1",
-        companyId: "package-local-demo",
         issueId: "live-console-demo",
         runId: events[0]?.runId ?? "run",
         environmentLeaseId: "package-local",

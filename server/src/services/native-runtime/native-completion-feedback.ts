@@ -6,7 +6,7 @@ import { isConversation } from "../agent-conversations.js";
 import { issueTreeControlService } from "../issue-tree-control.js";
 import { resolveExternalChatResponseWaitAuthorization } from "./chat-attachment-reuse.js";
 import { getNativeReviewAssignment, readNativeReviewAssignmentContext } from "./native-review-participant.js";
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   approvals,
   agents,
@@ -42,9 +42,9 @@ async function savedDocumentLinks(db: Db, run: typeof heartbeatRuns.$inferSelect
   if (!revisions.size) return [];
   const saved = await db.select({ id: documents.id, revisionId: documents.latestRevisionId,
     key: issueDocuments.key, issuePrefix: companies.issuePrefix })
-    .from(issueDocuments).innerJoin(documents, and(eq(documents.id, issueDocuments.documentId), eq(documents.companyId, run.companyId)))
-    .innerJoin(companies, eq(companies.id, run.companyId))
-    .where(and(eq(issueDocuments.companyId, run.companyId), eq(issueDocuments.issueId, issue.id)));
+    .from(issueDocuments).innerJoin(documents, eq(documents.id, issueDocuments.documentId))
+    .innerJoin(companies, sql`true`)
+    .where(eq(issueDocuments.issueId, issue.id));
   return saved.filter(document => revisions.has(`${document.id}/${document.revisionId}`))
     .map(document => `[Saved document](/${encodeURIComponent(document.issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}#document-${encodeURIComponent(document.key)})`);
 }
@@ -66,17 +66,14 @@ export async function nativeCompletionFeedback(
     .select()
     .from(issues)
     .where(
-      and(
-        eq(issues.id, run.nativeIssueId),
-        eq(issues.companyId, run.companyId),
-      ),
+      eq(issues.id, run.nativeIssueId),
     )
     .then((rows) => rows[0]);
   if (!issue) throw new Error("Completion task no longer exists.");
   const reviewContext = readNativeReviewAssignmentContext(run.contextSnapshot);
   if (reviewContext) {
     const review = await getNativeReviewAssignment(db, {
-      companyId: run.companyId, issueId: issue.id, agentId: run.agentId,
+      issueId: issue.id, agentId: run.agentId,
       contextSnapshot: reviewContext, allowResolvedByRunId: run.id,
     });
     if (review?.interaction.status === "pending" && result.reportedWorkDisposition !== "blocked") {
@@ -92,7 +89,6 @@ export async function nativeCompletionFeedback(
   if (run.completionContractId) {
     const contract = await db.select().from(completionContracts).where(and(
       eq(completionContracts.id, run.completionContractId),
-      eq(completionContracts.companyId, run.companyId),
       eq(completionContracts.issueId, issue.id),
     )).then((rows) => rows[0]);
     if (!contract) throw new Error("Completion report's bound contract no longer exists.");
@@ -133,7 +129,7 @@ export async function nativeCompletionFeedback(
   const continuation = run.contextSnapshot?.executionContinuation as { objective?: unknown } | undefined;
   const objective = typeof continuation?.objective === "string"
     ? continuation.objective : [issue.title, issue.description].filter(Boolean).join("\n");
-  await validateNativeDeliverableEvidence(db, { companyId: run.companyId, issueId: issue.id, runId,
+  await validateNativeDeliverableEvidence(db, { issueId: issue.id, runId,
     objective, semanticToolReceipts: run.resultJson?.semanticToolReceipts }, result);
   const retiredCandidates = await findAutomaticCompletionReviews(db, issue.id);
   const retiredIds = retiredCandidates.map(({ interaction }) => interaction.id);
@@ -143,7 +139,6 @@ export async function nativeCompletionFeedback(
       .from(issueThreadInteractions)
       .where(
         and(
-          eq(issueThreadInteractions.companyId, run.companyId),
           eq(issueThreadInteractions.issueId, issue.id),
           eq(issueThreadInteractions.status, "pending"),
           ...(retiredIds.length
@@ -158,14 +153,10 @@ export async function nativeCompletionFeedback(
       .from(issueApprovals)
       .innerJoin(
         approvals,
-        and(
-          eq(approvals.id, issueApprovals.approvalId),
-          eq(approvals.companyId, run.companyId),
-        ),
+        eq(approvals.id, issueApprovals.approvalId),
       )
       .where(
         and(
-          eq(issueApprovals.companyId, run.companyId),
           eq(issueApprovals.issueId, issue.id),
           inArray(approvals.status, ["pending", "revision_requested"]),
         ),
@@ -198,14 +189,14 @@ export async function nativeCompletionFeedback(
     signals.actionableAttentionRequests.length === 0
   ) {
     const pause = await issueTreeControlService(db).getActivePauseHoldGate(
-      run.companyId, issue.id,
+      issue.id,
     );
     if (pause) {
       return "Completion report accepted; this task is paused. Wait for the recorded pause to be released before continuing.";
     }
     const chatWait = await resolveExternalChatResponseWaitAuthorization({
       db,
-      binding: { companyId: run.companyId, issueId: issue.id, runId, agentId: run.agentId },
+      binding: { issueId: issue.id, runId, agentId: run.agentId },
     });
     // Conversation turns and revoked chat authority retain their own lifecycle.
     if (chatWait === "not_applicable") {
@@ -230,9 +221,7 @@ export async function nativeCompletionFeedback(
     if (!request.targetAgentId || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(request.targetAgentId)) {
       throw new Error("Name the reviewer's exact agent ID in targetAgentId.");
     }
-    const reviewer = await db.select().from(agents).where(and(
-      eq(agents.id, request.targetAgentId), eq(agents.companyId, run.companyId),
-    )).limit(1).then((rows) => rows[0]);
+    const reviewer = await db.select().from(agents).where(eq(agents.id, request.targetAgentId)).limit(1).then((rows) => rows[0]);
     if (!reviewer || !(await evaluateAgentInvokabilityFromDb(db, reviewer)).invokable) {
       throw new Error("The named reviewer is not available in this company. Choose an available reviewer or report the concrete blocker.");
     }

@@ -8,7 +8,7 @@ import {
   isKnownBadCloudCompanyName,
 } from "../middleware/auth.js";
 import { errorHandler } from "../middleware/error-handler.js";
-import { assertCompanyAccess } from "../routes/authz.js";
+import { assertOrgAccess } from "../routes/authz.js";
 
 function createSelectChain(rows: unknown[]) {
   return {
@@ -70,7 +70,6 @@ describe("actorMiddleware authenticated session profile", () => {
       userName: "User One",
       userEmail: "user@example.com",
       source: "session",
-      companyIds: [],
       memberships: [],
       isInstanceAdmin: false,
     });
@@ -94,7 +93,6 @@ describe("actorMiddleware authenticated session profile", () => {
           },
           returning() {
             return Promise.resolve([{
-              companyId: inserts.at(-1)?.values.companyId,
               membershipRole: inserts.at(-1)?.values.membershipRole,
               status: inserts.at(-1)?.values.status,
             }]);
@@ -137,7 +135,7 @@ describe("actorMiddleware authenticated session profile", () => {
       isInstanceAdmin: false,
       memberships: [expect.objectContaining({ membershipRole: "owner", status: "active" })],
     });
-    expect(res.body.companyIds[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.body).not.toHaveProperty("companyIds");
     // authUsers, companies, companyMemberships, the role-default
     // principalPermissionGrants, and the lazily initialized instance setting.
     expect(inserts).toHaveLength(5);
@@ -167,7 +165,7 @@ describe("actorMiddleware authenticated session profile", () => {
       },
       returning() {
         return Promise.resolve([
-          { companyId: "company-1", membershipRole: "owner", status: "active" },
+          { membershipRole: "owner", status: "active" },
         ]);
       },
       then(resolve: (value: unknown) => unknown) {
@@ -183,6 +181,15 @@ describe("actorMiddleware authenticated session profile", () => {
                 ? [{ name: "paperclip-stack-purple-rain" }]
                 : [],
             ),
+          limit: () =>
+            Promise.resolve(
+              table === companies
+                ? [{ name: "paperclip-stack-purple-rain" }]
+                : [],
+            ),
+          orderBy: () => ({
+            limit: () => Promise.resolve(table === companies ? [{ id: "company-1" }] : []),
+          }),
         }),
       })),
       insert: vi.fn((table: unknown) => {
@@ -229,12 +236,11 @@ describe("actorMiddleware authenticated session profile", () => {
       .set("x-paperclip-cloud-paperclip-company-name", "Purple Rain")
       .set("x-paperclip-cloud-stack-role", "owner");
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(updates).toHaveLength(1);
     expect(updates[0]).toMatchObject({ name: "Purple Rain" });
     expect(activities).toEqual([
       expect.objectContaining({
-        companyId: expect.any(String),
         actorType: "system",
         actorId: "cloud-tenant-auth",
         action: "company.updated",
@@ -265,7 +271,7 @@ describe("actorMiddleware authenticated session profile", () => {
         return insertChain;
       },
       returning() {
-        return Promise.resolve([{ companyId: "company-1", membershipRole: "owner", status: "active" }]);
+        return Promise.resolve([{ membershipRole: "owner", status: "active" }]);
       },
       then(resolve: (value: unknown) => unknown) {
         return Promise.resolve(undefined).then(resolve);
@@ -330,14 +336,13 @@ describe("actorMiddleware authenticated session profile", () => {
 
 describe("Cloud tenant company naming", () => {
   const ids = {
-    companyId: "11111111-1111-4111-8111-111111111111",
     paperclipCompanyId: "paperclip-stack-purple-rain",
   };
 
   it.each([
     "paperclip-stack-purple-rain",
     "stack-purple-rain Paperclip",
-    ids.companyId,
+    ids.paperclipCompanyId,
   ])("repairs the known-bad machine name %s", (name) => {
     expect(isKnownBadCloudCompanyName(name, ids)).toBe(true);
   });

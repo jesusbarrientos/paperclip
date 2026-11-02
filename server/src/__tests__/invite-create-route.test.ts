@@ -30,7 +30,6 @@ function registerModuleMocks() {
 function createDbStub() {
   const createdInvite = {
     id: "invite-1",
-    companyId: "company-1",
     inviteType: "company_join",
     allowedJoinTypes: "human",
     tokenHash: "hash",
@@ -62,7 +61,7 @@ function createDbStub() {
             leftJoin() {
               return query;
             },
-            where() {
+            limit() {
               return Promise.resolve([{
                 name: "Acme Robotics",
                 logoAssetId: "logo-1",
@@ -88,7 +87,7 @@ async function createApp() {
       type: "board",
       source: "local_implicit",
       userId: null,
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "owner", status: "active" }],
     };
     next();
   });
@@ -105,7 +104,7 @@ async function createApp() {
   return app;
 }
 
-describe("POST /companies/:companyId/invites", () => {
+describe("POST /invites", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../services/index.js");
@@ -121,7 +120,7 @@ describe("POST /companies/:companyId/invites", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/invites")
+      .post("/api/invites")
       .set("host", "paperclip.example")
       .set("x-forwarded-proto", "https")
       .send({

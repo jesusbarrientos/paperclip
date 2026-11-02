@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { agents, companies, createDb } from "@paperclipai/db";
 import {
@@ -10,6 +10,7 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { teamsCatalogService } from "../services/teams-catalog.js";
+import { captureEmptyTablesReset } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -32,7 +33,13 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
     process.env.PAPERCLIP_HOME = tempHome;
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-teams-catalog-no-overrides-");
     db = createDb(tempDb.connectionString);
+    resetTables = await captureEmptyTablesReset(db);
   }, 20_000);
+
+  let resetTables: () => Promise<void>;
+  beforeEach(async () => {
+    await resetTables();
+  });
 
   afterAll(async () => {
     if (oldPaperclipHome === undefined) delete process.env.PAPERCLIP_HOME;
@@ -52,7 +59,7 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
     return companyId;
   }
 
-  async function listAdapterTypesByName(companyId: string) {
+  async function listAdapterTypesByName() {
     const rows = await db
       .select({
         name: agents.name,
@@ -60,21 +67,20 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
         adapterType: agents.adapterType,
         permissions: agents.permissions,
       })
-      .from(agents)
-      .where(eq(agents.companyId, companyId));
+      .from(agents);
     return new Map(rows.map((row) => [row.name, row]));
   }
 
   it("installs core-exec-team end-to-end with no caller overrides and creates 3 claude_local agents", async () => {
-    const companyId = await seedEmptyCompany();
+    await seedEmptyCompany();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "core-exec-team", {
+    await svc.installCatalogTeam("core-exec-team", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName();
     expect(byName.size).toBe(3);
 
     const adapterTypes = Array.from(byName.values()).map((row) => row.adapterType);
@@ -84,15 +90,15 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   it("installs product-design end-to-end with no caller overrides and uses claude_local", async () => {
-    const companyId = await seedEmptyCompany();
+    await seedEmptyCompany();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "product-design", {
+    await svc.installCatalogTeam("product-design", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName();
     expect(byName.size).toBe(1);
     const adapterTypes = Array.from(byName.values()).map((row) => row.adapterType);
     expect(adapterTypes).toEqual(["claude_local"]);
@@ -100,15 +106,15 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   it("installs product-engineering end-to-end with no caller overrides and uses claude_local for every agent", async () => {
-    const companyId = await seedEmptyCompany();
+    await seedEmptyCompany();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "product-engineering", {
+    await svc.installCatalogTeam("product-engineering", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName();
     expect(byName.size).toBe(3);
     const adapterTypes = Array.from(byName.values()).map((row) => row.adapterType);
     expect(adapterTypes).toEqual(["claude_local", "claude_local", "claude_local"]);
@@ -117,10 +123,10 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   it("honors an explicit caller adapter override for a single slug while defaulting the rest to claude_local", async () => {
-    const companyId = await seedEmptyCompany();
+    await seedEmptyCompany();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "core-exec-team", {
+    await svc.installCatalogTeam("core-exec-team", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
       adapterOverrides: {
@@ -128,7 +134,7 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
       },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName();
     expect(byName.size).toBe(3);
     const ctoRow = Array.from(byName.values()).find((row) => row.role === "engineering-manager" || row.name === "CTO");
     expect(ctoRow?.adapterType).toBe("opencode_local");

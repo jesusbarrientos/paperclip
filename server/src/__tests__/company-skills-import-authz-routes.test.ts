@@ -88,12 +88,12 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
     return instance;
   }
 
-  async function writeSkillFixture(companyId: string) {
+  async function writeSkillFixture() {
     if (!paperclipHome) throw new Error("Expected Paperclip test home");
     // Local imports must originate from an approved root (managed-skill
     // directory or a configured workspace); a bare tmpdir is rejected with
     // skill_workspace_boundary_denied.
-    const managedRoot = path.join(paperclipHome, "instances", "default", "skills", companyId);
+    const managedRoot = path.join(paperclipHome, "instances", "default", "skills");
     await fs.mkdir(managedRoot, { recursive: true });
     const skillDir = await fs.mkdtemp(path.join(managedRoot, "paperclip-import-authz-skill-"));
     cleanupDirs.add(skillDir);
@@ -118,10 +118,7 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
       name: "Company Skill Import Authz",
       issuePrefix: `IA${randomUUID().replace(/-/g, "").slice(0, 6)}`,
     }).returning();
-    const companyId = company!.id;
-
     const [agent] = await db.insert(agents).values({
-      companyId,
       name: "Skill Import Agent",
       role: "ceo",
       adapterType: "codex_local",
@@ -167,22 +164,21 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       responsibleUserId,
     });
-    return { companyId, agent: agent!, responsibleUserId, runId };
+    return { company: company!, agent: agent!, responsibleUserId, runId };
   }
 
   it("lets a standard responsible-user agent JWT with skills:create import a company skill", async () => {
-    const { companyId, agent, responsibleUserId, runId } = await seedGrantedAgentWithResponsibleUser();
-    const skillDir = await writeSkillFixture(companyId);
-    const token = createLocalAgentJwt(agent.id, companyId, agent.adapterType, runId, responsibleUserId);
+    const { company, agent, responsibleUserId, runId } = await seedGrantedAgentWithResponsibleUser();
+    const skillDir = await writeSkillFixture();
+    const token = createLocalAgentJwt(agent.id, agent.adapterType, runId, responsibleUserId);
     expect(token).toBeTruthy();
 
     const res = await request(authenticatedApp())
-      .post(`/api/companies/${companyId}/skills/import`)
+      .post(`/api/skills/import`)
       .set("Authorization", `Bearer ${token}`)
       .set("X-Paperclip-Run-Id", runId)
       .send({ source: skillDir });
@@ -197,14 +193,13 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
 
     const [importActivity] = await db.select().from(activityLog);
     expect(importActivity).toMatchObject({
-      companyId,
       actorType: "agent",
       actorId: agent.id,
       agentId: agent.id,
       runId,
       action: "company.skills_imported",
       entityType: "company",
-      entityId: companyId,
+      entityId: company.id,
     });
   });
 });

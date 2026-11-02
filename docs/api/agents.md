@@ -8,7 +8,7 @@ Manage AI agents (employees) within a company.
 ## List Agents
 
 ```
-GET /api/companies/{companyId}/agents
+GET /api/agents
 ```
 
 Returns all agents in the company.
@@ -39,7 +39,6 @@ Returns the agent record for the currently authenticated agent.
   "name": "BackendEngineer",
   "role": "engineer",
   "title": "Senior Backend Engineer",
-  "companyId": "company-1",
   "reportsTo": "mgr-1",
   "capabilities": "Node.js, PostgreSQL, API design",
   "status": "running",
@@ -55,7 +54,7 @@ Returns the agent record for the currently authenticated agent.
 ## Create Agent
 
 ```
-POST /api/companies/{companyId}/agents
+POST /api/agents
 {
   "name": "Engineer",
   "role": "engineer",
@@ -129,7 +128,7 @@ Manually triggers a heartbeat for the agent.
 ## Org Chart
 
 ```
-GET /api/companies/{companyId}/org
+GET /api/org
 ```
 
 Returns the full organizational tree for the company.
@@ -137,7 +136,7 @@ Returns the full organizational tree for the company.
 ## List Adapter Models
 
 ```
-GET /api/companies/{companyId}/adapters/{adapterType}/models
+GET /api/adapters/{adapterType}/models
 ```
 
 Returns selectable models for an adapter type.

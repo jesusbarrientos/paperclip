@@ -96,7 +96,6 @@ export function completeRetainedNativeSessionCleanup(
   if (!retainedRunnerdCleanupProofIsCurrent(proof))
     throw new NativeSessionCleanupQuarantinedError();
   const domain = JSON.stringify([
-    proof.binding.companyId,
     proof.backend.kind,
     proof.backend.name,
   ]);
@@ -133,17 +132,16 @@ export function completeRetainedNativeSessionCleanup(
  * An in-flight close must settle first: it must never reach a reused sandbox.
  */
 export function completeTerminatedRemoteNativeSessionCleanup(binding: {
-  companyId: string;
   runId: string;
   remoteCleanupScope: string;
 }): boolean {
   if (!binding.remoteCleanupScope) return false;
   const matches = [...quarantinedSessionCleanups].filter(({ session, domain }) => {
     const identity = session.identity();
-    // Domains are created internally from company, backend kind/name, and the
-    // optional remote resource. Local domains have no fourth element.
-    const [, , , remoteCleanupScope] = JSON.parse(domain) as string[];
-    return identity.companyId === binding.companyId && identity.runId === binding.runId &&
+    // Domains are created internally from backend kind/name and the optional
+    // remote resource. Local domains have no third element.
+    const [, , remoteCleanupScope] = JSON.parse(domain) as string[];
+    return identity.runId === binding.runId &&
       remoteCleanupScope === binding.remoteCleanupScope;
   });
   if (matches.some(entry => entry.attempt || entry.recovery)) return false;
@@ -160,14 +158,13 @@ export function completeTerminatedRemoteNativeSessionCleanup(binding: {
  * only cleanup ownership; the retained checkpoint is never made resumable.
  */
 export function completeTerminatedLocalNativeSessionCleanup(binding: {
-  companyId: string;
   runId: string;
   runnerInstanceId: string;
 }): boolean {
   const matches = [...quarantinedSessionCleanups].filter(({ session, domain }) => {
     const identity = session.identity();
     const parts = JSON.parse(domain) as string[];
-    return parts.length === 3 && identity.companyId === binding.companyId && identity.runId === binding.runId;
+    return parts.length === 2 && identity.runId === binding.runId;
   });
   if (matches.some(entry => entry.attempt || entry.recovery ||
       sessionOriginRunnerInstances.get(entry.session) !== binding.runnerInstanceId)) return false;
@@ -1817,7 +1814,6 @@ export async function executeNativeSession(
   const input = parseNativeExecutionInput(options.input);
   const descriptor = await options.backend.descriptor();
   const cleanupDomain = JSON.stringify([
-    input.binding.companyId,
     descriptor.kind,
     descriptor.name,
     ...(options.remoteCleanupScope ? [options.remoteCleanupScope] : []),
@@ -1841,7 +1837,6 @@ export async function executeNativeSession(
   if (
     persistedSession &&
     (persistedSession.identity.runId !== input.binding.runId ||
-      persistedSession.identity.companyId !== input.binding.companyId ||
       persistedSession.identity.issueId !== input.binding.issueId ||
       persistedSession.identity.agentId !== input.binding.agentId ||
       input.session.normalizedSessionId === null ||
@@ -1851,8 +1846,7 @@ export async function executeNativeSession(
   const existingIdentity = options.existingSession?.identity() ?? null;
   if (
     existingIdentity &&
-    (existingIdentity.companyId !== input.binding.companyId ||
-      existingIdentity.issueId !== input.binding.issueId ||
+    (existingIdentity.issueId !== input.binding.issueId ||
       existingIdentity.agentId !== input.binding.agentId ||
       input.session.normalizedSessionId === null ||
       existingIdentity.sessionId !== input.session.normalizedSessionId)
@@ -1866,7 +1860,6 @@ export async function executeNativeSession(
   const identity = {
     runId: input.binding.runId,
     sessionId: normalizedSessionId,
-    companyId: input.binding.companyId,
     issueId: input.binding.issueId,
     agentId: input.binding.agentId,
   };

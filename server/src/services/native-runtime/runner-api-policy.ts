@@ -7,7 +7,7 @@ export function runnerApiRestriction(
     method === "GET" &&
     [
       "/api/agents/me/secrets",
-      "/api/companies/{companyId}/secrets/catalog",
+      "/api/secrets/catalog",
     ].includes(path);
   if (
     (/^\/api\/tool-gateway\/sessions(\/|$)/.test(path) && method !== "GET") ||
@@ -19,7 +19,7 @@ export function runnerApiRestriction(
       (/\/(secrets|setup-secret|secret-proposals|secret-provider-configs|user-secrets|user-secret-definitions|keys|board-api-keys|credentials|setup-token-login-sessions|board-claim|invites|join-requests|gateway-tokens|tokens|token|rotate-secret|terminal-session-token|claim-api-key)(\/|$)/.test(
         path,
       ) ||
-        /^\/api\/companies\/\{companyId\}\/exports?(\/|$)/.test(path)))
+        /^\/api\/organization\/exports?(\/|$)/.test(path)))
   ) {
     return "Use the existing credential broker or secure management client: call_api cannot return secret values, manage credentials, or export company credential configuration.";
   }

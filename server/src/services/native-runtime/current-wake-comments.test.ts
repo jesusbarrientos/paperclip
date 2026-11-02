@@ -76,7 +76,6 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Chat agent",
       role: "engineer",
       status: "running",
@@ -87,7 +86,6 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "External chat",
       status: "in_progress",
       priority: "medium",
@@ -100,7 +98,6 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
       .insert(issueComments)
       .values(
         input.bodies.map((body) => ({
-          companyId,
           issueId,
           authorType: "user" as const,
           authorUserId: "local-board",
@@ -111,7 +108,6 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
     const commentIds = comments.map((comment) => comment.id);
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       nativeIssueId: issueId,
       invocationSource: "assignment",
@@ -154,7 +150,7 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
         executionLockedAt: new Date(),
       })
       .where(eq(issues.id, issueId));
-    return { companyId, agentId, issueId, runId, comments, commentIds };
+    return { agentId, issueId, runId, comments, commentIds };
   }
 
   it("exposes no reader for an inline-complete wake", async () => {
@@ -185,7 +181,6 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
     );
     const seeded = await seed({ bodies });
     await db.insert(issueComments).values({
-      companyId: seeded.companyId,
       issueId: seeded.issueId,
       authorType: "user",
       authorUserId: "local-board",
@@ -368,7 +363,6 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
     const [coalesced] = await db
       .insert(issueComments)
       .values({
-        companyId: seeded.companyId,
         issueId: seeded.issueId,
         authorType: "user",
         authorUserId: "local-board",

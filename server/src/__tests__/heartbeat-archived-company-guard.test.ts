@@ -60,7 +60,6 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Archived Agent",
       role: "engineer",
       status: "idle",
@@ -76,7 +75,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
       permissions: {},
     });
 
-    return { companyId, agentId };
+    return { agentId };
   }
 
   async function insertInvalidOrgChainAgent() {
@@ -95,7 +94,6 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
     await db.insert(agents).values([
       {
         id: managerId,
-        companyId,
         name: "Terminated Manager",
         role: "cto",
         status: "terminated",
@@ -112,7 +110,6 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
       },
       {
         id: childId,
-        companyId,
         name: "Invalid Chain Child",
         role: "engineer",
         reportsTo: managerId,
@@ -130,7 +127,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
       },
     ]);
 
-    return { companyId, managerId, childId };
+    return { managerId, childId };
   }
 
   it("does not iterate archived-company agents in tickTimers", async () => {
@@ -185,13 +182,12 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("does not advance issue monitors for archived companies", async () => {
-    const { companyId, agentId } = await insertArchivedAgent();
+    const { agentId } = await insertArchivedAgent();
     const issueId = randomUUID();
     const monitorScheduledAt = new Date("2026-06-04T00:00:00Z");
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Archived-company monitor issue",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -219,12 +215,11 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("does not resume queued runs for archived companies", async () => {
-    const { companyId, agentId } = await insertArchivedAgent();
+    const { agentId } = await insertArchivedAgent();
     const runId = randomUUID();
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "timer",
       status: "queued",
@@ -288,20 +283,18 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("cancels existing queued runs for invalid-org-chain agents instead of starting them", async () => {
-    const { companyId, childId } = await insertInvalidOrgChainAgent();
+    const { childId } = await insertInvalidOrgChainAgent();
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
       agentId: childId,
       source: "assignment",
       status: "queued",
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: childId,
       invocationSource: "assignment",
       status: "queued",
@@ -337,21 +330,19 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("suppresses due scheduled retries for invalid-org-chain agents", async () => {
-    const { companyId, childId } = await insertInvalidOrgChainAgent();
+    const { childId } = await insertInvalidOrgChainAgent();
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
     const now = new Date("2026-06-04T00:10:00Z");
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
       agentId: childId,
       source: "automation",
       status: "queued",
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: childId,
       invocationSource: "automation",
       status: "scheduled_retry",

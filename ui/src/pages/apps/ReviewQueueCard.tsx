@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, ShieldQuestion, X } from "lucide-react";
 import type { ToolActionRequestListItem } from "@paperclipai/shared";
 import { humanizeConnectionDisplayName } from "@paperclipai/shared";
-import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { timeAgo } from "@/lib/timeAgo";
@@ -35,12 +34,10 @@ export function ReviewQueueCard({
   heading?: string;
   plain?: boolean;
 }) {
-  const { selectedCompanyId } = useCompany();
 
   const query = useQuery({
-    queryKey: queryKeys.tools.actionRequests(selectedCompanyId ?? "__none__", "pending"),
-    queryFn: () => toolsApi.listActionRequests(selectedCompanyId!, "pending"),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.actionRequests("pending"),
+    queryFn: () => toolsApi.listActionRequests("pending"),
     refetchInterval: 20_000,
   });
 
@@ -49,7 +46,6 @@ export function ReviewQueueCard({
     return connectionId ? all.filter((item) => item.connectionId === connectionId) : all;
   }, [query.data, connectionId]);
 
-  if (!selectedCompanyId) return null;
   if (query.isLoading) return null;
   if (query.isError) return <p role="alert" className="text-sm text-destructive">Could not load connection reviews. Please refresh to try again.</p>;
 
@@ -73,7 +69,7 @@ export function ReviewQueueCard({
       </div>
       <div className="space-y-3">
         {items.map((item) => (
-          <ReviewRow key={item.request.id} companyId={selectedCompanyId} item={item} plain={plain} />
+          <ReviewRow key={item.request.id} item={item} plain={plain} />
         ))}
       </div>
     </section>
@@ -81,11 +77,9 @@ export function ReviewQueueCard({
 }
 
 function ReviewRow({
-  companyId,
   item,
   plain,
 }: {
-  companyId: string;
   item: ToolActionRequestListItem;
   plain: boolean;
 }) {
@@ -101,14 +95,14 @@ function ReviewRow({
   const linkedInteraction = interactionQuery.data?.find(row => row.id === item.request.interactionId);
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.tools.actionRequests(companyId, "pending") });
-    queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention(companyId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.tools.trustRules(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tools.actionRequests("pending") });
+    queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tools.trustRules() });
     if (item.request.issueId) queryClient.invalidateQueries({ queryKey: queryKeys.issues.interactions(item.request.issueId) });
   };
 
   const allowOnce = useMutation({
-    mutationFn: () => toolsApi.approveActionRequest(companyId, item.request.id),
+    mutationFn: () => toolsApi.approveActionRequest(item.request.id),
     onMutate: () => setResolving("allow"),
     onSuccess: () => {
       pushToast({ title: "Allowed once", body: `${actionLabel(item)} can run this time.`, tone: "success" });
@@ -123,7 +117,7 @@ function ReviewRow({
 
   const alwaysAllow = useMutation({
     mutationFn: async () => {
-      return toolsApi.approveActionRequest(companyId, item.request.id, true);
+      return toolsApi.approveActionRequest(item.request.id, true);
     },
     onMutate: () => setResolving("always"),
     onSuccess: () => {
@@ -133,7 +127,7 @@ function ReviewRow({
         tone: "success",
       });
       invalidate();
-      queryClient.invalidateQueries({ queryKey: queryKeys.tools.trustRules(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tools.trustRules() });
     },
     onError: (error) => {
       invalidate();
@@ -143,7 +137,7 @@ function ReviewRow({
   });
 
   const decline = useMutation({
-    mutationFn: () => toolsApi.declineActionRequest(companyId, item.request.id),
+    mutationFn: () => toolsApi.declineActionRequest(item.request.id),
     onMutate: () => setResolving("decline"),
     onSuccess: () => {
       pushToast({ title: "Declined", body: `${actionLabel(item)} won’t run.`, tone: "info" });
@@ -159,11 +153,11 @@ function ReviewRow({
   if (linkedInteraction) return <IssueThreadInteractionCard
     interaction={linkedInteraction}
     onAcceptInteraction={async (_interaction, _keys, _options, rememberAction) => {
-      try { await toolsApi.approveActionRequest(companyId, item.request.id, rememberAction); }
+      try { await toolsApi.approveActionRequest(item.request.id, rememberAction); }
       finally { invalidate(); }
     }}
     onRejectInteraction={async (_interaction, reason) => {
-      try { await toolsApi.declineActionRequest(companyId, item.request.id, reason); }
+      try { await toolsApi.declineActionRequest(item.request.id, reason); }
       finally { invalidate(); }
     }}
   />;

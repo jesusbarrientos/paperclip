@@ -53,7 +53,7 @@ The plugin supports two backend modes, selected via the `backend` config field:
 Create a `sandbox` environment with `driver: kubernetes`. One of these auth fields is required:
 
 - `inCluster: true` — use the in-pod ServiceAccount credentials (when paperclip-server runs inside the same cluster).
-- `kubeconfig: <YAML>` — inline kubeconfig (stored as a company secret).
+- `kubeconfig: <YAML>` — inline kubeconfig (stored as a Paperclip secret).
 - `kubeconfigSecretRef: <secret-uuid>` — reference to an existing Paperclip secret.
 
 Common optional fields:
@@ -62,8 +62,8 @@ Common optional fields:
 |---|---|---|
 | `backend` | `"sandbox-cr"` | `sandbox-cr` (alpha, requires agent-sandbox controller) or `job` (stable, one-shot entrypoint). |
 | `adapterType` | `"claude_local"` | One of the supported adapter types (claude_local, codex_local, gemini_local, cursor_local, opencode_local, pi_local). Determines runtime image + env keys + egress allow-list. |
-| `namespacePrefix` | `"paperclip-"` | Prefix for the per-company tenant namespace. |
-| `companySlug` | derived from companyId | Override the auto-derived company slug. |
+| `namespacePrefix` | `"paperclip-"` | Prefix for the tenant namespace. |
+| `namespaceSlug` | `"organization"` | Slug appended to `namespacePrefix` to form the tenant namespace name. |
 | `imageRegistry` | (none) | Override the default registry for agent runtime images. |
 | `imageAllowList` | `[]` | Glob patterns of allowed `target.imageOverride` values. Empty = no override permitted. |
 | `imagePullSecrets` | `[]` | Names of pre-created Docker image pull secrets in the tenant namespace. |
@@ -96,10 +96,10 @@ The provider creates a workload-owned policy selected by the task run label, so 
 
 ## What gets created in your cluster
 
-For each company that runs agents (created lazily on first dispatch):
+Created lazily on first dispatch:
 
 ```
-Namespace          paperclip-{companySlug}        (PSS: restricted enforce + audit)
+Namespace          paperclip-{namespaceSlug}      (PSS: restricted enforce + audit)
 ServiceAccount     paperclip-tenant-sa
 Role               paperclip-tenant-role          (only get pods/log)
 RoleBinding        paperclip-tenant-rb

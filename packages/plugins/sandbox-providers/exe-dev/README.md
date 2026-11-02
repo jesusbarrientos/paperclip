@@ -17,7 +17,7 @@ From a Paperclip instance, install:
 Configure exe.dev from `Instance Settings -> Environments`, not from the plugin's plugin page.
 
 - Put the exe.dev API token on the sandbox environment itself.
-- When you save an environment, Paperclip stores pasted API keys and pasted SSH private keys as company secrets.
+- When you save an environment, Paperclip stores pasted API keys and pasted SSH private keys as Paperclip secrets.
 - `EXE_API_KEY` remains an optional host-level fallback when an environment omits the API token.
 - The current implementation provisions VMs through exe.dev's HTTPS API and runs commands through direct SSH to the created VM.
 

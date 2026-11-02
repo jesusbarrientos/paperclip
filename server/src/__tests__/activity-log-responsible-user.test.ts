@@ -23,8 +23,7 @@ import {
 } from "./helpers/embedded-postgres.js";
 
 type TableRows = Map<unknown, Array<Record<string, unknown>>>;
-
-const companyId = "00000000-0000-4000-8000-000000000001";
+const organizationId = "00000000-0000-4000-8000-000000000001";
 const agentId = "00000000-0000-4000-8000-000000000002";
 const issueId = "00000000-0000-4000-8000-000000000003";
 const runId = "00000000-0000-4000-8000-000000000004";
@@ -40,6 +39,7 @@ function createReader(rowsByTable: TableRows) {
           expect(condition).toBeDefined();
           return Promise.resolve(rowsByTable.get(table) ?? []);
         },
+        limit: () => Promise.resolve(rowsByTable.get(table) ?? []),
       }),
     }),
   } as unknown as Db;
@@ -47,7 +47,6 @@ function createReader(rowsByTable: TableRows) {
 
 function activityInput(overrides: Partial<LogActivityInput> = {}): LogActivityInput {
   return {
-    companyId,
     actorType: "agent",
     actorId: agentId,
     action: "issue.updated",
@@ -70,7 +69,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
       actorType: "user",
       actorId: "user-1",
       entityType: "company",
-      entityId: companyId,
+      entityId: organizationId,
     }))).resolves.toBe("user-1");
   });
 
@@ -128,7 +127,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
     }))).resolves.toBe("key-user");
   });
 
-  it("falls back to the company default responsible user", async () => {
+  it("falls back to the organization default responsible user", async () => {
     const db = createReader(new Map([
       [agentApiKeys, []],
       [companies, [{ defaultResponsibleUserId: "default-user" }]],
@@ -136,7 +135,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
       entityType: "company",
-      entityId: companyId,
+      entityId: organizationId,
       agentApiKeyId: missingAgentApiKeyId,
     }))).resolves.toBe("default-user");
   });
@@ -197,7 +196,6 @@ describeEmbeddedPostgres("logActivity responsible-user stamping", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -216,7 +214,6 @@ describeEmbeddedPostgres("logActivity responsible-user stamping", () => {
 
     const postCommitPublications: ActivityPublication[] = [];
     await logActivity(db, activityInput({
-      companyId,
       actorId: agentId,
       agentId,
       entityType: "agent",
@@ -226,7 +223,6 @@ describeEmbeddedPostgres("logActivity responsible-user stamping", () => {
 
     expect(postCommitPublications).toHaveLength(1);
     expect(postCommitPublications[0]).toMatchObject({
-      companyId,
       payload: {
         action: "issue.updated",
         entityType: "agent",
@@ -237,7 +233,6 @@ describeEmbeddedPostgres("logActivity responsible-user stamping", () => {
     const row = await db
       .select({ responsibleUserId: activityLog.responsibleUserId })
       .from(activityLog)
-      .where(eq(activityLog.companyId, companyId))
       .then((rows) => rows[0]);
 
     expect(row?.responsibleUserId).toBe("key-user");

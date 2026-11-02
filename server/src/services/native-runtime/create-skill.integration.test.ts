@@ -33,7 +33,7 @@ describe("runner create_skill through the real skill API", () => {
   });
 
   async function fixture(options: Parameters<typeof server.fixture>[0] = {}) {
-    const result = await server.fixture(options);
+    const result = await server.fixture({ ...options, reset: true });
     await server.db.insert(companyMemberships).values({ principalType: "agent", principalId: result.agentId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     return result;
   }
@@ -49,26 +49,26 @@ describe("runner create_skill through the real skill API", () => {
     const call = (callId: string) => testFixture.authority.execute({ tool: "create_skill", callId, arguments: args });
     const first = await call("first");
     expect(await call("lost-response-retry")).toEqual(first);
-    const skills = await server.db.select().from(companySkills).where(eq(companySkills.companyId, testFixture.companyId));
+    const skills = await server.db.select().from(companySkills);
     expect(skills).toHaveLength(1);
     expect(skills[0]).toMatchObject({ name: args.name, markdown: args.markdown });
     const service = companySkillService(server.db);
-    expect((await service.readFile(testFixture.companyId, skills[0]!.id, "SKILL.md"))?.content).toBe(args.markdown);
-    expect(await service.listVersions(testFixture.companyId, skills[0]!.id)).toHaveLength(1);
+    expect((await service.readFile(skills[0]!.id, "SKILL.md"))?.content).toBe(args.markdown);
+    expect(await service.listVersions(skills[0]!.id)).toHaveLength(1);
     const events = (await activityService(server.db).forIssue(testFixture.issueId)).filter(e => e.action === "company.skill_created");
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ entityId: skills[0]!.id, details: { sourceIssueId: testFixture.issueId, versionId: skills[0]!.currentVersionId } });
     await expect(testFixture.authority.execute({ tool: "create_skill", callId: "conflict", arguments: { ...args, markdown: args.markdown + "Different instructions." } })).rejects.toThrow(/different inputs/);
-    expect((await service.readFile(testFixture.companyId, skills[0]!.id, "SKILL.md"))?.content).toBe(args.markdown);
+    expect((await service.readFile(skills[0]!.id, "SKILL.md"))?.content).toBe(args.markdown);
   });
 
   it("enforces explicit company policy before a write", async () => {
     const testFixture = await fixture();
-    await companySkillPolicyService(server.db).replace({ companyId: testFixture.companyId, expectedRevision: 0,
+    await companySkillPolicyService(server.db).replace({ expectedRevision: 0,
       policy: { schemaVersion: 1, defaultEffect: "deny", rules: [] },
       activity: { actorType: "user", actorId: "test-board" } });
     await expect(testFixture.authority.execute({ tool: "create_skill", callId: "policy-denied", arguments: args })).rejects.toThrow(/company policy/);
-    expect(await server.db.select().from(companySkills).where(eq(companySkills.companyId, testFixture.companyId))).toHaveLength(0);
+    expect(await server.db.select().from(companySkills)).toHaveLength(0);
   });
 
   it("recovers a concurrent or replacement-run retry without creating another skill", async () => {
@@ -80,7 +80,7 @@ describe("runner create_skill through the real skill API", () => {
     const replacementRunId = randomUUID();
     await server.db.update(heartbeatRuns).set({ status: "failed" }).where(eq(heartbeatRuns.id, testFixture.runId));
     await server.db.insert(heartbeatRuns).values({
-      id: replacementRunId, companyId: testFixture.companyId, agentId: testFixture.agentId,
+      id: replacementRunId, agentId: testFixture.agentId,
       status: "running", runtimeMode: "native", nativeIssueId: testFixture.issueId,
       invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId: testFixture.issueId },
     });
@@ -88,33 +88,24 @@ describe("runner create_skill through the real skill API", () => {
     const replacement = new PaperclipRunnerToolAuthority(server.db, { ...testFixture, runId: replacementRunId });
     expect(await replacement.execute({ tool: "create_skill", callId: "recovered", arguments: args })).toEqual(first);
     await expect(testFixture.authority.execute({ tool: "create_skill", callId: "stale", arguments: args })).rejects.toThrow();
-    expect(await server.db.select().from(companySkills).where(eq(companySkills.companyId, testFixture.companyId))).toHaveLength(1);
+    expect(await server.db.select().from(companySkills)).toHaveLength(1);
     expect((await activityService(server.db).forIssue(testFixture.issueId)).filter(e => e.action === "company.skill_created")).toHaveLength(1);
   });
 
   it("rechecks company policy when a completed call is retried", async () => {
     const testFixture = await fixture();
     await testFixture.authority.execute({ tool: "create_skill", callId: "allowed", arguments: args });
-    await companySkillPolicyService(server.db).replace({ companyId: testFixture.companyId, expectedRevision: 0,
+    await companySkillPolicyService(server.db).replace({ expectedRevision: 0,
       policy: { schemaVersion: 1, defaultEffect: "deny", rules: [] },
       activity: { actorType: "user", actorId: "test-board" } });
     await expect(testFixture.authority.execute({ tool: "create_skill", callId: "revoked-retry", arguments: args })).rejects.toThrow(/company policy/);
-    expect(await server.db.select().from(companySkills).where(eq(companySkills.companyId, testFixture.companyId))).toHaveLength(1);
+    expect(await server.db.select().from(companySkills)).toHaveLength(1);
   });
 
   it("does not create skills in planning mode", async () => {
     const testFixture = await fixture({ mode: "planning" });
     expect(new PaperclipRunnerToolAuthority(server.db, { ...testFixture, workMode: "planning" }).definitions().some(tool => tool.name === "create_skill")).toBe(false);
     await expect(testFixture.authority.execute({ tool: "create_skill", callId: "plan", arguments: args })).rejects.toThrow();
-    expect(await server.db.select().from(companySkills).where(eq(companySkills.companyId, testFixture.companyId))).toHaveLength(0);
-  });
-
-  it("isolates company names and creation history", async () => {
-    const a = await fixture(), b = await fixture();
-    const first = await a.authority.execute({ tool: "create_skill", callId: "a", arguments: args }) as { id: string };
-    const second = await b.authority.execute({ tool: "create_skill", callId: "b", arguments: args }) as { id: string };
-    expect(first.id).not.toBe(second.id);
-    expect(await companySkillService(server.db).getById(b.companyId, first.id)).toBeNull();
-    expect(await server.db.select().from(activityLog).where(and(eq(activityLog.companyId, a.companyId), eq(activityLog.action, "company.skill_created")))).toHaveLength(1);
+    expect(await server.db.select().from(companySkills)).toHaveLength(0);
   });
 });

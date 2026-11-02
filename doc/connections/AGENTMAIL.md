@@ -176,18 +176,18 @@ All paths below are relative to `/api`:
 
 | Operation | Path |
 | --- | --- |
-| Save credential and human/agent access | `POST /companies/:companyId/email/connections` |
-| Inspect a saved credential | `POST /companies/:companyId/email/connections/:connectionId/inspect` |
-| Check an address without creating an inbox (connection manager) | `POST /companies/:companyId/email/connections/:connectionId/check-address` |
-| List authorized inboxes | `GET /companies/:companyId/email/inboxes` |
-| Inspect setup credentials (connection manager) | `POST /companies/:companyId/email/inspect` |
-| Create or attach an inbox (connection manager) | `POST /companies/:companyId/email/inboxes` |
+| Save credential and human/agent access | `POST /email/connections` |
+| Inspect a saved credential | `POST /email/connections/:connectionId/inspect` |
+| Check an address without creating an inbox (connection manager) | `POST /email/connections/:connectionId/check-address` |
+| List authorized inboxes | `GET /email/inboxes` |
+| Inspect setup credentials (connection manager) | `POST /email/inspect` |
+| Create or attach an inbox (connection manager) | `POST /email/inboxes` |
 | Pause, resume, disconnect | `POST /email/inboxes/:endpointId/control` |
 | Replace credentials / receiving mode | `POST /email/inboxes/:endpointId/reconnect` |
-| Start an email child task or reply | `POST /companies/:companyId/email/send` |
-| Read the email context of a bound task | `GET /companies/:companyId/email/tasks/:issueId` |
-| Read delivery outcome | `GET /companies/:companyId/email/deliveries/:publicationId` |
-| Resolve an uncertain outcome (connection manager) | `POST /companies/:companyId/email/deliveries/:publicationId/resolve` |
+| Start an email child task or reply | `POST /email/send` |
+| Read the email context of a bound task | `GET /email/tasks/:issueId` |
+| Read delivery outcome | `GET /email/deliveries/:publicationId` |
+| Resolve an uncertain outcome (connection manager) | `POST /email/deliveries/:publicationId/resolve` |
 
 A new send request:
 

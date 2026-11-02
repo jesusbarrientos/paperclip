@@ -11,16 +11,12 @@ declare global {
         userName?: string | null;
         userEmail?: string | null;
         agentId?: string;
-        companyId?: string;
-        companyIds?: string[];
         sessionId?: string | null;
         memberships?: Array<{
-          companyId: string;
           membershipRole?: string | null;
           status?: string;
         }>;
         onBehalfOfMemberships?: Array<{
-          companyId: string;
           membershipRole?: string | null;
           status?: string;
         }>;

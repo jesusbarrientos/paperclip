@@ -58,7 +58,7 @@ describe("OpenCode local skill injection", () => {
     let prompt = "";
     const result = await execute({
       runId: "chat-run",
-      agent: { id: "agent-1", companyId: "company-1", name: "OpenCode", adapterType: "opencode_local", adapterConfig: {} },
+      agent: { id: "agent-1", name: "OpenCode", adapterType: "opencode_local", adapterConfig: {} },
       runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
       config: {
         command: commandPath, cwd: configHome, model: "openai/gpt-5", env: { OPENCODE_ALLOW_ALL_MODELS: "1" },
@@ -92,7 +92,7 @@ describe("OpenCode local skill injection", () => {
       .mockResolvedValueOnce(probeResult({ stdout: JSON.stringify({ type: "text", sessionID: "fresh", part: { text: "done" } }) }));
     await execute({
       runId: "run-context-fallback",
-      agent: { id: "agent-1", companyId: "company-1", name: "OpenCode", adapterType: "opencode_local", adapterConfig: {} },
+      agent: { id: "agent-1", name: "OpenCode", adapterType: "opencode_local", adapterConfig: {} },
       runtime: { sessionId: "previous", sessionParams: null, sessionDisplayId: null, taskKey: null },
       config: { command: commandPath, cwd: configHome, model: "openai/gpt-5", env: { OPENCODE_ALLOW_ALL_MODELS: "1" } },
       context: createPromptContextFixture(),
@@ -134,7 +134,6 @@ describe("OpenCode local skill injection", () => {
         runId: "run-configured-home",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "OpenCode Coder",
           adapterType: "opencode_local",
           adapterConfig: {},
@@ -202,7 +201,6 @@ describe("OpenCode local skill injection", () => {
         runId: "run-openrouter",
         agent: {
           id: "agent-openrouter",
-          companyId: "company-1",
           name: "OpenRouter Coder",
           adapterType: "opencode_local",
           adapterConfig: {},

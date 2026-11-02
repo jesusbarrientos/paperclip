@@ -64,7 +64,6 @@ describe("onEnvironmentResumeLease", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: CONFIG,
       providerLeaseId: "pc-abc",
@@ -101,7 +100,6 @@ describe("onEnvironmentResumeLease", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: { inCluster: true, backend: "job" },
       providerLeaseId: "pc-job",
@@ -127,7 +125,6 @@ describe("onEnvironmentResumeLease", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: CONFIG,
       providerLeaseId: "pc-abc",
@@ -149,7 +146,6 @@ describe("onEnvironmentResumeLease", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: CONFIG,
       providerLeaseId: "pc-abc",
@@ -174,7 +170,6 @@ describe("onEnvironmentDestroyLease", () => {
 
     await plugin.definition.onEnvironmentDestroyLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: CONFIG,
       providerLeaseId: "pc-abc",
@@ -207,7 +202,6 @@ describe("onEnvironmentDestroyLease", () => {
     await expect(
       plugin.definition.onEnvironmentDestroyLease!({
         driverKey: "kubernetes",
-        companyId: "acme",
         environmentId: "env-1",
         config: CONFIG,
         providerLeaseId: "pc-abc",
@@ -226,7 +220,6 @@ describe("onEnvironmentDestroyLease", () => {
 
     await plugin.definition.onEnvironmentDestroyLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: CONFIG,
       providerLeaseId: null,
@@ -250,7 +243,6 @@ describe("onEnvironmentDestroyLease", () => {
 
     await plugin.definition.onEnvironmentDestroyLease!({
       driverKey: "kubernetes",
-      companyId: "acme",
       environmentId: "env-1",
       config: { inCluster: true, backend: "job" },
       providerLeaseId: "pc-job",

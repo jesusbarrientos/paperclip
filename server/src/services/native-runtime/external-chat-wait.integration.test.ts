@@ -69,7 +69,7 @@ import type { AskUserQuestionsInteraction } from "@paperclipai/shared";
 import { PaperclipRunnerToolAuthority } from "./paperclip-runner-tool-authority.js";
 import { createLocalDiskStorageProvider } from "../../storage/local-disk-provider.js";
 import { createStorageService } from "../../storage/service.js";
-import { subscribeAllCompanyLiveEvents } from "../live-events.js";
+import { subscribeLiveEvents } from "../live-events.js";
 import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("native external-chat response wait", () => {
@@ -134,7 +134,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Waiting chat agent",
       adapterType: "paperclip_runner",
       adapterConfig: { provider: "codex" },
@@ -143,7 +142,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       issueNumber: 1,
       identifier: `${issuePrefix}-1`,
       title: "Send the photo and wait",
@@ -153,7 +151,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(completionContracts).values({
       id: contractId,
-      companyId,
       issueId,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -174,7 +171,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -191,17 +187,15 @@ describe("native external-chat response wait", () => {
       .where(eq(issues.id, issueId));
     await db.insert(toolApplications).values({
       id: applicationId,
-      companyId,
       applicationKey: `chat:telegram:${endpointId}`,
-      name: "Telegram wait",
+      name: `Telegram wait ${endpointId}`,
       type: "chat",
       status: "active",
     });
     await db.insert(toolConnections).values({
       id: connectionId,
-      companyId,
       applicationId,
-      name: "Telegram wait",
+      name: `Telegram wait ${endpointId}`,
       uid: `chat-telegram-${endpointId}`,
       connectionPurpose: "channel",
       transport: "chat_sdk",
@@ -210,19 +204,17 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(chatEndpoints).values({
       id: endpointId,
-      companyId,
       connectionId,
       provider,
       publicId: randomUUID(),
       assignedAgentId: agentId,
       status: "active",
-      providerAccountId: "telegram-bot",
+      providerAccountId: `telegram-bot-${endpointId}`,
       allowDirectMessages: true,
       allowUnlinkedPeople: false,
     });
     await db.insert(chatEndpointResources).values({
       id: resourceId,
-      companyId,
       endpointId,
       type: provider === "github" ? "repository" : "direct_message",
       providerResourceId:
@@ -236,7 +228,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(chatConversations).values({
       id: conversationId,
-      companyId,
       endpointId,
       resourceId,
       issueId,
@@ -249,14 +240,12 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(chatExternalPrincipals).values({
       id: principalId,
-      companyId,
       provider,
-      providerAccountId: "telegram-bot",
+      providerAccountId: `telegram-bot-${endpointId}`,
       externalId: "telegram-user",
       kind: "user",
     });
     await db.insert(chatIdentityLinks).values({
-      companyId,
       endpointId,
       principalId,
       paperclipUserId: userId,
@@ -270,7 +259,6 @@ describe("native external-chat response wait", () => {
     }).onConflictDoUpdate(membershipUpsert);
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId,
       authorType: "user",
       authorUserId: userId,
@@ -278,7 +266,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(chatDeliveries).values({
       id: deliveryId,
-      companyId,
       endpointId,
       conversationId,
       principalId,
@@ -291,7 +278,6 @@ describe("native external-chat response wait", () => {
       processedAt: new Date(),
     });
     await db.insert(chatMessageLinks).values({
-      companyId,
       endpointId,
       conversationId,
       deliveryId,
@@ -320,7 +306,6 @@ describe("native external-chat response wait", () => {
       .where(eq(heartbeatRuns.id, runId));
 
     const port = new PaperclipControlPlanePort(db, {
-      companyId,
       issueId,
       runId,
       agentId,
@@ -331,7 +316,7 @@ describe("native external-chat response wait", () => {
       controlPlaneSourceInstanceId: `wait-control-${runId}`,
     });
     await port.openRun({
-      identity: { companyId, issueId, runId, agentId, sessionId },
+      identity: { issueId, runId, agentId, sessionId },
       backendKind: "mock",
       sourceInstanceId: runnerInstanceId,
     });
@@ -388,7 +373,6 @@ describe("native external-chat response wait", () => {
 
     return {
       agentId,
-      companyId,
       conversationId,
       endpointId,
       deliveryId,
@@ -537,7 +521,6 @@ describe("native external-chat response wait", () => {
           };
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       status: "succeeded",
       runtimeMode: "native",
@@ -548,7 +531,6 @@ describe("native external-chat response wait", () => {
       .insert(issueThreadInteractions)
       .values({
         id: interactionId,
-        companyId: fixture.companyId,
         issueId: fixture.issueId,
         kind: "ask_user_questions",
         status: "answered",
@@ -576,7 +558,6 @@ describe("native external-chat response wait", () => {
       .returning();
     await db.insert(chatPublications).values({
       id: publicationId,
-      companyId: fixture.companyId,
       endpointId: fixture.endpointId,
       conversationId: fixture.conversationId,
       issueId: fixture.issueId,
@@ -588,7 +569,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(chatActions).values({
       id: actionId,
-      companyId: fixture.companyId,
       endpointId: fixture.endpointId,
       conversationId: fixture.conversationId,
       principalId: fixture.principalId,
@@ -638,7 +618,6 @@ describe("native external-chat response wait", () => {
     });
     await db.insert(agentWakeupRequests).values({
       id: wakeId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       source: "automation",
       triggerDetail: "system",
@@ -698,7 +677,6 @@ describe("native external-chat response wait", () => {
     const sourceRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       status: "succeeded",
       runtimeMode: "native",
@@ -733,7 +711,7 @@ describe("native external-chat response wait", () => {
     let interaction: Awaited<ReturnType<typeof interactionSvc.create>>;
     try {
       interaction = await interactionSvc.create(
-        { id: fixture.issueId, companyId: fixture.companyId },
+        { id: fixture.issueId },
         {
           kind: "ask_user_questions",
           sourceRunId,
@@ -774,7 +752,7 @@ describe("native external-chat response wait", () => {
       .returning();
     expect(publication).toBeTruthy();
     await interactionSvc.answerQuestions(
-      { id: fixture.issueId, companyId: fixture.companyId },
+      { id: fixture.issueId },
       interaction.id,
       { answers: [{ questionId: "color", optionIds: ["cobalt"] }] },
       { userId: fixture.userId },
@@ -793,7 +771,6 @@ describe("native external-chat response wait", () => {
     const wakeId = randomUUID();
     await db.insert(agentWakeupRequests).values({
       id: wakeId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       source: "automation",
       triggerDetail: "system",
@@ -854,7 +831,7 @@ describe("native external-chat response wait", () => {
         db
           .select()
           .from(chatActions)
-          .where(eq(chatActions.companyId, fixture.companyId)),
+          .where(eq(chatActions.endpointId, fixture.endpointId)),
       ).resolves.toEqual([]);
       expect(
         await resolveExternalChatQuestionResponse(
@@ -1011,7 +988,6 @@ describe("native external-chat response wait", () => {
         await db
           .insert(chatActions)
           .values({
-            companyId: fixture.companyId,
             endpointId: fixture.endpointId,
             conversationId: fixture.conversationId,
             principalId: fixture.principalId,
@@ -1134,7 +1110,6 @@ describe("native external-chat response wait", () => {
     fixture.context.paperclipExternalChatExecutionBound = true;
     fixture.context.paperclipWake = await buildPaperclipWakePayload({
       db,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       runId: fixture.runId,
       contextSnapshot: fixture.context,
@@ -1178,7 +1153,6 @@ describe("native external-chat response wait", () => {
       let sourceAttachmentId: string | null = null;
       if (tool === "reuse_chat_attachment") {
         const stored = await storage.putFile({
-          companyId: fixture.companyId,
           namespace: `issues/${fixture.issueId}`,
           originalFilename: filename,
           contentType: "text/plain",
@@ -2217,16 +2191,14 @@ describe("native external-chat response wait", () => {
           .insert(chatExternalPrincipals)
           .values({
             id: principalId,
-            companyId: fixture.companyId,
             provider: "telegram",
-            providerAccountId: "telegram-bot",
+            providerAccountId: `telegram-bot-${fixture.endpointId}`,
             externalId: "second-user",
             kind: "user",
           });
         await db
           .insert(chatIdentityLinks)
           .values({
-            companyId: fixture.companyId,
             endpointId: fixture.endpointId,
             principalId,
             paperclipUserId: "second-user",
@@ -2449,7 +2421,7 @@ describe("native external-chat response wait", () => {
       await db
         .select()
         .from(agentWakeupRequests)
-        .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+          .where(eq(agentWakeupRequests.agentId, fixture.agentId)),
     ).toHaveLength(1);
   });
 
@@ -2504,7 +2476,7 @@ describe("native external-chat response wait", () => {
     });
     const holder = db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${fixture.companyId}:${fixture.principalId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${fixture.principalId}`}, 0))`,
       );
       acquired();
       await shouldRevoke;
@@ -2578,7 +2550,6 @@ describe("native external-chat response wait", () => {
     const runnerInstanceId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       status: "running",
       runtimeMode: "native",
@@ -2595,7 +2566,6 @@ describe("native external-chat response wait", () => {
       .set({ executionRunId: runId })
       .where(eq(issues.id, fixture.issueId));
     const port = new PaperclipControlPlanePort(db, {
-      companyId: fixture.companyId,
       issueId: fixture.issueId,
       agentId: fixture.agentId,
       runId,
@@ -2607,7 +2577,6 @@ describe("native external-chat response wait", () => {
     });
     await port.openRun({
       identity: {
-        companyId: fixture.companyId,
         issueId: fixture.issueId,
         agentId: fixture.agentId,
         runId,
@@ -2798,7 +2767,7 @@ describe("native external-chat response wait", () => {
         await db
           .select()
           .from(agentWakeupRequests)
-          .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+          .where(eq(agentWakeupRequests.agentId, fixture.agentId)),
       ).toEqual([]);
     },
   );
@@ -2829,14 +2798,12 @@ describe("native external-chat response wait", () => {
         const [approval] = await db
           .insert(approvals)
           .values({
-            companyId: fixture.companyId,
             type: "hire_agent",
             status: "pending",
             payload: {},
           })
           .returning();
         await db.insert(issueApprovals).values({
-          companyId: fixture.companyId,
           issueId: fixture.issueId,
           approvalId: approval!.id,
         });
@@ -2847,7 +2814,6 @@ describe("native external-chat response wait", () => {
           .where(eq(issueThreadInteractions.id, gate.id));
       } else if (kind === "new_attention") {
         await db.insert(issueThreadInteractions).values({
-          companyId: fixture.companyId,
           issueId: fixture.issueId,
           kind: "request_confirmation",
           status: "pending",
@@ -2896,7 +2862,6 @@ describe("native external-chat response wait", () => {
           .insert(issues)
           .values({
             id: laterIssueId,
-            companyId: fixture.companyId,
             title: "Concurrent task",
             status: "in_progress",
             assigneeAgentId: fixture.agentId,
@@ -2906,7 +2871,6 @@ describe("native external-chat response wait", () => {
         .insert(heartbeatRuns)
         .values({
           id: laterRunId,
-          companyId: fixture.companyId,
           agentId: fixture.agentId,
           runtimeMode: "native",
           nativeIssueId: laterIssueId,
@@ -3024,7 +2988,7 @@ describe("native external-chat response wait", () => {
         await db
           .select()
           .from(agentWakeupRequests)
-          .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+          .where(eq(agentWakeupRequests.agentId, fixture.agentId)),
       ).toEqual([]);
       expect(
         await authorizeNativeChatReviewPresentation(db, {
@@ -3306,7 +3270,6 @@ describe("native external-chat response wait", () => {
     const runnerInstanceId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       runtimeMode: "native",
       nativeIssueId: fixture.issueId,
@@ -3324,7 +3287,6 @@ describe("native external-chat response wait", () => {
       .set({ executionRunId: runId })
       .where(eq(issues.id, fixture.issueId));
     const port = new PaperclipControlPlanePort(db, {
-      companyId: fixture.companyId,
       issueId: fixture.issueId,
       agentId: fixture.agentId,
       runId,
@@ -3336,7 +3298,6 @@ describe("native external-chat response wait", () => {
     });
     await port.openRun({
       identity: {
-        companyId: fixture.companyId,
         issueId: fixture.issueId,
         agentId: fixture.agentId,
         runId,
@@ -3508,9 +3469,9 @@ describe("native external-chat response wait", () => {
           .where(eq(issueThreadInteractions.id, gate.id));
       const presentationSignals: Array<Record<string, unknown>> = [];
       const visibilityChecks: Array<Promise<Array<{ runId: string | null }>>> = [];
-      const unsubscribe = subscribeAllCompanyLiveEvents((event) => {
+      const unsubscribe = subscribeLiveEvents((event) => {
         if (
-          event.companyId !== fixture.companyId ||
+          false ||
           event.type !== "heartbeat.run.event" ||
           event.payload.runId !== fixture.runId ||
           event.payload.eventType !== "run.presentation.resolved"
@@ -3606,7 +3567,7 @@ describe("native external-chat response wait", () => {
         await db
           .select()
           .from(agentWakeupRequests)
-          .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+          .where(eq(agentWakeupRequests.agentId, fixture.agentId)),
       ).toEqual([]);
     },
   );
@@ -3748,7 +3709,6 @@ describe("native external-chat response wait", () => {
     await db
       .insert(workspaceOperations)
       .values({
-        companyId: fixture.companyId,
         issueId: fixture.issueId,
         heartbeatRunId: fixture.runId,
         phase: "workspace_finalize",
@@ -4154,10 +4114,7 @@ describe("native external-chat response wait", () => {
         .select()
         .from(agentWakeupRequests)
         .where(
-          and(
-            eq(agentWakeupRequests.companyId, fixture.companyId),
-            eq(agentWakeupRequests.agentId, fixture.agentId),
-          ),
+          eq(agentWakeupRequests.agentId, fixture.agentId),
         ),
     ).resolves.toEqual([]);
     await expect(
@@ -4203,10 +4160,7 @@ describe("native external-chat response wait", () => {
         .select()
         .from(agentWakeupRequests)
         .where(
-          and(
-            eq(agentWakeupRequests.companyId, fixture.companyId),
-            eq(agentWakeupRequests.agentId, fixture.agentId),
-          ),
+          eq(agentWakeupRequests.agentId, fixture.agentId),
         ),
     ).resolves.toEqual([]);
   });
@@ -4298,10 +4252,7 @@ describe("native external-chat response wait", () => {
         .select()
         .from(agentWakeupRequests)
         .where(
-          and(
-            eq(agentWakeupRequests.companyId, fixture.companyId),
-            eq(agentWakeupRequests.agentId, fixture.agentId),
-          ),
+          eq(agentWakeupRequests.agentId, fixture.agentId),
         ),
     ).resolves.toEqual([]);
   });

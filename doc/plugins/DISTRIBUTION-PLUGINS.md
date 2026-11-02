@@ -89,7 +89,7 @@ new activation guard.
 
 The `appShellOverlay` slot requires `ui.action.register`. It receives the usual
 `PluginWidgetProps` context. It mounts once in both application shells and
-survives route navigation. It is disposed when the account or selected company
+survives route navigation. It is disposed when the account
 changes, during onboarding, and on sign-out. It is not mounted on login pages.
 Local-trusted mode has no login requirement: its sessionless board may mount
 overlays, but transitions to or from an account still dispose the prior state.

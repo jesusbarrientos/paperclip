@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../lib/queryKeys";
 
 const { pushToast } = vi.hoisted(() => ({ pushToast: vi.fn() }));
-vi.mock("./CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1", selectedCompany: { id: "company-1" } }),
+vi.mock("./OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1" } }),
 }));
 vi.mock("./ToastContext", () => ({ useToastActions: () => ({ pushToast }) }));
 vi.mock("../lib/router", () => ({ useLocation: () => ({ pathname: "/tasks" }) }));

@@ -78,7 +78,6 @@ describe("teams CLI commands", () => {
     process.env = { ...ORIGINAL_ENV };
     delete process.env.PAPERCLIP_API_URL;
     delete process.env.PAPERCLIP_API_KEY;
-    delete process.env.PAPERCLIP_COMPANY_ID;
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -170,8 +169,6 @@ describe("teams CLI commands", () => {
       "list",
       "--kind",
       "bundled",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -185,7 +182,7 @@ describe("teams CLI commands", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/teams/catalog/installed",
+      "http://paperclip.test/api/teams/catalog/installed",
       expect.objectContaining({ method: "GET" }),
     );
     const rendered = logSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
@@ -212,8 +209,6 @@ describe("teams CLI commands", () => {
     await runCommand([
       "teams",
       "list",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -283,8 +278,6 @@ describe("teams CLI commands", () => {
       "--target-manager-slug",
       "engineering-lead",
       "--allow-external-sources",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -293,7 +286,7 @@ describe("teams CLI commands", () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://paperclip.test/api/companies/company-1/teams/catalog/ref/preview?ref=product-engineering",
+      "http://paperclip.test/api/teams/catalog/ref/preview?ref=product-engineering",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -334,8 +327,6 @@ describe("teams CLI commands", () => {
       "agent:cto:OPENAI_API_KEY=sk-test",
       "--adapter-override",
       "cto=opencode_local",
-      "--company-id",
-      "company/1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -344,7 +335,7 @@ describe("teams CLI commands", () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://paperclip.test/api/companies/company%2F1/teams/catalog/ref/install?ref=product-engineering",
+      "http://paperclip.test/api/teams/catalog/ref/install?ref=product-engineering",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -362,7 +353,6 @@ describe("teams CLI commands", () => {
   it("requests board approval when agent-run install lacks create-agent permission", async () => {
     const approval = {
       id: "approval-1",
-      companyId: "company-1",
       type: "request_board_approval",
       requestedByAgentId: "agent-1",
       requestedByUserId: null,
@@ -388,8 +378,6 @@ describe("teams CLI commands", () => {
       "rename",
       "--secret-value",
       "agent:cto:OPENAI_API_KEY=sk-live-secret",
-      "--company-id",
-      "company-1",
       "--request-approval-on-forbidden",
       "--approval-issue-id",
       "11111111-1111-4111-8111-111111111111",
@@ -402,7 +390,7 @@ describe("teams CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://paperclip.test/api/companies/company-1/teams/catalog/ref/install?ref=product-engineering",
+      "http://paperclip.test/api/teams/catalog/ref/install?ref=product-engineering",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -415,7 +403,7 @@ describe("teams CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/approvals",
+      "http://paperclip.test/api/approvals",
       expect.objectContaining({
         method: "POST",
         body: expect.any(String),
@@ -428,7 +416,6 @@ describe("teams CLI commands", () => {
       payload: {
         title: "Approve catalog team install: product-engineering",
         installAttempt: {
-          companyId: "company-1",
           catalogRef: "product-engineering",
           deniedReason: "Missing permission: can create agents",
           options: {
@@ -443,7 +430,6 @@ describe("teams CLI commands", () => {
       status: "approval_requested",
       approval,
       installAttempt: {
-        companyId: "company-1",
         catalogRef: "product-engineering",
         deniedReason: "Missing permission: can create agents",
         options: {
@@ -462,7 +448,6 @@ describe("teams CLI commands", () => {
     process.env.PAPERCLIP_TASK_ID = "11111111-1111-4111-8111-111111111111";
     const approval = {
       id: "approval-2",
-      companyId: "company-1",
       type: "request_board_approval",
       requestedByAgentId: "agent-1",
       requestedByUserId: null,
@@ -482,8 +467,6 @@ describe("teams CLI commands", () => {
       "teams",
       "install",
       "product-engineering",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -493,7 +476,7 @@ describe("teams CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/approvals",
+      "http://paperclip.test/api/approvals",
       expect.objectContaining({
         method: "POST",
         body: expect.any(String),
@@ -505,7 +488,6 @@ describe("teams CLI commands", () => {
       issueIds: ["11111111-1111-4111-8111-111111111111"],
       payload: {
         installAttempt: {
-          companyId: "company-1",
           catalogRef: "product-engineering",
           deniedReason: "Missing permission: can create agents",
         },
@@ -528,8 +510,6 @@ describe("teams CLI commands", () => {
       "teams",
       "install",
       "product-engineering",
-      "--company-id",
-      "company-1",
       "--request-approval-on-forbidden",
       "--api-base",
       "http://paperclip.test",
@@ -539,7 +519,7 @@ describe("teams CLI commands", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://paperclip.test/api/companies/company-1/teams/catalog/ref/install?ref=product-engineering",
+      "http://paperclip.test/api/teams/catalog/ref/install?ref=product-engineering",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({}),
@@ -560,8 +540,6 @@ describe("teams CLI commands", () => {
       "teams",
       "install",
       "unsafe-local-team",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -569,7 +547,7 @@ describe("teams CLI commands", () => {
     ])).rejects.toThrow("exit:1");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://paperclip.test/api/companies/company-1/teams/catalog/ref/install?ref=unsafe-local-team",
+      "http://paperclip.test/api/teams/catalog/ref/install?ref=unsafe-local-team",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({}),

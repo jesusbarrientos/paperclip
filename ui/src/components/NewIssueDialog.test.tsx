@@ -25,18 +25,9 @@ const dialogContentState = vi.hoisted(() => ({
   }) => void),
 }));
 
-const companyState = vi.hoisted(() => ({
-  companies: [
-    {
-      id: "company-1",
-      name: "Paperclip",
-      status: "active",
-      issuePrefix: "PAP",
-    },
-  ],
-  selectedCompanyId: "company-1",
-  selectedCompany: {
-    id: "company-1",
+const organizationState = vi.hoisted(() => ({
+  organization: {
+    id: "organization-1",
     name: "Paperclip",
     status: "active",
     issuePrefix: "PAP",
@@ -88,8 +79,8 @@ vi.mock("../context/DialogContext", () => ({
 
 vi.mock("../context/SidebarContext", () => ({ useSidebar: () => ({ isMobile: false }) }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => companyState,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => organizationState,
 }));
 
 vi.mock("../context/ToastContext", () => ({
@@ -388,7 +379,6 @@ describe("NewIssueDialog", () => {
     localStorage.clear();
     mockIssuesApi.create.mockResolvedValue({
       id: "issue-2",
-      companyId: "company-1",
       identifier: "PAP-2",
     });
   });
@@ -418,19 +408,19 @@ describe("NewIssueDialog", () => {
     { remembered: "", expected: "Project" },
     { remembered: "deleted", expected: "Project" },
   ])("restores the last available project ($remembered)", async ({ remembered, expected }) => {
-    trackRecentProject(remembered, "company-1");
+    trackRecentProject(remembered);
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[data-slot="new-issue-compact-control"]')?.textContent).toContain(expected));
     await typeTextareaValue(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe a task…"]')!, "Check project memory");
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    expect(mockIssuesApi.create.mock.calls[0][1].projectId).toBe(remembered === "project-1" ? "project-1" : undefined);
+    expect(mockIssuesApi.create.mock.calls[0][0].projectId).toBe(remembered === "project-1" ? "project-1" : undefined);
     act(() => root.unmount());
   });
 
-  it("keeps explicit launch context ahead of another company's project history", async () => {
-    trackRecentProject("project-1", "company-2");
-    trackRecentProject("deleted", "company-1");
+  it("keeps explicit launch context ahead of project history", async () => {
+    trackRecentProject("project-1");
+    trackRecentProject("deleted");
     dialogState.newIssueDefaults = { projectId: "project-1" };
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[data-slot="new-issue-compact-control"]')?.textContent).toContain("project-1"));
@@ -446,7 +436,7 @@ describe("NewIssueDialog", () => {
     const { root } = renderDialog(container);
     await flush();
     act(() => container.querySelector<HTMLElement>('[data-slot="new-issue-compact-control"]')!.click());
-    expect(getLastProjectId("company-1")).toBe("project-1");
+    expect(getLastProjectId()).toBe("project-1");
     act(() => root.unmount());
     const next = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[data-slot="new-issue-compact-control"]')?.textContent).toContain("project-1"));
@@ -457,13 +447,13 @@ describe("NewIssueDialog", () => {
     mockAgentsApi.list.mockResolvedValue(defaultAgents.map((agent) => agent.id === "ceo"
       ? { ...agent, adapterConfig: { model: "claude-opus-5" } } : agent));
     mockAgentsApi.adapterModels.mockResolvedValue([{ id: "claude-opus-5", label: "Claude Opus 5" }]);
-    rememberComposerEffort("company-1", "high");
+    rememberComposerEffort("high");
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[data-testid="task-chat-composer-model-label"]')?.textContent).toBe("Claude Opus 5"));
     await typeTextareaValue(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe a task…"]')!, "Check effort memory");
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    expect(mockIssuesApi.create.mock.calls[0][1].assigneeAdapterOverrides).toEqual({ adapterConfig: { effort: "high" } });
+    expect(mockIssuesApi.create.mock.calls[0][0].assigneeAdapterOverrides).toEqual({ adapterConfig: { effort: "high" } });
     act(() => root.unmount());
   });
 
@@ -474,8 +464,8 @@ describe("NewIssueDialog", () => {
     { recent: "agent:deleted", expected: "CEO" },
   ])("defaults to $expected for recent selection $recent without inserting a mention", async ({ recent, expected }) => {
     mockAgentsApi.list.mockResolvedValue(defaultAgents);
-    if (recent.startsWith("agent:")) trackRecentAssignee(recent.slice(6), "company-1");
-    if (recent.startsWith("user:")) trackRecentAssigneeUser(recent.slice(5), "company-1");
+    if (recent.startsWith("agent:")) trackRecentAssignee(recent.slice(6));
+    if (recent.startsWith("user:")) trackRecentAssigneeUser(recent.slice(5));
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[data-testid="task-chat-composer-assignee-label"]')?.textContent).toBe(expected));
     expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe a task…"]')?.value).toBe("");
@@ -483,23 +473,10 @@ describe("NewIssueDialog", () => {
     act(() => root.unmount());
   });
 
-  it("ignores another company's remembered human and keeps explicit launch assignees", async () => {
-    mockAgentsApi.list.mockResolvedValue(defaultAgents);
-    trackRecentAssigneeUser("user-1", "company-2");
-    dialogState.newIssueDefaults = { assigneeAgentId: "worker" };
-    const { root } = renderDialog(container);
-    await waitForAssertion(() => expect(container.querySelector('[data-testid="task-chat-composer-assignee-label"]')?.textContent).toBe("Worker"));
-    act(() => root.unmount());
-    dialogState.newIssueDefaults = {};
-    const next = renderDialog(container);
-    await waitForAssertion(() => expect(container.querySelector('[data-testid="task-chat-composer-assignee-label"]')?.textContent).toBe("CEO"));
-    act(() => next.root.unmount());
-  });
-
-  it("uses older agent history only when the agent belongs to the current company", async () => {
+  it("skips remembered agents that are no longer available", async () => {
     mockAgentsApi.list.mockResolvedValue(defaultAgents);
     trackRecentAssignee("worker");
-    trackRecentAssignee("another-company-agent");
+    trackRecentAssignee("removed-agent");
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[data-testid="task-chat-composer-assignee-label"]')?.textContent).toBe("Worker"));
     act(() => root.unmount());
@@ -512,7 +489,7 @@ describe("NewIssueDialog", () => {
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Select assignee"]')!.click());
     const me = [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((button) => button.textContent?.includes("Me"))!;
     act(() => me.click());
-    expect(localStorage.getItem("paperclip:recent-assignees:company-1")).toContain("user:user-1");
+    expect(localStorage.getItem("paperclip:recent-assignees")).toContain("user:user-1");
     expect(container.querySelector('[data-testid="task-chat-composer-model-label"]')).toBeNull();
     expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe a task…"]')?.value).toBe("");
     act(() => root.unmount());
@@ -639,7 +616,7 @@ describe("NewIssueDialog", () => {
     await flush();
 
     await waitForAssertion(() => {
-      expect(mockExecutionWorkspacesApi.listSummaries).toHaveBeenCalledWith("company-1", {
+      expect(mockExecutionWorkspacesApi.listSummaries).toHaveBeenCalledWith({
         projectId: "project-1",
         reuseEligible: true,
       });
@@ -659,7 +636,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Child issue",
         parentId: "issue-1",
@@ -810,7 +786,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Planned from defaults",
         workMode: "planning",
@@ -845,7 +820,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Question from defaults",
         workMode: "ask",
@@ -875,7 +849,7 @@ describe("NewIssueDialog", () => {
     const create = Array.from(container.querySelectorAll("button")).find((button) => button.getAttribute("aria-label") === "Create task");
     act(() => create!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    const payload = mockIssuesApi.create.mock.calls[0][1];
+    const payload = mockIssuesApi.create.mock.calls[0][0];
     expect(payload).not.toHaveProperty("executionWorkspacePreference");
     expect(payload).not.toHaveProperty("executionWorkspaceSettings");
     expect(payload).not.toHaveProperty("executionWorkspaceId");
@@ -895,7 +869,7 @@ describe("NewIssueDialog", () => {
     const create = Array.from(container.querySelectorAll("button")).find((button) => button.getAttribute("aria-label") === (subtask ? "Create sub-task" : "Create task"));
     act(() => create!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    expect(mockIssuesApi.create.mock.calls[0][1]).toMatchObject({
+    expect(mockIssuesApi.create.mock.calls[0][0]).toMatchObject({
       executionWorkspaceId: "workspace-context", executionWorkspacePreference: "reuse_existing",
     });
     act(() => root.unmount());
@@ -951,7 +925,7 @@ describe("NewIssueDialog", () => {
     await flush();
 
     await waitForAssertion(() => {
-      expect(queryClient.getQueryData(queryKeys.executionWorkspaces.summaryList("company-1", {
+      expect(queryClient.getQueryData(queryKeys.executionWorkspaces.summaryList({
         projectId: "project-1", reuseEligible: true,
       }))).toEqual(expect.arrayContaining([expect.objectContaining({ id: "workspace-1" })]));
     });
@@ -969,7 +943,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Follow-up issue",
         projectId: "project-1",
@@ -1016,7 +989,7 @@ describe("NewIssueDialog", () => {
     selectWorktree("reuse:worktree-1");
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    expect(mockIssuesApi.create.mock.calls[0][1]).toMatchObject({
+    expect(mockIssuesApi.create.mock.calls[0][0]).toMatchObject({
       projectId: "project-1", projectWorkspaceId: "source-1", executionWorkspaceId: "worktree-1",
       executionWorkspacePreference: "reuse_existing",
       executionWorkspaceSettings: { mode: mode === "adapter_managed" ? "agent_default" : mode },
@@ -1036,7 +1009,7 @@ describe("NewIssueDialog", () => {
     selectWorktree(mode);
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    const payload = mockIssuesApi.create.mock.calls[0][1];
+    const payload = mockIssuesApi.create.mock.calls[0][0];
     expect(payload).toMatchObject({ projectWorkspaceId: "source-1", executionWorkspacePreference: mode, executionWorkspaceSettings: { mode } });
     expect(payload).not.toHaveProperty("executionWorkspaceId");
     act(() => root.unmount());
@@ -1051,11 +1024,11 @@ describe("NewIssueDialog", () => {
     }]);
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.querySelector('[cmdk-item][data-value="reuse:worktree-secondary"]')).not.toBeNull());
-    expect(mockExecutionWorkspacesApi.listSummaries).toHaveBeenCalledWith("company-1", { projectId: "project-1", reuseEligible: true });
+    expect(mockExecutionWorkspacesApi.listSummaries).toHaveBeenCalledWith({ projectId: "project-1", reuseEligible: true });
     if (!inherited) selectWorktree("reuse:worktree-secondary");
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    expect(mockIssuesApi.create.mock.calls[0][1]).toMatchObject({ projectWorkspaceId: "source-2", executionWorkspaceId: "worktree-secondary" });
+    expect(mockIssuesApi.create.mock.calls[0][0]).toMatchObject({ projectWorkspaceId: "source-2", executionWorkspaceId: "worktree-secondary" });
     act(() => root.unmount());
   });
 
@@ -1069,7 +1042,7 @@ describe("NewIssueDialog", () => {
     expect(container.querySelector('[aria-label="Worktrees"]')).toBeNull();
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    const payload = mockIssuesApi.create.mock.calls[0][1];
+    const payload = mockIssuesApi.create.mock.calls[0][0];
     expect(payload.projectId).toBe("project-2");
     expect(payload).not.toHaveProperty("executionWorkspaceId");
     expect(payload).not.toHaveProperty("executionWorkspacePreference");
@@ -1104,10 +1077,9 @@ describe("NewIssueDialog", () => {
     expect(submit.disabled).toBe(false);
     act(() => submit.click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalled());
-    expect(mockIssuesApi.create.mock.calls[0][1]).toMatchObject({ executionWorkspacePreference: "isolated_workspace" });
+    expect(mockIssuesApi.create.mock.calls[0][0]).toMatchObject({ executionWorkspacePreference: "isolated_workspace" });
     act(() => root.unmount());
   });
-
 
   it("restores a description-only draft", async () => {
     localStorage.setItem("paperclip:issue-draft", JSON.stringify({
@@ -1134,8 +1106,8 @@ describe("NewIssueDialog", () => {
     await vi.waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
     await act(async () => { submit.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await flush();
-    expect(mockIssuesApi.create).toHaveBeenCalledWith("company-1", expect.objectContaining({ description: "Investigate the sign-in redirect and fix it" }));
-    expect(mockIssuesApi.create.mock.calls[0][1]).not.toHaveProperty("title");
+    expect(mockIssuesApi.create).toHaveBeenCalledWith(expect.objectContaining({ description: "Investigate the sign-in redirect and fix it" }));
+    expect(mockIssuesApi.create.mock.calls[0][0]).not.toHaveProperty("title");
     await act(async () => root.unmount());
   });
 
@@ -1150,7 +1122,7 @@ describe("NewIssueDialog", () => {
     const submit = container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!;
     await act(async () => submit.click());
     await flush();
-    const payload = mockIssuesApi.create.mock.calls[0][1];
+    const payload = mockIssuesApi.create.mock.calls[0][0];
     expect(payload.description).toBe("Investigate the redirect");
     if (nextTitle) expect(payload.title).toBe(nextTitle);
     else expect(payload).not.toHaveProperty("title");
@@ -1205,7 +1177,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Typed issue",
         description: "Typed description",
@@ -1248,7 +1219,7 @@ describe("NewIssueDialog", () => {
 
     act(() => submit().click());
     await waitForAssertion(() => expect(dialogState.closeNewIssue).toHaveBeenCalledTimes(1));
-    const firstPayload = mockIssuesApi.create.mock.calls[0][1];
+    const firstPayload = mockIssuesApi.create.mock.calls[0][0];
     expect(firstPayload).toMatchObject({
       title: "Connect Circleback through Composio",
       allowDuplicate: true,
@@ -1257,7 +1228,7 @@ describe("NewIssueDialog", () => {
     expect(toastState.pushToast).toHaveBeenCalledWith({
       title: "Created PAP-2",
       tone: "success",
-      action: { label: "Open PAP-2", href: "/PAP/issues/PAP-2" },
+      action: { label: "Open PAP-2", href: "/issues/PAP-2" },
     });
 
     dialogState.newIssueOpen = false;
@@ -1267,7 +1238,7 @@ describe("NewIssueDialog", () => {
     await flush();
     act(() => submit().click());
     await waitForAssertion(() => expect(dialogState.closeNewIssue).toHaveBeenCalledTimes(2));
-    const secondPayload = mockIssuesApi.create.mock.calls[1][1];
+    const secondPayload = mockIssuesApi.create.mock.calls[1][0];
     expect(secondPayload.title).toBe(firstPayload.title);
     expect(secondPayload.allowDuplicate).toBe(true);
     expect(secondPayload.idempotencyKey).not.toBe(firstPayload.idempotencyKey);
@@ -1284,7 +1255,7 @@ describe("NewIssueDialog", () => {
       act(() => Array.from(container.querySelectorAll("button"))
         .find(button => button.getAttribute("aria-label") === "Create task")!.click());
       await waitForAssertion(() => expect(dialogState.closeNewIssue).toHaveBeenCalledTimes(1));
-      expect(mockIssuesApi.create.mock.calls[0][1].idempotencyKey)
+      expect(mockIssuesApi.create.mock.calls[0][0].idempotencyKey)
         .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       act(() => root.unmount());
     } finally {
@@ -1300,9 +1271,9 @@ describe("NewIssueDialog", () => {
       .find((button) => button.getAttribute("aria-label") === "Create task")!;
     act(() => submit.click());
     await waitForAssertion(() => expect(dialogState.closeNewIssue).toHaveBeenCalledTimes(1));
-    expect(mockIssuesApi.create.mock.calls[0][1]).not.toHaveProperty("navigateOnCreate");
+    expect(mockIssuesApi.create.mock.calls[0][0]).not.toHaveProperty("navigateOnCreate");
     if (navigateOnCreate) {
-      expect(navigateMock).toHaveBeenCalledExactlyOnceWith("/PAP/issues/PAP-2");
+      expect(navigateMock).toHaveBeenCalledExactlyOnceWith("/issues/PAP-2");
       expect(navigateMock.mock.invocationCallOrder[0]).toBeGreaterThan(dialogState.closeNewIssue.mock.invocationCallOrder[0]);
     } else {
       expect(navigateMock).not.toHaveBeenCalled();
@@ -1312,12 +1283,12 @@ describe("NewIssueDialog", () => {
 
   it("navigates to the returned task ID when it has no identifier", async () => {
     dialogState.newIssueDefaults = { title: "Connect Circleback through Composio", navigateOnCreate: true };
-    mockIssuesApi.create.mockResolvedValue({ id: "created-task", companyId: "company-1", identifier: null });
+    mockIssuesApi.create.mockResolvedValue({ id: "created-task", identifier: null });
     const { root } = renderDialog(container);
     await flush();
     act(() => Array.from(container.querySelectorAll("button"))
       .find((button) => button.getAttribute("aria-label") === "Create task")!.click());
-    await waitForAssertion(() => expect(navigateMock).toHaveBeenCalledExactlyOnceWith("/PAP/issues/created-task"));
+    await waitForAssertion(() => expect(navigateMock).toHaveBeenCalledExactlyOnceWith("/issues/created-task"));
     act(() => root.unmount());
   });
 
@@ -1331,7 +1302,7 @@ describe("NewIssueDialog", () => {
 
     act(() => submit().click());
     await waitForAssertion(() => expect(container.textContent).toContain("Request failed"));
-    const firstPayload = mockIssuesApi.create.mock.calls[0][1];
+    const firstPayload = mockIssuesApi.create.mock.calls[0][0];
     expect(dialogState.closeNewIssue).not.toHaveBeenCalled();
     expect(toastState.pushToast).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
@@ -1339,12 +1310,12 @@ describe("NewIssueDialog", () => {
     act(() => submit().click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalledTimes(2));
     await flush();
-    expect(mockIssuesApi.create.mock.calls[1][1].idempotencyKey).toBe(firstPayload.idempotencyKey);
+    expect(mockIssuesApi.create.mock.calls[1][0].idempotencyKey).toBe(firstPayload.idempotencyKey);
 
     await typeTextareaValue(container.querySelector<HTMLInputElement>('input[aria-label="Task title"]')!, "Connect another app");
     act(() => submit().click());
     await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalledTimes(3));
-    expect(mockIssuesApi.create.mock.calls[2][1].idempotencyKey).not.toBe(firstPayload.idempotencyKey);
+    expect(mockIssuesApi.create.mock.calls[2][0].idempotencyKey).not.toBe(firstPayload.idempotencyKey);
     act(() => root.unmount());
   });
 
@@ -1378,7 +1349,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title,
         description,
@@ -1417,7 +1387,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         description: "Plan this first",
         workMode: "planning",
@@ -1455,7 +1424,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         description: "Answer this first",
         workMode: "ask",
@@ -1601,7 +1569,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Child issue",
         parentId: "issue-1",
@@ -1780,7 +1747,6 @@ describe("NewIssueDialog", () => {
 
     // PAP-411: the priority control is hidden, but the data-model default must survive.
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Priority default persists",
         priority: "medium",
@@ -1812,7 +1778,6 @@ describe("NewIssueDialog", () => {
   });
 
 
-
   it("submits the configured watchdog from a restored draft", async () => {
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({
       enableIsolatedWorkspaces: false,
@@ -1840,7 +1805,6 @@ describe("NewIssueDialog", () => {
     const { root } = renderDialog(container);
     await flush();
 
-
     const submitButton = Array.from(container.querySelectorAll("button"))
       .find((button) => button.getAttribute("aria-label") === "Create task");
     expect(submitButton).not.toBeUndefined();
@@ -1854,7 +1818,6 @@ describe("NewIssueDialog", () => {
     await flush();
 
     expect(mockIssuesApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         title: "Watched task",
         watchdog: { agentId: "agent-9", instructions: "Keep it moving" },
@@ -1890,7 +1853,7 @@ describe("NewIssueDialog", () => {
     const { root } = renderDialog(container);
     await waitForAssertion(() => expect(container.textContent).toContain("Coder"));
     await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="Create task"]')!.click(); });
-    await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    await waitForAssertion(() => expect(mockIssuesApi.create).toHaveBeenCalledWith(expect.objectContaining({
       assigneeAgentId: "agent-1", workMode: "planning",
       assigneeAdapterOverrides: { adapterConfig: { model: "gpt-6-astra", modelReasoningEffort: "ultra", fastMode: true } },
     })));
@@ -1911,7 +1874,6 @@ describe("NewIssueDialog", () => {
       expect(container.querySelector("[data-testid=task-chat-composer-add]")).not.toBeNull();
       expect(workModeOption("ask")?.textContent).toContain("Ask mode");
       expect(workModeOption("planning")?.textContent).toContain("Plan mode");
-
 
       act(() => root.unmount());
     });

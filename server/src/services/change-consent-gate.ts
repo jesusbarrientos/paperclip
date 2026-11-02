@@ -115,7 +115,6 @@ function expandTargetKeysForLegacyCompatibility(targetKeys: string[]) {
 export function changeConsentGateService(db: Db | Parameters<Parameters<Db["transaction"]>[0]>[0]) {
   return {
     assertConsented: async (input: {
-      companyId: string;
       actorAgentId: string | null | undefined;
       actorRunId: string | null | undefined;
       targetKeys: string[];
@@ -153,7 +152,6 @@ export function changeConsentGateService(db: Db | Parameters<Parameters<Db["tran
         })
         .from(issueThreadInteractions)
         .where(and(
-          eq(issueThreadInteractions.companyId, input.companyId),
           eq(issueThreadInteractions.createdByAgentId, actorAgentId),
           eq(issueThreadInteractions.kind, "request_confirmation"),
           eq(issueThreadInteractions.status, "accepted"),
@@ -206,7 +204,6 @@ export function changeConsentGateService(db: Db | Parameters<Parameters<Db["tran
         })
         .where(and(
           eq(issueThreadInteractions.id, accepted.id),
-          eq(issueThreadInteractions.companyId, input.companyId),
           eq(issueThreadInteractions.createdByAgentId, actorAgentId),
           eq(issueThreadInteractions.kind, "request_confirmation"),
           eq(issueThreadInteractions.status, "accepted"),

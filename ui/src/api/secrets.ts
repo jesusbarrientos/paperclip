@@ -148,23 +148,22 @@ export interface SecretProviderConfigDiscoveryPreviewInput {
 }
 
 export const secretsApi = {
-  list: (companyId: string) => api.get<CompanySecret[]>(`/companies/${companyId}/secrets`),
-  providers: (companyId: string) =>
-    api.get<SecretProviderDescriptor[]>(`/companies/${companyId}/secret-providers`),
-  providerHealth: (companyId: string) =>
-    api.get<SecretProviderHealthResponse>(`/companies/${companyId}/secret-providers/health`),
-  providerConfigs: (companyId: string) =>
-    api.get<CompanySecretProviderConfig[]>(`/companies/${companyId}/secret-provider-configs`),
+  list: () => api.get<CompanySecret[]>(`/secrets`),
+  providers: () =>
+    api.get<SecretProviderDescriptor[]>(`/secret-providers`),
+  providerHealth: () =>
+    api.get<SecretProviderHealthResponse>(`/secret-providers/health`),
+  providerConfigs: () =>
+    api.get<CompanySecretProviderConfig[]>(`/secret-provider-configs`),
   providerConfigDiscoveryPreview: (
-    companyId: string,
     data: SecretProviderConfigDiscoveryPreviewInput,
   ) =>
     api.post<SecretProviderConfigDiscoveryPreviewResult>(
-      `/companies/${companyId}/secret-provider-configs/discovery/preview`,
+      `/secret-provider-configs/discovery/preview`,
       data,
     ),
-  createProviderConfig: (companyId: string, data: CreateSecretProviderConfigInput) =>
-    api.post<CompanySecretProviderConfig>(`/companies/${companyId}/secret-provider-configs`, data),
+  createProviderConfig: (data: CreateSecretProviderConfigInput) =>
+    api.post<CompanySecretProviderConfig>(`/secret-provider-configs`, data),
   updateProviderConfig: (id: string, data: UpdateSecretProviderConfigInput) =>
     api.patch<CompanySecretProviderConfig>(`/secret-provider-configs/${id}`, data),
   disableProviderConfig: (id: string) =>
@@ -175,8 +174,8 @@ export const secretsApi = {
     api.post<CompanySecretProviderConfig>(`/secret-provider-configs/${id}/default`, {}),
   checkProviderConfigHealth: (id: string) =>
     api.post<SecretProviderConfigHealthResponse>(`/secret-provider-configs/${id}/health`, {}),
-  create: (companyId: string, data: CreateSecretInput) =>
-    api.post<CompanySecret>(`/companies/${companyId}/secrets`, data),
+  create: (data: CreateSecretInput) =>
+    api.post<CompanySecret>(`/secrets`, data),
   update: (id: string, data: UpdateSecretInput) =>
     api.patch<CompanySecret>(`/secrets/${id}`, data),
   rotate: (id: string, data: RotateSecretInput) =>
@@ -193,63 +192,61 @@ export const secretsApi = {
 
   // --- User-specific secrets ---------------------------------------------
   // Admin: shared definitions each member fills in with their own value.
-  listUserSecretDefinitions: (companyId: string) =>
-    api.get<UserSecretDefinition[]>(`/companies/${companyId}/user-secret-definitions`),
-  createUserSecretDefinition: (companyId: string, data: CreateUserSecretDefinitionInput) =>
-    api.post<UserSecretDefinition>(`/companies/${companyId}/user-secret-definitions`, data),
+  listUserSecretDefinitions: () =>
+    api.get<UserSecretDefinition[]>(`/user-secret-definitions`),
+  createUserSecretDefinition: (data: CreateUserSecretDefinitionInput) =>
+    api.post<UserSecretDefinition>(`/user-secret-definitions`, data),
   updateUserSecretDefinition: (
-    companyId: string,
     definitionId: string,
     data: UpdateUserSecretDefinitionInput,
   ) =>
     api.patch<UserSecretDefinition>(
-      `/companies/${companyId}/user-secret-definitions/${definitionId}`,
+      `/user-secret-definitions/${definitionId}`,
       data,
     ),
-  removeUserSecretDefinition: (companyId: string, definitionId: string) =>
-    api.delete<{ ok: true }>(`/companies/${companyId}/user-secret-definitions/${definitionId}`),
-  userSecretDefinitionCoverage: (companyId: string, definitionId: string) =>
+  removeUserSecretDefinition: (definitionId: string) =>
+    api.delete<{ ok: true }>(`/user-secret-definitions/${definitionId}`),
+  userSecretDefinitionCoverage: (definitionId: string) =>
     api.get<UserSecretCoverageSummary>(
-      `/companies/${companyId}/user-secret-definitions/${definitionId}/coverage`,
+      `/user-secret-definitions/${definitionId}/coverage`,
     ),
 
   // Current user ("My secrets"): each definition paired with my own value.
-  listMyUserSecrets: (companyId: string) =>
-    api.get<MyUserSecretEntry[]>(`/companies/${companyId}/me/user-secrets`),
-  createMyUserSecret: (companyId: string, data: UpsertMyUserSecretInput) =>
-    api.post<CompanySecret>(`/companies/${companyId}/me/user-secrets`, data),
+  listMyUserSecrets: () =>
+    api.get<MyUserSecretEntry[]>(`/me/user-secrets`),
+  createMyUserSecret: (data: UpsertMyUserSecretInput) =>
+    api.post<CompanySecret>(`/me/user-secrets`, data),
   updateMyUserSecret: (
-    companyId: string,
     secretId: string,
     data: Partial<UpsertMyUserSecretInput> & { status?: SecretStatus },
-  ) => api.patch<CompanySecret>(`/companies/${companyId}/me/user-secrets/${secretId}`, data),
-  rotateMyUserSecret: (companyId: string, secretId: string, data: UpsertMyUserSecretInput) =>
-    api.post<CompanySecret>(`/companies/${companyId}/me/user-secrets/${secretId}/rotate`, data),
-  removeMyUserSecret: (companyId: string, secretId: string) =>
-    api.delete<{ ok: true }>(`/companies/${companyId}/me/user-secrets/${secretId}`),
-  remoteImportPreview: (companyId: string, data: RemoteImportPreviewInput) =>
+  ) => api.patch<CompanySecret>(`/me/user-secrets/${secretId}`, data),
+  rotateMyUserSecret: (secretId: string, data: UpsertMyUserSecretInput) =>
+    api.post<CompanySecret>(`/me/user-secrets/${secretId}/rotate`, data),
+  removeMyUserSecret: (secretId: string) =>
+    api.delete<{ ok: true }>(`/me/user-secrets/${secretId}`),
+  remoteImportPreview: (data: RemoteImportPreviewInput) =>
     api.post<RemoteSecretImportPreviewResult>(
-      `/companies/${companyId}/secrets/remote-import/preview`,
+      `/secrets/remote-import/preview`,
       data,
     ),
-  remoteImport: (companyId: string, data: RemoteImportInput) =>
-    api.post<RemoteSecretImportResult>(`/companies/${companyId}/secrets/remote-import`, data),
+  remoteImport: (data: RemoteImportInput) =>
+    api.post<RemoteSecretImportResult>(`/secrets/remote-import`, data),
 
   // --- Secret & binding proposals (PAP-14731) -----------------------------
   // Board-facing review surface. Agents propose credentials/bindings; humans
   // approve or reject them here. Values are never returned by these routes.
-  listProposals: (companyId: string, status: SecretProposalStatus = "pending") =>
+  listProposals: (status: SecretProposalStatus = "pending") =>
     api.get<SecretProposalView[]>(
-      `/companies/${companyId}/secret-proposals?status=${encodeURIComponent(status)}`,
+      `/secret-proposals?status=${encodeURIComponent(status)}`,
     ),
-  approveProposal: (companyId: string, proposalId: string, data: ApproveSecretProposalInput = {}) =>
+  approveProposal: (proposalId: string, data: ApproveSecretProposalInput = {}) =>
     api.post<SecretProposalView>(
-      `/companies/${companyId}/secret-proposals/${proposalId}/approve`,
+      `/secret-proposals/${proposalId}/approve`,
       data,
     ),
-  rejectProposal: (companyId: string, proposalId: string, data: RejectSecretProposalInput) =>
+  rejectProposal: (proposalId: string, data: RejectSecretProposalInput) =>
     api.post<SecretProposalView>(
-      `/companies/${companyId}/secret-proposals/${proposalId}/reject`,
+      `/secret-proposals/${proposalId}/reject`,
       data,
     ),
 };

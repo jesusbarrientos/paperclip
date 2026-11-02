@@ -15,7 +15,6 @@ function confirmation(
 ): RequestConfirmationInteraction {
   return {
     id: "interaction-1",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "request_confirmation",
     status: "pending",

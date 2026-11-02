@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { formatExternalObjectMentionSourceLabel } from "./external-objects.js";
 import {
   buildExternalObjectMentionSourceKey,
-  buildExternalObjectScopedIdentityKey,
   canonicalizeExternalObjectUrl,
   extractExternalObjectCanonicalUrls,
   findExternalObjectUrlMatches,
@@ -71,40 +70,19 @@ describe("external object references", () => {
     ).toEqual(["https://github.com/acme/app/pull/1"]);
   });
 
-  it("includes company id in scoped object identity keys", () => {
-    const base = {
-      providerKey: "github",
-      objectType: "pull_request",
-      canonicalIdentityHash: "hash",
-    };
-
-    expect(buildExternalObjectScopedIdentityKey({ companyId: "company-a", ...base })).not.toBe(
-      buildExternalObjectScopedIdentityKey({ companyId: "company-b", ...base }),
-    );
-  });
-
   it("builds source keys for replacing mentions from the same source", () => {
     const oldMentionSource = buildExternalObjectMentionSourceKey({
-      companyId: "company-a",
       sourceIssueId: "issue-1",
       sourceKind: "comment",
       sourceRecordId: "comment-1",
     });
     const newMentionSource = buildExternalObjectMentionSourceKey({
-      companyId: "company-a",
-      sourceIssueId: "issue-1",
-      sourceKind: "comment",
-      sourceRecordId: "comment-1",
-    });
-    const anotherCompanySource = buildExternalObjectMentionSourceKey({
-      companyId: "company-b",
       sourceIssueId: "issue-1",
       sourceKind: "comment",
       sourceRecordId: "comment-1",
     });
 
     expect(newMentionSource).toBe(oldMentionSource);
-    expect(anotherCompanySource).not.toBe(oldMentionSource);
   });
 
   it("formats stable source labels", () => {

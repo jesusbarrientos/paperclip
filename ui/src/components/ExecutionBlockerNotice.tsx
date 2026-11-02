@@ -6,8 +6,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "./ui/button";
 import { Link } from "../lib/router";
 
-export function ExecutionBlockerNotice({ companyId, issueId, blocker, onRetried }: {
-  companyId: string;
+export function ExecutionBlockerNotice({ issueId, blocker, onRetried }: {
   issueId: string;
   blocker: ExecutionBlocker;
   onRetried: () => void;
@@ -23,7 +22,7 @@ export function ExecutionBlockerNotice({ companyId, issueId, blocker, onRetried 
   const requiresInspection = blocker.cause === "native_continuation_requires_reconciliation" ||
     blocker.cause === "native_session_cleanup_quarantined";
   const retry = useMutation({
-    mutationFn: () => agentsApi.retryFailedRun(blocker.agentId!, blocker.runId!, companyId),
+    mutationFn: () => agentsApi.retryFailedRun(blocker.agentId!, blocker.runId!),
     onSuccess: () => {
       onRetried();
       for (const queryKey of [queryKeys.issues.detail(issueId), queryKeys.issues.runs(issueId),

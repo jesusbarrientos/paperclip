@@ -83,7 +83,7 @@ describe("useSignOut", () => {
     }));
     queryClient.setQueryData(queryKeys.health, { status: "ok", deploymentMode: "authenticated" });
     queryClient.setQueryData(queryKeys.auth.session, { session: { id: "session-1" } });
-    queryClient.setQueryData(queryKeys.companies.all, {
+    queryClient.setQueryData(queryKeys.organization, {
       companies: [{ id: "company-a", name: "Account A Co" }],
       unauthorized: false,
     });
@@ -91,7 +91,7 @@ describe("useSignOut", () => {
       isInstanceAdmin: false,
       companyIds: ["company-a"],
     });
-    queryClient.setQueryData(queryKeys.issues.list("company-a"), [{ id: "issue-a" }]);
+    queryClient.setQueryData(queryKeys.issues.list(), [{ id: "issue-a" }]);
     const onSignedOut = vi.fn();
     const root = renderHarness(onSignedOut);
 
@@ -112,9 +112,9 @@ describe("useSignOut", () => {
     // invalidated entry keeps serving its old value until a refetch succeeds,
     // which is the leak this guards.
     expect(queryClient.getQueryData(queryKeys.auth.session)).toBeUndefined();
-    expect(queryClient.getQueryData(queryKeys.companies.all)).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.organization)).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.access.currentBoardAccess)).toBeUndefined();
-    expect(queryClient.getQueryData(queryKeys.issues.list("company-a"))).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.issues.list())).toBeUndefined();
 
     // Health describes the instance, not the account, and several observers
     // read it with `enabled: false`. It is refreshed in place.
@@ -145,13 +145,13 @@ describe("useSignOut", () => {
       })
       .mockRejectedValue(new Error("refetch failed for the new account"));
 
-    // A live observer, standing in for CompanyProvider — which sits above the
+    // A live observer, standing in for OrganizationProvider — which sits above the
     // router and stays mounted across the whole sign-out/sign-in cycle, so it
     // never gets a fresh mount to clear it.
     let observed: unknown = "unset";
     function CompaniesObserver() {
       const { data } = useQuery({
-        queryKey: queryKeys.companies.all,
+        queryKey: queryKeys.organization,
         queryFn: companiesQueryFn,
         retry: false,
       });
@@ -186,7 +186,7 @@ describe("useSignOut", () => {
       await vi.waitFor(() => expect(companiesQueryFn).toHaveBeenCalledTimes(2));
     });
 
-    expect(queryClient.getQueryData(queryKeys.companies.all)).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.organization)).toBeUndefined();
     expect(observed).toBeUndefined();
 
     await act(async () => {
@@ -198,7 +198,7 @@ describe("useSignOut", () => {
     mockAuthApi.signOut.mockRejectedValue(new Error("Sign-out request failed"));
     queryClient.setQueryData(queryKeys.health, { status: "ok", deploymentMode: "authenticated" });
     queryClient.setQueryData(queryKeys.auth.session, { session: { id: "session-1" } });
-    queryClient.setQueryData(queryKeys.companies.all, {
+    queryClient.setQueryData(queryKeys.organization, {
       companies: [{ id: "company-a", name: "Account A Co" }],
       unauthorized: false,
     });
@@ -213,7 +213,7 @@ describe("useSignOut", () => {
     // The account is still signed in, so its caches must survive intact —
     // a failed sign-out must not blank the app the user is still using.
     expect(queryClient.getQueryData(queryKeys.auth.session)).toEqual({ session: { id: "session-1" } });
-    expect(queryClient.getQueryData(queryKeys.companies.all)).toEqual({
+    expect(queryClient.getQueryData(queryKeys.organization)).toEqual({
       companies: [{ id: "company-a", name: "Account A Co" }],
       unauthorized: false,
     });
@@ -237,7 +237,7 @@ describe("useSignOut", () => {
         cloudBaseUrl: "https://cloud.example.test",
       },
     });
-    queryClient.setQueryData(queryKeys.companies.all, {
+    queryClient.setQueryData(queryKeys.organization, {
       companies: [{ id: "company-a", name: "Account A Co" }],
       unauthorized: false,
     });
@@ -246,7 +246,7 @@ describe("useSignOut", () => {
     flushSync(() => captured?.mutate());
 
     await vi.waitFor(() => expect(mockNavigateTopLevel).toHaveBeenCalledOnce());
-    expect(queryClient.getQueryData(queryKeys.companies.all)).toEqual({
+    expect(queryClient.getQueryData(queryKeys.organization)).toEqual({
       companies: [{ id: "company-a", name: "Account A Co" }],
       unauthorized: false,
     });
@@ -261,11 +261,11 @@ describe("isAccountScopedQueryKey", () => {
   });
 
   it("treats every other key root as account-scoped, including ones added later", () => {
-    expect(isAccountScopedQueryKey(queryKeys.companies.all)).toBe(true);
+    expect(isAccountScopedQueryKey(queryKeys.organization)).toBe(true);
     expect(isAccountScopedQueryKey(queryKeys.auth.session)).toBe(true);
     expect(isAccountScopedQueryKey(queryKeys.access.currentBoardAccess)).toBe(true);
-    expect(isAccountScopedQueryKey(queryKeys.issues.list("company-a"))).toBe(true);
-    expect(isAccountScopedQueryKey(queryKeys.secrets.list("company-a"))).toBe(true);
+    expect(isAccountScopedQueryKey(queryKeys.issues.list())).toBe(true);
+    expect(isAccountScopedQueryKey(queryKeys.secrets.list())).toBe(true);
     expect(isAccountScopedQueryKey(["some-key-nobody-has-written-yet"])).toBe(true);
   });
 });

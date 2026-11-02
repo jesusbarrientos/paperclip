@@ -1,4 +1,3 @@
-import { useCompany } from "@/context/CompanyContext";
 import { useAgentAppearanceDraft } from "@/hooks/useAgentAppearanceDraft";
 import { AgentCharacter } from "../AgentCharacter";
 import { useId, useState } from "react";
@@ -82,8 +81,7 @@ export function AdapterMark({
   );
 }
 function AgentBasicsCharacter() {
-  const { selectedCompanyId } = useCompany();
-  const { appearance } = useAgentAppearanceDraft(`${selectedCompanyId}:new-agent`);
+  const { appearance } = useAgentAppearanceDraft("new-agent");
   return <AgentCharacter appearance={appearance} state="sleepy" muted size={256} className="size-48" trackingScope="page" />;
 }
 

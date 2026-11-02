@@ -367,7 +367,6 @@ it.each([
       const input = {
         requestId: "maintenance-fixture-request",
         binding: {
-          companyId: "company-maintenance",
           issueId: "issue-maintenance",
           agentId: "agent-maintenance",
           runId: identity.runId,
@@ -433,7 +432,6 @@ it.each([
       const nativeInput: NativeExecutionInputV1 = {
         schema: "paperclip.native-execution-input.v1",
         binding: {
-          companyId: input.binding.companyId,
           issueId: input.binding.issueId,
           agentId: input.binding.agentId,
           runId: input.binding.runId,

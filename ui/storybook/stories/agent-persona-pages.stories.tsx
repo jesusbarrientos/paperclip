@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useQueryClient } from "@tanstack/react-query";
 import { Route, Routes, useLocation, useNavigate } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { PluginLauncherProvider } from "@/plugins/launchers";
 import { Layout } from "@/components/Layout";
 import { Agents } from "@/pages/Agents";
@@ -32,15 +32,15 @@ function installPageFixtures() {
     const path = url.pathname;
     if (!path.startsWith("/api/") || path.startsWith("/api/agent-avatars/")) return previous(input, init);
     const json = (data: unknown) => Response.json(data);
-    if (path === "/api/cli-auth/me") return json({ source: "local_implicit", isInstanceAdmin: true, companyIds: [companyId], memberships: [] });
+    if (path === "/api/cli-auth/me") return json({ source: "local_implicit", isInstanceAdmin: true, memberships: [] });
     if (path === "/api/health") return json({ status: "ok", deploymentMode: "local_trusted", authReady: true, bootstrapStatus: "ready" });
     if (path === "/api/instance/settings") return json({ experimental: {} });
     if (path === "/api/instance/settings/experimental") return previous(input, init);
     if (path.endsWith("/resource-memberships/me")) return json({ projectMemberships: {}, agentMemberships: {}, starredProjectIds: [], starredAgentIds: [], starredDocumentIds: [], projectStarredAt: {}, agentStarredAt: {}, documentStarredAt: {}, updatedAt: null });
-    if (path === `/api/companies/${companyId}/agents`) return json(agents);
+    if (path === `/api/agents`) return json(agents);
     if (path.endsWith("/dashboard")) return json(storybookDashboardSummary);
-    if (path === `/api/companies/${companyId}/activity`) return json(storybookActivityEvents);
-    if (path === `/api/companies/${companyId}/live-runs`) return json(liveRuns);
+    if (path === `/api/activity`) return json(storybookActivityEvents);
+    if (path === `/api/live-runs`) return json(liveRuns);
     const agentMatch = path.match(/^\/api\/agents\/([^/]+)(?:\/(.*))?$/);
     if (agentMatch) {
       const agent = agents.find(item => item.id === agentMatch[1] || item.urlKey === agentMatch[1]) ?? agents[0];
@@ -75,7 +75,6 @@ function PersonaPage({ path, meet = false }: { path: string; meet?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const [ready, setReady] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(meet);
   const initialPath = useRef<string | null>(null);
@@ -83,21 +82,20 @@ function PersonaPage({ path, meet = false }: { path: string; meet?: boolean }) {
   useEffect(() => {
     if (initialPath.current === path) return;
     initialPath.current = path;
-    queryClient.setQueryData(queryKeys.agents.list(companyId), agents);
+    queryClient.setQueryData(queryKeys.agents.list(), agents);
     // Shared polling elects a leader asynchronously; seed the visible panel so
     // its initial render is independent of that election and the avatar cache.
-    queryClient.setQueryData([...queryKeys.liveRuns(companyId), "dashboard", { minRunCount: 4, fetchLimit: undefined }], liveRuns);
+    queryClient.setQueryData([...queryKeys.liveRuns(), "dashboard", { minRunCount: 4, fetchLimit: undefined }], liveRuns);
     for (const agent of agents) {
       for (const ref of [agent.id, agent.urlKey]) queryClient.setQueryData([...queryKeys.agents.detail(ref!), companyId], agent);
     }
-    setSelectedCompanyId(companyId);
     navigate(path, { replace: true });
     setReady(true);
-  }, [path, navigate, queryClient, setSelectedCompanyId]);
-  if (!ready || selectedCompanyId !== companyId || location.pathname === "/PAP/storybook") return null;
+  }, [path, navigate, queryClient]);
+  if (!ready || location.pathname === "/storybook") return null;
   return <PluginLauncherProvider>
     <Routes>
-      <Route path="/:companyPrefix" element={<Layout />}>
+      <Route path="/" element={<Layout />}>
         <Route path="agents" element={<Agents />} />
         <Route path="agents/all" element={<Agents />} />
         <Route path="agents/new" element={<NewAgent />} />
@@ -106,15 +104,15 @@ function PersonaPage({ path, meet = false }: { path: string; meet?: boolean }) {
         <Route path="dashboard" element={<Dashboard />} />
       </Route>
     </Routes>
-    {meet && <AgentBasicsDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onContinue={basics => { setDialogOpen(false); navigate(`/PAP/agents/new?name=${encodeURIComponent(basics.name)}&adapterType=${basics.adapterType}`); }} />}
+    {meet && <AgentBasicsDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onContinue={basics => { setDialogOpen(false); navigate(`/agents/new?name=${encodeURIComponent(basics.name)}&adapterType=${basics.adapterType}`); }} />}
   </PluginLauncherProvider>;
 }
 const meta = { title: "Agents/Personas/Full pages", parameters: { layout: "fullscreen", a11y: { test: "off" } } } satisfies Meta;
 export default meta;
 type Story = StoryObj;
-export const AllAgents: Story = { render: () => <PersonaPage path="/PAP/agents/all" /> };
-export const AgentOverview: Story = { render: () => <PersonaPage path="/PAP/agents/codexcoder/overview" /> };
-export const Task: Story = { render: () => <PersonaPage path={`/PAP/issues/${issue.identifier}`} /> };
-export const CompanyDashboard: Story = { name: "Dashboard", render: () => <PersonaPage path="/PAP/dashboard" /> };
-export const MeetYourNextAgent: Story = { render: () => <PersonaPage path="/PAP/agents/all" meet /> };
-export const NewAgentConnection: Story = { render: () => <PersonaPage path="/PAP/agents/new?name=Carl&adapterType=codex_local" /> };
+export const AllAgents: Story = { render: () => <PersonaPage path="/agents/all" /> };
+export const AgentOverview: Story = { render: () => <PersonaPage path="/agents/codexcoder/overview" /> };
+export const Task: Story = { render: () => <PersonaPage path={`/issues/${issue.identifier}`} /> };
+export const CompanyDashboard: Story = { name: "Dashboard", render: () => <PersonaPage path="/dashboard" /> };
+export const MeetYourNextAgent: Story = { render: () => <PersonaPage path="/agents/all" meet /> };
+export const NewAgentConnection: Story = { render: () => <PersonaPage path="/agents/new?name=Carl&adapterType=codex_local" /> };

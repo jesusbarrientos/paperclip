@@ -77,7 +77,6 @@ Object.defineProperty(globalThis, "localStorage", {
 function makeApproval(status: Approval["status"]): Approval {
   return {
     id: `approval-${status}`,
-    companyId: "company-1",
     type: "hire_agent",
     requestedByAgentId: null,
     requestedByUserId: null,
@@ -108,7 +107,6 @@ function makeJoinRequest(id: string): JoinRequest {
   return {
     id,
     inviteId: "invite-1",
-    companyId: "company-1",
     requestType: "human",
     status: "pending_approval",
     requestEmailSnapshot: null,
@@ -133,7 +131,6 @@ function makeJoinRequest(id: string): JoinRequest {
 function makeRun(id: string, status: HeartbeatRun["status"], createdAt: string, agentId = "agent-1"): HeartbeatRun {
   return {
     id,
-    companyId: "company-1",
     agentId,
     responsibleUserId: "user-1",
     invocationSource: "assignment",
@@ -181,7 +178,6 @@ function makeRun(id: string, status: HeartbeatRun["status"], createdAt: string, 
 function makeIssue(id: string, isUnreadForMe: boolean): Issue {
   return {
     id,
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,
@@ -227,7 +223,6 @@ function makeIssue(id: string, isUnreadForMe: boolean): Issue {
 function makeProjectWorkspace(overrides: Partial<ProjectWorkspace> = {}): ProjectWorkspace {
   return {
     id: "project-workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     name: "Primary workspace",
     sourceType: "local_path",
@@ -253,7 +248,6 @@ function makeProjectWorkspace(overrides: Partial<ProjectWorkspace> = {}): Projec
 function makeExecutionWorkspace(overrides: Partial<ExecutionWorkspace> = {}): ExecutionWorkspace {
   return {
     id: "execution-workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: "project-workspace-1",
     sourceIssueId: "issue-1",
@@ -283,7 +277,6 @@ function makeExecutionWorkspace(overrides: Partial<ExecutionWorkspace> = {}): Ex
 }
 
 const dashboard: DashboardSummary = {
-  companyId: "company-1",
   agents: {
     active: 1,
     running: 0,
@@ -410,7 +403,6 @@ describe("inbox helpers", () => {
     const dismissedAtByKey = buildInboxDismissedAtByKey([
       {
         id: "dismissal-1",
-        companyId: "company-1",
         userId: "user-1",
         itemKey: "approval:approval-1",
         kind: "dismiss",
@@ -1113,8 +1105,8 @@ describe("inbox helpers", () => {
     expect(loadLastInboxTab()).toBe("blocked");
   });
 
-  it("persists inbox filters per company", () => {
-    saveInboxFilterPreferences("company-1", {
+  it("persists inbox filters", () => {
+    saveInboxFilterPreferences({
       allCategoryFilter: "approvals",
       allApprovalFilter: "resolved",
       issueFilters: {
@@ -1128,26 +1120,10 @@ describe("inbox helpers", () => {
         liveOnly: true,
         externalObjectStatuses: [],
         hideRoutineExecutions: false,
-      },
-    });
-    saveInboxFilterPreferences("company-2", {
-      allCategoryFilter: "failed_runs",
-      allApprovalFilter: "actionable",
-      issueFilters: {
-        statuses: ["done"],
-        priorities: [],
-        assignees: [],
-        creators: [],
-        labels: [],
-        projects: [],
-        workspaces: [],
-        liveOnly: false,
-        externalObjectStatuses: [],
-        hideRoutineExecutions: true,
       },
     });
 
-    expect(loadInboxFilterPreferences("company-1")).toEqual({
+    expect(loadInboxFilterPreferences()).toEqual({
       allCategoryFilter: "approvals",
       allApprovalFilter: "resolved",
       issueFilters: {
@@ -1161,28 +1137,12 @@ describe("inbox helpers", () => {
         liveOnly: true,
         externalObjectStatuses: [],
         hideRoutineExecutions: false,
-      },
-    });
-    expect(loadInboxFilterPreferences("company-2")).toEqual({
-      allCategoryFilter: "failed_runs",
-      allApprovalFilter: "actionable",
-      issueFilters: {
-        statuses: ["done"],
-        priorities: [],
-        assignees: [],
-        creators: [],
-        labels: [],
-        projects: [],
-        workspaces: [],
-        liveOnly: false,
-        externalObjectStatuses: [],
-        hideRoutineExecutions: true,
       },
     });
   });
 
   it("normalizes invalid inbox filter storage back to safe defaults", () => {
-    localStorage.setItem("paperclip:inbox:filters:company-1", JSON.stringify({
+    localStorage.setItem("paperclip:inbox:filters", JSON.stringify({
       allCategoryFilter: "bogus",
       allApprovalFilter: "bogus",
       issueFilters: {
@@ -1198,7 +1158,7 @@ describe("inbox helpers", () => {
       },
     }));
 
-    expect(loadInboxFilterPreferences("company-1")).toEqual({
+    expect(loadInboxFilterPreferences()).toEqual({
       allCategoryFilter: "everything",
       allApprovalFilter: "all",
       issueFilters: {
@@ -1570,35 +1530,31 @@ describe("inbox helpers", () => {
     expect(loadInboxWorkItemGroupBy()).toBe("project");
   });
 
-  it("persists collapsed inbox groups per company", () => {
-    saveCollapsedInboxGroupKeys("company-1", new Set(["workspace:alpha", "workspace:beta"]));
-    saveCollapsedInboxGroupKeys("company-2", new Set(["type:approval"]));
+  it("persists collapsed inbox groups", () => {
+    saveCollapsedInboxGroupKeys(new Set(["workspace:alpha", "workspace:beta"]));
 
-    expect(loadCollapsedInboxGroupKeys("company-1")).toEqual(new Set(["workspace:alpha", "workspace:beta"]));
-    expect(loadCollapsedInboxGroupKeys("company-2")).toEqual(new Set(["type:approval"]));
+    expect(loadCollapsedInboxGroupKeys()).toEqual(new Set(["workspace:alpha", "workspace:beta"]));
   });
 
   it("returns empty collapsed inbox groups for missing or invalid storage", () => {
-    expect(loadCollapsedInboxGroupKeys("company-1")).toEqual(new Set());
-    localStorage.setItem("paperclip:inbox:collapsed-groups:company-1", JSON.stringify({ nope: true }));
-    expect(loadCollapsedInboxGroupKeys("company-1")).toEqual(new Set());
+    expect(loadCollapsedInboxGroupKeys()).toEqual(new Set());
+    localStorage.setItem("paperclip:inbox:collapsed-groups", JSON.stringify({ nope: true }));
+    expect(loadCollapsedInboxGroupKeys()).toEqual(new Set());
   });
 
-  it("persists collapsed inbox parents per company", () => {
-    saveCollapsedInboxParentIds("company-1", new Set(["parent-1", "parent-2"]));
-    saveCollapsedInboxParentIds("company-2", new Set(["parent-3"]));
+  it("persists collapsed inbox parents", () => {
+    saveCollapsedInboxParentIds(new Set(["parent-1", "parent-2"]));
 
-    expect(loadCollapsedInboxParentIds("company-1")).toEqual(new Set(["parent-1", "parent-2"]));
-    expect(loadCollapsedInboxParentIds("company-2")).toEqual(new Set(["parent-3"]));
+    expect(loadCollapsedInboxParentIds()).toEqual(new Set(["parent-1", "parent-2"]));
 
-    saveCollapsedInboxParentIds("company-1", new Set());
-    expect(loadCollapsedInboxParentIds("company-1")).toEqual(new Set());
+    saveCollapsedInboxParentIds(new Set());
+    expect(loadCollapsedInboxParentIds()).toEqual(new Set());
   });
 
   it("returns empty collapsed inbox parents for missing or invalid storage", () => {
-    expect(loadCollapsedInboxParentIds("company-1")).toEqual(new Set());
-    localStorage.setItem("paperclip:inbox:collapsed-parents:company-1", JSON.stringify({ nope: true }));
-    expect(loadCollapsedInboxParentIds("company-1")).toEqual(new Set());
+    expect(loadCollapsedInboxParentIds()).toEqual(new Set());
+    localStorage.setItem("paperclip:inbox:collapsed-parents", JSON.stringify({ nope: true }));
+    expect(loadCollapsedInboxParentIds()).toEqual(new Set());
   });
 
   it("does not reset workspace grouping before experimental settings have loaded", () => {

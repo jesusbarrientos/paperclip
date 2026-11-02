@@ -272,7 +272,7 @@ async function prepareClaudeRemoteManagedHome(
   // a temp dir — reused across runs, so no teardown cleanup).
   const claudeConfigSeedDir = input.config.managedAiConnection
     ? explicitClaudeConfigDir
-    : await prepareClaudeConfigSeed(process.env, onLog, input.companyId);
+    : await prepareClaudeConfigSeed(process.env, onLog);
   // Ship the per-run skill bundle, staged only when the run selected at
   // least one skill. The bundle directory holds a plain copy of each
   // selected skill's files (`materializePaperclipSkillCopy` never copies a
@@ -909,7 +909,6 @@ export async function testClaudeAcpEnvironment(
         runId,
         target,
         cwd,
-        companyId: ctx.companyId,
         env: probeEnv,
         installCommand: SANDBOX_INSTALL_COMMAND,
         detectCommand: "claude",

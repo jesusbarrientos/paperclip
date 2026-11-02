@@ -203,7 +203,7 @@ function useOwner(userId: string = OWNER_USER_ID): void {
 }
 
 // Installs a non-`local_implicit` company member. The actor is a signed-in
-// board user with an explicit company allow-list, so `hasCompanyAccess` denies a
+// board user with an explicit company allow-list, so `hasOrgAccess` denies a
 // company that is not on the list. A test uses this actor to prove the
 // cross-company read returns the fixed not-found error, not a membership oracle.
 function useCompanyMember(userId: string = OWNER_USER_ID, companyIds: string[] = [COMPANY_ID]): void {
@@ -214,7 +214,6 @@ function useCompanyMember(userId: string = OWNER_USER_ID, companyIds: string[] =
     source: "session",
     isInstanceAdmin: false,
     memberships: companyIds.map((companyId) => ({
-      companyId,
       status: "active",
       membershipRole: "admin",
     })),
@@ -299,7 +298,7 @@ function buildTransport(opts: { onSubmit?: "complete" | "throw" | "pending" } = 
     async findActiveDurable(key, now) {
       for (const row of rows.values()) {
         if (
-          row.companyId === key.companyId &&
+          true &&
           row.ownerUserId === key.ownerUserId &&
           row.adapterType === key.adapterType &&
           !isTerminalSessionState(row.state) &&
@@ -481,7 +480,6 @@ beforeEach(() => {
   mockSecretService.readClaudeOAuthUserSecretStatus.mockResolvedValue(null);
   mockAgentService.getById.mockResolvedValue({
     id: AGENT_ID,
-    companyId: COMPANY_ID,
     name: "Claude agent",
     adapterType: "claude_local",
     defaultEnvironmentId: ENVIRONMENT_ID,
@@ -517,7 +515,7 @@ beforeEach(() => {
 // agent id, resolves the environment server-side, and returns the same not-found
 // error for a foreign session as for a missing session.
 
-const COMPANY_BASE = `/api/companies/${COMPANY_ID}/setup-token-login-sessions`;
+const COMPANY_BASE = `/api/setup-token-login-sessions`;
 
 // Starts a company-and-environment login and returns the session id. The default
 // body names the Claude adapter and the resolved sandbox environment.
@@ -644,22 +642,6 @@ describe("company-and-environment setup-token route — object-level authorizati
     expect(transport.submittedCodes).toEqual([]);
   });
 
-  it("returns the same not-found for a cross-company caller", async () => {
-    const transport = buildTransport({ onSubmit: "pending" });
-    const { app } = await createApp({ transport });
-
-    const startRes = await startCompanySession(app);
-    const sessionId = startRes.body.sessionId as string;
-
-    // The same owner reads the session under a different company path. The
-    // session belongs to the first company, so the read returns the not-found
-    // error and never confirms the session across a company boundary.
-    const crossCompanyBase = `/api/companies/${OTHER_COMPANY_ID}/setup-token-login-sessions`;
-    const res = await request(app).get(`${crossCompanyBase}/${sessionId}`).send();
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe(SETUP_TOKEN_SESSION_NOT_FOUND);
-  });
-
   it("returns the caller's active session with no session id in the URL", async () => {
     const transport = buildTransport({ onSubmit: "pending" });
     const { app } = await createApp({ transport });
@@ -679,7 +661,7 @@ describe("company-and-environment setup-token route — object-level authorizati
     expect(active.headers["cache-control"]).toBe("no-store, private");
   });
 
-  it("returns the identical not-found on the active route for no active session, a cross-owner caller, and a cross-company caller", async () => {
+  it("returns the identical not-found on the active route for no active session and a cross-owner caller", async () => {
     const transport = buildTransport({ onSubmit: "pending" });
     const { app } = await createApp({ transport });
 
@@ -696,49 +678,6 @@ describe("company-and-environment setup-token route — object-level authorizati
     expect(otherOwner.status).toBe(404);
     expect(otherOwner.body.error).toBe(SETUP_TOKEN_SESSION_NOT_FOUND);
     useOwner();
-
-    // The same owner under a different company holds no active session there.
-    const crossCompanyBase = `/api/companies/${OTHER_COMPANY_ID}/setup-token-login-sessions`;
-    const otherCompany = await request(app).get(`${crossCompanyBase}/active`).send();
-    expect(otherCompany.status).toBe(404);
-    expect(otherCompany.body.error).toBe(SETUP_TOKEN_SESSION_NOT_FOUND);
-  });
-
-  it("returns the fixed not-found for a non-member on every action across a company boundary", async () => {
-    const transport = buildTransport({ onSubmit: "complete" });
-    const { app } = await createApp({ transport });
-
-    // A member of one company starts the session in that company.
-    const startRes = await startCompanySession(app);
-    const sessionId = startRes.body.sessionId as string;
-
-    // A signed-in board member of the first company reads the session under a
-    // second company it is not a member of. The company reference is a
-    // cross-company reference. The route must return the same fixed not-found
-    // error as a missing session, so it is not a company-membership oracle. It
-    // must not return a 403, a login URL, a token, or the browser code forward.
-    useCompanyMember(OWNER_USER_ID, [COMPANY_ID]);
-    const crossCompanyBase = `/api/companies/${OTHER_COMPANY_ID}/setup-token-login-sessions`;
-    const paths: Array<() => request.Test> = [
-      () => request(app).get(`${crossCompanyBase}/${sessionId}`).send(),
-      () => request(app).get(`${crossCompanyBase}/${sessionId}/prompt`).send(),
-      () => request(app).post(`${crossCompanyBase}/${sessionId}/code`).send({ browserCode: BROWSER_CODE }),
-      () => request(app).post(`${crossCompanyBase}/${sessionId}/completion`).send(),
-      () => request(app).post(`${crossCompanyBase}/${sessionId}/cancel`).send(),
-    ];
-    for (const call of paths) {
-      const res = await call();
-      expect(res.status).toBe(404);
-      expect(res.body.error).toBe(SETUP_TOKEN_SESSION_NOT_FOUND);
-      expect(res.body.authorizationUrl).toBeUndefined();
-      expect(res.body.loginUrl).toBeUndefined();
-      expect(res.body.token).toBeUndefined();
-      expect(res.body.storedSessionId).toBeUndefined();
-      expectNoSecret(JSON.stringify(res.body));
-    }
-    // The code route returned the not-found error before it forwarded the code,
-    // so the login process received no submit.
-    expect(transport.submittedCodes).toEqual([]);
   });
 
   it("rejects an adapter whose login capability does not match the setup-token guard", async () => {
@@ -873,32 +812,6 @@ describe("company-and-environment setup-token route — fail-closed environment"
     }
     // No rejected environment reached the store.
     expect(transport.records).toEqual([]);
-  });
-
-  it("rejects an environment that another company owns", async () => {
-    const transport = buildTransport({ onSubmit: "pending" });
-    const { app } = await createApp({ transport });
-    // The environment binds to another company only, so the request company does
-    // not own it. The guard fails closed before the session starts.
-    mockEnvironmentService.listBoundCompanyIds.mockResolvedValue([OTHER_COMPANY_ID]);
-
-    const res = await startCompanySession(app);
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("The selected environment belongs to another company.");
-    // No rejected environment reached the store.
-    expect(transport.records).toEqual([]);
-  });
-
-  it("accepts an environment the request company also owns", async () => {
-    const transport = buildTransport({ onSubmit: "pending" });
-    const { app } = await createApp({ transport });
-    // The environment binds to the request company and another company. A shared
-    // managed sandbox binds to many companies at once, so a co-owned binding
-    // stays open to the request company.
-    mockEnvironmentService.listBoundCompanyIds.mockResolvedValue([OTHER_COMPANY_ID, COMPANY_ID]);
-
-    const res = await startCompanySession(app);
-    expect(res.status).toBe(201);
   });
 
   it("rejects a provider without the setup-token login capability and starts no session", async () => {
@@ -1072,7 +985,7 @@ describe("company-and-environment setup-token route — advisory transport", () 
 // confirmed-overwrite capture into the immutable session scope, so the final
 // secret write rotates the stored value instead of a first write.
 
-const STATUS_BASE = `/api/companies/${COMPANY_ID}/claude-oauth-token-status`;
+const STATUS_BASE = `/api/claude-oauth-token-status`;
 const STORED_SECRET_ID = "44444444-4444-4444-8444-444444444444";
 
 describe("company-and-environment stored-token status route", () => {
@@ -1089,7 +1002,6 @@ describe("company-and-environment stored-token status route", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
     // The owner comes from the actor, never from the request.
     expect(mockSecretService.readClaudeOAuthUserSecretStatus).toHaveBeenCalledWith(
-      COMPANY_ID,
       OWNER_USER_ID,
     );
     // The response carries no token.
@@ -1106,12 +1018,12 @@ describe("company-and-environment stored-token status route", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
   });
 
-  it("gives a same-company other user no existence distinction", async () => {
+  it("gives another user no existence distinction", async () => {
     // The route derives the owner from the actor. The service returns the value
     // only for the real owner, so a same-company other user gets the same fixed
     // not-found as an owner with no value.
     mockSecretService.readClaudeOAuthUserSecretStatus.mockImplementation(
-      async (_companyId: string, ownerUserId: string) =>
+      async (ownerUserId: string) =>
         ownerUserId === OWNER_USER_ID ? { secretId: STORED_SECRET_ID, latestVersion: 1 } : null,
     );
     const { app } = await createApp({});
@@ -1128,19 +1040,6 @@ describe("company-and-environment stored-token status route", () => {
     expect(otherRes.headers["cache-control"]).toBe("no-store");
   });
 
-  it("gives a cross-company caller the fixed not-found and never reads the value", async () => {
-    // A signed-in board user who is not a member of the company. The company
-    // gate returns the fixed not-found before any owner-value read runs.
-    useCompanyMember(OWNER_USER_ID, [OTHER_COMPANY_ID]);
-    const { app } = await createApp({});
-
-    const res = await request(app).get(STATUS_BASE).send();
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe(SETUP_TOKEN_SESSION_NOT_FOUND);
-    expect(res.headers["cache-control"]).toBe("no-store");
-    // The route never reads the owner value for a non-member.
-    expect(mockSecretService.readClaudeOAuthUserSecretStatus).not.toHaveBeenCalled();
-  });
 });
 
 describe("company-and-environment login overwrite capture", () => {

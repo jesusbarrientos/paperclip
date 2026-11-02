@@ -66,16 +66,14 @@ export function readWorkspaceRealizationRequest(value: unknown): WorkspaceRealiz
   const source = parseObject(parsed.source);
   const runtimeOverlay = parseObject(parsed.runtimeOverlay);
   const localPath = readString(source.localPath);
-  const companyId = readString(parsed.companyId);
   const environmentId = readString(parsed.environmentId);
   const heartbeatRunId = readString(parsed.heartbeatRunId);
   const adapterType = readString(parsed.adapterType);
-  if (!localPath || !companyId || !environmentId || !heartbeatRunId || !adapterType) return null;
+  if (!localPath || !environmentId || !heartbeatRunId || !adapterType) return null;
 
   return {
     version: 1,
     adapterType,
-    companyId,
     environmentId,
     executionWorkspaceId: readString(parsed.executionWorkspaceId),
     issueId: readString(parsed.issueId),
@@ -110,7 +108,6 @@ export function readWorkspaceRealizationRequest(value: unknown): WorkspaceRealiz
 
 export function buildWorkspaceRealizationRequest(input: {
   adapterType: string;
-  companyId: string;
   environmentId: string;
   executionWorkspaceId: string | null;
   issueId: string | null;
@@ -122,7 +119,6 @@ export function buildWorkspaceRealizationRequest(input: {
   return {
     version: 1,
     adapterType: input.adapterType,
-    companyId: input.companyId,
     environmentId: input.environmentId,
     executionWorkspaceId: input.executionWorkspaceId,
     issueId: input.issueId,
@@ -294,7 +290,6 @@ export function buildWorkspaceRealizationRecordFromDriverInput(input: {
     readWorkspaceRealizationRequest(input.workspace.metadata?.request) ??
     buildWorkspaceRealizationRequest({
       adapterType: "unknown",
-      companyId: input.lease.companyId,
       environmentId: input.environment.id,
       executionWorkspaceId: input.lease.executionWorkspaceId,
       issueId: input.lease.issueId,

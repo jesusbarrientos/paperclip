@@ -80,7 +80,6 @@ function CaseFrame({
 const budgetIncidents: BudgetIncident[] = [
   {
     id: "incident-agent-resolved",
-    companyId: "company-storybook",
     policyId: "budget-agent-codex",
     scopeType: "agent",
     scopeId: "agent-codex",
@@ -101,7 +100,6 @@ const budgetIncidents: BudgetIncident[] = [
   },
   {
     id: "incident-project-pending",
-    companyId: "company-storybook",
     policyId: "budget-project-app",
     scopeType: "project",
     scopeId: "project-board-ui",
@@ -122,7 +120,6 @@ const budgetIncidents: BudgetIncident[] = [
   },
   {
     id: "incident-company-escalated",
-    companyId: "company-storybook",
     policyId: "budget-company",
     scopeType: "company",
     scopeId: "company-storybook",
@@ -406,7 +403,6 @@ const financeKindRows: FinanceByKind[] = [
 const financeTimelineRows: FinanceEvent[] = [
   {
     id: "finance-event-openai-invoice",
-    companyId: "company-storybook",
     agentId: null,
     issueId: null,
     projectId: "project-board-ui",
@@ -435,7 +431,6 @@ const financeTimelineRows: FinanceEvent[] = [
   },
   {
     id: "finance-event-bedrock-compute",
-    companyId: "company-storybook",
     agentId: "agent-codex",
     issueId: "issue-storybook-1",
     projectId: "project-board-ui",
@@ -464,7 +459,6 @@ const financeTimelineRows: FinanceEvent[] = [
   },
   {
     id: "finance-event-log-storage",
-    companyId: "company-storybook",
     agentId: null,
     issueId: null,
     projectId: "project-observability",
@@ -493,7 +487,6 @@ const financeTimelineRows: FinanceEvent[] = [
   },
   {
     id: "finance-event-credit-refund",
-    companyId: "company-storybook",
     agentId: null,
     issueId: null,
     projectId: null,

@@ -74,7 +74,7 @@ account opens the normal catalog in a new tab so the pool draft stays intact.
 The catalog marks experimental-disabled or unavailable plugins as unavailable.
 
 Deletion uses
-`DELETE /api/companies/:companyId/ai-connection-pools/:poolId` with the current
+`DELETE /api/ai-connection-pools/:poolId` with the current
 `expectedRevision`. Core disables and archives the virtual connection, retaining
 its task pins, cursor and run records. It rejects stale edits and new allocations;
 already admitted runs keep their concrete recovery evidence. Cleanup remains

@@ -13,7 +13,6 @@ export type AcquireLoginLeaseArgs = Parameters<EnvironmentRuntimeService["acquir
  * fields to the acquire arguments without a change.
  */
 export interface LoginLeaseMetadata {
-  companyId: string;
   environment: Environment;
   /** The agent adapter type for this login (mixed-harness environments). */
   adapterType?: string | null;
@@ -32,11 +31,6 @@ export interface BuildLoginLeaseAcquireArgsOptions {
    */
   targetAgentId?: string | null;
   /**
-   * Re-check the environment company binding inside the lease insert
-   * transaction. The setup-token flow sets this to true.
-   */
-  assertCompanyBinding?: boolean;
-  /**
    * The latest time the acquired lease may stay active. The setup-token flow
    * passes the session deadline. The codex flow passes nothing.
    */
@@ -54,7 +48,6 @@ export function buildLoginLeaseAcquireArgs(
   options: BuildLoginLeaseAcquireArgsOptions,
 ): AcquireLoginLeaseArgs {
   return {
-    companyId: options.metadata.companyId,
     environment: options.metadata.environment,
     adapterType: options.metadata.adapterType ?? null,
     agentId: options.targetAgentId ?? null,
@@ -66,7 +59,6 @@ export function buildLoginLeaseAcquireArgs(
     // Apply the active custom-image template, so the sandbox binds to the
     // trusted image and runtime identity.
     applyCustomImageTemplate: true,
-    assertCompanyBinding: options.assertCompanyBinding,
     requestedExpiresAt: options.requestedExpiresAt ?? null,
   };
 }

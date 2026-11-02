@@ -46,12 +46,10 @@ const HANDOFF_KEY_ENV = "PAPERCLIP_WORKSPACE_HANDOFF_KEY";
 const HANDOFF_ROOT_SECRET_ENV = "PAPERCLIP_WORKSPACE_HANDOFF_SECRET";
 const READINESS_TOKEN_ENV = "PAPERCLIP_WORKSPACE_READINESS_TOKEN";
 const EXECUTION_WORKSPACE_ID_ENV = "PAPERCLIP_EXECUTION_WORKSPACE_ID";
-const EXECUTION_WORKSPACE_COMPANY_ID_ENV = "PAPERCLIP_EXECUTION_WORKSPACE_COMPANY_ID";
 
 export const WORKSPACE_HANDOFF_KEY_ENV_KEY = HANDOFF_KEY_ENV;
 export const WORKSPACE_READINESS_TOKEN_ENV_KEY = READINESS_TOKEN_ENV;
 export const WORKSPACE_EXECUTION_WORKSPACE_ID_ENV_KEY = EXECUTION_WORKSPACE_ID_ENV;
-export const WORKSPACE_EXECUTION_WORKSPACE_COMPANY_ID_ENV_KEY = EXECUTION_WORKSPACE_COMPANY_ID_ENV;
 export const WORKSPACE_READINESS_TOKEN_HEADER = "x-paperclip-workspace-readiness-token";
 export const WORKSPACE_READINESS_USER_ID_HEADER = "x-paperclip-workspace-readiness-user-id";
 export const WORKSPACE_READINESS_USER_EMAIL_HEADER = "x-paperclip-workspace-readiness-user-email";
@@ -67,15 +65,6 @@ export type WorkspaceHandoffTicketPayload = {
   email: string;
   /** Execution workspace the ticket is scoped to. */
   ws: string;
-  /**
-   * Company whose board this workspace represents.
-   *
-   * Bound because "the cloned user has *some* active membership" is not the
-   * question worth asking: a multi-company clone can satisfy it while leaving the
-   * signed-in user with no access to the company they were opening, which lands
-   * them on an empty board with no explanation.
-   */
-  cid: string;
   /** Isolated instance id the ticket is scoped to. */
   iid: string;
   /** Origin the control plane published for this runtime. */
@@ -98,8 +87,7 @@ export type WorkspaceHandoffVerificationFailure =
   | "not_yet_valid"
   | "origin_mismatch"
   | "instance_mismatch"
-  | "workspace_mismatch"
-  | "company_mismatch";
+  | "workspace_mismatch";
 
 export type WorkspaceHandoffVerificationResult =
   | { ok: true; payload: WorkspaceHandoffTicketPayload }
@@ -240,17 +228,11 @@ export function resolveWorkspaceHandoffLocalWorkspaceId(env: NodeJS.ProcessEnv =
   return env[EXECUTION_WORKSPACE_ID_ENV]?.trim() || null;
 }
 
-/** The company whose board this (guest) workspace represents. */
-export function resolveWorkspaceHandoffLocalCompanyId(env: NodeJS.ProcessEnv = process.env): string | null {
-  return env[EXECUTION_WORKSPACE_COMPANY_ID_ENV]?.trim() || null;
-}
-
 export function issueWorkspaceHandoffTicket(input: {
   key: string;
   userId: string;
   email: string;
   executionWorkspaceId: string;
-  companyId: string;
   instanceId: string;
   origin: string;
   issuerInstanceId: string;
@@ -272,7 +254,6 @@ export function issueWorkspaceHandoffTicket(input: {
     sub: input.userId,
     email: input.email,
     ws: input.executionWorkspaceId,
-    cid: input.companyId,
     iid: input.instanceId,
     aud: origin,
     iss: input.issuerInstanceId,
@@ -303,7 +284,6 @@ function isPayloadShape(value: unknown): value is WorkspaceHandoffTicketPayload 
     && typeof candidate.sub === "string" && candidate.sub.length > 0
     && typeof candidate.email === "string" && candidate.email.length > 0
     && typeof candidate.ws === "string" && candidate.ws.length > 0
-    && typeof candidate.cid === "string" && candidate.cid.length > 0
     && typeof candidate.iid === "string" && candidate.iid.length > 0
     && typeof candidate.aud === "string" && candidate.aud.length > 0
     && typeof candidate.iss === "string"
@@ -325,7 +305,6 @@ export function verifyWorkspaceHandoffTicket(input: {
   expected: {
     instanceId: string | null;
     executionWorkspaceId: string | null;
-    companyId: string | null;
     origin: string | null;
   };
   now?: Date;
@@ -337,13 +316,11 @@ export function verifyWorkspaceHandoffTicket(input: {
   const expectedOrigin = normalizeWorkspaceHandoffOrigin(input.expected.origin);
   const expectedInstanceId = input.expected.instanceId?.trim();
   const expectedWorkspaceId = input.expected.executionWorkspaceId?.trim();
-  const expectedCompanyId = input.expected.companyId?.trim();
   // Fail closed on unresolved local identity: without it the checks below would
   // degrade into "any validly signed ticket wins".
   if (!expectedOrigin) return { ok: false, reason: "origin_mismatch" };
   if (!expectedInstanceId) return { ok: false, reason: "instance_mismatch" };
   if (!expectedWorkspaceId) return { ok: false, reason: "workspace_mismatch" };
-  if (!expectedCompanyId) return { ok: false, reason: "company_mismatch" };
 
   const ticket = input.ticket?.trim();
   if (!ticket) return { ok: false, reason: "malformed" };
@@ -380,7 +357,6 @@ export function verifyWorkspaceHandoffTicket(input: {
   }
   if (parsed.iid !== expectedInstanceId) return { ok: false, reason: "instance_mismatch" };
   if (parsed.ws !== expectedWorkspaceId) return { ok: false, reason: "workspace_mismatch" };
-  if (parsed.cid !== expectedCompanyId) return { ok: false, reason: "company_mismatch" };
 
   return {
     ok: true,

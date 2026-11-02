@@ -27,7 +27,7 @@ import { cn, SIDEBAR_RAIL_HIDDEN_LABEL } from "../lib/utils";
 import { ThemeToggle } from "./ThemeToggle";
 import { SidebarServerInfo } from "./SidebarServerInfo";
 
-const INVITES_PATH = "/company/settings/members?tab=invites";
+const INVITES_PATH = "/organization/settings/members?tab=invites";
 const DOCS_URL = "https://docs.paperclip.ing/";
 const FEEDBACK_URL = "https://paperclip.ing/feedback";
 
@@ -232,7 +232,7 @@ export function SidebarAccountMenu({
               <MenuAction
                 label="Settings"
                 icon={Settings}
-                href="/company/settings"
+                href="/organization/settings"
                 onClick={closeNavigationChrome}
               />
               {showInvite && inviteHref ? (

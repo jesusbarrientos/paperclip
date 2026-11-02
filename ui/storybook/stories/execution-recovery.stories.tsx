@@ -332,7 +332,7 @@ function DashboardLabelExamples() {
     }));
     cache.setQueryData(
       [
-        ...queryKeys.liveRuns("company-storybook"),
+        ...queryKeys.liveRuns(),
         "execution-label-review",
         { minRunCount: 0, fetchLimit: undefined },
       ],
@@ -358,7 +358,6 @@ function DashboardLabelExamples() {
           card or controls.
         </p>
         <ActiveAgentsPanel
-          companyId="company-storybook"
           title="Agent execution"
           queryScope="execution-label-review"
           minRunCount={0}

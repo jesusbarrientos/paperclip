@@ -8,7 +8,7 @@ import {
   useMemo,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCompany } from "../context/CompanyContext";
+import { useOrganization } from "../context/OrganizationContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useDialogState } from "../context/DialogContext";
 import { agentsApi } from "../api/agents";
@@ -34,17 +34,18 @@ import { cn, formatDateTime } from "../lib/utils";
 import type { FeedbackVoteValue } from "@paperclipai/shared";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
+const BOARD_CHAT_DRAFT_KEY = "paperclip.boardChat.draft";
+
 /**
  * Board Concierge Chat — a chat interface powered by the board-member skill.
  * Uses /board/chat/stream to invoke Claude with the board skill as system prompt.
- * The user manages their Paperclip company through natural conversation.
+ * The user manages their Paperclip organization through natural conversation.
  */
 /** Hit zone to the right of the 1px line (line sits on chat pane’s right edge). */
 const SPLIT_DIVIDER_PX = 12;
 const SPLIT_MIN_PANE_PX = 280;
 /** Chat pane share of width below the divider (agent feed gets the rest). */
 const DEFAULT_CHAT_FRACTION = 2 / 3;
-
 
 /** Wrapped markdown in bubbles; pre/table scroll horizontally when needed. */
 const BOARD_CHAT_MARKDOWN_CLASS =
@@ -88,7 +89,7 @@ function TypingBubble() {
 }
 
 export function BoardChat() {
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
 
@@ -100,7 +101,6 @@ export function BoardChat() {
   const [containerWidth, setContainerWidth] = useState(0);
   const [chatPaneFraction, setChatPaneFraction] = useState(DEFAULT_CHAT_FRACTION);
   const splitDragging = useRef(false);
-
 
   useLayoutEffect(() => {
     const el = splitContainerRef.current;
@@ -168,10 +168,13 @@ export function BoardChat() {
     [containerWidth, leftPaneWidth],
   );
 
-  const [input, setInput] = useState("");
-  /** Guards the draft-persistence effect so it doesn't overwrite a saved
-   *  draft with "" before we've had a chance to load it. */
-  const loadedDraftCompanyRef = useRef<string | null>(null);
+  const [input, setInput] = useState(() => {
+    try {
+      return sessionStorage.getItem(BOARD_CHAT_DRAFT_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -209,61 +212,19 @@ export function BoardChat() {
   const [welcomeRevealed, setWelcomeRevealed] = useState(false);
   const [chipsRevealed, setChipsRevealed] = useState(false);
 
-  // Reset state and clear cached comments when company changes. The
-  // composer draft is NOT wiped — it's loaded from per-company
-  // sessionStorage in the effect below so users don't lose typed content
-  // when switching between companies or navigating away and back.
-  const prevCompanyRef = useRef(selectedCompanyId);
   useEffect(() => {
-    if (prevCompanyRef.current !== selectedCompanyId) {
-      if (boardIssueId) {
-        queryClient.removeQueries({ queryKey: queryKeys.issues.comments(boardIssueId) });
-      }
-      setBoardIssueId(null);
-      setStreamingText("");
-      setStatusText("");
-      setSending(false);
-      setOptimisticMessage(null);
-      prevCompanyRef.current = selectedCompanyId;
-    }
-  }, [selectedCompanyId, boardIssueId, queryClient]);
-
-  // Load a saved composer draft (if any) whenever the active company
-  // changes — runs on first mount too.
-  useEffect(() => {
-    if (!selectedCompanyId) return;
-    if (loadedDraftCompanyRef.current === selectedCompanyId) return;
     try {
-      const saved = sessionStorage.getItem(
-        `paperclip.boardChat.draft.${selectedCompanyId}`,
-      );
-      setInput(saved ?? "");
-    } catch {
-      setInput("");
-    }
-    loadedDraftCompanyRef.current = selectedCompanyId;
-  }, [selectedCompanyId]);
-
-  // Persist composer draft to sessionStorage on change (per company).
-  // Only runs after the initial load for this company to avoid clobbering
-  // a saved draft with an empty initial value.
-  useEffect(() => {
-    if (!selectedCompanyId) return;
-    if (loadedDraftCompanyRef.current !== selectedCompanyId) return;
-    try {
-      const key = `paperclip.boardChat.draft.${selectedCompanyId}`;
       if (input) {
-        sessionStorage.setItem(key, input);
+        sessionStorage.setItem(BOARD_CHAT_DRAFT_KEY, input);
       } else {
-        sessionStorage.removeItem(key);
+        sessionStorage.removeItem(BOARD_CHAT_DRAFT_KEY);
       }
     } catch { /* sessionStorage unavailable */ }
-  }, [input, selectedCompanyId]);
+  }, [input]);
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const ceoAgent = useMemo(
@@ -274,9 +235,8 @@ export function BoardChat() {
   // Pull the company's top-level goal so the CEO's welcome can reference
   // the mission verbatim.
   const { data: goals } = useQuery({
-    queryKey: queryKeys.goals.list(selectedCompanyId!),
-    queryFn: () => goalsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.goals.list(),
+    queryFn: () => goalsApi.list(),
   });
 
   const missionText = useMemo(() => {
@@ -286,9 +246,8 @@ export function BoardChat() {
 
   // Find or detect the board operations issue
   const { data: issues } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.list(),
+    queryFn: () => issuesApi.list(),
   });
 
   useEffect(() => {
@@ -365,7 +324,7 @@ export function BoardChat() {
   useEffect(() => {
     setWelcomeRevealed(false);
     setChipsRevealed(false);
-  }, [selectedCompanyId]);
+  }, []);
 
   // The onboarding wizard renders as an overlay above an already-mounted
   // Conference Room (sidebar "Create new company..." path). Holding the reveal
@@ -390,7 +349,7 @@ export function BoardChat() {
   // needed to render the welcome bubble. This guarantees the animation is
   // visible at the moment the user arrives, even if agent/goal queries
   // take a beat to resolve.
-  const canRenderWelcome = !!ceoAgent && !!selectedCompany;
+  const canRenderWelcome = !!ceoAgent && !!organization;
   useEffect(() => {
     if (!canRenderWelcome) return;
     if (welcomeRevealed) return;
@@ -534,7 +493,7 @@ export function BoardChat() {
   const sendMessage = useCallback(
     async (body: string) => {
       const trimmed = body.trim();
-      if (!trimmed || sending || !selectedCompanyId) return;
+      if (!trimmed || sending) return;
 
       // Show user message immediately
       setOptimisticMessage(trimmed);
@@ -551,7 +510,6 @@ export function BoardChat() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            companyId: selectedCompanyId,
             message: trimmed,
             taskId: boardIssueId ?? undefined,
           }),
@@ -602,7 +560,7 @@ export function BoardChat() {
                     queryKey: queryKeys.issues.comments(event.issueId),
                   });
                   queryClient.invalidateQueries({
-                    queryKey: queryKeys.issues.list(selectedCompanyId),
+                    queryKey: queryKeys.issues.list(),
                   });
                 }
               }
@@ -628,31 +586,15 @@ export function BoardChat() {
         composerRef.current?.focus();
       }
     },
-    [sending, selectedCompanyId, boardIssueId, queryClient],
+    [sending, boardIssueId, queryClient],
   );
 
   const handleSend = useCallback(() => {
     sendMessage(input);
   }, [input, sendMessage]);
 
-  // NOTE: declared before the early return below — all hooks must run on
-  // every render (Rules of Hooks). Placing it after the `!selectedCompanyId`
-  // guard caused "Rendered more hooks than during the previous render" and a
-  // blank page once a company was selected.
   const [mobileFeedOpen, setMobileFeedOpen] = useState(false);
 
-  if (!selectedCompanyId) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center max-w-sm">
-          <h2 className="text-lg font-semibold">No organization selected</h2>
-          <p className="text-sm text-muted-foreground mt-2">
-            Select an organization to start chatting with your board concierge.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-(--sz-calc-29) flex-col -m-6">
@@ -679,7 +621,7 @@ export function BoardChat() {
                 {ceoAgent?.name ?? "Conference Room"}
               </h3>
               <p className="text-xs text-muted-foreground">
-                {selectedCompany?.name ?? "Your organization"}
+                {organization?.name ?? "Your organization"}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
@@ -727,9 +669,9 @@ export function BoardChat() {
                    visible even while agent/goal data is still loading. */}
               {!welcomeRevealed && <TypingBubble />}
 
-              {welcomeRevealed && ceoAgent && selectedCompany && (() => {
+              {welcomeRevealed && ceoAgent && organization && (() => {
                 const ceoName = ceoAgent.name;
-                const companyName = selectedCompany.name;
+                const companyName = organization.name;
                 const missionLine = missionText
                   ? ` — your mission is "${missionText}".`
                   : ".";

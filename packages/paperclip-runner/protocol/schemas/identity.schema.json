@@ -5,7 +5,6 @@
   "type": "object",
   "required": [
     "schema",
-    "companyId",
     "issueId",
     "runId",
     "environmentLeaseId",
@@ -15,7 +14,6 @@
   ],
   "properties": {
     "schema": { "const": "paperclip.prp.identity.v1" },
-    "companyId": { "$ref": "#/$defs/stableId" },
     "issueId": { "$ref": "#/$defs/stableId" },
     "runId": { "$ref": "#/$defs/stableId" },
     "environmentLeaseId": { "$ref": "#/$defs/stableId" },

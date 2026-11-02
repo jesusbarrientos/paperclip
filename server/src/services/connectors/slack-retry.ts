@@ -21,7 +21,6 @@ export async function claimSlackRateLimitRetry(
       .where(
         and(
           eq(toolInvocations.id, invocationId),
-          eq(toolInvocations.companyId, binding.companyId),
           eq(toolInvocations.runId, binding.runId),
           eq(toolInvocations.agentId, binding.agentId),
           eq(toolInvocations.issueId, binding.issueId),
@@ -36,7 +35,6 @@ export async function claimSlackRateLimitRetry(
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, binding.companyId),
           eq(chatActions.endpointId, authority.endpoint.id),
           eq(chatActions.kind, "slack_tool_write"),
           eq(chatActions.status, "failed"),

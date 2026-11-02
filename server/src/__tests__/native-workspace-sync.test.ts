@@ -101,7 +101,7 @@ describe("native workspace sync durable metadata", () => {
   it("refuses a different sandbox before preparing restart workspace sync", async () => {
     const select = vi.fn();
     await expect(prepareNativeWorkspaceSync({
-      db: { select } as never, runId: "run", companyId: "company", workspaceId: "workspace",
+      db: { select } as never, runId: "run", workspaceId: "workspace",
       workspaceLocalDir: "/tmp/local-workspace", lease: { id: "lease", providerLeaseId: "replacement" } as never,
       target: { kind: "remote", transport: "sandbox", remoteCwd: "/workspace", providerKey: "daytona",
         sandboxLeaseAcquisition: { outcome: "replacement", providerLeaseId: "replacement" } } as never,
@@ -173,7 +173,7 @@ describe("native workspace sync durable metadata", () => {
     if (serialized.version !== 2) throw new Error("Expected v2");
     const descriptor = {
       schema: "paperclip.native-workspace-sync/v2" as const,
-      binding: { runId, companyId: "company", workspaceId: "workspace", leaseId: "lease", providerLeaseId: "sandbox", localCwd: workspace, remoteCwd: "/workspace" },
+      binding: { runId, workspaceId: "workspace", leaseId: "lease", providerLeaseId: "sandbox", localCwd: workspace, remoteCwd: "/workspace" },
       state: "prepared" as const, baselineSha256: directorySnapshotSha256(baseline),
       baseline: serialized, gitSnapshot: null, seed: null,
       createdAt: new Date().toISOString(), finalizedAt: null, finalHostSha256: null, resourceDisposition: null,
@@ -221,7 +221,6 @@ describe("native workspace sync durable metadata", () => {
       schema: "paperclip.native-workspace-sync/v1" as const,
       binding: {
         runId: "run-idempotent",
-        companyId: "company-1",
         workspaceId: "workspace-1",
         leaseId: "lease-1",
         providerLeaseId: "sandbox-1",
@@ -290,7 +289,6 @@ describe("native workspace sync durable metadata", () => {
       schema: "paperclip.native-workspace-sync/v1" as const,
       binding: {
         runId: "run-finalized-repair",
-        companyId: "company-1",
         workspaceId: "workspace-1",
         leaseId: "lease-1",
         providerLeaseId: "sandbox-1",

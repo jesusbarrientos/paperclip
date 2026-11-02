@@ -194,7 +194,6 @@ These are set automatically by the server when invoking agents:
 | Variable | Description |
 |----------|-------------|
 | `PAPERCLIP_AGENT_ID` | Agent's unique ID |
-| `PAPERCLIP_COMPANY_ID` | Company ID |
 | `PAPERCLIP_API_URL` | Paperclip API base URL (inherits the server-level value; see Server Configuration above) |
 | `PAPERCLIP_API_KEY` | Short-lived JWT for API auth |
 | `PAPERCLIP_RUN_ID` | Current heartbeat run ID |

@@ -257,7 +257,6 @@ export interface CompanyPortabilityManifest {
   schemaVersion: number;
   generatedAt: string;
   source: {
-    companyId: string;
     companyName: string;
   } | null;
   includes: CompanyPortabilityInclude;
@@ -327,7 +326,6 @@ export type CompanyPortabilityImportTarget =
     }
   | {
       mode: "existing_company";
-      companyId: string;
     };
 
 export type CompanyPortabilityAgentSelection = "all" | string[];

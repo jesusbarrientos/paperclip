@@ -55,7 +55,6 @@ export type AgentEnvConfig = Record<string, EnvBinding>;
 
 export interface CompanySecret {
   id: string;
-  companyId: string;
   scope: SecretScope;
   ownerUserId: string | null;
   userSecretDefinitionId: string | null;
@@ -81,7 +80,6 @@ export interface CompanySecret {
 
 export interface UserSecretDefinition {
   id: string;
-  companyId: string;
   key: string;
   name: string;
   description: string | null;
@@ -102,7 +100,6 @@ export interface UserSecretDefinition {
 
 export interface UserSecretDeclaration {
   id: string;
-  companyId: string;
   userSecretDefinitionId: string;
   targetType: SecretBindingTargetType;
   targetId: string;
@@ -175,7 +172,6 @@ export interface SecretProviderConfigHealthDetails {
 
 export interface CompanySecretProviderConfig {
   id: string;
-  companyId: string;
   provider: SecretProvider;
   displayName: string;
   status: SecretProviderConfigStatus;
@@ -252,7 +248,6 @@ export interface CompanySecretVersion {
 
 export interface CompanySecretBinding {
   id: string;
-  companyId: string;
   secretId: string;
   targetType: SecretBindingTargetType;
   targetId: string;
@@ -280,7 +275,6 @@ export interface CompanySecretUsageBinding extends CompanySecretBinding {
 
 export interface SecretAccessEvent {
   id: string;
-  companyId: string;
   secretId: string | null;
   userSecretDefinitionId: string | null;
   secretScope: SecretScope;
@@ -388,7 +382,6 @@ export interface SecretProposalIssueRef {
  */
 export interface SecretProposalView {
   id: string;
-  companyId: string;
   kind: SecretProposalKind;
   status: SecretProposalStatus;
   justification: string;

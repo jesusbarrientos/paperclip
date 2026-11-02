@@ -49,7 +49,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -61,7 +60,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "running",
@@ -81,7 +79,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
     });
 
     try {
-      const runs = await heartbeatService(db).list(companyId, agentId, 5);
+      const runs = await heartbeatService(db).list(agentId, 5);
       expect(runs).toHaveLength(1);
       expect(runs[0]?.id).toBe(runId);
       expect(runs[0]?.processGroupId ?? null).toBeNull();
@@ -115,7 +113,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -127,7 +124,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",
@@ -160,7 +156,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -172,7 +167,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "failed",
@@ -200,12 +194,11 @@ describeEmbeddedPostgres("heartbeat list", () => {
       },
     });
 
-    const runs = await heartbeatService(db).list(companyId, undefined, 5, { summary });
+    const runs = await heartbeatService(db).list(undefined, 5, { summary });
 
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({
       id: runId,
-      companyId,
       agentId,
       status: "failed",
       responsibleUserId: "run-owner",
@@ -256,7 +249,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -268,7 +260,6 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",

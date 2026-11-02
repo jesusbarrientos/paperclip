@@ -176,7 +176,6 @@ describe("Daytona sandbox provider plugin", () => {
     mockCreate.mockResolvedValue(sandbox);
     const base = {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { image: "node:20", timeoutMs: 300_000, reuseLease: false },
     };
@@ -225,7 +224,6 @@ describe("Daytona sandbox provider plugin", () => {
     mockCreate.mockResolvedValue(sandbox);
     const base = {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { image: "node:20", timeoutMs: 300_000, reuseLease: false },
     };
@@ -305,7 +303,6 @@ describe("Daytona sandbox provider plugin", () => {
     try {
       await plugin.definition.onEnvironmentAcquireLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         runId: "run-1",
         agentId: "agent-1",
@@ -317,7 +314,6 @@ describe("Daytona sandbox provider plugin", () => {
       const open = await plugin.definition.onDuplexChannelOpen?.({
         hostRouteId: "route-1",
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         command: ["node", "/paperclip/gateway.mjs"],
@@ -378,7 +374,7 @@ describe("Daytona sandbox provider plugin", () => {
           await new Promise<void>(resolve => { finishBlocked = resolve; });
           return { exitCode: 0, result: "done", artifacts: { stdout: "done" } };
         });
-        blocked = plugin.definition.onEnvironmentExecute?.({ driverKey: "daytona", companyId: "company-1",
+        blocked = plugin.definition.onEnvironmentExecute?.({ driverKey: "daytona",
           environmentId: "env-1", config: { timeoutMs: 300000 }, bypassSession: true,
           lease: { providerLeaseId: "sandbox-123", metadata: {} }, command: "printf", args: ["done"] });
         await vi.waitFor(() => expect(finishBlocked).toBeTypeOf("function"));
@@ -387,7 +383,6 @@ describe("Daytona sandbox provider plugin", () => {
       // Route invalidation must happen before provider stop, including after drain timeout.
       await plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { image: "node:20", timeoutMs: 300000, livenessTimeoutMs: 5, reuseLease: true },
@@ -508,7 +503,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: {
@@ -528,7 +522,7 @@ describe("Daytona sandbox provider plugin", () => {
 
   describe("fresh acquisition deadline", () => {
     const params = {
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1", runId: "run-1",
+      driverKey: "daytona", environmentId: "env-1", runId: "run-1",
       config: { image: "node:20", reuseLease: false },
     };
 
@@ -555,7 +549,7 @@ describe("Daytona sandbox provider plugin", () => {
       const pending = plugin.definition.onEnvironmentAcquireLease!(params).catch(error => error);
       await vi.advanceTimersByTimeAsync(300_000);
       const cleanup = readEnvironmentCreationCleanupError(await pending);
-      expect(cleanup).toMatchObject({ companyId: params.companyId, environmentId: params.environmentId,
+      expect(cleanup).toMatchObject({ environmentId: params.environmentId,
         runId: params.runId, observedProviderLeaseId: sandbox.id, providerLeaseId: mockCreate.mock.calls[0][0].name });
       await vi.advanceTimersByTimeAsync(35_000);
       expect(sandbox.setTtl).not.toHaveBeenCalled();
@@ -587,7 +581,7 @@ describe("Daytona sandbox provider plugin", () => {
       }).catch(error => error);
       await vi.advanceTimersByTimeAsync(2_000);
       expect(readEnvironmentCreationCleanupError(await pending)).toMatchObject({
-        observedProviderLeaseId: sandbox.id, companyId: params.companyId, runId: params.runId,
+        observedProviderLeaseId: sandbox.id, runId: params.runId,
       });
       expect(sandbox.delete).toHaveBeenCalledOnce();
     });
@@ -599,7 +593,7 @@ describe("Daytona sandbox provider plugin", () => {
       sandbox.delete.mockRejectedValue(new Error("delete unavailable"));
       const error = await plugin.definition.onEnvironmentAcquireLease!(params).catch(error => error);
       expect(readEnvironmentCreationCleanupError(error)).toMatchObject({
-        observedProviderLeaseId: sandbox.id, companyId: params.companyId, runId: params.runId,
+        observedProviderLeaseId: sandbox.id, runId: params.runId,
       });
       expect(vi.getTimerCount()).toBe(0);
     });
@@ -607,7 +601,7 @@ describe("Daytona sandbox provider plugin", () => {
 
   describe("failed sandbox creation cleanup", () => {
     const params = {
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1", runId: "run-1",
+      driverKey: "daytona", environmentId: "env-1", runId: "run-1",
       config: { image: "node:20", timeoutMs: 300_000, reuseLease: false, livenessTimeoutMs: 100 },
     };
     const createError = new MockDaytonaTimeoutError("Failed to create and start sandbox within 300 seconds");
@@ -641,7 +635,7 @@ describe("Daytona sandbox provider plugin", () => {
 
     it("hands non-secret cleanup ownership to the host when creation is uncertain", async () => {
       const { error, cleanup } = await unresolvedCreation();
-      expect(cleanup).toMatchObject({ companyId: params.companyId, environmentId: params.environmentId, runId: params.runId,
+      expect(cleanup).toMatchObject({ environmentId: params.environmentId, runId: params.runId,
         providerLeaseId: mockCreate.mock.calls[0][0].name, labels: mockCreate.mock.calls[0][0].labels });
       expect(cleanup.accountFingerprint).toMatch(/^[a-f0-9]{64}$/);
       expect(JSON.stringify(environmentCreationCleanupErrorData(error))).not.toContain("host-key");
@@ -713,12 +707,11 @@ describe("Daytona sandbox provider plugin", () => {
       })).resolves.toEqual({ providerLeaseId: cleanup.providerLeaseId, state: "destroyed" });
     });
 
-    it.each(["company", "account", "labels"])("fences failed-creation retries by %s", async (mismatch) => {
+    it.each(["account", "labels"])("fences failed-creation retries by %s", async (mismatch) => {
       const { cleanup } = await unresolvedCreation();
       const orphan = ownedSandbox(); mockGet.mockResolvedValue(orphan);
       if (mismatch === "labels") orphan.labels["paperclip-run-id"] = "foreign-run";
       const retry = { ...params, providerLeaseId: cleanup.providerLeaseId, leaseMetadata: { failedCreateCleanup: cleanup } };
-      if (mismatch === "company") retry.companyId = "foreign-company";
       if (mismatch === "account") process.env.DAYTONA_API_KEY = "another-account-key";
       await expect(plugin.definition.onEnvironmentDestroyLease!(retry)).rejects.toThrow();
       expect(orphan.delete).not.toHaveBeenCalled();
@@ -734,7 +727,7 @@ describe("Daytona sandbox provider plugin", () => {
       expect(orphan!.process.executeCommand).not.toHaveBeenCalled();
     });
 
-    it.each(["paperclip-company-id", "paperclip-environment-id", "paperclip-run-id", "paperclip-create-attempt", "paperclip-provider"])("never deletes a sandbox with a mismatched %s", async (label) => {
+    it.each(["paperclip-environment-id", "paperclip-run-id", "paperclip-create-attempt", "paperclip-provider"])("never deletes a sandbox with a mismatched %s", async (label) => {
       let orphan: ReturnType<typeof ownedSandbox>;
       mockGet.mockImplementation(async () => {
         orphan = ownedSandbox(); orphan.labels[label] = "different-owner"; return orphan;
@@ -833,7 +826,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentProbe?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         snapshot: "base-snapshot",
@@ -863,7 +855,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       agentId: "agent-1",
@@ -908,7 +899,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: { image: "node:20", timeoutMs: 300000, reuseLease: false },
@@ -928,7 +918,6 @@ describe("Daytona sandbox provider plugin", () => {
     const requestedExpiresAt = new Date(Date.now() + 30 * 60_000 + 30_000).toISOString();
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: { image: "node:20", timeoutMs: 300000, reuseLease: false },
@@ -952,7 +941,6 @@ describe("Daytona sandbox provider plugin", () => {
     const requestedExpiresAt = new Date(Date.now() + 30_000).toISOString();
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: { image: "node:20", timeoutMs: 300000, reuseLease: false },
@@ -973,7 +961,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const session = await plugin.definition.onEnvironmentStartInteractiveSetup?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       sessionId: "setup-1",
       sourceTemplateRef: "existing-secret-snapshot",
@@ -1030,7 +1017,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentStartInteractiveSetup?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       sessionId: "setup-image-1",
       sourceTemplateRef: "node:20",
@@ -1063,7 +1049,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentStartInteractiveSetup?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       sessionId: "setup-1",
       config: {
@@ -1083,7 +1068,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const session = await plugin.definition.onEnvironmentGetInteractiveSetup?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-setup",
       includeConnectionPayload: false,
@@ -1113,7 +1097,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentGetInteractiveSetup?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-missing",
       includeConnectionPayload: true,
@@ -1141,7 +1124,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentCaptureTemplate?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-setup",
       templateLabel: " Paperclip Env 1 ",
@@ -1177,7 +1159,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentCancelInteractiveSetup?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-setup",
       reason: "user_cancelled",
@@ -1206,7 +1187,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentDeleteTemplate?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       templateRef: "captured-template",
       templateKind: "snapshot",
@@ -1238,7 +1218,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       agentId: "agent-1",
@@ -1271,7 +1250,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       agentId: "agent-1",
@@ -1321,7 +1299,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       agentId: "agent-1",
@@ -1347,7 +1324,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       agentId: "agent-1",
@@ -1371,7 +1347,7 @@ describe("Daytona sandbox provider plugin", () => {
     process.env.DAYTONA_API_KEY = "host-key";
     const sandbox = createMockSandbox({ id: "ephemeral-owned" });
     mockCreate.mockResolvedValue(sandbox);
-    const base = { driverKey: "daytona", companyId: "company-1", environmentId: "env-1", agentId: "agent-1",
+    const base = { driverKey: "daytona", environmentId: "env-1", agentId: "agent-1",
       issueId: "issue-1", adapterType: "paperclip_runner", config: { reuseLease: false } };
     const lease = await plugin.definition.onEnvironmentAcquireLease!({ ...base, runId: "run-1" });
     const sentinel = lease.metadata!.workspaceSentinel as { token: string; result: string };
@@ -1401,7 +1377,6 @@ describe("Daytona sandbox provider plugin", () => {
       mockCreate.mockResolvedValueOnce(sandbox);
       await plugin.definition.onEnvironmentAcquireLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         runId: "run-1",
         agentId: "agent-1",
@@ -1439,7 +1414,6 @@ describe("Daytona sandbox provider plugin", () => {
     await expect(
       plugin.definition.onEnvironmentAcquireLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         runId: "run-1",
         config: {
@@ -1465,7 +1439,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: {
@@ -1491,7 +1464,6 @@ describe("Daytona sandbox provider plugin", () => {
     await expect(
       plugin.definition.onEnvironmentResumeLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-resume",
         config: {
@@ -1511,7 +1483,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentResumeLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-123",
       config: {
@@ -1542,7 +1513,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentResumeLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-reuse",
       config: {
@@ -1577,7 +1547,7 @@ describe("Daytona sandbox provider plugin", () => {
     const sandboxId = "00000000-0000-4000-8000-000000000001";
     const missing = `not found: failed to inspect sandbox container ${sandboxId}: Error response from daemon: No such container: ${sandboxId}`;
     const params = {
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1", providerLeaseId: sandboxId,
+      driverKey: "daytona", environmentId: "env-1", providerLeaseId: sandboxId,
       config: { apiKey: "host-key", timeoutMs: 300000, livenessTimeoutMs: 100, reuseLease: true },
       leaseMetadata: { workspaceSentinel: { path: "/home/daytona/paperclip-workspace/.paperclip-runtime/reusable-sandbox-lease.json", token: "sentinel-token" } },
     };
@@ -1711,7 +1681,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentResumeLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-reuse",
       config: {
@@ -1746,7 +1715,7 @@ describe("Daytona sandbox provider plugin", () => {
     sandbox.refreshData.mockImplementation(async () => { sandbox.state = "started"; });
     mockGet.mockResolvedValue(sandbox);
     await expect(plugin.definition.onEnvironmentReleaseLease?.({
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+      driverKey: "daytona", environmentId: "env-1",
       providerLeaseId: sandbox.id, config: { reuseLease: true },
     })).resolves.toEqual({ providerLeaseId: sandbox.id, state: "stopped" });
     expect(sandbox.refreshData).toHaveBeenCalled();
@@ -1760,7 +1729,7 @@ describe("Daytona sandbox provider plugin", () => {
     sandbox.delete.mockRejectedValueOnce(new Error("delete failed"));
     mockGet.mockResolvedValue(sandbox);
     await expect(plugin.definition.onEnvironmentReleaseLease?.({
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+      driverKey: "daytona", environmentId: "env-1",
       providerLeaseId: sandbox.id, config: { reuseLease: true },
     })).rejects.toThrow("delete failed");
   });
@@ -1771,7 +1740,7 @@ describe("Daytona sandbox provider plugin", () => {
     if (fail) sandbox.stop.mockRejectedValueOnce(new Error("stop failed"));
     mockGet.mockResolvedValue(sandbox);
     const stop = plugin.definition.onEnvironmentStopLease!({
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+      driverKey: "daytona", environmentId: "env-1",
       providerLeaseId: sandbox.id, config: { reuseLease: false },
     });
     if (fail) await expect(stop).rejects.toThrow("stop failed");
@@ -1788,7 +1757,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const reusableReceipt = await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-reusable",
       config: {
@@ -1798,7 +1766,6 @@ describe("Daytona sandbox provider plugin", () => {
     });
     const ephemeralReceipt = await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-ephemeral",
       config: {
@@ -1820,7 +1787,7 @@ describe("Daytona sandbox provider plugin", () => {
     if (stopFails) sandbox.stop.mockRejectedValueOnce(new Error("injected stop transport failure"));
     mockGet.mockResolvedValue(sandbox);
     const stop = plugin.definition.onEnvironmentReleaseLease?.({
-      driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+      driverKey: "daytona", environmentId: "env-1",
       providerLeaseId: sandbox.id, config: { timeoutMs: 300000, reuseLease: false },
       resourceDisposition: "stop_and_retain",
     } as Parameters<NonNullable<typeof plugin.definition.onEnvironmentReleaseLease>>[0]);
@@ -1846,7 +1813,7 @@ describe("Daytona sandbox provider plugin", () => {
     });
     sandbox.stop.mockImplementation(async () => { implicitlyDeleted = providerAutoDelete === 0; });
     mockGet.mockResolvedValue(sandbox);
-    const stop = plugin.definition.onEnvironmentStopLease!({ driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+    const stop = plugin.definition.onEnvironmentStopLease!({ driverKey: "daytona", environmentId: "env-1",
       providerLeaseId: sandbox.id, config: { reuseLease: false, autoDeleteInterval: 0 } });
     if (kind === "confirmed") {
       await expect(stop).resolves.toEqual({ providerLeaseId: sandbox.id, state: "stopped" });
@@ -1869,7 +1836,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-test-probe",
       config: {
@@ -1894,7 +1860,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-test-probe",
       config: {
@@ -1918,7 +1883,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-error",
       config: {
@@ -1940,7 +1904,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-running",
       config: {
@@ -1990,7 +1953,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const sessionExecParams = (overrides: Record<string, unknown> = {}) => ({
       driverKey: "daytona" as const,
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: { providerLeaseId: "sandbox-123", metadata: {} },
@@ -2043,7 +2005,6 @@ describe("Daytona sandbox provider plugin", () => {
       // Teardown deletes the same single session id, so no session leaks.
       await plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2097,7 +2058,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       await plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2118,7 +2078,6 @@ describe("Daytona sandbox provider plugin", () => {
       await expect(
         plugin.definition.onEnvironmentDestroyLease?.({
           driverKey: "daytona",
-          companyId: "company-1",
           environmentId: "env-1",
           providerLeaseId: "sandbox-123",
           config: { timeoutMs: 300000, reuseLease: false },
@@ -2138,7 +2097,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       await plugin.definition.onEnvironmentCancelInteractiveSetup?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2159,7 +2117,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       await plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2176,8 +2133,7 @@ describe("Daytona sandbox provider plugin", () => {
       mockGet.mockResolvedValue(sandbox);
       let complete!: () => void;
       sandbox.delete.mockImplementationOnce(() => new Promise<void>(resolve => { complete = resolve; }));
-      const release = plugin.definition.onEnvironmentDestroyLease!({ driverKey: "daytona",
-        companyId: "company-1", environmentId: "env-1", providerLeaseId: "sandbox-123",
+      const release = plugin.definition.onEnvironmentDestroyLease!({ driverKey: "daytona", environmentId: "env-1", providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false } });
       let settled = false;
       void Promise.resolve(release).then(() => { settled = true; });
@@ -2193,7 +2149,6 @@ describe("Daytona sandbox provider plugin", () => {
       mockGet.mockResolvedValue(sandbox);
       const releaseParams = {
         driverKey: "daytona" as const,
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -2220,7 +2175,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       await plugin.definition.onEnvironmentResumeLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2251,7 +2205,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       await plugin.definition.onEnvironmentResumeLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2271,7 +2224,6 @@ describe("Daytona sandbox provider plugin", () => {
       // Teardown deletes the one session id, so no shell leaks.
       await plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "sandbox-123",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -2295,7 +2247,6 @@ describe("Daytona sandbox provider plugin", () => {
 
         await plugin.definition.onEnvironmentReleaseLease?.({
           driverKey: "daytona",
-          companyId: "company-1",
           environmentId: "env-1",
           providerLeaseId: "sandbox-123",
           config: { timeoutMs: 300000, reuseLease: false },
@@ -3118,7 +3069,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         timeoutMs: 300000,
@@ -3175,7 +3125,6 @@ describe("Daytona sandbox provider plugin", () => {
     try {
       const result = await plugin.definition.onEnvironmentExecute?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         bypassSession: true,
@@ -3204,7 +3153,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const execParams = {
       driverKey: "daytona" as const,
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       bypassSession: true,
@@ -3235,7 +3183,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         timeoutMs: 300000,
@@ -3275,7 +3222,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       bypassSession: true,
@@ -3299,7 +3245,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         timeoutMs: 300000,
@@ -3332,7 +3277,6 @@ describe("Daytona sandbox provider plugin", () => {
     try {
       result = await plugin.definition.onEnvironmentExecute?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: {
           timeoutMs: 300000,
@@ -3368,7 +3312,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       bypassSession: true,
@@ -3394,7 +3337,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       bypassSession: true,
@@ -3428,7 +3370,6 @@ describe("Daytona sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       bypassSession: true,
@@ -3463,7 +3404,6 @@ describe("Daytona sandbox provider plugin", () => {
     // wrapper sources the profiles but no longer sources `nvm.sh`.
     await plugin.definition.onEnvironmentExecute?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       bypassSession: true,
@@ -3483,7 +3423,7 @@ describe("Daytona sandbox provider plugin", () => {
 
   // ─── Per-lease started-sandbox handle cache ────────────────────────────────
   // These prove the security conditions: single-fetch-per-lease, strict
-  // composite-key isolation (no cross-lease / cross-company / cross-env reuse),
+  // composite-key isolation (no cross-lease / cross-env reuse),
   // eviction at every teardown, no caching of failed populates, single-flight
   // concurrency, and sentinel re-verification on a cached resume — plus that a
   // handle left idle past the provider auto-stop window is refreshed before
@@ -3491,11 +3431,10 @@ describe("Daytona sandbox provider plugin", () => {
   describe("started-sandbox handle cache", () => {
     function execParams(
       providerLeaseId: string,
-      overrides: { companyId?: string; environmentId?: string; driverKey?: string } = {},
+      overrides: { environmentId?: string; driverKey?: string } = {},
     ) {
       return {
         driverKey: overrides.driverKey ?? "daytona",
-        companyId: overrides.companyId ?? "company-1",
         environmentId: overrides.environmentId ?? "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         bypassSession: true,
@@ -3545,17 +3484,16 @@ describe("Daytona sandbox provider plugin", () => {
       expect(sandboxB.process.executeCommand).toHaveBeenCalledTimes(1);
     });
 
-    it("does not share a handle across companies or environments for the same providerLeaseId", async () => {
+    it("does not share a handle across environments for the same providerLeaseId", async () => {
       process.env.DAYTONA_API_KEY = "host-key";
       mockGet.mockImplementation(async () => createMockSandbox({ id: "sandbox-x" }));
 
-      await plugin.definition.onEnvironmentExecute?.(execParams("sandbox-x", { companyId: "company-1", environmentId: "env-1" }));
-      await plugin.definition.onEnvironmentExecute?.(execParams("sandbox-x", { companyId: "company-2", environmentId: "env-1" }));
-      await plugin.definition.onEnvironmentExecute?.(execParams("sandbox-x", { companyId: "company-1", environmentId: "env-2" }));
+      await plugin.definition.onEnvironmentExecute?.(execParams("sandbox-x", { environmentId: "env-1" }));
+      await plugin.definition.onEnvironmentExecute?.(execParams("sandbox-x", { environmentId: "env-2" }));
 
-      // Three distinct composite keys → three independent fetches; the bare
+      // Two distinct composite keys → two independent fetches; the bare
       // providerLeaseId is never a shared cache slot.
-      expect(mockGet).toHaveBeenCalledTimes(3);
+      expect(mockGet).toHaveBeenCalledTimes(2);
     });
 
     it("keeps account credentials and API endpoints isolated for the same sandbox ID", async () => {
@@ -3580,7 +3518,6 @@ describe("Daytona sandbox provider plugin", () => {
       await plugin.definition.onEnvironmentExecute?.(execParams("lease-a")); // miss → get #1 (cached)
       const releasePromise = plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -3613,7 +3550,6 @@ describe("Daytona sandbox provider plugin", () => {
       await plugin.definition.onEnvironmentExecute?.(execParams("lease-a"));
       const releasePromise = plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -3648,7 +3584,6 @@ describe("Daytona sandbox provider plugin", () => {
       await plugin.definition.onEnvironmentExecute?.(execParams("lease-a"));
       const releasePromise = plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -3679,7 +3614,7 @@ describe("Daytona sandbox provider plugin", () => {
       const execute = plugin.definition.onEnvironmentExecute!(execParams("lease-a"));
       await vi.waitFor(() => expect(release).toBeTypeOf("function"));
       const cancellation = plugin.definition.onEnvironmentReleaseLease!({
-        driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+        driverKey: "daytona", environmentId: "env-1",
         providerLeaseId: "lease-a", config: { timeoutMs: 300000, reuseLease: true },
         cancelActiveWork: true,
       });
@@ -3688,7 +3623,7 @@ describe("Daytona sandbox provider plugin", () => {
         await expect(cancellation).resolves.toEqual({ providerLeaseId: "lease-a", state: "stopped" });
         await expect(plugin.definition.onEnvironmentExecute!(execParams("lease-a"))).rejects.toThrow(/no longer active/);
         await expect(plugin.definition.onEnvironmentResumeLease!({
-          driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+          driverKey: "daytona", environmentId: "env-1",
           providerLeaseId: "lease-a", config: { timeoutMs: 300000, reuseLease: true },
         })).rejects.toThrow(/still settling cancelled work/);
         expect(sandbox.start).not.toHaveBeenCalled();
@@ -3705,7 +3640,7 @@ describe("Daytona sandbox provider plugin", () => {
       sandbox.stop.mockRejectedValue(new Error("provider unavailable"));
       mockGet.mockResolvedValue(sandbox);
       await expect(plugin.definition.onEnvironmentReleaseLease!({
-        driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+        driverKey: "daytona", environmentId: "env-1",
         providerLeaseId: "lease-a", config: { timeoutMs: 300000, reuseLease: true },
         cancelActiveWork: true,
       })).rejects.toThrow("provider unavailable");
@@ -3724,7 +3659,7 @@ describe("Daytona sandbox provider plugin", () => {
       mockGet.mockResolvedValue(sandbox);
       const execute = plugin.definition.onEnvironmentExecute?.(execParams("lease-a"));
       await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
-      const params = { driverKey: "daytona", companyId: "company-1", environmentId: "env-1",
+      const params = { driverKey: "daytona", environmentId: "env-1",
         providerLeaseId: "lease-a", config: { timeoutMs: 300000, livenessTimeoutMs: 5, reuseLease: true } };
       try {
         const receipt = kind === "release"
@@ -3757,7 +3692,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const releasePromise = plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -3799,7 +3733,6 @@ describe("Daytona sandbox provider plugin", () => {
       await plugin.definition.onEnvironmentExecute?.(execParams("lease-a"));
       const releasePromise = plugin.definition.onEnvironmentReleaseLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -3809,7 +3742,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const destroyPromise = plugin.definition.onEnvironmentDestroyLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -3839,7 +3771,6 @@ describe("Daytona sandbox provider plugin", () => {
       await plugin.definition.onEnvironmentExecute?.(execParams("lease-a"));
       const destroyPromise = plugin.definition.onEnvironmentDestroyLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -3860,7 +3791,6 @@ describe("Daytona sandbox provider plugin", () => {
       await plugin.definition.onEnvironmentExecute?.(execParams("lease-a"));
       const cancelPromise = plugin.definition.onEnvironmentCancelInteractiveSetup?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -3896,7 +3826,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const cancelPromise = plugin.definition.onEnvironmentCancelInteractiveSetup?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -3931,7 +3860,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const syncPromise = plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: { providerLeaseId: "lease-a", metadata: { remoteCwd: remoteDir } },
@@ -3953,7 +3881,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const cancelPromise = plugin.definition.onEnvironmentCancelInteractiveSetup?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -3996,7 +3923,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const cancelPromise = plugin.definition.onEnvironmentCancelInteractiveSetup?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -4039,7 +3965,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const capturePromise = plugin.definition.onEnvironmentCaptureTemplate?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -4049,7 +3974,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const destroyPromise = plugin.definition.onEnvironmentDestroyLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: false },
@@ -4073,7 +3997,6 @@ describe("Daytona sandbox provider plugin", () => {
 
       const first = await plugin.definition.onEnvironmentResumeLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -4142,7 +4065,6 @@ describe("Daytona sandbox provider plugin", () => {
       // Resume hits the cache but MUST still verify the sentinel; mismatch expires.
       const resumed = await plugin.definition.onEnvironmentResumeLease?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         providerLeaseId: "lease-a",
         config: { timeoutMs: 300000, reuseLease: true },
@@ -4369,7 +4291,7 @@ describe("Daytona sandbox provider plugin", () => {
       const sandbox = createMockSandbox({ id: "sandbox-default-target" });
       mockCreate.mockResolvedValue(sandbox);
       mockGet.mockResolvedValue(sandbox);
-      const base = { driverKey: "daytona", companyId: "company-1", environmentId: "env-1" };
+      const base = { driverKey: "daytona", environmentId: "env-1" };
       const config = { image: "node:20", timeoutMs: 300000, reuseLease: true };
       const lease = await plugin.definition.onEnvironmentAcquireLease!({
         ...base, runId: "run-1", agentId: "agent-1", config,
@@ -4420,7 +4342,7 @@ describe("Daytona sandbox provider plugin", () => {
       const sandbox = createMockSandbox({ id: "sandbox-seed" });
       mockCreate.mockResolvedValue(sandbox);
 
-      const base = { driverKey: "daytona", companyId: "company-1", environmentId: "env-1" };
+      const base = { driverKey: "daytona", environmentId: "env-1" };
       const config = { image: "node:20", timeoutMs: 300000, reuseLease: false };
 
       const lease = await plugin.definition.onEnvironmentAcquireLease?.({
@@ -4519,7 +4441,6 @@ describe("daytona native file-sync hooks", () => {
   }) {
     return {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -4539,7 +4460,6 @@ describe("daytona native file-sync hooks", () => {
   }) {
     return {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -4577,7 +4497,6 @@ describe("daytona native file-sync hooks", () => {
 
     const params = {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -4617,7 +4536,6 @@ describe("daytona native file-sync hooks", () => {
 
     const params = {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -4655,7 +4573,6 @@ describe("daytona native file-sync hooks", () => {
 
     const params = {
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -4697,7 +4614,6 @@ describe("daytona native file-sync hooks", () => {
 
     const result = await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -4796,7 +4712,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -4895,7 +4810,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -4935,7 +4849,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -4980,7 +4893,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5021,7 +4933,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5056,7 +4967,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5105,7 +5015,6 @@ describe("daytona native file-sync hooks", () => {
     // Preserve-symlink case (followSymlinks falsy → no -h).
     await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5171,7 +5080,6 @@ describe("daytona native file-sync hooks", () => {
 
     await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5208,7 +5116,6 @@ describe("daytona native file-sync hooks", () => {
     const secretTarget = path.join(hostDir, "secret.key");
     const result = await plugin.definition.onEnvironmentSyncOut?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5257,7 +5164,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: true },
         lease: syncLease(),
@@ -5292,7 +5198,6 @@ describe("daytona native file-sync hooks", () => {
 
     await plugin.definition.onEnvironmentSyncOut?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5339,7 +5244,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5378,7 +5282,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5413,7 +5316,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5449,7 +5351,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5501,7 +5402,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5541,7 +5441,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5583,7 +5482,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5640,7 +5538,6 @@ describe("daytona native file-sync hooks", () => {
 
     await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5652,7 +5549,6 @@ describe("daytona native file-sync hooks", () => {
     const restored = path.join(hostRoot, "restored");
     await plugin.definition.onEnvironmentSyncOut?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5687,7 +5583,6 @@ describe("daytona native file-sync hooks", () => {
 
     await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5745,7 +5640,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5788,7 +5682,6 @@ describe("daytona native file-sync hooks", () => {
     const overlayExtract = "workspace-overlay-extract";
     const result = await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5853,7 +5746,6 @@ describe("daytona native file-sync hooks", () => {
     await expect(
       plugin.definition.onEnvironmentSyncIn?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -5891,7 +5783,6 @@ describe("daytona native file-sync hooks", () => {
     mockGet.mockResolvedValue(baseline);
     await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -5912,7 +5803,6 @@ describe("daytona native file-sync hooks", () => {
     mockGet.mockResolvedValue(withEmpty);
     await plugin.definition.onEnvironmentSyncIn?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       config: { timeoutMs: 300000, reuseLease: false },
       lease: syncLease(),
@@ -6057,7 +5947,6 @@ describe("daytona native file-sync hooks", () => {
 
     const destroyCall = plugin.definition.onEnvironmentDestroyLease?.({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "sandbox-123",
       config: { timeoutMs: 300000, reuseLease: false },
@@ -6101,7 +5990,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -6142,7 +6030,6 @@ describe("daytona native file-sync hooks", () => {
     try {
       await plugin.definition.onEnvironmentSyncOut?.({
         driverKey: "daytona",
-        companyId: "company-1",
         environmentId: "env-1",
         config: { timeoutMs: 300000, reuseLease: false },
         lease: syncLease(),
@@ -6216,7 +6103,7 @@ describe("daytona manifest form defaults", () => {
     );
   });
 
-  it("declares no default on secret-ref fields, which would be persisted as a company secret", () => {
+  it("declares no default on secret-ref fields, which would be persisted as a Paperclip secret", () => {
     for (const prop of Object.values(properties)) {
       if (prop.format === "secret-ref") {
         expect(prop.default).toBeUndefined();

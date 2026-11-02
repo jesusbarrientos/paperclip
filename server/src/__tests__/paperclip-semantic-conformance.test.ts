@@ -37,18 +37,12 @@ describeEmbedded("Paperclip semantic mock/production conformance", () => {
 
   const base = CAPABILITY_SEMANTIC_CONFORMANCE_IDS;
   const ids: PaperclipSemanticConformanceIds = {
-    companyId: base.companyId,
     actorId: base.actorId,
-    foreignCompanyId: "20000000-0000-4000-8000-000000000002",
+    organizationId: "10000000-0000-4000-8000-000000000001",
     foreignTaskId: base.foreignTaskId,
     blockerTaskId: base.blockerTaskId,
     worlds: {
       default: { taskId: base.defaultTaskId, runId: base.defaultRunId, capabilities: [] },
-      "cross-company": {
-        taskId: base.crossCompanyTaskId,
-        runId: base.crossCompanyRunId,
-        capabilities: ["dependencies:write"],
-      },
       interaction: { taskId: base.interactionTaskId, runId: base.interactionRunId, capabilities: [] },
       "terminal-blocked": {
         taskId: base.blockedTerminalTaskId,
@@ -71,6 +65,9 @@ describeEmbedded("Paperclip semantic mock/production conformance", () => {
     await temporary?.cleanup();
   });
 
+  // Tenant isolation no longer exists, so production cannot reproduce the mock's cross-company denial.
+  const vectors = CAPABILITY_HIGH_RISK_SEMANTIC_VECTORS.filter((vector) => vector.worldId !== "cross-company");
+
   it("matches authorization, state, audit, retry, document, continuation, and terminal semantics", async () => {
     if (!temporary || !mock) throw new Error("semantic_conformance_fixture_not_started");
     const production = await PaperclipProductionSemanticConformanceAdapter.create(
@@ -79,11 +76,11 @@ describeEmbedded("Paperclip semantic mock/production conformance", () => {
     );
 
     const report = await runSemanticConformanceKit({
-      vectors: CAPABILITY_HIGH_RISK_SEMANTIC_VECTORS,
+      vectors,
       adapters: [mock, production],
     });
 
-    expect(report.rows).toHaveLength(CAPABILITY_HIGH_RISK_SEMANTIC_VECTORS.length);
+    expect(report.rows).toHaveLength(vectors.length);
     expect(report.rows.every((row) => row.adapterIds.join(",") === "capability-mock,paperclip-production-services"))
       .toBe(true);
     expect(report.rows.find((row) => row.vectorId === "progress-duplicate-retry")?.observation.audit)

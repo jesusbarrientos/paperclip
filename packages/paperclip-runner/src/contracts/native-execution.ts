@@ -147,7 +147,6 @@ export type NativeProviderConfigV5 =
 export interface NativeExecutionInputV1 {
   schema: typeof NATIVE_EXECUTION_INPUT_SCHEMA_V1;
   binding: {
-    companyId: string;
     runId: string;
     issueId: string;
     agentId: string;
@@ -344,7 +343,7 @@ export function parseNativeExecutionInput(value: unknown): NativeExecutionInput 
   }
 
   const binding = record(input.binding, "input.binding");
-  exactKeys(binding, ["companyId", "runId", "issueId", "agentId", "executionWorkspaceId"], "input.binding");
+  exactKeys(binding, ["runId", "issueId", "agentId", "executionWorkspaceId"], "input.binding");
   const task = record(input.task, "input.task");
   exactKeys(task, ["identifier", "title", "description", "prompt", "workMode"], "input.task");
   const workspace = record(input.workspace, "input.workspace");
@@ -705,7 +704,6 @@ export function parseNativeExecutionInput(value: unknown): NativeExecutionInput 
 
   const common = {
     binding: {
-      companyId: text(binding.companyId, "input.binding.companyId"),
       runId: text(binding.runId, "input.binding.runId"),
       issueId: text(binding.issueId, "input.binding.issueId"),
       agentId: text(binding.agentId, "input.binding.agentId"),

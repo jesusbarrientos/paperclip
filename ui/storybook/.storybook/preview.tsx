@@ -18,7 +18,7 @@ import {
   storybookEnvironments,
 } from "../fixtures/onboardingEnvironment";
 import { BreadcrumbProvider } from "@/context/BreadcrumbContext";
-import { CompanyProvider } from "@/context/CompanyContext";
+import { OrganizationProvider } from "@/context/OrganizationContext";
 import { DialogProvider } from "@/context/DialogContext";
 import { EditorAutocompleteProvider } from "@/context/EditorAutocompleteContext";
 import { PanelProvider } from "@/context/PanelContext";
@@ -113,16 +113,13 @@ function installStorybookApiFixtures() {
       return Response.json(storybookAuthSession);
     }
 
-    if (url.pathname === "/api/companies") {
-      // The wizard's naming step creates a company here and reads its id back;
-      // answering the POST with the list instead gave it an array, and the
-      // walk crashed on the step after. Hand back the fixture company as the
-      // one just created, so the arc can be walked from its first screen.
+    if (url.pathname === "/api/organization") {
+      // The wizard's naming step creates the organization here and reads its id back.
       if ((init?.method ?? "GET").toUpperCase() === "POST") {
         const body = init?.body ? (JSON.parse(String(init.body)) as { name?: string }) : {};
         return Response.json({ ...storybookCompanies[0], name: body.name ?? storybookCompanies[0]?.name });
       }
-      return Response.json(storybookCompanies);
+      return Response.json(storybookCompanies[0]);
     }
 
     if (url.pathname === "/api/companies/company-storybook/user-directory") {
@@ -788,8 +785,8 @@ function StorybookProviders({
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <MemoryRouter initialEntries={initialEntries ?? ["/PAP/storybook"]}>
-          <CompanyProvider>
+        <MemoryRouter initialEntries={initialEntries ?? ["/storybook"]}>
+          <OrganizationProvider>
             <EditorAutocompleteProvider>
               <ToastProvider>
                 <TooltipProvider>
@@ -803,7 +800,7 @@ function StorybookProviders({
                 </TooltipProvider>
               </ToastProvider>
             </EditorAutocompleteProvider>
-          </CompanyProvider>
+          </OrganizationProvider>
         </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>

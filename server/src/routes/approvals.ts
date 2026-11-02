@@ -18,7 +18,7 @@ import {
   logActivity,
   secretService,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo, hasCompanyAccess } from "./authz.js";
+import { assertBoard, assertOrgAccess, getAccessibleResource, getActorInfo, hasOrgAccess } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { issueService } from "../services/issues.js";
@@ -56,10 +56,9 @@ export function approvalRoutes(
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
   async function lostReviewPathIssueIds(
-    companyId: string,
     linkedIssues: Awaited<ReturnType<typeof issueApprovalsSvc.listIssuesForApproval>>,
   ) {
-    const attention = await issuesSvc.listReviewAttention(companyId, linkedIssues);
+    const attention = await issuesSvc.listReviewAttention(linkedIssues);
     return new Set(linkedIssues
       .filter((issue) => attention.get(issue.id)?.state === "stalled")
       .map((issue) => issue.id));
@@ -76,7 +75,6 @@ export function approvalRoutes(
   async function queueAdditionalApprovalReviewPathWakes(input: {
     approvalId: string;
     approvalStatus: string;
-    companyId: string;
     linkedIssues: Awaited<ReturnType<typeof issueApprovalsSvc.listIssuesForApproval>>;
     lostIssueIds: Set<string>;
     alreadyWoken?: { agentId: string; issueId: string } | null;
@@ -116,7 +114,6 @@ export function approvalRoutes(
         });
 
         await logActivity(db, {
-          companyId: input.companyId,
           actorType: "user",
           actorId: input.requestedByUserId,
           action: "approval.review_path_wakeup_queued",
@@ -135,7 +132,6 @@ export function approvalRoutes(
           "failed to queue review-path wake after approval resolution",
         );
         await logActivity(db, {
-          companyId: input.companyId,
           actorType: "user",
           actorId: input.requestedByUserId,
           action: "approval.review_path_wakeup_failed",
@@ -154,25 +150,25 @@ export function approvalRoutes(
 
   async function requireApprovalAccess(req: Request, id: string) {
     const approval = await svc.getById(id);
-    if (!approval || !hasCompanyAccess(req, approval.companyId)) {
+    if (!approval || !hasOrgAccess(req)) {
       return null;
     }
-    assertCompanyAccess(req, approval.companyId);
+    assertOrgAccess(req);
     return approval;
   }
 
-  async function assertApprovalAccessAllowed(req: Request, res: any, companyId: string) {
+  async function assertApprovalAccessAllowed(req: Request, res: any) {
     const decision = await access.decide({
       actor: req.actor,
       action: "company_scope:read",
-      resource: { type: "company", companyId },
+      resource: { type: "company" },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Approvals are outside this actor's authorization boundary" });
     return false;
   }
 
-  async function assertApprovalMutationAllowedByRunContext(req: Request, res: any, companyId: string) {
+  async function assertApprovalMutationAllowedByRunContext(req: Request, res: any) {
     if (req.actor.type !== "agent") return true;
     const runId = req.actor.runId?.trim();
     if (!runId || !req.actor.agentId) return true;
@@ -180,20 +176,18 @@ export function approvalRoutes(
     const run = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
         agentId: heartbeatRuns.agentId,
         contextSnapshot: heartbeatRuns.contextSnapshot,
       })
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
-    if (!run || run.companyId !== companyId || run.agentId !== req.actor.agentId) return true;
+    if (!run || run.agentId !== req.actor.agentId) return true;
     if (!isStatusOnlyRecoveryContext(run.contextSnapshot)) return true;
 
     res.status(403).json({
       error: "Status-only recovery runs cannot create or modify approvals",
       details: {
-        companyId,
         runId: run.id,
         recoveryIntent: "status_only",
         resumeRequiresNormalModel: true,
@@ -202,12 +196,11 @@ export function approvalRoutes(
     return false;
   }
 
-  router.get("/companies/:companyId/approvals", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, companyId))) return;
+  router.get("/approvals", async (req, res) => {
+    assertOrgAccess(req);
+    if (!(await assertApprovalAccessAllowed(req, res))) return;
     const status = req.query.status as string | undefined;
-    const result = await svc.list(companyId, status);
+    const result = await svc.list(status);
     res.json(result.map((approval) => redactApprovalPayload(approval)));
   });
 
@@ -215,15 +208,14 @@ export function approvalRoutes(
     const id = req.params.id as string;
     const approval = await getAccessibleResource(req, res, svc.getById(id), "Approval not found");
     if (!approval) return;
-    if (!(await assertApprovalAccessAllowed(req, res, approval.companyId))) return;
+    if (!(await assertApprovalAccessAllowed(req, res))) return;
     res.json(redactApprovalPayload(approval));
   });
 
-  router.post("/companies/:companyId/approvals", validate(createApprovalSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, companyId))) return;
-    if (!(await assertApprovalMutationAllowedByRunContext(req, res, companyId))) return;
+  router.post("/approvals", validate(createApprovalSchema), async (req, res) => {
+    assertOrgAccess(req);
+    if (!(await assertApprovalAccessAllowed(req, res))) return;
+    if (!(await assertApprovalMutationAllowedByRunContext(req, res))) return;
     const rawIssueIds = req.body.issueIds;
     const issueIds = Array.isArray(rawIssueIds)
       ? rawIssueIds.filter((value: unknown): value is string => typeof value === "string")
@@ -233,14 +225,13 @@ export function approvalRoutes(
     const normalizedPayload =
       approvalInput.type === "hire_agent"
         ? await secretsSvc.normalizeHireApprovalPayloadForPersistence(
-            companyId,
             approvalInput.payload,
             { strictMode: strictSecretsMode },
           )
         : approvalInput.payload;
 
     const actor = getActorInfo(req);
-    const approval = await svc.create(companyId, {
+    const approval = await svc.create({
       ...approvalInput,
       payload: normalizedPayload,
       requestedByUserId: actor.actorType === "user" ? actor.actorId : null,
@@ -261,7 +252,6 @@ export function approvalRoutes(
     }
 
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -278,7 +268,7 @@ export function approvalRoutes(
     const id = req.params.id as string;
     const approval = await getAccessibleResource(req, res, svc.getById(id), "Approval not found");
     if (!approval) return;
-    if (!(await assertApprovalAccessAllowed(req, res, approval.companyId))) return;
+    if (!(await assertApprovalAccessAllowed(req, res))) return;
     const issues = await issueApprovalsSvc.listIssuesForApproval(id);
     res.json(issues);
   });
@@ -297,13 +287,12 @@ export function approvalRoutes(
       const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
       const linkedIssueIds = linkedIssues.map((issue) => issue.id);
       const primaryIssueId = linkedIssueIds[0] ?? null;
-      const lostReviewIssueIds = await lostReviewPathIssueIds(approval.companyId, linkedIssues);
+      const lostReviewIssueIds = await lostReviewPathIssueIds(linkedIssues);
       const primaryReviewPathContext = primaryIssueId && lostReviewIssueIds.has(primaryIssueId)
         ? approvalReviewPathContext(approval.id)
         : null;
 
       await logActivity(db, {
-        companyId: approval.companyId,
         actorType: "user",
         actorId: req.actor.userId ?? "board",
         action: "approval.approved",
@@ -346,7 +335,6 @@ export function approvalRoutes(
           primaryReviewPathWakeCovered = Boolean(wakeRun && primaryReviewPathContext);
 
           await logActivity(db, {
-            companyId: approval.companyId,
             actorType: "user",
             actorId: req.actor.userId ?? "board",
             action: "approval.requester_wakeup_queued",
@@ -368,7 +356,6 @@ export function approvalRoutes(
             "failed to queue requester wakeup after approval",
           );
           await logActivity(db, {
-            companyId: approval.companyId,
             actorType: "user",
             actorId: req.actor.userId ?? "board",
             action: "approval.requester_wakeup_failed",
@@ -386,7 +373,6 @@ export function approvalRoutes(
       await queueAdditionalApprovalReviewPathWakes({
         approvalId: approval.id,
         approvalStatus: approval.status,
-        companyId: approval.companyId,
         linkedIssues,
         lostIssueIds: lostReviewIssueIds,
         alreadyWoken: primaryReviewPathWakeCovered && approval.requestedByAgentId && primaryIssueId
@@ -411,9 +397,8 @@ export function approvalRoutes(
 
     if (applied) {
       const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
-      const lostReviewIssueIds = await lostReviewPathIssueIds(approval.companyId, linkedIssues);
+      const lostReviewIssueIds = await lostReviewPathIssueIds(linkedIssues);
       await logActivity(db, {
-        companyId: approval.companyId,
         actorType: "user",
         actorId: req.actor.userId ?? "board",
         action: "approval.rejected",
@@ -424,7 +409,6 @@ export function approvalRoutes(
       await queueAdditionalApprovalReviewPathWakes({
         approvalId: approval.id,
         approvalStatus: approval.status,
-        companyId: approval.companyId,
         linkedIssues,
         lostIssueIds: lostReviewIssueIds,
         requestedByUserId: req.actor.userId ?? "board",
@@ -448,7 +432,6 @@ export function approvalRoutes(
       const approval = await svc.requestRevision(id, decidedByUserId, req.body.decisionNote);
 
       await logActivity(db, {
-        companyId: approval.companyId,
         actorType: "user",
         actorId: req.actor.userId ?? "board",
         action: "approval.revision_requested",
@@ -465,7 +448,7 @@ export function approvalRoutes(
     const id = req.params.id as string;
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Approval not found");
     if (!existing) return;
-    if (!(await assertApprovalMutationAllowedByRunContext(req, res, existing.companyId))) return;
+    if (!(await assertApprovalMutationAllowedByRunContext(req, res))) return;
 
     if (req.actor.type === "agent" && req.actor.agentId !== existing.requestedByAgentId) {
       res.status(403).json({ error: "Only requesting agent can resubmit this approval" });
@@ -475,7 +458,6 @@ export function approvalRoutes(
     const normalizedPayload = req.body.payload
       ? existing.type === "hire_agent"
         ? await secretsSvc.normalizeHireApprovalPayloadForPersistence(
-            existing.companyId,
             req.body.payload,
             { strictMode: strictSecretsMode },
           )
@@ -484,7 +466,6 @@ export function approvalRoutes(
     const approval = await svc.resubmit(id, normalizedPayload);
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: approval.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -508,7 +489,7 @@ export function approvalRoutes(
     const id = req.params.id as string;
     const approval = await getAccessibleResource(req, res, svc.getById(id), "Approval not found");
     if (!approval) return;
-    if (!(await assertApprovalMutationAllowedByRunContext(req, res, approval.companyId))) return;
+    if (!(await assertApprovalMutationAllowedByRunContext(req, res))) return;
     const actor = getActorInfo(req);
     const comment = await svc.addComment(id, req.body.body, {
       agentId: actor.agentId ?? undefined,
@@ -516,7 +497,6 @@ export function approvalRoutes(
     });
 
     await logActivity(db, {
-      companyId: approval.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,

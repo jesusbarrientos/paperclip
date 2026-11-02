@@ -18,6 +18,13 @@ function createSelectChain(rows: SelectRow[]) {
         innerJoin() {
           return query;
         },
+        limit() {
+          return {
+            then(callback: (rows: SelectRow[]) => unknown) {
+              return Promise.resolve(callback(rows));
+            },
+          };
+        },
         where() {
           return {
             then(callback: (rows: SelectRow[]) => unknown) {
@@ -140,7 +147,6 @@ describe("issueThreadInteractionService", () => {
 
     const existingRow = {
       id: "interaction-1",
-      companyId: "company-1",
       issueId: "11111111-1111-4111-8111-111111111111",
       kind: "suggest_tasks",
       status: "pending",
@@ -180,8 +186,7 @@ describe("issueThreadInteractionService", () => {
 
     const svc = issueThreadInteractionService(db as never);
     const created = await svc.create({
-      id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      id: "11111111-1111-4111-8111-111111111111"
     }, {
       kind: "suggest_tasks",
       idempotencyKey: "run-1:suggest",
@@ -207,7 +212,6 @@ describe("issueThreadInteractionService", () => {
 
     const interactionRow = {
       id: "interaction-2",
-      companyId: "company-1",
       issueId: "11111111-1111-4111-8111-111111111111",
       kind: "ask_user_questions",
       status: "pending",
@@ -253,8 +257,7 @@ describe("issueThreadInteractionService", () => {
     const svc = issueThreadInteractionService(state.db as never);
 
     const result = await svc.answerQuestions({
-      id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      id: "11111111-1111-4111-8111-111111111111"
     }, "interaction-2", {
       answers: [
         { questionId: "scope", optionIds: ["phase-1"] },
@@ -291,7 +294,7 @@ describe("issueThreadInteractionService", () => {
   it("withdraws a pending interaction with attribution and rejects repeats", async () => {
     const { issueThreadInteractionService } = await import("./issue-thread-interactions.js");
     const interactionRow = {
-      id: "interaction-withdraw", companyId: "company-1", issueId: "11111111-1111-4111-8111-111111111111",
+      id: "interaction-withdraw", issueId: "11111111-1111-4111-8111-111111111111",
       kind: "request_confirmation", status: "pending", continuationPolicy: "wake_assignee",
       sourceCommentId: null, sourceRunId: null, title: null, summary: null,
       createdByAgentId: "agent-1", createdByUserId: null, resolvedByAgentId: null, resolvedByUserId: null,
@@ -300,7 +303,7 @@ describe("issueThreadInteractionService", () => {
     };
     const state = createFakeDb({ interactionRow });
     const svc = issueThreadInteractionService(state.db as never);
-    const withdrawn = await svc.withdrawInteraction({ id: interactionRow.issueId, companyId: "company-1" }, interactionRow.id, { reason: "Replanning" }, { agentId: "agent-1" });
+    const withdrawn = await svc.withdrawInteraction({ id: interactionRow.issueId }, interactionRow.id, { reason: "Replanning" }, { agentId: "agent-1" });
     expect(withdrawn.status).toBe("cancelled");
     expect(withdrawn.result).toEqual({ version: 1, outcome: "withdrawn", reason: "Replanning" });
     expect(withdrawn.resolvedByAgentId).toBe("agent-1");
@@ -309,7 +312,7 @@ describe("issueThreadInteractionService", () => {
     const resolvedState = createFakeDb({ interactionRow: { ...interactionRow, status: "accepted" } });
     const resolvedSvc = issueThreadInteractionService(resolvedState.db as never);
     await expect(resolvedSvc.withdrawInteraction(
-      { id: interactionRow.issueId, companyId: "company-1" },
+      { id: interactionRow.issueId },
       interactionRow.id,
       {},
       { agentId: "agent-1" },
@@ -319,7 +322,7 @@ describe("issueThreadInteractionService", () => {
   it("refuses withdrawal when the linked tool action is already executing", async () => {
     const { issueThreadInteractionService } = await import("./issue-thread-interactions.js");
     const interactionRow = {
-      id: "interaction-executing", companyId: "company-1", issueId: "11111111-1111-4111-8111-111111111111",
+      id: "interaction-executing", issueId: "11111111-1111-4111-8111-111111111111",
       kind: "request_confirmation", status: "pending", continuationPolicy: "wake_assignee",
       sourceCommentId: null, sourceRunId: null, title: null, summary: null,
       createdByAgentId: "agent-1", createdByUserId: null, resolvedByAgentId: null, resolvedByUserId: null,
@@ -329,7 +332,7 @@ describe("issueThreadInteractionService", () => {
     const state = createFakeDb({ interactionRow, parentRows: [{ id: "action-request-1" }] });
     const svc = issueThreadInteractionService(state.db as never);
     await expect(svc.withdrawInteraction(
-      { id: interactionRow.issueId, companyId: "company-1" },
+      { id: interactionRow.issueId },
       interactionRow.id,
       {},
       { agentId: "agent-1" },
@@ -340,7 +343,7 @@ describe("issueThreadInteractionService", () => {
   it("expires pending interactions when the issue is terminal", async () => {
     const { issueThreadInteractionService } = await import("./issue-thread-interactions.js");
     const interactionRow = {
-      id: "interaction-close", companyId: "company-1", issueId: "11111111-1111-4111-8111-111111111111",
+      id: "interaction-close", issueId: "11111111-1111-4111-8111-111111111111",
       kind: "ask_user_questions", status: "pending", continuationPolicy: "wake_assignee",
       sourceCommentId: null, sourceRunId: null, title: null, summary: null,
       createdByAgentId: "agent-1", createdByUserId: null, resolvedByAgentId: null, resolvedByUserId: null,
@@ -349,7 +352,7 @@ describe("issueThreadInteractionService", () => {
     };
     const state = createFakeDb({ interactionRow });
     const svc = issueThreadInteractionService(state.db as never);
-    const expired = await svc.expirePendingInteractionsForTerminalIssue({ id: interactionRow.issueId, companyId: "company-1", status: "done" });
+    const expired = await svc.expirePendingInteractionsForTerminalIssue({ id: interactionRow.issueId, status: "done" });
     expect(expired).toHaveLength(1);
     expect(expired[0]?.status).toBe("expired");
     expect(expired[0]?.result).toMatchObject({ version: 1, outcome: "issue_closed", answers: [] });
@@ -359,7 +362,7 @@ describe("issueThreadInteractionService", () => {
   it("expires the linked tool action request when a terminal issue closes a confirmation card", async () => {
     const { issueThreadInteractionService } = await import("./issue-thread-interactions.js");
     const interactionRow = {
-      id: "interaction-tool", companyId: "company-1", issueId: "11111111-1111-4111-8111-111111111111",
+      id: "interaction-tool", issueId: "11111111-1111-4111-8111-111111111111",
       kind: "request_confirmation", status: "pending", continuationPolicy: "wake_assignee",
       sourceCommentId: null, sourceRunId: null, title: null, summary: null,
       createdByAgentId: "agent-1", createdByUserId: null, resolvedByAgentId: null, resolvedByUserId: null,
@@ -387,7 +390,7 @@ describe("issueThreadInteractionService", () => {
     const state = createFakeDb({ interactionRow });
     const svc = issueThreadInteractionService(state.db as never);
     const expired = await svc.expirePendingInteractionsForTerminalIssue(
-      { id: interactionRow.issueId, companyId: "company-1", status: "cancelled" },
+      { id: interactionRow.issueId, status: "cancelled" },
       { userId: "local-board" },
     );
     expect(expired).toHaveLength(1);

@@ -72,8 +72,8 @@ allowlist entry is an offender. The allowlist holds commands such as `run`,
 
 Every invocation that carries a positional value or an option value uses
 `npx paperclipai` instead. This covers a hostname (`allowed-hostname`), an import
-URL or folder (`company import`), an identifier or secret (`--company-id`,
-`--agent-id`, `--claim-secret`), a payload (`--payload-json`), free text
+URL or folder (`skills import`, `organization import`), an identifier or secret (`--agent-id`,
+`--claim-secret`), a payload (`--payload-json`), free text
 (`--body`, `--title`, `--comment`), a data directory (`--data-dir`), an instance
 (`--instance`), a bind preset (`--bind`), a context-profile name, and every
 worktree path, ref, id, or name option. A runtime value counts as non-fixed even
@@ -165,7 +165,6 @@ or heartbeat.
 ```sh
 npx paperclipai test-drive \
   [-d, --data-dir <path>] \
-  [--company-name <name>] \
   [--agent-name <name>] \
   [--harness <claude|codex|opencode>] \
   [--model <model-id>] \
@@ -230,8 +229,8 @@ When invoked inside a linked Git worktree, the command ignores inherited
 `PAPERCLIP_IN_WORKTREE` state, launches in worktree mode, and verifies **Run
 tasks in this worktree** is armed for the current instance before opening the
 browser. In a primary checkout or non-Git directory it launches without
-worktree mode and does not alter the setting. On reuse, if any company already
-exists, all bootstrap flags are ignored and companies, agents, and secrets are
+worktree mode and does not alter the setting. On reuse, if the organization already
+exists, all bootstrap flags are ignored and the organization, agents, and secrets are
 left untouched; worktree-setting reconciliation is the only permitted
 mutation.
 
@@ -330,7 +329,9 @@ All client commands support:
 - `--profile <name>`
 - `--json`
 
-Company-scoped commands also support `--company-id <id>`.
+There is no `--company-id`/`-C` option: an instance serves exactly one
+organization, so every command targets it implicitly. Profiles do not store a
+company id, and `PAPERCLIP_COMPANY_ID` is not read.
 
 API base resolution order:
 
@@ -367,7 +368,7 @@ npx paperclipai issue list --data-dir ./tmp/paperclip-dev
 Store local defaults in `~/.paperclip/context.json`:
 
 ```sh
-npx paperclipai context set --api-base http://localhost:3100 --company-id <company-id>
+npx paperclipai context set --api-base http://localhost:3100
 npx paperclipai context set --persona agent --agent-id <agent-id> --api-key-env-var-name PAPERCLIP_API_KEY
 pnpm paperclipai context show
 pnpm paperclipai context list
@@ -383,48 +384,60 @@ export PAPERCLIP_API_KEY=...
 
 ## Organization Commands
 
-```sh
-npx paperclipai company list
-npx paperclipai company get <company-id>
-npx paperclipai company current [--company-id <company-id>]
-npx paperclipai company stats
-npx paperclipai company create --payload-json '{...}'
-npx paperclipai company update <company-id> --payload-json '{...}'
-npx paperclipai company branding:update <company-id> --payload-json '{...}'
-npx paperclipai company archive <company-id>
-npx paperclipai company export <company-id> --out ./company --include company,agents,projects,issues,skills
-npx paperclipai company export:preview <company-id> --payload-json '{...}'
-npx paperclipai company export:api <company-id> --payload-json '{...}'
-npx paperclipai company import ./company --target new --new-company-name "Imported Company"
-npx paperclipai company import:preview <company-id> --payload-json '{...}'
-npx paperclipai company import:apply <company-id> --payload-json '{...}'
-npx paperclipai company delete <company-id-or-prefix> --yes --confirm <same-id-or-prefix>
-```
-
-Examples:
+An instance serves exactly one organization, so these commands take no id:
 
 ```sh
-npx paperclipai company delete PAP --yes --confirm PAP
-npx paperclipai company delete 5cbe79ee-acb3-4597-896e-7662742593cd --yes --confirm 5cbe79ee-acb3-4597-896e-7662742593cd
+npx paperclipai organization get
+npx paperclipai organization update --payload-json '{...}'
+npx paperclipai organization export --out ./org --include organization,agents,projects,issues,skills [--force]
+npx paperclipai organization import ./org [--include ...] [--collision rename|skip|replace] [--dry-run] [--yes]
+npx paperclipai organization import ./org.zip --yes
+npx paperclipai organization import owner/repo/path [--ref main] --yes
+npx paperclipai organization import ./org --agent-safe --collision skip --yes
 ```
 
 Notes:
 
-- With agent authentication, `company list` and `company current` are
-  agent-safe company selectors. `company list` first tries the board-wide list;
-  if that is forbidden, it uses `--company-id`, `PAPERCLIP_COMPANY_ID`, context,
-  or `/api/agents/me` and then reads only that scoped company.
-- `company create` requires board/instance-admin authentication because it is
-  an instance-wide setup command.
-- Deletion is server-gated by `PAPERCLIP_ENABLE_COMPANY_DELETION`.
-- With agent authentication, company deletion is company-scoped. Use the current company ID/prefix (for example via `--company-id` or `PAPERCLIP_COMPANY_ID`), not another company.
+- `organization get` reads `GET /api/organization`; `organization update` sends
+  the payload to `PATCH /api/organization`.
+- `organization export` posts to `POST /api/organization/export` and writes the
+  package into `--out`. `--include` accepts `organization` (alias `company`),
+  `agents`, `projects`, `issues` (alias `tasks`), and `skills`; the default is
+  `organization,agents`. `--skills`, `--projects`, `--issues`, and
+  `--project-issues` narrow the export by comma-separated slugs or ids, and
+  `--expand-referenced-skills` vendors skill contents. A non-empty output
+  directory needs interactive confirmation or `--force` (required for
+  non-interactive runs such as the nightly backup routine).
+- `organization import` takes a local folder, a `.zip`, a GitHub or GitHub
+  Enterprise URL, or `owner/repo[/path]` shorthand (`--ref` picks the branch,
+  tag, or commit for GitHub sources). Import always targets the instance's
+  organization; there is no target or company-name option. `--agents` limits the
+  imported agents (`all` by default) and `--collision` picks the strategy for
+  name clashes (`rename` by default).
+- Import previews first (`POST /api/organization/import/preview`) and then
+  applies with `POST /api/organization/import?async=1`. When the server answers
+  `202` with a job, the CLI polls `GET /api/organization/import/jobs/:jobId`
+  until it finishes; a `409` for the same running import adopts that job instead
+  of importing twice. `--dry-run` stops after the preview. Applying needs `--yes`
+  with `--json` or in a non-interactive terminal.
+- Local packages whose inline request would exceed about 48 MB are uploaded as a
+  resumable chunked transfer (`/api/organization/import/transfers`, 32 MB parts
+  with per-part retries); re-running the same import resumes the missing parts.
+- `--agent-safe` uses `/api/organization/imports/preview|apply`, which CEO agent
+  keys may call. That route rejects `--collision replace`, does not use chunked
+  transfers, and is limited to packages of about 8 MB inline.
+- Import is unavailable on cloud-managed instances (`403`, `code: "cloud_managed"`)
+  and when the operator hides the Import page; export stays available.
+- The former `company` commands `list`, `current`, `stats`, `create`, `archive`,
+  `delete`, and `branding:update` were removed. The organization is created
+  during onboarding (`POST /api/organization`).
 
 ## Issue Commands
 
 ```sh
-npx paperclipai issue list --company-id <company-id> [--status todo,in_progress] [--assignee-agent-id <agent-id>] [--match text]
+npx paperclipai issue list [--status todo,in_progress] [--assignee-agent-id <agent-id>] [--match text]
 npx paperclipai issue get <issue-id-or-identifier>
-npx paperclipai issue create --company-id <company-id> --title "..." [--description "..."] [--status todo] [--priority high]
+npx paperclipai issue create --title "..." [--description "..."] [--status todo] [--priority high]
 npx paperclipai issue update <issue-id> [--status in_progress] [--comment "..."]
 npx paperclipai issue delete <issue-id> --yes
 npx paperclipai issue comment <issue-id> --body "..." [--attachment-id <id...>] [--reopen]
@@ -487,11 +500,11 @@ npx paperclipai issue tree-hold:create <issue-id> --payload-json '{"mode":"pause
 npx paperclipai issue tree-hold:get <issue-id> <hold-id>
 npx paperclipai issue tree-hold:release <issue-id> <hold-id> [--payload-json '{"reason":"done"}']
 npx paperclipai issue attachments <issue-id>
-npx paperclipai issue attachment:upload <issue-id> --company-id <company-id> --file ./artifact.txt
+npx paperclipai issue attachment:upload <issue-id> --file ./artifact.txt
 npx paperclipai issue attachment:download <attachment-id> [--out ./artifact.txt]
 npx paperclipai issue attachment:delete <attachment-id>
-npx paperclipai issue label:list --company-id <company-id>
-npx paperclipai issue label:create --company-id <company-id> --name bug --color '#ff0000'
+npx paperclipai issue label:list
+npx paperclipai issue label:create --name bug --color '#ff0000'
 npx paperclipai issue label:delete <label-id>
 npx paperclipai issue feedback:votes <issue-id>
 npx paperclipai issue feedback:vote <issue-id> --payload-json '{"targetType":"issue_comment","targetId":"...","vote":"up"}'
@@ -500,26 +513,26 @@ npx paperclipai issue feedback:vote <issue-id> --payload-json '{"targetType":"is
 ## Project Commands
 
 ```sh
-npx paperclipai project list --company-id <company-id>
-npx paperclipai project get <project-id-or-shortname> [--company-id <company-id>]
-npx paperclipai project create --company-id <company-id> --name "Launch Site" [--goal-ids <id1,id2>] [--lead-agent-id <id>]
-npx paperclipai project update <project-id-or-shortname> [--status in_progress] [--company-id <company-id>]
-npx paperclipai project delete <project-id-or-shortname> --yes [--company-id <company-id>]
+npx paperclipai project list
+npx paperclipai project get <project-id-or-shortname>
+npx paperclipai project create --name "Launch Site" [--goal-ids <id1,id2>] [--lead-agent-id <id>]
+npx paperclipai project update <project-id-or-shortname> [--status in_progress]
+npx paperclipai project delete <project-id-or-shortname> --yes
 ```
 
 Advanced project fields accept JSON:
 
 ```sh
-npx paperclipai project create --company-id <company-id> --name "Ops" --env-json '{"OPENAI_API_KEY":{"kind":"secret","secretName":"openai-api-key"}}'
+npx paperclipai project create --name "Ops" --env-json '{"OPENAI_API_KEY":{"kind":"secret","secretName":"openai-api-key"}}'
 npx paperclipai project update <project-id> --execution-workspace-policy-json '{"enabled":true,"defaultMode":"shared_workspace"}'
 ```
 
 ## Goal Commands
 
 ```sh
-npx paperclipai goal list --company-id <company-id>
+npx paperclipai goal list
 npx paperclipai goal get <goal-id>
-npx paperclipai goal create --company-id <company-id> --title "Grow revenue" [--level company] [--status active]
+npx paperclipai goal create --title "Grow revenue" [--level company] [--status active]
 npx paperclipai goal update <goal-id> [--title "..."] [--status achieved]
 npx paperclipai goal delete <goal-id> --yes
 ```
@@ -527,23 +540,23 @@ npx paperclipai goal delete <goal-id> --yes
 ## Agent Commands
 
 ```sh
-npx paperclipai agent list --company-id <company-id>
+npx paperclipai agent list
 npx paperclipai agent get <agent-id>
-npx paperclipai agent create --company-id <company-id> --payload-json '{"name":"Builder","adapterType":"codex_local"}'
-npx paperclipai agent hire --company-id <company-id> --payload-json '{...}'
+npx paperclipai agent create --payload-json '{"name":"Builder","adapterType":"codex_local"}'
+npx paperclipai agent hire --payload-json '{...}'
 npx paperclipai agent update <agent-id> --payload-json '{"title":"Senior Builder"}'
 npx paperclipai agent delete <agent-id> --yes
 npx paperclipai agent me
 npx paperclipai agent inbox
 npx paperclipai agent inbox-mine --user-id <board-user-id>
-npx paperclipai agent wake <agent-id-or-shortname> [--company-id <company-id>] [--reason "..."] [--payload '{"issueId":"..."}']
+npx paperclipai agent wake <agent-id-or-shortname> [--reason "..."] [--payload '{"issueId":"..."}']
 npx paperclipai agent pause <agent-id>
 npx paperclipai agent resume <agent-id>
 npx paperclipai agent approve <agent-id>
 npx paperclipai agent terminate <agent-id>
 npx paperclipai agent heartbeat:invoke <agent-id>
 npx paperclipai agent claude-login <agent-id>
-npx paperclipai agent local-cli <agent-id-or-shortname> --company-id <company-id>
+npx paperclipai agent local-cli <agent-id-or-shortname>
 ```
 
 Agent configuration and runtime endpoints:
@@ -573,29 +586,29 @@ Agent config, instructions, skills, project env, environment, secret, and worksp
 
 - creates a new long-lived agent API key
 - installs missing Paperclip skills into `~/.codex/skills` and `~/.claude/skills`
-- prints `export ...` lines for `PAPERCLIP_API_URL`, `PAPERCLIP_COMPANY_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_API_KEY`
+- prints `export ...` lines for `PAPERCLIP_API_URL`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_API_KEY`
 
 Example for shortname-based local setup:
 
 ```sh
-npx paperclipai agent local-cli codexcoder --company-id <company-id>
-npx paperclipai agent local-cli claudecoder --company-id <company-id>
+npx paperclipai agent local-cli codexcoder
+npx paperclipai agent local-cli claudecoder
 ```
 
 ## Token Commands
 
-Agent API keys are scoped to one company and one agent. Plaintext tokens are printed once at creation.
+Agent API keys are scoped to one agent (keys are instance-level; there is one organization per instance). Plaintext tokens are printed once at creation.
 
 ```sh
-npx paperclipai token agent create --company-id <company-id> --agent <agent-id-or-name> --name external-worker
-npx paperclipai token agent list --company-id <company-id> --agent <agent-id-or-name>
-npx paperclipai token agent revoke --company-id <company-id> --agent <agent-id-or-name> <key-id>
+npx paperclipai token agent create --agent <agent-id-or-name> --name external-worker
+npx paperclipai token agent list --agent <agent-id-or-name>
+npx paperclipai token agent revoke --agent <agent-id-or-name> <key-id>
 ```
 
 Named board API keys use the board authorization model, support revocation and expiration metadata, and are audited server-side.
 
 ```sh
-npx paperclipai token board create --company-id <company-id> --name external-admin
+npx paperclipai token board create --name external-admin
 npx paperclipai token board create --name short-lived --ttl-days 7
 npx paperclipai token board list
 npx paperclipai token board revoke <key-id>
@@ -606,8 +619,8 @@ npx paperclipai token board revoke <key-id>
 `paperclipai run` without a subcommand still bootstraps and starts a local Paperclip instance. The subcommands below inspect and control API heartbeat runs.
 
 ```sh
-npx paperclipai run list --company-id <company-id> [--agent-id <agent-id>] [--limit 50]
-npx paperclipai run live --company-id <company-id> [--limit 50] [--min-count 0]
+npx paperclipai run list [--agent-id <agent-id>] [--limit 50]
+npx paperclipai run live [--limit 50] [--min-count 0]
 npx paperclipai run get <run-id>
 npx paperclipai run events <run-id> [--after-seq 0] [--limit 200]
 npx paperclipai run log <run-id> [--offset 0] [--limit-bytes 16384] [--text]
@@ -623,8 +636,8 @@ npx paperclipai run watchdog-decision <run-id> --decision continue [--reason "..
 `paperclipai routines disable-all` remains the local maintenance command. The singular `routine` group maps to the REST API.
 
 ```sh
-npx paperclipai routine list --company-id <company-id> [--project-id <project-id>]
-npx paperclipai routine create --company-id <company-id> --payload-json '{...}'
+npx paperclipai routine list [--project-id <project-id>]
+npx paperclipai routine create --payload-json '{...}'
 npx paperclipai routine get <routine-id>
 npx paperclipai routine update <routine-id> --payload-json '{...}'
 npx paperclipai routine revisions <routine-id>
@@ -646,7 +659,7 @@ Prompt handoff creates Paperclip work. It does not create a chat session.
 npx paperclipai agent-prompt <agent-name-or-id> <agent-api-key> "Prompt here"
 npx paperclipai agent prompt --agent <agent-name-or-id> --api-key-env PAPERCLIP_API_KEY "Prompt here"
 npx paperclipai agent prompt --profile my-agent "Prompt here"
-npx paperclipai board prompt --company-id <company-id> --agent <agent-name-or-id> "Prompt here"
+npx paperclipai board prompt --agent <agent-name-or-id> "Prompt here"
 ```
 
 By default the command creates a `todo` issue assigned to the target agent and wakes the agent. Use `--issue <issue-id>` to add a comment to existing work, and `--no-wake` to skip the wakeup.
@@ -656,7 +669,7 @@ By default the command creates a `todo` issue assigned to the target agent and w
 `paperclipai skills` covers three distinct operations:
 
 1. **Company install** — adds or updates a row in `company_skills` for the
-   whole company. This is what `skills install`, `skills import`, `skills create`,
+   whole organization. This is what `skills install`, `skills import`, `skills create`,
    and `skills scan-projects` do.
 2. **Agent attach** — merges an agent's *desired* company skill set with an
    explicit `add`, `remove`, or `replace` mode (`skills agent sync`/`clear`).
@@ -670,7 +683,7 @@ Required Paperclip runtime skills (heartbeat, etc.) remain server-enforced and
 are added on top of whatever the desired set names.
 
 Company skill mutations (`skills install`, `skills import`, `skills create`, and
-`skills scan-projects`) are open to same-company actors by default. Missing
+`skills scan-projects`) are open to authenticated actors in the organization by default. Missing
 `skills:create` grants and `canCreateSkills` settings do not deny these commands;
 only an explicit company skill policy restriction does. Core safety and company
 boundary checks still apply, and `agents:create` remains required when a command
@@ -686,7 +699,7 @@ skill to the company library.
 npx paperclipai skills browse [--kind bundled|optional] [--category <slug>] [--query <text>]
 npx paperclipai skills search "<text>" [--kind bundled|optional] [--category <slug>]
 npx paperclipai skills inspect <catalog-id-or-key-or-slug>
-npx paperclipai skills install <catalog-id-or-key-or-slug> [--as <slug>] [--force] --company-id <company-id>
+npx paperclipai skills install <catalog-id-or-key-or-slug> [--as <slug>] [--force]
 ```
 
 Catalog semantics:
@@ -707,11 +720,11 @@ Catalog semantics:
 Examples:
 
 ```sh
-npx paperclipai skills browse --kind bundled --company-id <company-id>
+npx paperclipai skills browse --kind bundled
 npx paperclipai skills search "pull request" --kind bundled
 npx paperclipai skills inspect github-pr-workflow
-npx paperclipai skills install github-pr-workflow --company-id <company-id>
-npx paperclipai skills install paperclipai:optional:browser:agent-browser --company-id <company-id>
+npx paperclipai skills install github-pr-workflow
+npx paperclipai skills install paperclipai:optional:browser:agent-browser
 ```
 
 External GitHub, skills.sh, local-path, and URL sources still go through
@@ -720,18 +733,18 @@ External GitHub, skills.sh, local-path, and URL sources still go through
 ### Organization library
 
 ```sh
-npx paperclipai skills list --company-id <company-id>
-npx paperclipai skills show <skill-id-or-key-or-slug> --company-id <company-id>
-npx paperclipai skills file <skill-id-or-key-or-slug> [--path SKILL.md] --company-id <company-id>
-npx paperclipai skills import <source> --company-id <company-id>
-npx paperclipai skills create --name "Review PRs" [--slug review-prs] [--description "..."] [--body-file SKILL.md] --company-id <company-id>
-npx paperclipai skills scan-projects [--project-id <id>...] [--workspace-id <id>...] --company-id <company-id>
-npx paperclipai skills check [skill-id-or-key-or-slug] --company-id <company-id>
-npx paperclipai skills update <skill-id-or-key-or-slug> [--force] --company-id <company-id>
-npx paperclipai skills update --all [--force] --company-id <company-id>
-npx paperclipai skills audit [skill-id-or-key-or-slug] --company-id <company-id>
-npx paperclipai skills reset <skill-id-or-key-or-slug> [--yes] [--force] --company-id <company-id>
-npx paperclipai skills remove <skill-id-or-key-or-slug> --yes --company-id <company-id>
+npx paperclipai skills list
+npx paperclipai skills show <skill-id-or-key-or-slug>
+npx paperclipai skills file <skill-id-or-key-or-slug> [--path SKILL.md]
+npx paperclipai skills import <source>
+npx paperclipai skills create --name "Review PRs" [--slug review-prs] [--description "..."] [--body-file SKILL.md]
+npx paperclipai skills scan-projects [--project-id <id>...] [--workspace-id <id>...]
+npx paperclipai skills check [skill-id-or-key-or-slug]
+npx paperclipai skills update <skill-id-or-key-or-slug> [--force]
+npx paperclipai skills update --all [--force]
+npx paperclipai skills audit [skill-id-or-key-or-slug]
+npx paperclipai skills reset <skill-id-or-key-or-slug> [--yes] [--force]
+npx paperclipai skills remove <skill-id-or-key-or-slug> --yes
 ```
 
 `skills import <source>` accepts a skills.sh URL, the equivalent
@@ -757,9 +770,9 @@ maintenance loop for catalog-installed skills:
 ### Agent attach
 
 ```sh
-npx paperclipai skills agent list <agent-id-or-shortname> --company-id <company-id>
-npx paperclipai skills agent sync <agent-id-or-shortname> --skill <skill-id-or-key-or-slug> [--skill <skill-id-or-key-or-slug>...] --mode <add|remove|replace> --company-id <company-id>
-npx paperclipai skills agent clear <agent-id-or-shortname> --yes --company-id <company-id>
+npx paperclipai skills agent list <agent-id-or-shortname>
+npx paperclipai skills agent sync <agent-id-or-shortname> --skill <skill-id-or-key-or-slug> [--skill <skill-id-or-key-or-slug>...] --mode <add|remove|replace>
+npx paperclipai skills agent clear <agent-id-or-shortname> --yes
 ```
 
 `skills agent sync` requires a merge mode and returns the resulting adapter
@@ -784,22 +797,20 @@ still enforced by the server in both cases.
 `paperclipai teams` works with the app-shipped team catalog in
 `@paperclipai/teams-catalog`. Browse, search, inspect, and file reads do not
 change company state. `preview` runs the company import planner, and `install`
-imports the catalog team into an existing company.
+imports the catalog team into the instance's organization.
 
 ```sh
 npx paperclipai teams browse [--kind bundled|optional] [--category <slug>] [--query <text>]
 npx paperclipai teams search "<text>" [--kind bundled|optional] [--category <slug>]
 npx paperclipai teams inspect <catalog-id-or-key-or-slug> [--file TEAM.md]
-npx paperclipai teams preview <catalog-id-or-key-or-slug> --company-id <company-id>
-npx paperclipai teams install <catalog-id-or-key-or-slug> --company-id <company-id>
+npx paperclipai teams preview <catalog-id-or-key-or-slug>
+npx paperclipai teams install <catalog-id-or-key-or-slug>
 ```
 
 Preview/install options:
 
-- Under agent authentication, use `paperclipai company list --json`,
-  `paperclipai company current --json`, or `PAPERCLIP_COMPANY_ID` to select the
-  target company. `company list` falls back to the scoped current company when
-  board-wide listing is forbidden. `teams install` creates agents and therefore
+- Teams install into the instance's single organization; there is no target
+  company to select (`paperclipai organization get --json` shows it). `teams install` creates agents and therefore
   requires board authentication, an `agents:create` grant, or an agent with the
   `canCreateAgents` permission (enabled by default for newly created
   standard-trust agents; low-trust agents and pre-existing agents without an
@@ -821,22 +832,22 @@ Preview/install options:
 ## Secrets Commands
 
 ```sh
-npx paperclipai secrets list --company-id <company-id>
-npx paperclipai secrets declarations --company-id <company-id> [--include agents,projects] [--kind secret]
-npx paperclipai secrets create --company-id <company-id> --name anthropic-api-key --value-env ANTHROPIC_API_KEY
-npx paperclipai secrets link --company-id <company-id> --name prod-stripe-key --provider aws_secrets_manager --external-ref <provider-ref>
-npx paperclipai secrets doctor --company-id <company-id>
-npx paperclipai secrets provider-configs --company-id <company-id>
-npx paperclipai secrets provider-config:create --company-id <company-id> --payload-json '{...}'
-npx paperclipai secrets provider-config:discovery-preview --company-id <company-id> --payload-json '{...}'
+npx paperclipai secrets list
+npx paperclipai secrets declarations [--include agents,projects] [--kind secret]
+npx paperclipai secrets create --name anthropic-api-key --value-env ANTHROPIC_API_KEY
+npx paperclipai secrets link --name prod-stripe-key --provider aws_secrets_manager --external-ref <provider-ref>
+npx paperclipai secrets doctor
+npx paperclipai secrets provider-configs
+npx paperclipai secrets provider-config:create --payload-json '{...}'
+npx paperclipai secrets provider-config:discovery-preview --payload-json '{...}'
 npx paperclipai secrets provider-config:get <config-id>
 npx paperclipai secrets provider-config:update <config-id> --payload-json '{...}'
 npx paperclipai secrets provider-config:default <config-id>
 npx paperclipai secrets provider-config:health <config-id>
 npx paperclipai secrets provider-config:delete <config-id>
-npx paperclipai secrets remote-import:preview --company-id <company-id> --payload-json '{...}'
-npx paperclipai secrets remote-import --company-id <company-id> --payload-json '{...}'
-npx paperclipai secrets migrate-inline-env --company-id <company-id> [--apply]
+npx paperclipai secrets remote-import:preview --payload-json '{...}'
+npx paperclipai secrets remote-import --payload-json '{...}'
+npx paperclipai secrets migrate-inline-env [--apply]
 ```
 
 Secret listing and declarations never print secret values. `create` accepts
@@ -846,7 +857,7 @@ For AWS-backed secrets, `secrets doctor` reports missing non-secret provider
 env and the expected AWS SDK runtime credential source; do not store AWS
 bootstrap credentials in Paperclip secrets.
 
-Per-company provider vaults (multiple vault instances per provider, default
+Organization provider vaults (multiple vault instances per provider, default
 vault selection, coming-soon GCP/Vault) can be configured from the board UI under
 `Organization Settings → Secrets → Provider vaults` or through the provider-config CLI
 commands above. See the
@@ -856,9 +867,9 @@ commands above. See the
 ## Approval Commands
 
 ```sh
-npx paperclipai approval list --company-id <company-id> [--status pending]
+npx paperclipai approval list [--status pending]
 npx paperclipai approval get <approval-id>
-npx paperclipai approval create --company-id <company-id> --type hire_agent --payload '{"name":"..."}' [--issue-ids <id1,id2>]
+npx paperclipai approval create --type hire_agent --payload '{"name":"..."}' [--issue-ids <id1,id2>]
 npx paperclipai approval approve <approval-id> [--decision-note "..."]
 npx paperclipai approval reject <approval-id> [--decision-note "..."]
 npx paperclipai approval request-revision <approval-id> [--decision-note "..."]
@@ -869,15 +880,15 @@ npx paperclipai approval comment <approval-id> --body "..."
 ## Activity Commands
 
 ```sh
-npx paperclipai activity list --company-id <company-id> [--agent-id <agent-id>] [--entity-type issue] [--entity-id <id>]
-npx paperclipai activity create --company-id <company-id> --payload-json '{...}'
+npx paperclipai activity list [--agent-id <agent-id>] [--entity-type issue] [--entity-id <id>]
+npx paperclipai activity create --payload-json '{...}'
 npx paperclipai activity issue <issue-id>
 ```
 
 ## Dashboard Commands
 
 ```sh
-npx paperclipai dashboard get --company-id <company-id>
+npx paperclipai dashboard get
 ```
 
 ## Org And Agent Config Commands
@@ -885,10 +896,10 @@ npx paperclipai dashboard get --company-id <company-id>
 ```sh
 npx paperclipai whoami
 npx paperclipai openapi
-npx paperclipai org get --company-id <company-id>
-npx paperclipai org svg --company-id <company-id> [--out org.svg]
-npx paperclipai org png --company-id <company-id> [--out org.png]
-npx paperclipai agent-config list --company-id <company-id>
+npx paperclipai org get
+npx paperclipai org svg [--out org.svg]
+npx paperclipai org png [--out org.png]
+npx paperclipai agent-config list
 ```
 
 ## Access, Profile, And Instance Commands
@@ -897,28 +908,30 @@ npx paperclipai agent-config list --company-id <company-id>
 npx paperclipai profile session
 npx paperclipai profile get
 npx paperclipai profile update --payload-json '{...}'
-npx paperclipai profile company-user <user-slug> --company-id <company-id>
-npx paperclipai invite list --company-id <company-id>
-npx paperclipai invite create --company-id <company-id> --payload-json '{...}'
+npx paperclipai profile company-user <user-slug>
+npx paperclipai invite list
+npx paperclipai invite create --payload-json '{...}'
 npx paperclipai invite revoke <invite-id>
 npx paperclipai invite show <token>
 npx paperclipai invite accept <token> [--payload-json '{...}']
 npx paperclipai invite onboarding:text <token>
-npx paperclipai join list --company-id <company-id> [--status pending_approval]
-npx paperclipai join approve <request-id> --company-id <company-id>
-npx paperclipai join reject <request-id> --company-id <company-id>
+npx paperclipai join list [--status pending_approval]
+npx paperclipai join approve <request-id>
+npx paperclipai join reject <request-id>
 npx paperclipai join claim-key <request-id> --claim-secret <secret>
-npx paperclipai member list --company-id <company-id>
-npx paperclipai member update <member-id> --company-id <company-id> --payload-json '{...}'
-npx paperclipai member role-and-grants <member-id> --company-id <company-id> --payload-json '{...}'
-npx paperclipai member permissions <member-id> --company-id <company-id> --payload-json '{...}'
-npx paperclipai member archive <member-id> --company-id <company-id> [--payload-json '{...}']
+npx paperclipai member list
+npx paperclipai member update <member-id> --payload-json '{...}'
+npx paperclipai member role-and-grants <member-id> --payload-json '{...}'
+npx paperclipai member permissions <member-id> --payload-json '{...}'
+npx paperclipai member archive <member-id> [--payload-json '{...}']
 npx paperclipai admin user list [--query <text>]
 npx paperclipai admin user promote <user-id>
 npx paperclipai admin user demote <user-id>
-npx paperclipai admin user company-access <user-id>
-npx paperclipai admin user company-access:update <user-id> --payload-json '{...}'
 ```
+
+The `admin user company-access` and `company-access:update` subcommands still
+exist in the CLI but target `/api/admin/users/:userId/company-access`, which the
+server no longer serves; membership is instance-level (see `member` commands).
 
 CLI auth challenge endpoints are also exposed for tooling that needs the raw challenge lifecycle:
 
@@ -954,14 +967,14 @@ Experimental features are opt-in and are provided without compatibility guarante
 ```sh
 npx paperclipai sidebar preferences
 npx paperclipai sidebar preferences:update --payload-json '{...}'
-npx paperclipai sidebar project-preferences --company-id <company-id>
-npx paperclipai sidebar project-preferences:update --company-id <company-id> --payload-json '{...}'
-npx paperclipai sidebar badges --company-id <company-id>
-npx paperclipai inbox dismissals --company-id <company-id>
-npx paperclipai inbox dismiss --company-id <company-id> --payload-json '{"itemKey":"run:<run-id>"}'
+npx paperclipai sidebar project-preferences
+npx paperclipai sidebar project-preferences:update --payload-json '{...}'
+npx paperclipai sidebar badges
+npx paperclipai inbox dismissals
+npx paperclipai inbox dismiss --payload-json '{"itemKey":"run:<run-id>"}'
 npx paperclipai board-claim show <token>
 npx paperclipai board-claim claim <token> [--payload-json '{...}']
-npx paperclipai openclaw invite-prompt --company-id <company-id> --payload-json '{...}'
+npx paperclipai openclaw invite-prompt --payload-json '{...}'
 npx paperclipai available-skill list
 npx paperclipai available-skill index
 npx paperclipai available-skill get <skill-name>
@@ -990,62 +1003,62 @@ npx paperclipai adapter reinstall <adapter-type>
 npx paperclipai adapter delete <adapter-type>
 npx paperclipai adapter config-schema <adapter-type>
 npx paperclipai adapter ui-parser <adapter-type>
-npx paperclipai adapter models <adapter-type> --company-id <company-id> [--refresh] [--environment-id <id>]
-npx paperclipai adapter detect-model <adapter-type> --company-id <company-id>
-npx paperclipai adapter test-environment <adapter-type> --company-id <company-id> --payload-json '{...}'
+npx paperclipai adapter models <adapter-type> [--refresh] [--environment-id <id>]
+npx paperclipai adapter detect-model <adapter-type>
+npx paperclipai adapter test-environment <adapter-type> --payload-json '{...}'
 ```
 
 ```sh
-npx paperclipai asset image:upload --company-id <company-id> --file ./image.png [--namespace docs] [--alt "..."]
-npx paperclipai asset logo:upload --company-id <company-id> --file ./logo.svg
+npx paperclipai asset image:upload --file ./image.png [--namespace docs] [--alt "..."]
+npx paperclipai asset logo:upload --file ./logo.svg
 npx paperclipai asset content <asset-id> --out ./asset.bin
 ```
 
 ```sh
-npx paperclipai skill list --company-id <company-id>
-npx paperclipai skill get <skill-id> --company-id <company-id>
-npx paperclipai skill file <skill-id> --company-id <company-id> [--path SKILL.md]
-npx paperclipai skill create --company-id <company-id> --payload-json '{...}'
-npx paperclipai skill file:update <skill-id> --company-id <company-id> --payload-json '{...}'
-npx paperclipai skill import --company-id <company-id> --payload-json '{"source":"github:owner/repo/path"}'
-npx paperclipai skill scan-projects --company-id <company-id> --payload-json '{...}'
-npx paperclipai skill update-status <skill-id> --company-id <company-id>
-npx paperclipai skill install-update <skill-id> --company-id <company-id>
-npx paperclipai skill delete <skill-id> --company-id <company-id>
+npx paperclipai skill list
+npx paperclipai skill get <skill-id>
+npx paperclipai skill file <skill-id> [--path SKILL.md]
+npx paperclipai skill create --payload-json '{...}'
+npx paperclipai skill file:update <skill-id> --payload-json '{...}'
+npx paperclipai skill import --payload-json '{"source":"github:owner/repo/path"}'
+npx paperclipai skill scan-projects --payload-json '{...}'
+npx paperclipai skill update-status <skill-id>
+npx paperclipai skill install-update <skill-id>
+npx paperclipai skill delete <skill-id>
 ```
 
 ## Cost, Finance, And Budget Commands
 
 ```sh
-npx paperclipai cost summary --company-id <company-id>
-npx paperclipai cost by-agent --company-id <company-id>
-npx paperclipai cost by-agent-model --company-id <company-id>
-npx paperclipai cost by-provider --company-id <company-id>
-npx paperclipai cost by-biller --company-id <company-id>
-npx paperclipai cost by-project --company-id <company-id>
-npx paperclipai cost window-spend --company-id <company-id>
-npx paperclipai cost quota-windows --company-id <company-id>
+npx paperclipai cost summary
+npx paperclipai cost by-agent
+npx paperclipai cost by-agent-model
+npx paperclipai cost by-provider
+npx paperclipai cost by-biller
+npx paperclipai cost by-project
+npx paperclipai cost window-spend
+npx paperclipai cost quota-windows
 npx paperclipai cost issue <issue-id>
-npx paperclipai cost event:create --company-id <company-id> --payload-json '{...}'
+npx paperclipai cost event:create --payload-json '{...}'
 ```
 
 ```sh
-npx paperclipai finance event:create --company-id <company-id> --payload-json '{...}'
-npx paperclipai finance events --company-id <company-id>
-npx paperclipai finance summary --company-id <company-id>
-npx paperclipai finance by-biller --company-id <company-id>
-npx paperclipai finance by-kind --company-id <company-id>
-npx paperclipai budget overview --company-id <company-id>
-npx paperclipai budget policy:upsert --company-id <company-id> --payload-json '{...}'
-npx paperclipai budget company:update --company-id <company-id> --payload-json '{...}'
+npx paperclipai finance event:create --payload-json '{...}'
+npx paperclipai finance events
+npx paperclipai finance summary
+npx paperclipai finance by-biller
+npx paperclipai finance by-kind
+npx paperclipai budget overview
+npx paperclipai budget policy:upsert --payload-json '{...}'
+npx paperclipai budget company:update --payload-json '{...}'
 npx paperclipai budget agent:update <agent-id> --payload-json '{...}'
-npx paperclipai budget incident:resolve <incident-id> --company-id <company-id> [--payload-json '{...}']
+npx paperclipai budget incident:resolve <incident-id> [--payload-json '{...}']
 ```
 
 ## Workspace And Environment Commands
 
 ```sh
-npx paperclipai workspace list --company-id <company-id>
+npx paperclipai workspace list
 npx paperclipai workspace get <execution-workspace-id>
 npx paperclipai workspace close-readiness <execution-workspace-id>
 npx paperclipai workspace operations <execution-workspace-id>
@@ -1055,16 +1068,16 @@ npx paperclipai workspace runtime-command <execution-workspace-id> run --payload
 ```
 
 ```sh
-npx paperclipai environment list --company-id <company-id>
-npx paperclipai environment capabilities --company-id <company-id>
-npx paperclipai environment create --company-id <company-id> --payload-json '{...}'
+npx paperclipai environment list
+npx paperclipai environment capabilities
+npx paperclipai environment create --payload-json '{...}'
 npx paperclipai environment get <environment-id>
 npx paperclipai environment leases <environment-id>
 npx paperclipai environment lease <lease-id>
 npx paperclipai environment update <environment-id> --payload-json '{...}'
 npx paperclipai environment delete <environment-id>
 npx paperclipai environment probe <environment-id>
-npx paperclipai environment probe-config --company-id <company-id> --payload-json '{...}'
+npx paperclipai environment probe-config --payload-json '{...}'
 ```
 
 ```sh
@@ -1087,9 +1100,9 @@ npx paperclipai plugin tool:execute --payload-json '{...}'
 npx paperclipai plugin health <plugin-id>
 npx paperclipai plugin logs <plugin-id>
 npx paperclipai plugin upgrade <plugin-id>
-npx paperclipai plugin config <plugin-id> --company-id <company-id>
-npx paperclipai plugin config:set <plugin-id> --company-id <company-id> --payload-json '{"configJson":{...}}'
-npx paperclipai plugin config:test <plugin-id> --company-id <company-id> --payload-json '{"configJson":{...}}'
+npx paperclipai plugin config <plugin-id>
+npx paperclipai plugin config:set <plugin-id> --payload-json '{"configJson":{...}}'
+npx paperclipai plugin config:test <plugin-id> --payload-json '{"configJson":{...}}'
 npx paperclipai plugin jobs <plugin-id>
 npx paperclipai plugin job:runs <plugin-id> <job-id>
 npx paperclipai plugin job:trigger <plugin-id> <job-id> [--payload-json '{...}']
@@ -1100,10 +1113,10 @@ npx paperclipai plugin bridge:action <plugin-id> --payload-json '{...}'
 npx paperclipai plugin bridge:stream <plugin-id> <channel> [--duration-ms 10000]
 npx paperclipai plugin data <plugin-id> <key> --payload-json '{...}'
 npx paperclipai plugin action <plugin-id> <key> --payload-json '{...}'
-npx paperclipai plugin local-folders <plugin-id> --company-id <company-id>
-npx paperclipai plugin local-folder:status <plugin-id> <folder-key> --company-id <company-id>
-npx paperclipai plugin local-folder:validate <plugin-id> <folder-key> --company-id <company-id> [--payload-json '{...}']
-npx paperclipai plugin local-folder:set <plugin-id> <folder-key> --company-id <company-id> --payload-json '{...}'
+npx paperclipai plugin local-folders <plugin-id>
+npx paperclipai plugin local-folder:status <plugin-id> <folder-key>
+npx paperclipai plugin local-folder:validate <plugin-id> <folder-key> [--payload-json '{...}']
+npx paperclipai plugin local-folder:set <plugin-id> <folder-key> --payload-json '{...}'
 ```
 
 Feedback traces can be fetched directly by ID when automating export workflows:
@@ -1139,9 +1152,9 @@ Local Paperclip data lives under the selected instance root. `PAPERCLIP_HOME` ch
         ├── secrets/
         │   └── master.key                        # local_encrypted master key
         ├── workspaces/                           # default agent workspaces
-        ├── projects/                             # project execution workspaces
-        ├── companies/                            # per-company adapter homes (e.g. codex-home)
-        └── codex-home/                           # per-instance codex home (when not company-scoped)
+        ├── projects/<project-id>/                # managed project checkouts
+        ├── organization/                         # organization-owned state, e.g. agents/<agent-id>/codex-home
+        └── codex-home/                           # per-instance codex home (when not agent-isolated)
 ```
 
 Default paths for the canonical install:

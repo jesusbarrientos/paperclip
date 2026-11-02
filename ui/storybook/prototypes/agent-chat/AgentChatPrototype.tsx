@@ -170,7 +170,6 @@ function comment(
   );
   return {
     id,
-    companyId: issue.companyId,
     issueId: issue.id,
     body,
     authorType: agentReply ? "agent" : "user",
@@ -236,9 +235,9 @@ export function AgentChatPrototype({
   }, [contextInitiallyOpen, setPanelVisible]);
   useLayoutEffect(() => {
     const originalFetch = window.fetch;
-    const recentKey = `paperclip.recentAgentChats:${issue.companyId}:user-board`;
+    const recentKey = "paperclip.recentAgentChats:user-board";
     const previousRecents = localStorage.getItem(recentKey);
-    const recentTasksKey = getRecentTasksStorageKey(issue.companyId, "user-board");
+    const recentTasksKey = getRecentTasksStorageKey("user-board");
     const previousRecentTasks = localStorage.getItem(recentTasksKey);
     if (sidebarScenario) localStorage.setItem(recentTasksKey, "[]");
     const hasPlan = scenario !== "empty" && (!sidebarScenario || contextInitiallyOpen);
@@ -328,7 +327,7 @@ export function AgentChatPrototype({
           : "I saved the plan here and copied it to [PAP-248](/PAP/issues/PAP-248) in the new project. The assigned task can now begin; we can continue the discussion here.",
       };
       messages.set(task.id, history);
-      writeTaskSidePanelState("user-board", task.companyId, task.id, {
+      writeTaskSidePanelState("user-board", task.id, {
         state: {
           tabs: taskComparison
             ? [taskPanelPropertiesTab()]
@@ -346,7 +345,7 @@ export function AgentChatPrototype({
       });
     }
     for (const id of entryScenario === "first-use" ? [] : ["chat-design", "agent-qa", "agent-codex"])
-      recordAgentChatVisit(issue.companyId, "user-board", id);
+      recordAgentChatVisit("user-board", id);
     window.fetch = async (input, init) => {
       const url = new URL(
         typeof input === "string"
@@ -447,7 +446,6 @@ export function AgentChatPrototype({
         return Response.json({
           source: "local_implicit",
           isInstanceAdmin: true,
-          companyIds: [issue.companyId],
           memberships: [],
         });
       if (path === "/api/instance/settings/experimental")
@@ -507,7 +505,7 @@ export function AgentChatPrototype({
             : [],
         );
       if (path.endsWith("/activity") && scenario.startsWith("project-") && scenario !== "project-failed" && scenario !== "project-reused") return Response.json([{
-        id: "created-project-event", companyId: issue.companyId, actorType: "agent", actorId: agent.id,
+        id: "created-project-event", actorType: "agent", actorId: agent.id,
         agentId: agent.id, runId, entityType: "project", entityId: "launch-project", action: "project.created",
         createdAt: "2026-09-10T15:42:30Z", details: {
           name: scenario === "project-multi-repo" ? "First agent handoff across the application, documentation, and onboarding service" : "First agent handoff",
@@ -564,17 +562,17 @@ export function AgentChatPrototype({
     if (sidebarScenario) {
       // These stories review a settled page, not a chain of loading screens.
       // Seed the same query keys and shapes consumed by the production chat.
-      queryClient.setQueryData(queryKeys.agentChats.list(issue.companyId, "user-board"), [...chats.values()]);
+      queryClient.setQueryData(queryKeys.agentChats.list("user-board"), [...chats.values()]);
       queryClient.setQueryData(queryKeys.auth.session, storybookAuthSession);
-      queryClient.setQueryData(queryKeys.companies.list("user-board"), { companies: storybookCompanies, unauthorized: false });
-      queryClient.setQueryData(queryKeys.agents.list(issue.companyId), fixtureAgents);
+      queryClient.setQueryData(queryKeys.organization, storybookCompanies[0]);
+      queryClient.setQueryData(queryKeys.agents.list(), fixtureAgents);
       queryClient.setQueryData(queryKeys.instance.experimentalSettings, {
         enableAgentChat: scenario !== "disabled", enableStreamlinedUi: true,
         enableClassicTaskInterface: false, enableExperimentalFileViewer: true,
       });
       for (const a of fixtureAgents) {
         const task = chats.get(a.id) ?? null;
-        queryClient.setQueryData(queryKeys.agentChats.detail(issue.companyId, "user-board", a.id), task);
+        queryClient.setQueryData(queryKeys.agentChats.detail("user-board", a.id), task);
         if (task) {
           queryClient.setQueryData(queryKeys.issues.detail(task.id), task);
           queryClient.setQueryData(queryKeys.issues.comments(task.id), { pages: [[...(messages.get(task.id) ?? [])].reverse()], pageParams: [null] });
@@ -600,15 +598,15 @@ export function AgentChatPrototype({
     if (ready && !initialRouteSet.current) {
       initialRouteSet.current = true;
       navigate(
-        `/PAP/${sidebarScenario === "landing" || entryScenario === "first-use" ? "chats" : entryScenario === "paused" ? "chats/operations" : taskComparison ? `issues/${issue.id}` : "chats/agent-codex"}`,
+        `/${sidebarScenario === "landing" || entryScenario === "first-use" ? "chats" : entryScenario === "paused" ? "chats/operations" : taskComparison ? `issues/${issue.id}` : "chats/agent-codex"}`,
         { replace: true },
       );
     }
   }, [ready, navigate, taskComparison, entryScenario, sidebarScenario]);
-  if (!ready || pathname === "/PAP/storybook") return null;
+  if (!ready || pathname === "/storybook") return null;
   const routes = (
       <Routes>
-        <Route path="/:companyPrefix" element={sidebarScenario ? <AgentChatSidebarReviewLayout scenario={sidebarScenario} /> : <Layout sidebarSections={entryScenario ? <ChatEntrySidebar /> : undefined} />}>
+        <Route path="/" element={sidebarScenario ? <AgentChatSidebarReviewLayout scenario={sidebarScenario} /> : <Layout sidebarSections={entryScenario ? <ChatEntrySidebar /> : undefined} />}>
           <Route path="chats" element={sidebarScenario ? <AgentChatSidebarLanding /> : <ChatEntryLanding />} />
           <Route path="chats/:agentRef" element={<AgentChat />} />
           <Route path="issues/:issueId" element={<IssueDetail />} />

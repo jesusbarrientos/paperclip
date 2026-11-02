@@ -33,17 +33,17 @@ describe.skipIf(!support.supported)("task search relevance rubric (real PostgreS
       const id = randomUUID();
       keys.set(id, entry.key);
       const updatedAt = new Date(Date.UTC(2026, 0, 1) + index * 60_000);
-      await db.insert(issues).values({ id, companyId, title: entry.title,
+      await db.insert(issues).values({ id, title: entry.title,
         identifier: "identifier" in entry ? entry.identifier : `EVAL-${index + 1}`,
         description: "description" in entry ? entry.description : null,
         status: "status" in entry ? entry.status : "todo", updatedAt, createdAt: updatedAt });
       if ("comments" in entry) {
-        for (const body of entry.comments) await db.insert(issueComments).values({ companyId, issueId: id, body, updatedAt });
+        for (const body of entry.comments) await db.insert(issueComments).values({ issueId: id, body, updatedAt });
       }
       if ("document" in entry) {
         const documentId = randomUUID();
-        await db.insert(documents).values({ id: documentId, companyId, title: entry.document.title, latestBody: entry.document.body, format: "markdown" });
-        await db.insert(issueDocuments).values({ companyId, issueId: id, documentId, key: "plan" });
+        await db.insert(documents).values({ id: documentId, title: entry.document.title, latestBody: entry.document.body, format: "markdown" });
+        await db.insert(issueDocuments).values({ issueId: id, documentId, key: "plan" });
       }
     }
   });
@@ -68,8 +68,8 @@ describe.skipIf(!support.supported)("task search relevance rubric (real PostgreS
       it(`${engine}: ${testCase.name}`, async () => {
         const start = performance.now();
         const rows = engine === "full"
-          ? (await companySearchService(db).search(companyId, companySearchQuerySchema.parse({ q: testCase.q }))).results.filter((row) => row.type === "issue")
-          : await issueService(db).list(companyId, { q: testCase.q, limit: 50 });
+          ? (await companySearchService(db).search(companySearchQuerySchema.parse({ q: testCase.q }))).results.filter((row) => row.type === "issue")
+          : await issueService(db).list({ q: testCase.q, limit: 50 });
         const resultKeys = rows.map((row) => keys.get(row.id)!);
         report.push({ engine, name: testCase.name, q: testCase.q, keys: resultKeys, ...searchQualityMetrics(resultKeys, testCase.relevant), ms: performance.now() - start });
         if (baseline) return;
@@ -92,10 +92,10 @@ describe.skipIf(!support.supported)("task search relevance rubric (real PostgreS
 
   it("handles empty quotes, literal punctuation, and oversized title words without errors", async () => {
     if (baseline) return;
-    await db.insert(issues).values({ companyId, title: "x".repeat(300) });
+    await db.insert(issues).values({ title: "x".repeat(300) });
     for (const q of ['""', "%", "_", "\\", "z".repeat(200)]) {
-      const full = await companySearchService(db).search(companyId, companySearchQuerySchema.parse({ q }));
-      const quick = await issueService(db).list(companyId, { q, limit: 50 });
+      const full = await companySearchService(db).search(companySearchQuerySchema.parse({ q }));
+      const quick = await issueService(db).list({ q, limit: 50 });
       if (q === '""' || q.startsWith("z")) {
         expect(full.results).toEqual([]);
         expect(quick).toEqual([]);
@@ -125,8 +125,8 @@ describe.skipIf(!support.supported)("task search relevance rubric (real PostgreS
         const durations: number[] = [];
         for (let i = 0; i < 21; i++) {
           const start = performance.now();
-          if (engine === "full") await companySearchService(db).search(companyId, companySearchQuerySchema.parse({ q }));
-          else await issueService(db).list(companyId, { q, limit: 20 });
+          if (engine === "full") await companySearchService(db).search(companySearchQuerySchema.parse({ q }));
+          else await issueService(db).list({ q, limit: 20 });
           durations.push(performance.now() - start);
         }
         const warmMs = durations.slice(1);
@@ -137,7 +137,7 @@ describe.skipIf(!support.supported)("task search relevance rubric (real PostgreS
       const search = parseTaskSearch(q);
       if (!baseline) plans[q] = await db.execute(sql`
         EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-        ${taskSearchCtes(companyId, search)}
+        ${taskSearchCtes(search)}
         SELECT m.id, ${taskSearchScore(search)} AS score FROM matched m ORDER BY score DESC LIMIT 20
       `);
     }

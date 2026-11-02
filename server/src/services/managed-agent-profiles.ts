@@ -97,43 +97,36 @@ function assertQualifiedRevisionUnchanged(
 }
 
 export function managedAgentProfileService(db: Db) {
-  async function list(companyId: string) {
+  async function list() {
     return db
       .select()
       .from(managedAgentProfiles)
-      .where(eq(managedAgentProfiles.companyId, companyId))
       .orderBy(asc(managedAgentProfiles.displayName));
   }
 
-  async function get(companyId: string, profileIdOrKey: string) {
+  async function get(profileIdOrKey: string) {
     const isUuid = UUID_RE.test(profileIdOrKey);
     const rows = await db
       .select()
       .from(managedAgentProfiles)
-      .where(and(
-        eq(managedAgentProfiles.companyId, companyId),
-        isUuid
-          ? eq(managedAgentProfiles.id, profileIdOrKey)
-          : eq(managedAgentProfiles.profileKey, profileIdOrKey),
-      ))
+      .where(isUuid
+                    ? eq(managedAgentProfiles.id, profileIdOrKey)
+                    : eq(managedAgentProfiles.profileKey, profileIdOrKey))
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async function getByProfileKey(companyId: string, profileKey: string) {
+  async function getByProfileKey(profileKey: string) {
     const rows = await db
       .select()
       .from(managedAgentProfiles)
-      .where(and(
-        eq(managedAgentProfiles.companyId, companyId),
-        eq(managedAgentProfiles.profileKey, profileKey),
-      ))
+      .where(eq(managedAgentProfiles.profileKey, profileKey))
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async function requireQualified(companyId: string, profileIdOrKey: string) {
-    const profile = await get(companyId, profileIdOrKey);
+  async function requireQualified(profileIdOrKey: string) {
+    const profile = await get(profileIdOrKey);
     if (!profile) throw notFound("Managed Agent profile not found");
     if (!profile.enabled || !profile.retentionAcknowledged || !profile.qualifiedAt) {
       throw conflict("Managed Agent profile is not enabled and qualified");
@@ -161,7 +154,7 @@ export function managedAgentProfileService(db: Db) {
     return profile;
   }
 
-  async function upsert(companyId: string, input: ManagedAgentProfileInput) {
+  async function upsert(input: ManagedAgentProfileInput) {
     const profileKey = required(input.profileKey, "Profile key");
     if (UUID_RE.test(profileKey)) {
       throw unprocessable("Profile key must not be UUID-shaped");
@@ -192,7 +185,7 @@ export function managedAgentProfileService(db: Db) {
       required: input.enabled,
     });
 
-    const existing = await getByProfileKey(companyId, profileKey);
+    const existing = await getByProfileKey(profileKey);
     const qualifiedRevision = qualificationAttested
       ? computeManagedAgentProfileRevision({
           anthropicAgentId,
@@ -209,7 +202,6 @@ export function managedAgentProfileService(db: Db) {
       .select({ id: companySecrets.id })
       .from(companySecrets)
       .where(and(
-        eq(companySecrets.companyId, companyId),
         eq(companySecrets.id, apiKeySecretId),
         eq(companySecrets.scope, "company"),
         eq(companySecrets.status, "active"),
@@ -218,7 +210,6 @@ export function managedAgentProfileService(db: Db) {
     if (!secret[0]) throw unprocessable("Managed Agent API-key secret reference is invalid");
 
     const values = {
-      companyId,
       profileKey,
       displayName,
       service: "anthropic_managed_agents",
@@ -243,7 +234,7 @@ export function managedAgentProfileService(db: Db) {
       .insert(managedAgentProfiles)
       .values(values)
       .onConflictDoUpdate({
-        target: [managedAgentProfiles.companyId, managedAgentProfiles.profileKey],
+        target: [managedAgentProfiles.profileKey],
         set: values,
       })
       .returning();

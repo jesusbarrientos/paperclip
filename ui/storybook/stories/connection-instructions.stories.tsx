@@ -4,7 +4,7 @@ import { expect, userEvent, within, waitFor } from "storybook/test";
 import { useQueryClient } from "@tanstack/react-query";
 import { getConnectableAppDefinition } from "@paperclipai/shared";
 import { Route, Routes, useNavigate } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { PluginLauncherProvider } from "@/plugins/launchers";
 import { Layout } from "@/components/Layout";
 import { AppDetail } from "@/pages/apps/AppDetail";
@@ -24,11 +24,10 @@ type Props = { initialView?: "connect" | "connection" | "agent"; provider?: "Hon
 function ConnectionInstructionsPrototype({ initialView = "connection", provider = "Honcho", scenario = "normal", baseline = false, providedInstructions }: Props) {
   const client = useQueryClient();
   const navigate = useNavigate();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const [ready, setReady] = useState(false);
   const initialized = useRef(false);
   const [previewOpen, setPreviewOpen] = useState(initialView === "agent");
-  const connectionPath = `/PAP/apps/${GUIDANCE_CONNECTION}/permissions`;
+  const connectionPath = `/apps/${GUIDANCE_CONNECTION}/permissions`;
   useEffect(() => installConnectionGuidanceFixtures(client, provider, {
     setup: initialView === "connect" && scenario !== "reconnect", askFirst: scenario === "write-approval",
     template: baseline ? null : providedInstructions ?? null, disabled: scenario === "off",
@@ -37,16 +36,15 @@ function ConnectionInstructionsPrototype({ initialView = "connection", provider 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-    setSelectedCompanyId(GUIDANCE_COMPANY);
     navigate(initialView === "connect"
-      ? `/PAP/apps/connect?source=${provider.toLowerCase()}${scenario === "reconnect" ? `&reconnect=${GUIDANCE_CONNECTION}` : ""}`
+      ? `/apps/connect?source=${provider.toLowerCase()}${scenario === "reconnect" ? `&reconnect=${GUIDANCE_CONNECTION}` : ""}`
       : connectionPath, { replace: true });
     setReady(true);
-  }, [provider, initialView, scenario, navigate, setSelectedCompanyId, connectionPath]);
-  if (!ready || selectedCompanyId !== GUIDANCE_COMPANY) return null;
+  }, [provider, initialView, scenario, navigate, connectionPath]);
+  if (!ready) return null;
   return <PluginLauncherProvider>
     <Routes>
-      <Route path="/:companyPrefix" element={<Layout />}>
+      <Route path="/" element={<Layout />}>
         <Route path="apps" element={<Browse />} />
         <Route path="apps/connect" element={<ConnectionSetupFlow onComplete={() => navigate(connectionPath)} />} />
         <Route path="apps/:connectionId/:tab?" element={<><AppDetail /><Button variant="ghost" onClick={() => setPreviewOpen(true)}>Preview on Ada</Button></>} />
@@ -55,7 +53,7 @@ function ConnectionInstructionsPrototype({ initialView = "connection", provider 
     <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader><DialogTitle>Instructions for Ada</DialogTitle><DialogDescription>Instructions provided by assigned connections.</DialogDescription></DialogHeader>
-        <AgentConnectionInstructions companyId={GUIDANCE_COMPANY} agentId={guidanceAgents[0]!.id} />
+        <AgentConnectionInstructions agentId={guidanceAgents[0]!.id} />
       </DialogContent>
     </Dialog>
   </PluginLauncherProvider>;

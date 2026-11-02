@@ -47,7 +47,6 @@ async function waitForAssertion(assertion: () => void, attempts = 20) {
 
 function policy(overrides: Partial<InboxAgentPolicy> = {}): InboxAgentPolicy {
   return {
-    companyId: "company-1",
     userId: "user-1",
     mode: "open",
     allowedAgentIds: [],
@@ -64,7 +63,7 @@ function render(container: HTMLDivElement) {
   act(() => {
     root.render(
       <QueryClientProvider client={queryClient}>
-        <InboxAgentPolicyControl companyId="company-1" />
+        <InboxAgentPolicyControl />
       </QueryClientProvider>,
     );
   });
@@ -88,7 +87,7 @@ describe("InboxAgentPolicyControl", () => {
       { id: "agent-3", name: "Retired", role: "engineer", status: "terminated", icon: null },
     ]);
     mockInboxAgentPolicyApi.getMine.mockResolvedValue(policy());
-    mockInboxAgentPolicyApi.updateMine.mockImplementation((_companyId: string, input) =>
+    mockInboxAgentPolicyApi.updateMine.mockImplementation((input) =>
       Promise.resolve(policy({ ...input, materialized: true })),
     );
   });
@@ -171,7 +170,7 @@ describe("InboxAgentPolicyControl", () => {
     await act(async () => saveButton.click());
     await flush();
 
-    expect(mockInboxAgentPolicyApi.updateMine).toHaveBeenCalledWith("company-1", {
+    expect(mockInboxAgentPolicyApi.updateMine).toHaveBeenCalledWith({
       mode: "allowlist",
       allowedAgentIds: ["agent-1"],
     });
@@ -202,7 +201,7 @@ describe("InboxAgentPolicyControl", () => {
     await act(async () => saveButton.click());
     await flush();
 
-    expect(mockInboxAgentPolicyApi.updateMine).toHaveBeenCalledWith("company-1", {
+    expect(mockInboxAgentPolicyApi.updateMine).toHaveBeenCalledWith({
       mode: "disabled",
       allowedAgentIds: [],
     });

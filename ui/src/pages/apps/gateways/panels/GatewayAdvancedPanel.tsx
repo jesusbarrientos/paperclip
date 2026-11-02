@@ -16,10 +16,8 @@ import { gatewaysQueryKey } from "../NewGatewayDialog";
  * PAP-11174 contract's default-vs-Advanced split.
  */
 export function GatewayAdvancedPanel({
-  companyId,
   gateway,
 }: {
-  companyId: string;
   gateway: ToolMcpGatewayWithTokens;
 }) {
   const queryClient = useQueryClient();
@@ -49,10 +47,10 @@ export function GatewayAdvancedPanel({
   );
 
   const archiveMutation = useMutation({
-    mutationFn: () => toolsApi.updateGateway(companyId, gateway.id, { status: "archived" }),
+    mutationFn: () => toolsApi.updateGateway(gateway.id, { status: "archived" }),
     onSuccess: async () => {
       pushToast({ title: "Gateway archived", body: `${gateway.name} is no longer reachable.`, tone: "success" });
-      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey(companyId) });
+      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey() });
       navigate("/apps/gateways");
     },
     onError: (error) =>

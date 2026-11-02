@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Link, Navigate, useParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { pluginsApi } from "@/api/plugins";
 import { queryKeys } from "@/lib/queryKeys";
@@ -15,46 +15,27 @@ import { ArrowLeft } from "lucide-react";
 import { NotFoundPage } from "./NotFound";
 
 /**
- * Company-context plugin page. Renders a plugin's `page` slot at
- * `/:companyPrefix/plugins/:pluginId` when the plugin declares a page slot
- * and is enabled for that company.
+ * Plugin page. Renders a plugin's `page` slot at `/plugins/:pluginId` (or its
+ * declared route path) when the plugin declares a page slot.
  *
- * @see doc/plugins/PLUGIN_SPEC.md §19.2 — Company-Context Routes
- * @see doc/plugins/PLUGIN_SPEC.md §24.4 — Company-Context Plugin Page
+ * @see doc/plugins/PLUGIN_SPEC.md §19.2
+ * @see doc/plugins/PLUGIN_SPEC.md §24.4
  */
 export function PluginPage() {
   const params = useParams<{
-    companyPrefix?: string;
     pluginId?: string;
     pluginRoutePath?: string;
     "*": string | undefined;
   }>();
-  const { companyPrefix: routeCompanyPrefix, pluginId, pluginRoutePath } = params;
+  const { pluginId, pluginRoutePath } = params;
   const pluginRouteSplat = params["*"];
-  const { companies, selectedCompanyId } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const routeCompany = useMemo(() => {
-    if (!routeCompanyPrefix) return null;
-    const requested = routeCompanyPrefix.toUpperCase();
-    return companies.find((c) => c.issuePrefix.toUpperCase() === requested) ?? null;
-  }, [companies, routeCompanyPrefix]);
-  const hasInvalidCompanyPrefix = Boolean(routeCompanyPrefix) && !routeCompany;
-
-  const resolvedCompanyId = useMemo(() => {
-    if (routeCompany) return routeCompany.id;
-    if (routeCompanyPrefix) return null;
-    return selectedCompanyId ?? null;
-  }, [routeCompany, routeCompanyPrefix, selectedCompanyId]);
-
-  const companyPrefix = useMemo(
-    () => (resolvedCompanyId ? companies.find((c) => c.id === resolvedCompanyId)?.issuePrefix ?? null : null),
-    [companies, resolvedCompanyId],
-  );
 
   const { data: contributions } = useQuery({
     queryKey: queryKeys.plugins.uiContributions,
     queryFn: () => pluginsApi.listUiContributions(),
-    enabled: !!resolvedCompanyId && (!!pluginId || !!pluginRoutePath),
+    enabled: !!organization && (!!pluginId || !!pluginRoutePath),
   });
 
   const pageSlot = useMemo(() => {
@@ -88,13 +69,8 @@ export function PluginPage() {
     return matches[0] ?? null;
   }, [pluginId, pluginRoutePath, contributions]);
 
-  const context = useMemo(
-    () => ({
-      companyId: resolvedCompanyId ?? null,
-      companyPrefix,
-    }),
-    [resolvedCompanyId, companyPrefix],
-  );
+  const context = useMemo(() => ({}), []);
+
 
   // When the active route has a routeSidebar slot, the sidebar provides the
   // back affordance, but the top bar still needs a route-specific title.
@@ -119,21 +95,10 @@ export function PluginPage() {
       return;
     }
     setBreadcrumbs([
-      { label: "Plugins", href: "/company/settings/instance/plugins" },
+      { label: "Plugins", href: "/organization/settings/instance/plugins" },
       { label: pageSlot.pluginDisplayName },
     ]);
   }, [pageSlot, pluginRouteSplat, setBreadcrumbs, routeSidebarActive]);
-
-  if (!resolvedCompanyId) {
-    if (hasInvalidCompanyPrefix) {
-      return <NotFoundPage scope="invalid_company_prefix" requestedPrefix={routeCompanyPrefix} />;
-    }
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">Select an organization to view this page.</p>
-      </div>
-    );
-  }
 
   if (!contributions) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -154,12 +119,12 @@ export function PluginPage() {
 
   if (!pageSlot) {
     if (pluginRoutePath) {
-      return <NotFoundPage scope="board" />;
+      return <NotFoundPage />;
     }
     // No page slot: redirect to plugin settings where plugin info is always shown
     const settingsPath = pluginId
-      ? `/company/settings/instance/plugins/${pluginId}`
-      : "/company/settings/instance/plugins";
+      ? `/organization/settings/instance/plugins/${pluginId}`
+      : "/organization/settings/instance/plugins";
     return <Navigate to={settingsPath} replace />;
   }
 
@@ -168,7 +133,7 @@ export function PluginPage() {
       {!routeSidebarActive && (
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild>
-            <Link to={companyPrefix ? `/${companyPrefix}/dashboard` : "/dashboard"}>
+            <Link to="/dashboard">
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
             </Link>

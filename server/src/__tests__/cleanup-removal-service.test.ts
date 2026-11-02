@@ -79,7 +79,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -91,7 +90,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Regression fixture",
       status: "todo",
       priority: "medium",
@@ -101,22 +99,20 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "completed",
       contextSnapshot: { issueId },
     });
 
-    return { agentId, companyId, issueId, runId };
+    return { companyId, agentId, issueId, runId };
   }
 
   it("removes agent-owned issue comments and run-linked activity before deleting the agent", async () => {
-    const { agentId, companyId, issueId, runId } = await seedFixture();
+    const { agentId, issueId, runId } = await seedFixture();
 
     await db.insert(issueComments).values({
       id: randomUUID(),
-      companyId,
       issueId,
       authorAgentId: agentId,
       body: "Agent-authored comment",
@@ -124,7 +120,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(activityLog).values({
       id: randomUUID(),
-      companyId,
       actorType: "agent",
       actorId: agentId,
       action: "heartbeat.completed",
@@ -136,7 +131,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(issueExecutionDecisions).values({
       id: randomUUID(),
-      companyId,
       issueId,
       stageId: randomUUID(),
       stageType: "review",
@@ -152,24 +146,22 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     await expect(db.select().from(agents).where(eq(agents.id, agentId))).resolves.toHaveLength(0);
     await expect(db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId))).resolves.toHaveLength(0);
     await expect(db.select().from(issueComments).where(eq(issueComments.issueId, issueId))).resolves.toHaveLength(0);
-    await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(activityLog)).resolves.toHaveLength(0);
   });
 
-  it("removes issue read states and activity rows before deleting the company", async () => {
+  it("removes issue read states and activity rows before deleting the organization", async () => {
     const { companyId, issueId, runId } = await seedFixture();
     const documentId = randomUUID();
     const revisionId = randomUUID();
 
     await db.insert(issueReadStates).values({
       id: randomUUID(),
-      companyId,
       issueId,
       userId: "user-1",
     });
 
     await db.insert(companySkills).values({
       id: randomUUID(),
-      companyId,
       key: "paperclipai/paperclip/paperclip",
       slug: "paperclip",
       name: "Paperclip",
@@ -178,7 +170,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(activityLog).values({
       id: randomUUID(),
-      companyId,
       actorType: "system",
       actorId: "system",
       action: "run.created",
@@ -190,7 +181,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: "Run summary",
       latestBody: "body",
       latestRevisionId: revisionId,
@@ -203,7 +193,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(issueDocuments).values({
       id: randomUUID(),
-      companyId,
       issueId,
       documentId,
       key: "summary",
@@ -211,7 +200,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
 
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId,
       documentId,
       revisionNumber: 1,
       title: "Run summary",
@@ -229,28 +217,19 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     await expect(db.select().from(issues).where(eq(issues.id, issueId))).resolves.toHaveLength(0);
     await expect(db.select().from(documents).where(eq(documents.id, documentId))).resolves.toHaveLength(0);
     await expect(db.select().from(documentRevisions).where(eq(documentRevisions.id, revisionId))).resolves.toHaveLength(0);
-    await expect(db.select().from(issueReadStates).where(eq(issueReadStates.companyId, companyId))).resolves.toHaveLength(0);
-    await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(issueReadStates)).resolves.toHaveLength(0);
+    await expect(db.select().from(activityLog)).resolves.toHaveLength(0);
   });
 
-  it("removes heartbeat events by run id before deleting company-owned runs", async () => {
-    const { agentId, companyId, runId } = await seedFixture();
-    const otherCompanyId = randomUUID();
-
-    await db.insert(companies).values({
-      id: otherCompanyId,
-      name: "Other Company",
-      issuePrefix: `O${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-      requireBoardApprovalForNewAgents: false,
-    });
+  it("removes heartbeat events by run id before deleting runs", async () => {
+    const { companyId, agentId, runId } = await seedFixture();
 
     await db.insert(heartbeatRunEvents).values({
-      companyId: otherCompanyId,
       runId,
       agentId,
       seq: 1,
       eventType: "output",
-      message: "event with mismatched company scope",
+      message: "run event",
     });
 
     const removed = await companyService(db).remove(companyId);
@@ -258,16 +237,14 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     expect(removed?.id).toBe(companyId);
     await expect(db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId))).resolves.toHaveLength(0);
     await expect(db.select().from(heartbeatRunEvents).where(eq(heartbeatRunEvents.runId, runId))).resolves.toHaveLength(0);
-    await expect(db.select().from(companies).where(eq(companies.id, otherCompanyId))).resolves.toHaveLength(1);
   });
 
-  it("removes routines before deleting company agents", async () => {
-    const { agentId, companyId } = await seedFixture();
+  it("removes routines before deleting agents", async () => {
+    const { companyId, agentId } = await seedFixture();
     const routineId = randomUUID();
 
     await db.insert(routines).values({
       id: routineId,
-      companyId,
       title: "Daily cleanup",
       assigneeAgentId: agentId,
     });

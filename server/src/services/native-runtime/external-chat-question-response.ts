@@ -26,7 +26,6 @@ import { nativeSha256 } from "./canonical.js";
 export const EXTERNAL_CHAT_QUESTION_RESPONSE_KEY =
   "paperclipExternalChatQuestionResponse";
 type Binding = {
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -217,7 +216,6 @@ async function resolveQuestionResponseChain(
     .where(
       and(
         eq(heartbeatRuns.id, binding.runId),
-        eq(heartbeatRuns.companyId, binding.companyId),
         eq(heartbeatRuns.agentId, binding.agentId),
       ),
     );
@@ -262,10 +260,6 @@ async function resolveQuestionResponseChain(
           issueThreadInteractions.id,
         ),
         eq(
-          issueQuestionResponseDeliveries.companyId,
-          issueThreadInteractions.companyId,
-        ),
-        eq(
           issueQuestionResponseDeliveries.issueId,
           issueThreadInteractions.issueId,
         ),
@@ -277,16 +271,12 @@ async function resolveQuestionResponseChain(
     )
     .innerJoin(
       heartbeatRuns,
-      and(
-        eq(heartbeatRuns.id, issueThreadInteractions.sourceRunId),
-        eq(heartbeatRuns.companyId, issueThreadInteractions.companyId),
-      ),
+      eq(heartbeatRuns.id, issueThreadInteractions.sourceRunId),
     )
     .innerJoin(
       agentWakeupRequests,
       and(
         eq(agentWakeupRequests.id, run.wakeupRequestId),
-        eq(agentWakeupRequests.companyId, issueThreadInteractions.companyId),
         eq(agentWakeupRequests.agentId, binding.agentId),
         eq(agentWakeupRequests.runId, binding.runId),
       ),
@@ -294,7 +284,6 @@ async function resolveQuestionResponseChain(
     .where(
       and(
         eq(issueThreadInteractions.id, context.interactionId),
-        eq(issueThreadInteractions.companyId, binding.companyId),
         eq(issueThreadInteractions.issueId, binding.issueId),
         eq(issueThreadInteractions.sourceRunId, context.sourceRunId),
       ),
@@ -323,7 +312,6 @@ async function resolveQuestionResponseChain(
       ? await resolveQuestionResponseChain(
           tx,
           {
-            companyId: binding.companyId,
             agentId: binding.agentId,
             issueId: binding.issueId,
             runId: source.id,
@@ -427,7 +415,6 @@ async function resolveQuestionResponseChain(
       chatPublications,
       and(
         sql`${chatActions.payload}->>'publicationId' = ${chatPublications.id}::text`,
-        eq(chatPublications.companyId, chatActions.companyId),
         eq(chatPublications.endpointId, chatActions.endpointId),
         eq(chatPublications.conversationId, chatActions.conversationId),
       ),
@@ -435,7 +422,6 @@ async function resolveQuestionResponseChain(
     .innerJoin(
       chatMessageLinks,
       and(
-        eq(chatMessageLinks.companyId, chatActions.companyId),
         eq(chatMessageLinks.endpointId, chatActions.endpointId),
         eq(chatMessageLinks.conversationId, chatActions.conversationId),
         eq(chatMessageLinks.commentId, context.sourceCommentId),
@@ -446,7 +432,6 @@ async function resolveQuestionResponseChain(
       chatDeliveries,
       and(
         eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-        eq(chatDeliveries.companyId, chatActions.companyId),
         eq(chatDeliveries.endpointId, chatActions.endpointId),
         eq(chatDeliveries.conversationId, chatActions.conversationId),
         or(eq(chatActions.kind, "photon_interaction"), eq(chatDeliveries.principalId, chatActions.principalId)),
@@ -456,7 +441,6 @@ async function resolveQuestionResponseChain(
       issueComments,
       and(
         eq(issueComments.id, chatMessageLinks.commentId),
-        eq(issueComments.companyId, chatActions.companyId),
         eq(issueComments.issueId, binding.issueId),
       ),
     )
@@ -464,28 +448,22 @@ async function resolveQuestionResponseChain(
       chatConversations,
       and(
         eq(chatConversations.id, chatActions.conversationId),
-        eq(chatConversations.companyId, chatActions.companyId),
         eq(chatConversations.endpointId, chatActions.endpointId),
       ),
     )
     .innerJoin(
       chatEndpoints,
-      and(
-        eq(chatEndpoints.id, chatActions.endpointId),
-        eq(chatEndpoints.companyId, chatActions.companyId),
-      ),
+      eq(chatEndpoints.id, chatActions.endpointId),
     )
     .innerJoin(
       chatIdentityLinks,
       and(
-        eq(chatIdentityLinks.companyId, chatActions.companyId),
         eq(chatIdentityLinks.endpointId, chatActions.endpointId),
         eq(chatIdentityLinks.principalId, chatActions.principalId),
       ),
     )
     .where(
       and(
-        eq(chatActions.companyId, binding.companyId),
         inArray(chatActions.kind, ["question_answer", "question_form_submit", "photon_interaction"]),
         eq(chatActions.status, "processed"),
         sql`${chatActions.payload}->>'interactionId' = ${interaction.id}`,
@@ -511,7 +489,6 @@ async function resolveQuestionResponseChain(
     .innerJoin(
       chatMessageLinks,
       and(
-        eq(chatMessageLinks.companyId, chatPublications.companyId),
         eq(chatMessageLinks.endpointId, chatPublications.endpointId),
         eq(chatMessageLinks.conversationId, chatPublications.conversationId),
         eq(chatMessageLinks.commentId, context.sourceCommentId),
@@ -522,7 +499,6 @@ async function resolveQuestionResponseChain(
       chatDeliveries,
       and(
         eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-        eq(chatDeliveries.companyId, chatMessageLinks.companyId),
         eq(chatDeliveries.endpointId, chatMessageLinks.endpointId),
         eq(chatDeliveries.conversationId, chatMessageLinks.conversationId),
       ),
@@ -531,7 +507,6 @@ async function resolveQuestionResponseChain(
       issueComments,
       and(
         eq(issueComments.id, chatMessageLinks.commentId),
-        eq(issueComments.companyId, chatMessageLinks.companyId),
         eq(issueComments.issueId, binding.issueId),
       ),
     )
@@ -539,7 +514,6 @@ async function resolveQuestionResponseChain(
       chatConversations,
       and(
         eq(chatConversations.id, chatPublications.conversationId),
-        eq(chatConversations.companyId, chatPublications.companyId),
         eq(chatConversations.endpointId, chatPublications.endpointId),
       ),
     )
@@ -547,21 +521,18 @@ async function resolveQuestionResponseChain(
       chatEndpoints,
       and(
         eq(chatEndpoints.id, chatPublications.endpointId),
-        eq(chatEndpoints.companyId, chatPublications.companyId),
         eq(chatEndpoints.provider, "github"),
       ),
     )
     .innerJoin(
       chatIdentityLinks,
       and(
-        eq(chatIdentityLinks.companyId, chatDeliveries.companyId),
         eq(chatIdentityLinks.endpointId, chatDeliveries.endpointId),
         eq(chatIdentityLinks.principalId, chatDeliveries.principalId),
       ),
     )
     .where(
       and(
-        eq(chatPublications.companyId, binding.companyId),
         eq(chatPublications.issueId, binding.issueId),
         sql`${chatPublications.idempotencyKey} = 'interaction:' || ${interaction.id} || ':' || ${chatEndpoints.id}::text`,
         notExists(
@@ -570,7 +541,6 @@ async function resolveQuestionResponseChain(
             .from(chatActions)
             .where(
               and(
-                eq(chatActions.companyId, binding.companyId),
                 sql`${chatActions.payload}->>'interactionId' = ${interaction.id}`,
                 inArray(chatActions.kind, [
                   "question_answer",
@@ -591,7 +561,7 @@ async function resolveQuestionResponseChain(
     if (candidates.length !== 1 || !candidates[0]!.inbound.principalId)
       return null;
     expectedPrincipalId = candidates[0]!.inbound.principalId;
-    const key = `chat-identity:${binding.companyId}:${expectedPrincipalId}`;
+    const key = `chat-identity:${expectedPrincipalId}`;
     if (lockMode === "blocking") {
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
@@ -725,7 +695,6 @@ async function resolveQuestionResponseChain(
     conversationId: conversation.id,
     bindingSha256: nativeSha256({
       binding: {
-        companyId: binding.companyId,
         issueId: binding.issueId,
         runId: binding.runId,
         agentId: binding.agentId,

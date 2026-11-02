@@ -5,7 +5,6 @@ import { buildSubIssueDefaults, buildSubIssueDefaultsForViewer } from "./subIssu
 function makeExecutionWorkspace(overrides: Partial<ExecutionWorkspace> = {}): ExecutionWorkspace {
   return {
     id: "workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: "project-workspace-1",
     sourceIssueId: null,
@@ -38,7 +37,6 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: "project-workspace-1",
     goalId: "goal-1",

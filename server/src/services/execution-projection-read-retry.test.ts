@@ -5,8 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { activityService } from "./activity.js";
 import { executionProjectionsForRuns } from "./execution-projection.js";
 import { logger } from "../middleware/logger.js";
-
-const companyId = "00000000-0000-4000-8000-000000000001";
 const issueId = "00000000-0000-4000-8000-000000000002";
 const runId = "00000000-0000-4000-8000-000000000003";
 const now = new Date("2026-01-01T00:00:00Z");
@@ -25,7 +23,7 @@ function fixture(options: {
 } = {}) {
   const attempts: Array<{ key: string; params: unknown[]; order: string[] }> = [];
   const row = {
-    id: runId, companyId, runId, status: "succeeded", runtimeMode: "native", errorCode: null,
+    id: runId, runId, status: "succeeded", runtimeMode: "native", errorCode: null,
     nativeIssueId: options.noIssue ? null : issueId, contextSnapshot: {},
     finishedAt: now, startedAt: now, createdAt: now, resultJson: null, usageJson: null,
     scheduledRetryAt: null, scheduledRetryAttempt: 0, retryOfRunId: null, nextAction: null,
@@ -78,14 +76,13 @@ afterEach(() => vi.restoreAllMocks());
 describe("execution projection read retries", () => {
   it.each(tables)("rebuilds only the failed %s SELECT within the existing retry budget", async (table) => {
     const test = fixture({ failures: { [table]: [disconnected(), disconnected("CONNECTION_ENDED")] } });
-    const result = await executionProjectionsForRuns(test.db, companyId, [runId], now, { retryDatabaseReads: true });
+    const result = await executionProjectionsForRuns(test.db, [runId], now, { retryDatabaseReads: true });
     expect(result.get(runId)).toMatchObject({ phase: "waiting_for_answer", label: "Waiting for answer" });
     for (const name of tables) expect(test.count(name)).toBe(name === table ? 3 : 1);
     expect(test.select).toHaveBeenCalledTimes(6);
     const reads = test.attempts.filter((read) => read.key === table);
     expect(reads[1]).toEqual(reads[0]);
     expect(reads[2]).toEqual(reads[0]);
-    expect(reads[0].params).toContain(companyId);
     expect(reads[0].params).toContain(table === "heartbeat_runs" || table === "native_run_finalizations" ? runId : issueId);
     if (table === "issue_thread_interactions") expect(reads[0].params).toContain("pending");
     if (table === "issue_recovery_actions") expect(reads[0].order).toEqual(['"issue_recovery_actions"."updated_at" desc']);
@@ -96,7 +93,7 @@ describe("execution projection read retries", () => {
   it.each(tables)("preserves the last %s error after three attempts", async (table) => {
     const errors = [disconnected(), disconnected(), disconnected()];
     const test = fixture({ failures: { [table]: errors } });
-    await expect(executionProjectionsForRuns(test.db, companyId, [runId], now, { retryDatabaseReads: true })).rejects.toBe(errors[2]);
+    await expect(executionProjectionsForRuns(test.db, [runId], now, { retryDatabaseReads: true })).rejects.toBe(errors[2]);
     for (const [index, name] of tables.entries()) {
       expect(test.count(name)).toBe(index < tables.indexOf(table) ? 1 : name === table ? 3 : 0);
     }
@@ -105,7 +102,7 @@ describe("execution projection read retries", () => {
   it.each(tables)("keeps the default transaction-compatible %s path single-attempt", async (table) => {
     const error = disconnected();
     const test = fixture({ failures: { [table]: [error] } });
-    await expect(executionProjectionsForRuns(test.db, companyId, [runId], now)).rejects.toBe(error);
+    await expect(executionProjectionsForRuns(test.db, [runId], now)).rejects.toBe(error);
     expect(test.count(table)).toBe(1);
     expect(test.transaction).not.toHaveBeenCalled();
   });
@@ -113,7 +110,7 @@ describe("execution projection read retries", () => {
   it.each([new Error("CONNECTION_CLOSED"), disconnected("28P01"), disconnected("42501"), disconnected("22P02"), disconnected("25P02")])(
     "does not retry an unclassified or non-transient error", async (error) => {
       const test = fixture({ failures: { issue_thread_interactions: [error] } });
-      await expect(executionProjectionsForRuns(test.db, companyId, [runId], now, { retryDatabaseReads: true })).rejects.toBe(error);
+      await expect(executionProjectionsForRuns(test.db, [runId], now, { retryDatabaseReads: true })).rejects.toBe(error);
       expect(test.count("issue_thread_interactions")).toBe(1);
       expect(test.count("issue_recovery_actions")).toBe(0);
     },
@@ -121,11 +118,11 @@ describe("execution projection read retries", () => {
 
   it("preserves empty and taskless projection behavior without unnecessary reads", async () => {
     const empty = fixture();
-    expect(await executionProjectionsForRuns(empty.db, companyId, [], now, { retryDatabaseReads: true })).toEqual(new Map());
+    expect(await executionProjectionsForRuns(empty.db, [], now, { retryDatabaseReads: true })).toEqual(new Map());
     expect(empty.select).not.toHaveBeenCalled();
     for (const options of [{ missing: true }, { noIssue: true }]) {
       const test = fixture(options);
-      const result = await executionProjectionsForRuns(test.db, companyId, [runId], now, { retryDatabaseReads: true });
+      const result = await executionProjectionsForRuns(test.db, [runId], now, { retryDatabaseReads: true });
       expect(test.select).toHaveBeenCalledTimes(2);
       expect(options.missing ? result.size : result.get(runId)?.phase).toBe(options.missing ? 0 : "completed");
     }
@@ -135,7 +132,7 @@ describe("execution projection read retries", () => {
     vi.spyOn(logger, "warn").mockImplementation(() => undefined);
     const test = fixture({ backfill: true, writeFailure: writeFails ? disconnected() : undefined,
       failures: { issue_thread_interactions: [disconnected(), disconnected()] } });
-    const result = await activityService(test.db).runsForIssue(companyId, issueId);
+    const result = await activityService(test.db).runsForIssue(issueId);
     expect(result).toMatchObject([{ runId, execution: { phase: "waiting_for_answer" } }]);
     expect(test.count("issue_thread_interactions")).toBe(3);
     for (const key of ["run_list", "liveness_backfill", "heartbeat_runs", "native_run_finalizations", "environment_leases", "issue_recovery_actions"]) {

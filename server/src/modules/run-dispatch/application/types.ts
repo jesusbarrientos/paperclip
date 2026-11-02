@@ -5,7 +5,6 @@ import type {
 
 export type QueuedRunEvent = {
   kind: "run_queued";
-  companyId: string;
   runId: string;
   agentId: string;
   invocationSource: string;
@@ -15,7 +14,6 @@ export type QueuedRunEvent = {
 
 export type RunStatusEvent = {
   kind: "run_status_published";
-  companyId: string;
   runId: string;
   agentId: string;
   status: string;

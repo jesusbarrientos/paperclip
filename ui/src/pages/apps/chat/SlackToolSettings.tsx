@@ -251,17 +251,15 @@ export function SlackSearchView({
   );
 }
 export function SlackToolsSettings({
-  companyId,
   endpointId,
   connectionId,
 }: {
-  companyId: string;
   endpointId: string;
   connectionId?: string | null;
 }) {
   const query = useQuery({
-    queryKey: ["slack-capabilities", companyId, endpointId],
-    queryFn: () => slackToolsApi.capabilities(companyId, endpointId),
+    queryKey: ["slack-capabilities", endpointId],
+    queryFn: () => slackToolsApi.capabilities(endpointId),
     staleTime: 60_000,
   });
   return (
@@ -282,15 +280,13 @@ export function SlackToolsSettings({
   );
 }
 export function SlackSearchAccess({
-  companyId,
   endpointId,
 }: {
-  companyId: string;
   endpointId: string;
 }) {
   const query = useQuery({
-    queryKey: ["slack-search", companyId, endpointId],
-    queryFn: () => slackToolsApi.search(companyId, endpointId),
+    queryKey: ["slack-search", endpointId],
+    queryFn: () => slackToolsApi.search(endpointId),
   });
   if (query.error)
     return (
@@ -308,15 +304,15 @@ export function SlackSearchAccess({
     <SlackSearchView
       status={query.data}
       onConnect={async () => {
-        const result = await slackToolsApi.connect(companyId, endpointId);
+        const result = await slackToolsApi.connect(endpointId);
         window.location.assign(result.url);
       }}
       onDisconnect={async () => {
-        await slackToolsApi.disconnect(companyId, endpointId);
+        await slackToolsApi.disconnect(endpointId);
         await query.refetch();
       }}
       onConfigure={async (input) => {
-        await slackToolsApi.configure(companyId, endpointId, input);
+        await slackToolsApi.configure(endpointId, input);
         await query.refetch();
       }}
     />

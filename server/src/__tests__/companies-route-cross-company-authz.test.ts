@@ -2,8 +2,7 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const companyAId = "11111111-1111-4111-8111-111111111111";
-const companyBId = "22222222-2222-4222-8222-222222222222";
+const organizationId = "11111111-1111-4111-8111-111111111111";
 const ceoAgentId = "ceo-agent-a";
 
 const mockCompanyService = vi.hoisted(() => ({
@@ -12,8 +11,6 @@ const mockCompanyService = vi.hoisted(() => ({
   getById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  archive: vi.fn(),
-  remove: vi.fn(),
 }));
 
 const mockAgentService = vi.hoisted(() => ({
@@ -58,6 +55,12 @@ function registerCompanyRouteMocks() {
     feedbackService: () => mockFeedbackService,
     logActivity: mockLogActivity,
   }));
+  vi.doMock("../services/organization.js", () => ({
+    organizationService: () => ({
+      findId: async () => organizationId,
+      requireId: async () => organizationId,
+    }),
+  }));
 }
 
 let appImportCounter = 0;
@@ -77,19 +80,19 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api/companies", companyRoutes({} as any));
+  app.use("/api/organization", companyRoutes({} as any));
   app.use(errorHandler);
   return app;
 }
 
-function createCompany(id: string) {
+function createCompany(id: string = organizationId) {
   const now = new Date("2026-06-18T00:00:00.000Z");
   return {
     id,
-    name: id === companyAId ? "Company A" : "Company B",
+    name: "Organization",
     description: null,
     status: "active",
-    issuePrefix: id === companyAId ? "CPA" : "CPB",
+    issuePrefix: "ORG",
     issueCounter: 1,
     budgetMonthlyCents: 0,
     spentMonthlyCents: 0,
@@ -135,18 +138,18 @@ function exportPreviewResult() {
   };
 }
 
-function importRequest(targetCompanyId = companyBId) {
+function importRequest() {
   return {
     source: { type: "inline", files: { "COMPANY.md": "---\nname: Imported\n---\n" } },
     include: { company: true, agents: true, projects: false, issues: false },
-    target: { mode: "existing_company", companyId: targetCompanyId },
+    target: { mode: "existing_company" },
     collisionStrategy: "rename",
   };
 }
 
-function importResult(companyId = companyBId) {
+function importResult() {
   return {
-    company: { id: companyId, action: "updated" },
+    company: { id: organizationId, action: "updated" },
     agents: [],
     warnings: [],
   };
@@ -154,20 +157,15 @@ function importResult(companyId = companyBId) {
 
 function resetMockDefaults() {
   mockCompanyService.getById.mockImplementation(async (id: string) => {
-    if (id === companyAId || id === companyBId) return createCompany(id);
+    if (id === organizationId) return createCompany(id);
     return null;
   });
   mockCompanyService.update.mockImplementation(async (id: string, body: Record<string, unknown>) => ({
     ...createCompany(id),
     ...body,
   }));
-  mockCompanyService.archive.mockImplementation(async (id: string) => ({
-    ...createCompany(id),
-    status: "archived",
-  }));
-  mockCompanyService.remove.mockImplementation(async (id: string) => createCompany(id));
   mockAgentService.getById.mockImplementation(async (id: string) => {
-    if (id === ceoAgentId) return { id, companyId: companyAId, role: "ceo" };
+    if (id === ceoAgentId) return { id, role: "ceo" };
     return null;
   });
   mockAgentService.list.mockResolvedValue([]);
@@ -179,8 +177,6 @@ function resetMockDefaults() {
 
 function assertNoTargetMutationSideEffects() {
   expect(mockCompanyService.update).not.toHaveBeenCalled();
-  expect(mockCompanyService.archive).not.toHaveBeenCalled();
-  expect(mockCompanyService.remove).not.toHaveBeenCalled();
   expect(mockCompanyPortabilityService.exportBundle).not.toHaveBeenCalled();
   expect(mockCompanyPortabilityService.previewExport).not.toHaveBeenCalled();
   expect(mockCompanyPortabilityService.previewImport).not.toHaveBeenCalled();
@@ -188,11 +184,10 @@ function assertNoTargetMutationSideEffects() {
   expect(mockLogActivity).not.toHaveBeenCalled();
 }
 
-function companyACeoActor() {
+function ceoActor() {
   return {
     type: "agent",
     agentId: ceoAgentId,
-    companyId: companyAId,
     source: "agent_key",
     runId: "run-1",
   };
@@ -200,8 +195,7 @@ function companyACeoActor() {
 
 function boardActor(input: {
   userId: string;
-  companyIds?: string[];
-  memberships?: Array<{ companyId: string; membershipRole: string; status: string }>;
+  memberships?: Array<{ membershipRole: string; status: string }>;
   isInstanceAdmin?: boolean;
   source?: string;
 }) {
@@ -209,13 +203,12 @@ function boardActor(input: {
     type: "board",
     userId: input.userId,
     source: input.source ?? "session",
-    companyIds: input.companyIds ?? [],
     memberships: input.memberships ?? [],
     isInstanceAdmin: input.isInstanceAdmin ?? false,
   };
 }
 
-describe("company route cross-company authorization", () => {
+describe("organization route authorization", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../routes/authz.js");
@@ -224,157 +217,40 @@ describe("company route cross-company authorization", () => {
     resetMockDefaults();
   });
 
-  it.each(["session", "board_key", "cloud_tenant"])(
-    "limits navigable companies to memberships for a %s instance admin",
-    async (source) => {
-      mockCompanyService.list.mockResolvedValue([createCompany(companyBId), createCompany(companyAId)]);
-      const app = await createApp(boardActor({
-        userId: "owner-a",
-        source,
-        isInstanceAdmin: true,
-        companyIds: [companyAId],
-      }));
+  it("allows a CEO agent to use CEO-safe organization routes", async () => {
+    const app = await createApp(ceoActor());
 
-      const navigation = await request(app).get("/api/companies?scope=accessible").expect(200);
-      expect(navigation.body.map((company: { id: string }) => company.id)).toEqual([companyAId]);
-      await request(app).get(`/api/companies/${companyAId}`).expect(200);
-      await request(app).get(`/api/companies/${companyBId}`).expect(403);
-
-      // The existing directory remains available for instance administration.
-      const directory = await request(app).get("/api/companies").expect(200);
-      expect(directory.body.map((company: { id: string }) => company.id)).toEqual([companyBId, companyAId]);
-    },
-  );
-
-  it.each([false, true])("returns no navigable companies without memberships (admin=%s)", async (isInstanceAdmin) => {
-    mockCompanyService.list.mockResolvedValue([createCompany(companyAId)]);
-    const app = await createApp(boardActor({ userId: "outsider", isInstanceAdmin }));
-    const res = await request(app).get("/api/companies?scope=accessible").expect(200);
-    expect(res.body).toEqual([]);
+    await request(app).patch(`/api/organization`).send({ description: "Branding" }).expect(200);
+    await request(app).patch(`/api/organization/branding`).send({ description: "Branding" }).expect(200);
+    await request(app).post(`/api/organization/export`).send(exportRequest).expect(200);
+    await request(app).post(`/api/organization/exports/preview`).send(exportRequest).expect(200);
+    await request(app).post(`/api/organization/imports/preview`).send(importRequest()).expect(200);
+    await request(app).post(`/api/organization/imports/apply`).send(importRequest()).expect(200);
   });
 
-  it.each(["scope=accessible&scope=accessible", "scope=accessible&scope=all", "scope=all", "scope="])(
-    "rejects malformed list scope without loading the directory: %s",
-    async (query) => {
-      const app = await createApp(boardActor({ userId: "admin", isInstanceAdmin: true }));
-      await request(app).get(`/api/companies?${query}`).expect(400);
-      expect(mockCompanyService.list).not.toHaveBeenCalled();
-    },
-  );
+  it("rejects a non-CEO agent on CEO-safe organization routes", async () => {
+    mockAgentService.getById.mockResolvedValue({ id: "engineer", role: "engineer" });
+    const app = await createApp({ ...ceoActor(), agentId: "engineer" });
 
-  it("includes additional companies where a cloud user has membership", async () => {
-    mockCompanyService.list.mockResolvedValue([createCompany(companyAId), createCompany(companyBId)]);
-    const app = await createApp(boardActor({
-      userId: "owner-of-both",
-      source: "cloud_tenant",
-      companyIds: [companyAId, companyBId],
-    }));
-    const res = await request(app).get("/api/companies?scope=accessible").expect(200);
-    expect(res.body.map((company: { id: string }) => company.id)).toEqual([companyAId, companyBId]);
-    await request(app).get(`/api/companies/${companyBId}`).expect(200);
-  });
-
-  it("keeps all companies navigable for the local trusted board", async () => {
-    mockCompanyService.list.mockResolvedValue([createCompany(companyAId), createCompany(companyBId)]);
-    const app = await createApp(boardActor({ userId: "local-board", source: "local_implicit" }));
-    const res = await request(app).get("/api/companies?scope=accessible").expect(200);
-    expect(res.body.map((company: { id: string }) => company.id)).toEqual([companyAId, companyBId]);
-  });
-
-  it.each([{ type: "none", source: "none" }, companyACeoActor()])(
-    "rejects navigation list requests from a $type actor",
-    async (actor) => {
-      const app = await createApp(actor);
-      await request(app).get("/api/companies?scope=accessible").expect(403);
-      expect(mockCompanyService.list).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
-    {
-      label: "GET /api/companies/:companyId",
-      request: (app: express.Express) => request(app).get(`/api/companies/${companyBId}`),
-    },
-    {
-      label: "PATCH /api/companies/:companyId",
-      request: (app: express.Express) => request(app).patch(`/api/companies/${companyBId}`).send({ description: "Nope" }),
-    },
-    {
-      label: "PATCH /api/companies/:companyId/branding",
-      request: (app: express.Express) => request(app).patch(`/api/companies/${companyBId}/branding`).send({ description: "Nope" }),
-    },
-    {
-      label: "POST /api/companies/:companyId/archive",
-      request: (app: express.Express) => request(app).post(`/api/companies/${companyBId}/archive`).send({}),
-    },
-    {
-      label: "DELETE /api/companies/:companyId",
-      request: (app: express.Express) => request(app).delete(`/api/companies/${companyBId}`),
-    },
-    {
-      label: "POST /api/companies/:companyId/export",
-      request: (app: express.Express) => request(app).post(`/api/companies/${companyBId}/export`).send(exportRequest),
-    },
-    {
-      label: "POST /api/companies/:companyId/exports/preview",
-      request: (app: express.Express) => request(app).post(`/api/companies/${companyBId}/exports/preview`).send(exportRequest),
-    },
-    {
-      label: "GET /api/companies/:companyId/export/fidelity",
-      request: (app: express.Express) => request(app).get(`/api/companies/${companyBId}/export/fidelity`),
-    },
-    {
-      label: "POST /api/companies/:companyId/imports/preview",
-      request: (app: express.Express) => request(app).post(`/api/companies/${companyBId}/imports/preview`).send(importRequest()),
-    },
-    {
-      label: "POST /api/companies/:companyId/imports/apply",
-      request: (app: express.Express) => request(app).post(`/api/companies/${companyBId}/imports/apply`).send(importRequest()),
-    },
-  ])("rejects a company A CEO attempting company B operation: $label", async ({ request: buildRequest }) => {
-    const app = await createApp(companyACeoActor());
-
-    const res = await buildRequest(app);
-
+    const res = await request(app).patch(`/api/organization`).send({ description: "Nope" });
     expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/another company|access to this company|active company access/i);
+    expect(res.body.error).toContain("Only CEO agents");
     assertNoTargetMutationSideEffects();
   });
 
-  it("allows a same-company CEO to use CEO-safe company routes without allowing board-only lifecycle routes", async () => {
-    const app = await createApp(companyACeoActor());
-
-    await request(app).get(`/api/companies/${companyAId}`).expect(200);
-    await request(app).patch(`/api/companies/${companyAId}`).send({ description: "Branding" }).expect(200);
-    await request(app).patch(`/api/companies/${companyAId}/branding`).send({ description: "Branding" }).expect(200);
-    await request(app).post(`/api/companies/${companyAId}/export`).send(exportRequest).expect(200);
-    await request(app).post(`/api/companies/${companyAId}/exports/preview`).send(exportRequest).expect(200);
-    await request(app).post(`/api/companies/${companyAId}/imports/preview`).send(importRequest(companyAId)).expect(200);
-    await request(app).post(`/api/companies/${companyAId}/imports/apply`).send(importRequest(companyAId)).expect(200);
-
-    const archive = await request(app).post(`/api/companies/${companyAId}/archive`).send({});
-    expect(archive.status).toBe(403);
-    expect(archive.body.error).toContain("Board access required");
-    const remove = await request(app).delete(`/api/companies/${companyAId}`);
-    expect(remove.status).toBe(403);
-    expect(remove.body.error).toContain("Board access required");
-  });
-
-  it("covers board actor access for non-member, viewer, active member, local trusted board, and instance admin without target membership", async () => {
+  it("covers board actor access for non-member, viewer, active member, local trusted board, and instance admin without membership", async () => {
     const nonMemberApp = await createApp(boardActor({ userId: "outsider" }));
-    const nonMember = await request(nonMemberApp).get(`/api/companies/${companyBId}`);
+    const nonMember = await request(nonMemberApp).patch(`/api/organization`).send({ description: "Nope" });
     expect(nonMember.status).toBe(403);
-    expect(nonMember.body.error).toContain("access to this company");
+    expect(nonMember.body.error).toContain("not an active member");
 
     vi.clearAllMocks();
     resetMockDefaults();
     const viewerApp = await createApp(boardActor({
       userId: "viewer",
-      companyIds: [companyBId],
-      memberships: [{ companyId: companyBId, membershipRole: "viewer", status: "active" }],
+      memberships: [{ membershipRole: "viewer", status: "active" }],
     }));
-    await request(viewerApp).get(`/api/companies/${companyBId}`).expect(200);
-    const viewerWrite = await request(viewerApp).patch(`/api/companies/${companyBId}`).send({ description: "Nope" });
+    const viewerWrite = await request(viewerApp).patch(`/api/organization`).send({ description: "Nope" });
     expect(viewerWrite.status).toBe(403);
     expect(viewerWrite.body.error).toContain("Viewer access is read-only");
     expect(mockCompanyService.update).not.toHaveBeenCalled();
@@ -384,17 +260,14 @@ describe("company route cross-company authorization", () => {
     resetMockDefaults();
     const memberApp = await createApp(boardActor({
       userId: "member",
-      companyIds: [companyBId],
-      memberships: [{ companyId: companyBId, membershipRole: "member", status: "active" }],
+      memberships: [{ membershipRole: "member", status: "active" }],
     }));
-    await request(memberApp).patch(`/api/companies/${companyBId}`).send({ description: "Updated" }).expect(200);
-    await request(memberApp).patch(`/api/companies/${companyBId}/branding`).send({ description: "Branding" }).expect(200);
-    await request(memberApp).post(`/api/companies/${companyBId}/archive`).send({}).expect(200);
-    await request(memberApp).delete(`/api/companies/${companyBId}`).expect(200);
-    await request(memberApp).post(`/api/companies/${companyBId}/export`).send(exportRequest).expect(200);
-    await request(memberApp).post(`/api/companies/${companyBId}/exports/preview`).send(exportRequest).expect(200);
-    await request(memberApp).post(`/api/companies/${companyBId}/imports/preview`).send(importRequest()).expect(200);
-    await request(memberApp).post(`/api/companies/${companyBId}/imports/apply`).send(importRequest()).expect(200);
+    await request(memberApp).patch(`/api/organization`).send({ description: "Updated" }).expect(200);
+    await request(memberApp).patch(`/api/organization/branding`).send({ description: "Branding" }).expect(200);
+    await request(memberApp).post(`/api/organization/export`).send(exportRequest).expect(200);
+    await request(memberApp).post(`/api/organization/exports/preview`).send(exportRequest).expect(200);
+    await request(memberApp).post(`/api/organization/imports/preview`).send(importRequest()).expect(200);
+    await request(memberApp).post(`/api/organization/imports/apply`).send(importRequest()).expect(200);
 
     vi.clearAllMocks();
     resetMockDefaults();
@@ -403,8 +276,7 @@ describe("company route cross-company authorization", () => {
       source: "local_implicit",
       isInstanceAdmin: true,
     }));
-    await request(localTrustedApp).get(`/api/companies/${companyBId}`).expect(200);
-    await request(localTrustedApp).patch(`/api/companies/${companyBId}`).send({ description: "Local" }).expect(200);
+    await request(localTrustedApp).patch(`/api/organization`).send({ description: "Local" }).expect(200);
 
     vi.clearAllMocks();
     resetMockDefaults();
@@ -412,12 +284,9 @@ describe("company route cross-company authorization", () => {
       userId: "instance-admin",
       isInstanceAdmin: true,
     }));
-    const adminRead = await request(adminWithoutMembershipApp).get(`/api/companies/${companyBId}`);
-    expect(adminRead.status).toBe(403);
-    expect(adminRead.body.error).toContain("access to this company");
-    const adminWrite = await request(adminWithoutMembershipApp).patch(`/api/companies/${companyBId}`).send({ description: "Admin" });
+    const adminWrite = await request(adminWithoutMembershipApp).patch(`/api/organization`).send({ description: "Admin" });
     expect(adminWrite.status).toBe(403);
-    expect(adminWrite.body.error).toContain("access to this company");
+    expect(adminWrite.body.error).toContain("not an active member");
     assertNoTargetMutationSideEffects();
   });
 });

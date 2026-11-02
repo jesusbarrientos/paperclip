@@ -35,7 +35,7 @@ const memberActor = {
   source: "session",
   userId: "user-1",
   companyIds: ["org-1"],
-  memberships: [{ companyId: "org-1", membershipRole: "owner", status: "active" }],
+  memberships: [{ membershipRole: "owner", status: "active" }],
   isInstanceAdmin: false,
 };
 

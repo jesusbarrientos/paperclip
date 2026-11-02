@@ -15,7 +15,6 @@ function createTempContextPath(): string {
 function agent(overrides: Record<string, unknown> = {}) {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "22222222-2222-4222-8222-222222222222",
     name: "Worker",
     urlKey: "worker",
     role: "Engineer",
@@ -75,7 +74,6 @@ describe("prompt handoff", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(agent()), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: "issue-1",
-        companyId: "22222222-2222-4222-8222-222222222222",
         title: "Investigate queue lag",
         status: "todo",
         priority: "medium",
@@ -92,7 +90,7 @@ describe("prompt handoff", () => {
     expect(result.mode).toBe("issue");
     expect(result.agent.id).toBe("11111111-1111-4111-8111-111111111111");
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:3100/api/companies/22222222-2222-4222-8222-222222222222/issues");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:3100/api/issues");
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
       title: "Investigate queue lag",
       assigneeAgentId: "11111111-1111-4111-8111-111111111111",
@@ -109,7 +107,6 @@ describe("prompt handoff", () => {
         profiles: {
           agent: {
             apiBase: "http://localhost:3100",
-            companyId: "22222222-2222-4222-8222-222222222222",
             persona: "agent",
             agentId: "11111111-1111-4111-8111-111111111111",
           },
@@ -130,7 +127,6 @@ describe("prompt handoff", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(agent()), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: "issue-1",
-        companyId: "22222222-2222-4222-8222-222222222222",
         title: "Investigate queue lag",
         status: "todo",
         priority: "medium",
@@ -141,8 +137,7 @@ describe("prompt handoff", () => {
 
     const result = await runBoardPrompt("worker", "Investigate queue lag", {
       apiBase: "http://localhost:3100",
-      apiKey: "board-token",
-      companyId: "22222222-2222-4222-8222-222222222222",
+      apiKey: "board-token"
     });
 
     expect(result.actor).toBe("board");
@@ -150,10 +145,10 @@ describe("prompt handoff", () => {
     expect(result.agent.id).toBe("11111111-1111-4111-8111-111111111111");
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://localhost:3100/api/agents/worker?companyId=22222222-2222-4222-8222-222222222222",
+      "http://localhost:3100/api/agents/worker",
     );
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      "http://localhost:3100/api/companies/22222222-2222-4222-8222-222222222222/issues",
+      "http://localhost:3100/api/issues",
     );
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
       assigneeAgentId: "11111111-1111-4111-8111-111111111111",
@@ -179,7 +174,6 @@ describe("prompt handoff", () => {
     const result = await runBoardPrompt("worker", "Follow up on queue lag", {
       apiBase: "http://localhost:3100",
       apiKey: "board-token",
-      companyId: "22222222-2222-4222-8222-222222222222",
       issue: "issue-1",
       wake: false,
     });

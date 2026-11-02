@@ -10,7 +10,6 @@ import {
 function makeRelease(overrides: Partial<CompanySkillVersion> = {}): CompanySkillVersion {
   return {
     id: "v7-roster",
-    companyId: "company-1",
     companySkillId: "skill-1",
     revisionNumber: 7,
     label: "V7 — Roster champion",

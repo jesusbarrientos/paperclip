@@ -114,7 +114,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "codex_local",
       environment: {
         id: "env-1",
@@ -152,7 +151,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "codex_local",
       environment: {
         id: "env-1",
@@ -191,7 +189,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "claude_local",
       environment: {
         id: "env-1",
@@ -227,7 +224,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "claude_local",
       environment: {
         id: "env-1",
@@ -280,7 +276,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
       const target = await resolveEnvironmentExecutionTarget({
         db: {} as never,
-        companyId: "company-1",
         adapterType,
         environment: {
           id: "env-1",
@@ -305,7 +300,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
     for (const driver of ["sandbox", "ssh"] as const) {
       const target = await resolveEnvironmentExecutionTarget({
         db: {} as never,
-        companyId: "company-1",
         adapterType: "process",
         environment: {
           id: "env-1",
@@ -339,7 +333,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "grok_local",
       environment: {
         id: "env-ssh-1",
@@ -375,7 +368,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "kimi_local",
       environment: {
         id: "env-ssh-1",
@@ -411,7 +403,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "codex_local",
       environment: {
         id: "env-ssh-1",
@@ -465,7 +456,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "codex_local",
       environment: { id: "env-1", driver: "sandbox", config: { provider: "fake-plugin" } },
       leaseId: "lease-1",
@@ -514,7 +504,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
 
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "codex_local",
       environment: { id: "env-1", driver: "sandbox", config: { provider: "fake-plugin" } },
       leaseId: "lease-1",
@@ -636,7 +625,6 @@ describe("resolveEnvironmentExecutionTarget", () => {
     };
     const target = await resolveEnvironmentExecutionTarget({
       db: {} as never,
-      companyId: "company-1",
       adapterType: "codex_local",
       environment: { id: "env-1", driver: "sandbox", config: { provider: input.provider } },
       leaseId: "lease-1",

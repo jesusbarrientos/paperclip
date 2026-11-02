@@ -17,7 +17,7 @@ function ConnectExample({ providerId }: { providerId: RemoteMcpProviderId }) {
   const actions: RemoteMcpSetupActions = { edit, navigate: (step) => edit({ step }), connect: explain, cancelConnect: explain,
     openProvider: explain, saveExit: explain, resumeDraft: explain, finish: explain, refresh: explain, reconnect: explain, disconnect: explain,
   };
-  return <RemoteMcpConnectionSetup companyId="" connectionId="design-example" provider={provider} state={state} actions={actions} agents={[]} />;
+  return <RemoteMcpConnectionSetup offline connectionId="design-example" provider={provider} state={state} actions={actions} agents={[]} />;
 }
 
 /** Design-guide specimen; full state matrix is maintained in each provider's Storybook group. */

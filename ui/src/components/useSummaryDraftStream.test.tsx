@@ -39,7 +39,6 @@ function issue(id: string): SummarySlotIssueRef {
 function progressEvent(issueId: string, runId: string): LiveEvent {
   return {
     id: 1,
-    companyId: "company-1",
     type: "heartbeat.run.progress",
     createdAt: "2026-07-15T00:00:00.000Z",
     payload: { issueId, runId },
@@ -49,7 +48,6 @@ function progressEvent(issueId: string, runId: string): LiveEvent {
 function logEvent(runId: string, seq: number, text: string): LiveEvent {
   return {
     id: seq,
-    companyId: "company-1",
     type: "heartbeat.run.log",
     createdAt: `2026-07-15T00:00:0${seq}.000Z`,
     payload: {
@@ -73,7 +71,7 @@ interface Captured {
 const captured: { current: Captured | null } = { current: null };
 
 function Harness({ generatingIssue }: { generatingIssue: SummarySlotIssueRef | null }) {
-  const stream = useSummaryDraftStream("company-1", generatingIssue);
+  const stream = useSummaryDraftStream(generatingIssue);
   captured.current = stream;
   return null;
 }
@@ -151,7 +149,7 @@ describe("useSummaryDraftStream", () => {
 
     // Learn the run id from a progress event.
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent("1", "run-1"));
+      dispatchLiveEventToSubscribers(subscribers, progressEvent("1", "run-1"));
     });
     await flushQueries();
     expect(captured.current?.runId).toBe("run-1");
@@ -159,7 +157,7 @@ describe("useSummaryDraftStream", () => {
     // Stream the whole protocol in 4-char slices.
     await act(async () => {
       for (const event of sliceEvents("run-1", PROTOCOL, 4)) {
-        dispatchLiveEventToSubscribers(subscribers, "company-1", event);
+        dispatchLiveEventToSubscribers(subscribers, event);
       }
     });
     await flushQueries();
@@ -175,12 +173,12 @@ describe("useSummaryDraftStream", () => {
     ({ root } = renderHarness(issue("1"), subscribers));
     await flushQueries();
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent("1", "run-1"));
+      dispatchLiveEventToSubscribers(subscribers, progressEvent("1", "run-1"));
     });
 
     const partial = "<<<SUMMARY-DRAFT>>>\n## Needs you\n- Approve";
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", logEvent("run-1", 1, partial));
+      dispatchLiveEventToSubscribers(subscribers, logEvent("run-1", 1, partial));
     });
     await flushQueries();
 
@@ -193,11 +191,11 @@ describe("useSummaryDraftStream", () => {
     ({ root } = renderHarness(issue("1"), subscribers));
     await flushQueries();
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent("1", "run-1"));
+      dispatchLiveEventToSubscribers(subscribers, progressEvent("1", "run-1"));
     });
 
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", logEvent("run-1", 1, "just prose, no markers here"));
+      dispatchLiveEventToSubscribers(subscribers, logEvent("run-1", 1, "just prose, no markers here"));
     });
     await flushQueries();
 
@@ -211,11 +209,11 @@ describe("useSummaryDraftStream", () => {
     ({ root } = renderHarness(issue("1"), subscribers));
     await flushQueries();
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent("1", "run-1"));
+      dispatchLiveEventToSubscribers(subscribers, progressEvent("1", "run-1"));
     });
 
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", logEvent("run-999", 1, "<<<SUMMARY-DRAFT>>>\nleak"));
+      dispatchLiveEventToSubscribers(subscribers, logEvent("run-999", 1, "<<<SUMMARY-DRAFT>>>\nleak"));
     });
     await flushQueries();
 
@@ -228,13 +226,12 @@ describe("useSummaryDraftStream", () => {
     ({ root, rerender } = renderHarness(issue("1"), subscribers));
     await flushQueries();
     await act(async () => {
-      dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent("1", "run-1"));
+      dispatchLiveEventToSubscribers(subscribers, progressEvent("1", "run-1"));
     });
     await flushQueries();
     await act(async () => {
       dispatchLiveEventToSubscribers(
         subscribers,
-        "company-1",
         logEvent("run-1", 1, "<<<SUMMARY-DRAFT>>>\nold draft\n<<<END-SUMMARY-DRAFT>>>"),
       );
     });

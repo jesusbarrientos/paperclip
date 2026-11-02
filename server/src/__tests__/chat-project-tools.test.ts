@@ -23,24 +23,25 @@ const support = await getEmbeddedPostgresTestSupport();
   it("pages only visible projects and prefilters low-trust agent and run scopes", async () => {
     const f = await server.fixture({ disableWakeOnDemand: true });
     const ids = Array.from({ length: 53 }, (_, i) => `abcdefab-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    const existingIds = (await server.db.select({ id: projects.id }).from(projects)).map(p => p.id);
     await server.db.insert(projects).values(ids.map((id, i) => ({
-      id, companyId: f.companyId, name: `Project ${i}`, status: "in_progress",
+      id, name: `Project ${i}`, status: "in_progress",
       description: "日本語🦀".repeat(5_000), executionWorkspacePolicy: { oversized: "x".repeat(20_000) },
     })));
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
-    const toolInput = { name: "list_projects", apiUrl: server.apiUrl, token, companyId: f.companyId, issueId: f.issueId, agentId: f.agentId, conversation: false };
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    const toolInput = { name: "list_projects", apiUrl: server.apiUrl, token, issueId: f.issueId, agentId: f.agentId, conversation: false };
     const first = await callProjectTool({ ...toolInput, arguments: {} });
     expect(first.projects).toHaveLength(50);
     expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThan(256 * 1024);
     expect(first.projects.find((p: { id: string }) => p.id === ids[0])).toMatchObject({ descriptionTruncated: true });
     expect(first.projects.every((p: object) => !Object.hasOwn(p, "executionWorkspacePolicy") && !Object.hasOwn(p, "workspaces"))).toBe(true);
     const last = await callProjectTool({ ...toolInput, arguments: { cursor: first.nextCursor } });
-    expect([...first.projects, ...last.projects].map((p: { id: string }) => p.id).sort()).toEqual([...ids, f.projectId].sort());
+    expect([...first.projects, ...last.projects].map((p: { id: string }) => p.id).sort()).toEqual([...ids, ...existingIds].sort());
     expect(last.nextCursor).toBeNull();
     // A permitted project beyond the first database batch must remain discoverable.
-    const policy = { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", companyId: f.companyId, projectIds: ids.slice(-2) } } };
+    const policy = { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", projectIds: ids.slice(-2) } } };
     await server.db.update(agents).set({ permissions: policy }).where(eq(agents.id, f.agentId));
-    expect((await projectService(server.db).listSummaries(f.companyId, {
+    expect((await projectService(server.db).listSummaries({
       limit: 51, includeArchived: false, candidateIds: ids.slice(-2),
     })).map(p => p.id)).toEqual(ids.slice(-2));
     const restricted = await callProjectTool({ ...toolInput, arguments: { limit: 1 } });
@@ -57,12 +58,12 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(runRestricted.projects.map((p: { id: string }) => p.id)).toEqual(ids.slice(-2));
     expect(runRestricted.nextCursor).toBeNull();
     // Adding denied projects must not change either the visible page or cursor.
-    await server.db.insert(projects).values({ companyId: f.companyId, name: "Hidden" });
+    await server.db.insert(projects).values({ name: "Hidden" });
     expect(await callProjectTool({ ...toolInput, arguments: {} })).toEqual(runRestricted);
     // Project policy may contribute a root scope, so candidate narrowing must
     // not suppress a project that the full authorization decision permits.
     await server.db.update(projects).set({ executionWorkspacePolicy: {
-      authorizationPolicy: { trustBoundary: { mode: "low_trust_review", companyId: f.companyId, rootIssueId: f.issueId } },
+      authorizationPolicy: { trustBoundary: { mode: "low_trust_review", rootIssueId: f.issueId } },
     } }).where(eq(projects.id, f.projectId));
     const withProjectScope = await callProjectTool({ ...toolInput, arguments: {} });
     expect(withProjectScope.projects.map((p: { id: string }) => p.id).sort()).toEqual([...ids.slice(-2), f.projectId].sort());
@@ -71,7 +72,7 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("allows a conversation reply to enter review without manufacturing a review interaction", async () => {
     const f = await server.fixture({ conversation: true });
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
     const response = await fetch(`${server.apiUrl}/api/issues/${f.issueId}`, {
       method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ status: "in_review", comment: "The plan is ready for our next discussion." }),
@@ -99,15 +100,15 @@ const support = await getEmbeddedPostgresTestSupport();
   it("rejects creation, child helpers, and reparenting under a chat, while retaining legacy children", async () => {
     const f = await server.fixture({ conversation: true });
     const svc = issueService(server.db);
-    await expect(svc.create(f.companyId, { title: "Invalid", parentId: f.issueId })).rejects.toThrow(/cannot have new subtasks/);
+    await expect(svc.create({ title: "Invalid", parentId: f.issueId })).rejects.toThrow(/cannot have new subtasks/);
     await expect(svc.createChild(f.issueId, { title: "Invalid" })).rejects.toThrow(/cannot have new subtasks/);
-    await expect(svc.importIssues(f.companyId, [{
+    await expect(svc.importIssues([{
       id: randomUUID(), ref: "imported", title: "Imported child", parentId: f.issueId,
       projectId: null, projectWorkspaceId: null, description: null, assigneeAgentId: null,
       status: "backlog", priority: "medium", billingCode: null, assigneeAdapterOverrides: null,
       executionWorkspaceSettings: null, labelIds: [], monitorNotes: null, monitorScheduledBy: null,
     }])).rejects.toThrow(/cannot have new subtasks/);
-    const ordinary = await svc.create(f.companyId, { title: "Ordinary" });
+    const ordinary = await svc.create({ title: "Ordinary" });
     await expect(svc.update(ordinary.id, { parentId: f.issueId })).rejects.toThrow(/cannot have new subtasks/);
     await server.db.update(issues).set({ parentId: f.issueId }).where(eq(issues.id, ordinary.id));
     expect(await svc.update(ordinary.id, { title: "Legacy edited", parentId: f.issueId })).toMatchObject({ title: "Legacy edited" });
@@ -117,19 +118,18 @@ const support = await getEmbeddedPostgresTestSupport();
   it("hands off through the same API used by Claude/Codex MCP with the plan present on return", async () => {
     const f = await server.fixture({ conversation: true });
     const result = await callProjectTool({ name: "create_task", arguments: { title: "MCP handoff", projectId: f.projectId, initialPlan: "# Plan\nImplement in the execution task.", idempotencyKey: "mcp" },
-      apiUrl: server.apiUrl, token: createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!,
-      companyId: f.companyId, issueId: f.issueId, agentId: f.agentId, conversation: true });
+      apiUrl: server.apiUrl, token: createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!, issueId: f.issueId, agentId: f.agentId, conversation: true });
     expect(result).toMatchObject({ parentId: null, projectId: f.projectId, assigneeAgentId: f.agentId });
     expect((await documentService(server.db).getIssueDocumentByKey(result.id, "plan"))?.body).toContain("Implement in the execution task");
   });
 
   it("allows low-trust chat handoffs and self-assigned subtasks through both creation endpoints", async () => {
     const f = await server.fixture({ conversation: true, disableWakeOnDemand: true });
-    const policy = { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", companyId: f.companyId, projectIds: [f.projectId] } } };
+    const policy = { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", projectIds: [f.projectId] } } };
     await server.db.update(agents).set({ permissions: policy }).where(eq(agents.id, f.agentId));
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
     const task = await callProjectTool({ name: "create_task", arguments: { title: "Contained MCP handoff", projectId: f.projectId, initialPlan: "Do the requested work", idempotencyKey: "contained-mcp" },
-      apiUrl: server.apiUrl, token, companyId: f.companyId, issueId: f.issueId, agentId: f.agentId, conversation: true });
+      apiUrl: server.apiUrl, token, issueId: f.issueId, agentId: f.agentId, conversation: true });
     expect(task).toMatchObject({ parentId: null, projectId: f.projectId, assigneeAgentId: f.agentId, sourceTrust: { disposition: "quarantined" } });
     expect(task.executionPolicy.authorizationPolicy).toMatchObject({ trustPreset: "low_trust_review", ...policy.authorizationPolicy });
     expect((await documentService(server.db).getIssueDocumentByKey(task.id, "plan"))?.sourceTrust).toMatchObject({ disposition: "quarantined" });
@@ -139,7 +139,7 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(nativeTask.executionPolicy).toMatchObject({ authorizationPolicy: { trustPreset: "low_trust_review", ...policy.authorizationPolicy } });
     expect(nativeTask.sourceTrust).toMatchObject({ disposition: "quarantined" });
 
-    for (const path of [`/api/issues/${task.id}/children`, `/api/companies/${f.companyId}/issues`]) {
+    for (const path of [`/api/issues/${task.id}/children`, `/api/issues`]) {
       const response = await fetch(`${server.apiUrl}${path}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ title: `Self decomposition ${path}`, parentId: task.id, assigneeAgentId: f.agentId, status: "backlog" }),
@@ -153,11 +153,11 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("retains a run-only low-trust boundary on a new task even when standard policy is requested", async () => {
     const f = await server.fixture({ conversation: true, disableWakeOnDemand: true });
-    const executionPolicy = { authorizationPolicy: { trustPreset: "low_trust_review", trustBoundary: { mode: "low_trust_review", companyId: f.companyId, projectIds: [f.projectId] } } };
+    const executionPolicy = { authorizationPolicy: { trustPreset: "low_trust_review", trustBoundary: { mode: "low_trust_review", projectIds: [f.projectId] } } };
     const [run] = await server.db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.runId));
     await server.db.update(heartbeatRuns).set({ contextSnapshot: { ...run.contextSnapshot, executionPolicy } }).where(eq(heartbeatRuns.id, f.runId));
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
-    const response = await fetch(`${server.apiUrl}/api/companies/${f.companyId}/issues`, {
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    const response = await fetch(`${server.apiUrl}/api/issues`, {
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Retain containment", projectId: f.projectId, assigneeAgentId: f.agentId, executionPolicy: { authorizationPolicy: { trustPreset: "standard" } }, status: "backlog" }),
     });
@@ -168,11 +168,11 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("enforces the proposed task scope and assignee before creating any low-trust work", async () => {
     const f = await server.fixture({ disableWakeOnDemand: true });
-    const policy = { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", companyId: f.companyId, projectIds: [f.projectId] } } };
+    const policy = { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", projectIds: [f.projectId] } } };
     await server.db.update(agents).set({ permissions: policy }).where(eq(agents.id, f.agentId));
-    const [outside] = await server.db.insert(projects).values({ companyId: f.companyId, name: "Outside boundary" }).returning();
-    const [otherAgent] = await server.db.insert(agents).values({ companyId: f.companyId, name: "Unauthorized assignee", status: "active" }).returning();
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    const [outside] = await server.db.insert(projects).values({ name: "Outside boundary" }).returning();
+    const [otherAgent] = await server.db.insert(agents).values({ name: "Unauthorized assignee", status: "active" }).returning();
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
     const create = async (path: string, fields: Record<string, unknown>) => {
       const response = await fetch(`${server.apiUrl}${path}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -180,8 +180,8 @@ const support = await getEmbeddedPostgresTestSupport();
       });
       return { status: response.status, body: await response.json() };
     };
-    const before = await server.db.select({ id: issues.id }).from(issues).where(eq(issues.companyId, f.companyId));
-    for (const path of [`/api/companies/${f.companyId}/issues`, `/api/issues/${f.issueId}/children`]) {
+    const before = await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id);
+    for (const path of [`/api/issues`, `/api/issues/${f.issueId}/children`]) {
       for (const fields of [
         { projectId: outside.id },
         { projectId: outside.id, assigneeAgentId: null },
@@ -194,7 +194,7 @@ const support = await getEmbeddedPostgresTestSupport();
         expect(result.body.error).toMatch(/outside.*boundary|cannot assign work to board users|different company/i);
       }
     }
-    const after = await server.db.select({ id: issues.id }).from(issues).where(eq(issues.companyId, f.companyId));
+    const after = await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id);
     expect(after).toEqual(before);
     for (const fields of [{ projectId: outside.id }, { projectId: f.projectId, assigneeActorId: otherAgent.id }]) {
       await expect(call(f, "create_task", { title: "Native scope denial", idempotencyKey: randomUUID(), ...fields })).rejects.toThrow(/outside.*boundary/);
@@ -203,17 +203,17 @@ const support = await getEmbeddedPostgresTestSupport();
     await server.db.update(agents).set({ permissions: { ...policy, authorizationPolicy: {
       ...policy.authorizationPolicy, assignmentPolicy: { mode: "protected" }, protectedAgent: { blockAssignment: true },
     } } }).where(eq(agents.id, f.agentId));
-    const protectedResult = await create(`/api/companies/${f.companyId}/issues`, { projectId: f.projectId });
+    const protectedResult = await create(`/api/issues`, { projectId: f.projectId });
     expect(protectedResult.status, JSON.stringify(protectedResult.body)).toBe(403);
     expect(protectedResult.body.error).toContain("protected-agent policy");
   });
 
   it("allows low-trust root-scoped subtasks without granting descendants of an exact issue scope", async () => {
     const f = await server.fixture({ disableWakeOnDemand: true });
-    const boundary = { mode: "low_trust_review", companyId: f.companyId, rootIssueId: f.issueId };
+    const boundary = { mode: "low_trust_review", rootIssueId: f.issueId };
     await server.db.update(agents).set({ permissions: { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: boundary } } }).where(eq(agents.id, f.agentId));
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
-    for (const path of [`/api/companies/${f.companyId}/issues`, `/api/issues/${f.issueId}/children`]) {
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    for (const path of [`/api/issues`, `/api/issues/${f.issueId}/children`]) {
       const response = await fetch(`${server.apiUrl}${path}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ title: `Root subtask ${randomUUID()}`, parentId: f.issueId, assigneeAgentId: f.agentId, status: "backlog" }),
@@ -224,9 +224,9 @@ const support = await getEmbeddedPostgresTestSupport();
     }
     await expect(call(f, "create_task", { title: "Native root subtask", idempotencyKey: "root-child", status: "backlog" })).resolves.toMatchObject({ task: { parentId: f.issueId, assigneeActorId: f.agentId } });
 
-    const [outside] = await server.db.insert(projects).values({ companyId: f.companyId, name: "Unrelated project" }).returning();
-    const before = await server.db.select({ id: issues.id }).from(issues).where(eq(issues.companyId, f.companyId));
-    for (const path of [`/api/companies/${f.companyId}/issues`, `/api/issues/${f.issueId}/children`]) {
+    const [outside] = await server.db.insert(projects).values({ name: "Unrelated project" }).returning();
+    const before = await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id);
+    for (const path of [`/api/issues`, `/api/issues/${f.issueId}/children`]) {
       const response = await fetch(`${server.apiUrl}${path}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Root cannot escape into another project", parentId: f.issueId,
@@ -236,7 +236,7 @@ const support = await getEmbeddedPostgresTestSupport();
     }
     await expect(call(f, "create_task", { title: "Native root cannot escape", projectId: outside.id,
       idempotencyKey: "root-outside", status: "backlog" })).rejects.toThrow(/outside.*boundary/);
-    expect(await server.db.select({ id: issues.id }).from(issues).where(eq(issues.companyId, f.companyId))).toEqual(before);
+    expect(await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id)).toEqual(before);
 
     await server.db.update(agents).set({ permissions: { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", issueIds: [f.issueId] } } } }).where(eq(agents.id, f.agentId));
     await expect(call(f, "create_task", { title: "Exact scope is not a subtree", idempotencyKey: "exact-child" })).rejects.toThrow(/outside.*boundary/);
@@ -249,13 +249,12 @@ const support = await getEmbeddedPostgresTestSupport();
     await settings.updateExperimental({ enableIsolatedWorkspaces: true });
     try {
       await server.db.update(issues).set({ projectId: null, projectWorkspaceId: null }).where(eq(issues.id, f.issueId));
-      const [executionWorkspace] = await server.db.insert(executionWorkspaces).values({ companyId: f.companyId,
-        projectId: f.projectId, projectWorkspaceId: f.projectWorkspaceId, mode: "shared", strategyType: "project_primary", name: "Outside root" }).returning();
-      const boundary = { mode: "low_trust_review", companyId: f.companyId, rootIssueId: f.issueId };
+      const [executionWorkspace] = await server.db.insert(executionWorkspaces).values({ projectId: f.projectId, projectWorkspaceId: f.projectWorkspaceId, mode: "shared", strategyType: "project_primary", name: "Outside root" }).returning();
+      const boundary = { mode: "low_trust_review", rootIssueId: f.issueId };
       await server.db.update(agents).set({ permissions: { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: boundary } } }).where(eq(agents.id, f.agentId));
-      const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
-      const before = await server.db.select({ id: issues.id }).from(issues).where(eq(issues.companyId, f.companyId));
-      const paths = [`/api/companies/${f.companyId}/issues`, `/api/issues/${f.issueId}/children`];
+      const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+      const before = await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id);
+      const paths = [`/api/issues`, `/api/issues/${f.issueId}/children`];
       const selections = [{ projectWorkspaceId: f.projectWorkspaceId }, { executionWorkspaceId: executionWorkspace.id },
         { inheritExecutionWorkspaceFromIssueId: f.blockerId }];
       const create = async (path: string, selection: Record<string, string>) => {
@@ -273,7 +272,7 @@ const support = await getEmbeddedPostgresTestSupport();
           expect(response.status, JSON.stringify(response.body)).toBe(403);
         }
       }
-      expect(await server.db.select({ id: issues.id }).from(issues).where(eq(issues.companyId, f.companyId))).toEqual(before);
+      expect(await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id)).toEqual(before);
 
       await server.db.update(agents).set({ permissions: { trustPreset: "low_trust_review", authorizationPolicy: {
         trustBoundary: { ...boundary, projectIds: [f.projectId] },
@@ -296,25 +295,26 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await server.fixture({ conversation: true, disableWakeOnDemand: true });
     await server.db.update(agents).set({ permissions: { trustPreset: "low_trust_review", authorizationPolicy: { trustBoundary: { mode: "low_trust_review", projectIds: [f.projectId] } } } }).where(eq(agents.id, f.agentId));
     await server.db.update(companyMemberships).set({ membershipRole: "viewer" }).where(eq(companyMemberships.principalId, f.responsibleUserId!));
+    const before = await server.db.select({ id: issues.id }).from(issues).orderBy(issues.id);
     await expect(call(f, "create_task", { title: "Viewer cannot assign", projectId: f.projectId, idempotencyKey: "viewer-denied" })).rejects.toThrow();
-    expect(await server.db.select().from(issues).where(eq(issues.companyId, f.companyId))).toHaveLength(2);
+    expect(await server.db.select({ id: issues.id }).from(issues)).toHaveLength(before.length);
   });
 
   it("does not reuse an out-of-scope task through a title or idempotency collision", async () => {
     const f = await server.fixture({ disableWakeOnDemand: true });
-    const [outside] = await server.db.insert(projects).values({ companyId: f.companyId, name: "Private project" }).returning();
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.responsibleUserId)!;
+    const [outside] = await server.db.insert(projects).values({ name: "Private project" }).returning();
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.responsibleUserId)!;
     for (const parentId of [null, f.issueId]) {
       const key = randomUUID();
       const title = `Existing private work ${randomUUID()}`;
-      const existing = await issueService(server.db).create(f.companyId, { projectId: outside.id, parentId,
+      const existing = await issueService(server.db).create({ projectId: outside.id, parentId,
         title, description: "Private contents", assigneeAgentId: f.agentId, status: "backlog", idempotencyKey: key });
       for (const allowed of [false, true]) {
         await server.db.update(agents).set({ permissions: { trustPreset: "low_trust_review", authorizationPolicy: {
           trustBoundary: { mode: "low_trust_review", projectIds: [f.projectId, ...(allowed ? [outside.id] : [])] },
         } } }).where(eq(agents.id, f.agentId));
         for (const collision of [{ idempotencyKey: key, title: "Different proposed task" }, { title }]) {
-          const response = await fetch(`${server.apiUrl}/api/companies/${f.companyId}/issues`, {
+          const response = await fetch(`${server.apiUrl}/api/issues`, {
             method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
             body: JSON.stringify({ projectId: f.projectId, parentId, assigneeAgentId: f.agentId, status: "backlog", ...collision }),
           });
@@ -332,7 +332,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await server.fixture();
     const result = await call(f, "create_task", { title: "Delegate ordinary work", idempotencyKey: "child" }) as any;
     expect(result.task.parentId).toBe(f.issueId);
-    expect(await issueService(server.db).create(f.companyId, { title: "No project needed" })).toMatchObject({ projectId: null });
+    expect(await issueService(server.db).create({ title: "No project needed" })).toMatchObject({ projectId: null });
   });
 
   it("creates a project once through the production API and records it on the source feed", async () => {

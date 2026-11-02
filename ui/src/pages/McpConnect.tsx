@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Globe, Paperclip } from "lucide-react";
 import { Link, useParams } from "@/lib/router";
@@ -44,23 +44,17 @@ export function McpDevicePage({ initialCode }: { initialCode?: string } = {}) {
 }
 
 function McpConnectRequest({ id, device = false, onEditCode }: { id: string; device?: boolean; onEditCode?: () => void }) {
-  const [companyId, setCompanyId] = useState("");
   const [writeEnabled, setWriteEnabled] = useState(true);
   const [deviceResult, setDeviceResult] = useState<"approved" | "denied" | null>(null);
   const request = useQuery({ queryKey: [device ? "mcp-device" : "mcp-request", id], queryFn: () => api.get<McpConnectionRequest>(device ? `/mcp/device?user_code=${encodeURIComponent(id)}` : `/mcp/requests/${encodeURIComponent(id)}`), retry: false });
   const data = request.data;
-  const selectedCompanyId = data?.requestedCompanyId ?? (companyId || data?.companies[0]?.id || "");
-  // Pin the default once loaded so a refetch cannot silently switch organizations.
-  useEffect(() => {
-    if (!companyId && !data?.requestedCompanyId && data?.companies[0]) setCompanyId(data.companies[0].id);
-  }, [companyId, data]);
   const clientName = data?.clientName.trim();
   const assistantName = clientName && !/^(assistant|mcp client)$/i.test(clientName) ? clientName : "your assistant";
   const clientOrigin = data?.clientOrigin || data?.redirectOrigin;
-  const company = data?.companies.find((item) => item.id === selectedCompanyId);
+  const company = data?.companies[0];
   const allowWrites = Boolean(data?.requestedWrite && company?.canWrite && writeEnabled);
   const consent = useMutation({
-    mutationFn: (decision: "approve" | "deny") => api.post<{ redirectUrl?: string; status?: "approved" | "denied" }>(device ? "/mcp/device/consent" : `/mcp/requests/${encodeURIComponent(id)}/consent`, { decision, companyId: selectedCompanyId || undefined, allowWrites: decision === "approve" && allowWrites, ...(device ? { userCode: id } : {}) }),
+    mutationFn: (decision: "approve" | "deny") => api.post<{ redirectUrl?: string; status?: "approved" | "denied" }>(device ? "/mcp/device/consent" : `/mcp/requests/${encodeURIComponent(id)}/consent`, { decision, allowWrites: decision === "approve" && allowWrites, ...(device ? { userCode: id } : {}) }),
     onSuccess: ({ redirectUrl, status }) => { if (device && status) setDeviceResult(status); else if (redirectUrl) window.location.assign(redirectUrl); },
   });
   if (deviceResult) return <div className="mx-auto max-w-xl py-10"><Card className="block space-y-4 p-6"><Paperclip className="size-8" /><h1 className="text-xl font-semibold">{deviceResult === "approved" ? "Access approved" : "Connection declined"}</h1><p className="text-sm">{deviceResult === "approved" ? "Return to your assistant. It will finish connecting automatically." : "No access was granted. You can start a new connection from your assistant."}</p><Button variant="outline" asChild><Link to="/">Back to Paperclip</Link></Button></Card></div>;
@@ -79,21 +73,13 @@ function McpConnectRequest({ id, device = false, onEditCode }: { id: string; dev
       {device && request.error && <Button variant="outline" onClick={onEditCode}>Enter a different code</Button>}
       {data && <>
         {data.requiresSignIn ? <Button asChild><Link to={`/auth?next=${encodeURIComponent(returnPath)}`}>Sign in / Create account</Link></Button> : <>
-          {data.requestedCompanyId ? <div className="flex items-center gap-4 rounded-md border border-border p-4">
+          <div className="flex items-center gap-4 rounded-md border border-border p-4">
             {company && <CompanyPatternIcon companyName={company.name} logoUrl={company.logoUrl} className="size-14 shrink-0 rounded-lg text-xl" />}
             <div className="min-w-0 space-y-1">
               <p className="text-xs text-muted-foreground">Organization</p>
-              {company ? <p className="break-words text-lg font-semibold">{company.name}</p> : <p className="text-sm text-destructive">The selected organization is no longer available to this account. Cancel and reconnect from your assistant to choose an organization you can access.</p>}
+              {company ? <p className="break-words text-lg font-semibold">{company.name}</p> : <p className="text-sm text-muted-foreground">This account has no access to the organization. Ask an organization owner to add you, then reconnect from your assistant.</p>}
             </div>
-          </div> : <fieldset className="space-y-2" disabled={consent.isPending}>
-            <legend className="mb-2 text-sm font-medium">Organization</legend>
-            {data.companies.map((item) => <label key={item.id} className="flex items-center gap-3 rounded-md border border-border p-3 text-sm">
-              <input type="radio" name="company" aria-label={item.name} value={item.id} checked={selectedCompanyId === item.id} onChange={() => setCompanyId(item.id)} />
-              <CompanyPatternIcon companyName={item.name} logoUrl={item.logoUrl} className="size-12 shrink-0 rounded-lg" />
-              <span className="min-w-0 break-words font-medium">{item.name}</span>
-            </label>)}
-            {!data.companies.length && <p className="text-sm text-muted-foreground">This account has no available organizations. Ask an organization owner to add you, then reconnect from your assistant.</p>}
-          </fieldset>}
+          </div>
           <p className="text-sm">Read all of your Paperclip data</p>
           {data.requestedWrite && <label htmlFor="mcp-allow-writes" className="flex items-start gap-3 text-sm leading-6">
             <span className="flex h-6 shrink-0 items-center">

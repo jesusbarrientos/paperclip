@@ -64,7 +64,6 @@ const ENTITY_TYPES: { value: string; label: string }[] = [
 export type AuditFeedMode = "all" | "agents";
 
 export interface AuditFeedProps {
-  companyId: string;
   /**
    * When set, the feed is pinned to a single agent (per-agent Audit tab) — the
    * agent filter is hidden and every query/export carries this agentId.
@@ -280,7 +279,6 @@ function AuditUpsell() {
 }
 
 export function AuditFeed({
-  companyId,
   lockedAgentId,
   lockedRunId,
   lockedEntity,
@@ -306,12 +304,12 @@ export function AuditFeed({
   const [downgradeRecoveryAttempted, setDowngradeRecoveryAttempted] = useState(false);
 
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const userDirectory = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(companyId),
-    queryFn: () => accessApi.listUserDirectory(companyId),
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
     retry: false,
   });
 
@@ -355,7 +353,7 @@ export function AuditFeed({
   );
 
   const feed = useInfiniteQuery({
-    queryKey: queryKeys.audit.agentActions(companyId, {
+    queryKey: queryKeys.audit.agentActions({
       actorScope: filters.actorScope,
       agentId: filters.agentId,
       runId: filters.runId,
@@ -367,7 +365,7 @@ export function AuditFeed({
       to: filters.to,
     }),
     queryFn: ({ pageParam }) =>
-      auditApi.listAgentActions(companyId, { ...filters, limit: PAGE_SIZE, cursor: pageParam ?? undefined }),
+      auditApi.listAgentActions({ ...filters, limit: PAGE_SIZE, cursor: pageParam ?? undefined }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     retry: (count, error) => !(error instanceof ApiError && error.status === 403) && count < 2,
@@ -459,7 +457,7 @@ export function AuditFeed({
   const handleExport = async () => {
     setExporting(true);
     try {
-      const blob = await auditApi.exportAgentActionsCsv(companyId, {
+      const blob = await auditApi.exportAgentActionsCsv({
         actorScope: filters.actorScope,
         agentId: filters.agentId,
         runId: filters.runId,
@@ -473,7 +471,7 @@ export function AuditFeed({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${resolvedMode === "agents" ? "agent-audit" : "activity"}-${companyId}.csv`;
+      link.download = `${resolvedMode === "agents" ? "agent-audit" : "activity"}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();

@@ -79,7 +79,7 @@ The UI prompt points Hermes at the same machine-readable onboarding endpoints:
 For CLI-driven setup, create and inspect the invite directly:
 
 ```sh
-npx paperclipai invite create --company-id <company-id> --payload-json '{"requestType":"agent"}'
+npx paperclipai invite create --payload-json '{"requestType":"agent"}'
 npx paperclipai invite show <token>
 npx paperclipai invite onboarding:text <token>
 ```
@@ -119,8 +119,8 @@ After Hermes submits the join request:
 2. Approve it from the board UI, or use:
 
    ```sh
-   npx paperclipai join list --company-id <company-id> --status pending_approval
-   npx paperclipai join approve <request-id> --company-id <company-id>
+   npx paperclipai join list --status pending_approval
+   npx paperclipai join approve <request-id>
    ```
 
 3. Hermes claims the one-time agent API key:

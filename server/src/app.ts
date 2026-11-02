@@ -164,7 +164,7 @@ import {
   createCoalescedAsyncTrigger,
   isChatPublicationCommitSignal,
 } from "./services/chat-publication-reconciliation.js";
-import { subscribeAllCompanyLiveEvents } from "./services/live-events.js";
+import { subscribeLiveEvents } from "./services/live-events.js";
 import { heartbeatService } from "./services/heartbeat.js";
 import { pluginLifecycleManager } from "./services/plugin-lifecycle.js";
 import { createPluginJobCoordinator } from "./services/plugin-job-coordinator.js";
@@ -474,7 +474,6 @@ export async function createApp(
     storageService: StorageService;
     feedbackExportService?: {
       flushPendingFeedbackTraces(input?: {
-        companyId?: string;
         traceId?: string;
         limit?: number;
         now?: Date;
@@ -678,7 +677,7 @@ export async function createApp(
   api.use("/health", health);
   api.use(openApiRoutes());
   api.use("/cloud", cloudRoutes());
-  api.use("/companies", companyRoutes(db, opts.storageService));
+  api.use("/organization", companyRoutes(db, opts.storageService));
   api.use(organizationRoutes(db));
   api.use(llmRoutes(db));
   api.use(folderRoutes(db));
@@ -1222,7 +1221,7 @@ export async function createApp(
       logger.error({ err, lane }, `Failed to reconcile chat ${lane}`);
     },
   });
-  const unsubscribeChatPublicationSignals = subscribeAllCompanyLiveEvents(
+  const unsubscribeChatPublicationSignals = subscribeLiveEvents(
     (event) => {
       if (!isWarmStandby() && isChatPublicationCommitSignal(event))
         chatReconciliation.notifyPublications();

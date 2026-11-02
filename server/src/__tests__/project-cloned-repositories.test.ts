@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listProjectClonedRepositories } from "../services/project-cloned-repositories.js";
 
-const base = { companyId: "company-1", projectId: "project-1" };
+const base = { projectId: "project-1" };
 let root: string;
 
 function git(cwd: string, ...args: string[]) {
@@ -64,6 +64,6 @@ describe("listProjectClonedRepositories", () => {
       { ...base, id: "ws-managed", name: "acme/svc", cwd: "/__paperclip_repo_only__", repoUrl: "https://github.com/acme/svc.git" },
     ]);
     expect(result.location).toBe("managed");
-    expect(result.path).toMatch(/projects[\\/]company-1[\\/]project-1[\\/]svc$/);
+    expect(result.path).toMatch(/projects[\\/]project-1[\\/]svc$/);
   });
 });

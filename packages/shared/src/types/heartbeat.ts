@@ -64,7 +64,6 @@ export interface ProviderTraceMetadata {
   schema: "paperclip.provider_trace_metadata.v1";
   id: string;
   runId: string;
-  companyId: string;
   status: ProviderTraceStatus;
   provider: string;
   frameCount: number;
@@ -156,7 +155,6 @@ export interface GitWorktreeBranchIncoherenceEvidence {
 export interface HeartbeatRun {
   execution?: import("./execution-projection.js").ExecutionProjection | null;
   id: string;
-  companyId: string;
   agentId: string;
   invocationSource: HeartbeatInvocationSource;
   triggerDetail: WakeupTriggerDetail | null;
@@ -291,7 +289,6 @@ export interface ChatFailedRunRetryResponse {
 
 export interface HeartbeatRunEvent {
   id: number;
-  companyId: string;
   runId: string;
   agentId: string;
   seq: number;
@@ -306,7 +303,6 @@ export interface HeartbeatRunEvent {
 
 export interface AgentRuntimeState {
   agentId: string;
-  companyId: string;
   adapterType: string;
   sessionId: string | null;
   sessionDisplayId?: string | null;
@@ -325,7 +321,6 @@ export interface AgentRuntimeState {
 
 export interface AgentTaskSession {
   id: string;
-  companyId: string;
   agentId: string;
   adapterType: string;
   taskKey: string;
@@ -339,7 +334,6 @@ export interface AgentTaskSession {
 
 export interface AgentWakeupRequest {
   id: string;
-  companyId: string;
   agentId: string;
   source: HeartbeatInvocationSource;
   triggerDetail: WakeupTriggerDetail | null;
@@ -361,7 +355,6 @@ export interface AgentWakeupRequest {
 
 export interface InstanceSchedulerHeartbeatAgent {
   id: string;
-  companyId: string;
   companyName: string;
   companyIssuePrefix: string;
   agentName: string;

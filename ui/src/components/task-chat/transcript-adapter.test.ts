@@ -64,7 +64,6 @@ describe("accepted native response-wake answers", () => {
     ) =>
       ({
         id: seq,
-        companyId: "company-1",
         agentId: "agent-1",
         stream: "system",
         level: "info",

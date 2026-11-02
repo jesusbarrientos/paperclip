@@ -43,8 +43,6 @@ import { logger } from "../middleware/logger.js";
  */
 const OPERATION_CAPABILITIES: Record<string, readonly PluginCapability[]> = {
   // Data read operations
-  "companies.list": ["companies.read"],
-  "companies.get": ["companies.read"],
   "projects.list": ["projects.read"],
   "projects.get": ["projects.read"],
   "projects.managed.get": ["projects.managed"],
@@ -164,7 +162,6 @@ const UI_SLOT_CAPABILITIES: Record<PluginUiSlotType, PluginCapability> = {
   dashboardWidget: "ui.dashboardWidget.register",
   globalToolbarButton: "ui.action.register",
   appShellOverlay: "ui.action.register",
-  organizationSwitcher: "ui.sidebar.register",
   toolbarButton: "ui.action.register",
   contextMenuItem: "ui.action.register",
   commentAnnotation: "ui.commentAnnotation.register",

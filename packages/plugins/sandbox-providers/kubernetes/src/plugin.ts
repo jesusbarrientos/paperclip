@@ -46,7 +46,6 @@ import {
   parseScopedNetworkEgressGrant,
 } from "./scoped-network-egress.js";
 import {
-  deriveCompanySlug,
   deriveNamespaceName,
   newRunUlidDns,
   paperclipLabels,
@@ -70,11 +69,8 @@ const DEFAULT_RESOURCE_QUOTA = {
   limitsMemory: "40Gi",
 };
 
-function deriveTenantNamespace(config: KubernetesProviderConfig, companyId: string): string {
-  // TODO: future versions could thread companyName through AcquireLeaseParams
-  // to get a friendlier slug (e.g. "acme-corp") instead of the UUID-derived one.
-  const slug = config.companySlug ?? deriveCompanySlug(companyId);
-  return deriveNamespaceName(config.namespacePrefix, slug);
+function deriveTenantNamespace(config: KubernetesProviderConfig): string {
+  return deriveNamespaceName(config.namespacePrefix, config.namespaceSlug);
 }
 
 function generateBootstrapToken(): string {
@@ -152,7 +148,7 @@ async function resolveSyncPodExec(
   const namespace =
     typeof lease.metadata?.namespace === "string"
       ? lease.metadata.namespace
-      : deriveTenantNamespace(config, params.companyId);
+      : deriveTenantNamespace(config);
 
   const leaseBackend =
     typeof lease.metadata?.backend === "string"
@@ -252,7 +248,7 @@ const plugin = definePlugin({
       };
     }
     const config = parsed.data;
-    const namespace = deriveTenantNamespace(config, params.companyId);
+    const namespace = deriveTenantNamespace(config);
 
     try {
       const kc = createKubeConfig({
@@ -300,7 +296,7 @@ const plugin = definePlugin({
     },
   ): Promise<PluginEnvironmentLease> {
     const config = kubernetesProviderConfigSchema.parse(params.config);
-    const namespace = deriveTenantNamespace(config, params.companyId);
+    const namespace = deriveTenantNamespace(config);
 
     // The adapter for THIS run is the agent's adapter (params.adapterType) when
     // supplied, so one environment can serve mixed harnesses; otherwise fall back
@@ -338,7 +334,6 @@ const plugin = definePlugin({
 
     await ensureTenant(clients, {
       namespace,
-      companyId: params.companyId,
       paperclipServerNamespace: PAPERCLIP_SERVER_NAMESPACE,
       serviceAccountAnnotations: config.serviceAccountAnnotations,
       egressMode: config.egressMode,
@@ -355,7 +350,6 @@ const plugin = definePlugin({
     const labels = paperclipLabels({
       runId: params.runId,
       agentId: params.runId,
-      companyId: params.companyId,
       adapterType: effectiveAdapterType,
     });
 
@@ -475,7 +469,7 @@ const plugin = definePlugin({
     const namespace =
       typeof params.leaseMetadata?.namespace === "string"
         ? params.leaseMetadata.namespace
-        : deriveTenantNamespace(config, params.companyId);
+        : deriveTenantNamespace(config);
     const leaseBackend =
       typeof params.leaseMetadata?.backend === "string"
         ? (params.leaseMetadata.backend as "sandbox-cr" | "job")
@@ -577,7 +571,7 @@ const plugin = definePlugin({
     const namespace =
       typeof params.leaseMetadata?.namespace === "string"
         ? params.leaseMetadata.namespace
-        : deriveTenantNamespace(config, params.companyId);
+        : deriveTenantNamespace(config);
 
     const kc = createKubeConfig({
       inCluster: config.inCluster,
@@ -616,7 +610,7 @@ const plugin = definePlugin({
     const namespace =
       typeof params.leaseMetadata?.namespace === "string"
         ? params.leaseMetadata.namespace
-        : deriveTenantNamespace(config, params.companyId);
+        : deriveTenantNamespace(config);
     const leaseBackend =
       typeof params.leaseMetadata?.backend === "string"
         ? (params.leaseMetadata.backend as "sandbox-cr" | "job")
@@ -674,7 +668,7 @@ const plugin = definePlugin({
     const namespace =
       typeof lease.metadata?.namespace === "string"
         ? lease.metadata.namespace
-        : deriveTenantNamespace(config, params.companyId);
+        : deriveTenantNamespace(config);
 
     // Determine which backend this lease was created with.
     const leaseBackend =

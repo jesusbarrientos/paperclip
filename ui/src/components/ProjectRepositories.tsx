@@ -25,15 +25,15 @@ export function ProjectRepositories({ project }: { project: Project }) {
         client.setQueriesData({ queryKey: queryKeys.projects.detail(ref) }, updated);
         void client.invalidateQueries({ queryKey: queryKeys.projects.detail(ref) });
       }
-      void client.invalidateQueries({ queryKey: queryKeys.projects.all(project.companyId) });
+      void client.invalidateQueries({ queryKey: queryKeys.projects.all() });
       void client.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
       setDraft(null);
     },
   });
   return <section aria-label="Repositories" className="flex min-w-0 flex-col gap-4 py-4">
-    <ProjectRepositoryInput companyId={project.companyId} selected={draft ?? saved} onChange={(repos) => { setDraft(repos); save.reset(); }} onConnect={() => setConnecting(true)} disabled={save.isPending} />
+    <ProjectRepositoryInput selected={draft ?? saved} onChange={(repos) => { setDraft(repos); save.reset(); }} onConnect={() => setConnecting(true)} disabled={save.isPending} />
     {project.workspaces.filter((workspace) => workspace.repoUrl && !workspace.metadata?.githubRepositoryId).map((workspace) => <LegacyProjectRepository key={workspace.id} workspace={workspace} projectRef={project.urlKey} />)}
-    <ProjectClonedRepositories projectId={project.id} companyId={project.companyId} />
+    <ProjectClonedRepositories projectId={project.id} />
     <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
       {save.isError && <p role="alert" className="mr-auto text-sm text-destructive">{save.error.message}</p>}
       {save.isSuccess && <span role="status" className="mr-auto text-sm text-muted-foreground">Changes saved</span>}
@@ -43,7 +43,7 @@ export function ProjectRepositories({ project }: { project: Project }) {
     <Dialog open={connecting} onOpenChange={setConnecting}><DialogContent showCloseButton={false} aria-describedby={undefined} className="max-h-(--sz-calc-18) overflow-y-auto sm:max-w-2xl">
       <DialogTitle className="sr-only">Connect GitHub</DialogTitle>
       <ConnectionSetupFlow host="dialog" serviceSlug="github" forceNewConnection onCancel={() => setConnecting(false)} onComplete={() => {
-        void client.invalidateQueries({ queryKey: repositoryOptionsKey(project.companyId) });
+        void client.invalidateQueries({ queryKey: repositoryOptionsKey() });
         setConnecting(false);
       }} />
     </DialogContent></Dialog>

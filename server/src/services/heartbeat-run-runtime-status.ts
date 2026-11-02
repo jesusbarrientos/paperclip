@@ -7,7 +7,6 @@ export const MAX_HEARTBEAT_RUN_RUNTIME_TOOL_NAME_CHARS = 80;
 export const MAX_HEARTBEAT_RUN_RUNTIME_ASSISTANT_SNIPPET_CHARS = 220;
 
 export interface HeartbeatRunRuntimeStatus {
-  companyId: string;
   issueId: string | null;
   agentId: string;
   runId: string;
@@ -71,7 +70,6 @@ export function setHeartbeatRunRuntimeStatus(
   }
 
   const status: HeartbeatRunRuntimeStatus = {
-    companyId: input.companyId,
     issueId: input.issueId,
     agentId: input.agentId,
     runId: input.runId,
@@ -98,7 +96,6 @@ export function setHeartbeatRunRuntimeStatus(
  * fallback `run_activity` status is created instead.
  */
 export function touchHeartbeatRunRuntimeStatus(input: {
-  companyId: string;
   issueId: string | null;
   agentId: string;
   runId: string;
@@ -109,9 +106,8 @@ export function touchHeartbeatRunRuntimeStatus(input: {
   const at = input.at ?? new Date();
   const existing = runtimeStatusesByRunId.get(input.runId);
   if (
-    existing &&
-    !isExpired(existing, at, HEARTBEAT_RUN_RUNTIME_STATUS_TTL_MS) &&
-    existing.companyId === input.companyId &&
+    (existing &&
+          !isExpired(existing, at, HEARTBEAT_RUN_RUNTIME_STATUS_TTL_MS)) &&
     existing.agentId === input.agentId
   ) {
     if (at.getTime() > existing.updatedAt.getTime()) {
@@ -123,7 +119,6 @@ export function touchHeartbeatRunRuntimeStatus(input: {
     return cloneStatus(existing);
   }
   return setHeartbeatRunRuntimeStatus({
-    companyId: input.companyId,
     issueId: input.issueId,
     agentId: input.agentId,
     runId: input.runId,
@@ -137,7 +132,6 @@ export function touchHeartbeatRunRuntimeStatus(input: {
 export function getHeartbeatRunRuntimeStatus(
   runId: string,
   expected?: {
-    companyId?: string | null;
     issueId?: string | null;
     agentId?: string | null;
     now?: Date;
@@ -154,7 +148,6 @@ export function getHeartbeatRunRuntimeStatus(
     return null;
   }
 
-  if (expected?.companyId !== undefined && status.companyId !== expected.companyId) return null;
   if (expected?.issueId !== undefined && status.issueId !== expected.issueId) return null;
   if (expected?.agentId !== undefined && status.agentId !== expected.agentId) return null;
 

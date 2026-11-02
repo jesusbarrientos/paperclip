@@ -2,7 +2,7 @@ import type { ExecutionWorkspace } from "@paperclipai/shared";
 import { afterEach, expect, it, vi } from "vitest";
 import { createWorkspaceGitInspectionCache } from "../services/workspace-git-inspection-cache.js";
 
-const workspace = { id: "workspace", companyId: "company", cwd: "/repo", baseRef: "master" } as ExecutionWorkspace;
+const workspace = { id: "workspace", cwd: "/repo", baseRef: "master" } as ExecutionWorkspace;
 afterEach(() => vi.useRealTimers());
 
 it("coalesces concurrent display reads and expires after five seconds", async () => {
@@ -21,15 +21,14 @@ it("coalesces concurrent display reads and expires after five seconds", async ()
   expect(inspect).toHaveBeenCalledTimes(3);
 });
 
-it("does not share results across companies, paths, base refs or workspace revisions", async () => {
+it("does not share results across paths, base refs or workspace revisions", async () => {
   const inspect = vi.fn(async () => null);
   const read = createWorkspaceGitInspectionCache(inspect);
   await read(workspace);
-  await read({ ...workspace, companyId: "other" });
   await read({ ...workspace, cwd: "/other" });
   await read({ ...workspace, baseRef: "other" });
   await read({ ...workspace, updatedAt: new Date() });
-  expect(inspect).toHaveBeenCalledTimes(5);
+  expect(inspect).toHaveBeenCalledTimes(4);
 });
 
 it("retries failed inspections and bounds retained entries", async () => {

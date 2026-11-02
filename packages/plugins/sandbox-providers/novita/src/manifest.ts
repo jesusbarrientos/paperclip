@@ -30,7 +30,7 @@ const manifest: PaperclipPluginManifestV1 = {
             type: "string",
             format: "secret-ref",
             description:
-              "Environment-specific Novita API key. Paste a key or an existing Paperclip secret reference; saved environments store pasted values as company secrets. Falls back to NOVITA_API_KEY if omitted.",
+              "Environment-specific Novita API key. Paste a key or an existing Paperclip secret reference; saved environments store pasted values as Paperclip secrets. Falls back to NOVITA_API_KEY if omitted.",
           },
           domain: {
             type: "string",

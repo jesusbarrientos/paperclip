@@ -19,7 +19,6 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       executionWorkspaces: [{
         id: "workspace-1",
-        companyId: "company-1",
         projectId: "project-1",
         projectWorkspaceId: "project-workspace-1",
         path: "/tmp/paperclip-test",
@@ -32,13 +31,12 @@ describe("plugin SDK test harness", () => {
       }],
     });
 
-    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "company-1")).resolves.toMatchObject({
+    await expect(harness.ctx.executionWorkspaces.get("workspace-1")).resolves.toMatchObject({
       id: "workspace-1",
       cwd: "/tmp/paperclip-test",
       branchName: "feature/test",
       providerMetadata: { sandboxId: "sandbox-1" },
     });
-    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "company-2")).resolves.toBeNull();
   });
 
   it("requires execution.workspaces.read before returning workspace metadata", async () => {
@@ -55,7 +53,7 @@ describe("plugin SDK test harness", () => {
     };
     const harness = createTestHarness({ manifest });
 
-    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "company-1")).rejects.toThrow(
+    await expect(harness.ctx.executionWorkspaces.get("workspace-1")).rejects.toThrow(
       "missing required capability 'execution.workspaces.read'",
     );
   });
@@ -78,7 +76,7 @@ describe("plugin SDK test harness", () => {
     };
     const harness = createTestHarness({ manifest });
 
-    await expect(harness.ctx.skills.managed.reset("unknown-skill", "company-1")).rejects.toThrow(
+    await expect(harness.ctx.skills.managed.reset("unknown-skill")).rejects.toThrow(
       "missing required capability 'skills.managed'",
     );
   });
@@ -97,13 +95,13 @@ describe("plugin SDK test harness", () => {
     };
     const harness = createTestHarness({ manifest });
 
-    await expect(harness.ctx.access.members.list({ companyId: "company-1" })).rejects.toThrow(
+    await expect(harness.ctx.access.members.list({ })).rejects.toThrow(
       "missing required capability 'access.members.read'",
     );
-    await expect(harness.ctx.authorization.grants.list({ companyId: "company-1" })).rejects.toThrow(
+    await expect(harness.ctx.authorization.grants.list({ })).rejects.toThrow(
       "missing required capability 'authorization.grants.read'",
     );
-    await expect(harness.ctx.authorization.audit.search({ companyId: "company-1" })).rejects.toThrow(
+    await expect(harness.ctx.authorization.audit.search({ })).rejects.toThrow(
       "missing required capability 'authorization.audit.read'",
     );
   });
@@ -124,14 +122,12 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       issues: [{
         id: "issue-1",
-        companyId: "company-1",
         title: "Comment redaction",
         status: "todo",
         priority: "medium",
       }],
       issueComments: [{
         id: "comment-1",
-        companyId: "company-1",
         issueId: "issue-1",
         authorType: "user",
         authorAgentId: null,
@@ -147,7 +143,7 @@ describe("plugin SDK test harness", () => {
       }],
     });
 
-    const comments = await harness.ctx.issues.listComments("issue-1", "company-1");
+    const comments = await harness.ctx.issues.listComments("issue-1");
 
     expect(comments).toHaveLength(1);
     expect(comments[0]).toMatchObject({
@@ -177,7 +173,6 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       issues: [{
         id: "issue-1",
-        companyId: "company-1",
         title: "Human attribution",
         status: "todo",
         priority: "medium",
@@ -187,7 +182,6 @@ describe("plugin SDK test harness", () => {
       // plugin test cannot pass an attribution production would reject.
       accessMembers: [{
         id: "member-suspended",
-        companyId: "company-1",
         principalType: "user",
         principalId: "user-1",
         status: "suspended",
@@ -199,8 +193,8 @@ describe("plugin SDK test harness", () => {
     });
 
     await expect(
-      harness.ctx.issues.createComment("issue-1", "relayed reply", "company-1", { actorUserId: "user-1" }),
-    ).rejects.toThrow('actorUserId "user-1" is not an active human member of this company');
+      harness.ctx.issues.createComment("issue-1", "relayed reply", { actorUserId: "user-1" }),
+    ).rejects.toThrow('actorUserId "user-1" is not an active human member');
   });
 
   it("rejects a human-attributed comment when the actorUserId is a viewer-role (read-only) member", async () => {
@@ -222,14 +216,12 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       issues: [{
         id: "issue-1",
-        companyId: "company-1",
         title: "Human attribution",
         status: "todo",
         priority: "medium",
       }],
       accessMembers: [{
         id: "member-viewer",
-        companyId: "company-1",
         principalType: "user",
         principalId: "user-1",
         status: "active",
@@ -241,7 +233,7 @@ describe("plugin SDK test harness", () => {
     });
 
     await expect(
-      harness.ctx.issues.createComment("issue-1", "relayed reply", "company-1", { actorUserId: "user-1" }),
+      harness.ctx.issues.createComment("issue-1", "relayed reply", { actorUserId: "user-1" }),
     ).rejects.toThrow("viewer (read-only) access");
   });
 
@@ -261,14 +253,12 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       issues: [{
         id: "issue-1",
-        companyId: "company-1",
         title: "Human attribution",
         status: "todo",
         priority: "medium",
       }],
       accessMembers: [{
         id: "member-active",
-        companyId: "company-1",
         principalType: "user",
         principalId: "user-1",
         status: "active",
@@ -282,7 +272,6 @@ describe("plugin SDK test harness", () => {
     const comment = await harness.ctx.issues.createComment(
       "issue-1",
       "relayed reply",
-      "company-1",
       { actorUserId: "user-1" },
     );
 

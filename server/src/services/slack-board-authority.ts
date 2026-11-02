@@ -25,7 +25,6 @@ export async function slackBoardAuthor(db: Reader, endpoint: Endpoint, userId: s
     .from(chatIdentityLinks)
     .innerJoin(chatExternalPrincipals, and(
       eq(chatExternalPrincipals.id, chatIdentityLinks.principalId),
-      eq(chatExternalPrincipals.companyId, endpoint.companyId),
       eq(chatExternalPrincipals.provider, "slack"),
       eq(chatExternalPrincipals.providerAccountId, endpoint.providerAccountId ?? ""),
       eq(chatExternalPrincipals.isBot, false),
@@ -37,7 +36,6 @@ export async function slackBoardAuthor(db: Reader, endpoint: Endpoint, userId: s
       ne(companyMemberships.membershipRole, "viewer"),
     ))
     .where(and(
-      eq(chatIdentityLinks.companyId, endpoint.companyId),
       eq(chatIdentityLinks.endpointId, endpoint.id),
       eq(chatIdentityLinks.paperclipUserId, userId),
       eq(chatIdentityLinks.status, "linked"),
@@ -61,13 +59,9 @@ export async function authorizeSlackBoardPublication(
   const [source] = await db
     .select({ comment: issueComments, run: heartbeatRuns })
     .from(issueComments)
-    .leftJoin(heartbeatRuns, and(
-      eq(heartbeatRuns.id, issueComments.createdByRunId),
-      eq(heartbeatRuns.companyId, endpoint.companyId),
-    ))
+    .leftJoin(heartbeatRuns, eq(heartbeatRuns.id, issueComments.createdByRunId))
     .where(and(
       eq(issueComments.id, publication.commentId),
-      eq(issueComments.companyId, endpoint.companyId),
       eq(issueComments.issueId, publication.issueId),
     ));
   if (!source) return false;
@@ -79,7 +73,6 @@ export async function authorizeSlackBoardPublication(
     // current user or a newer Board receipt on the same task. Recovery contexts
     // inherit their original message through parentContextId.
     let [identity] = await db.select().from(runIdentityContexts).where(and(
-      eq(runIdentityContexts.companyId, endpoint.companyId),
       eq(runIdentityContexts.runId, source.run.id),
       eq(runIdentityContexts.status, "accepted"),
       lte(runIdentityContexts.createdAt, source.comment.createdAt),
@@ -92,7 +85,6 @@ export async function authorizeSlackBoardPublication(
       if (!identity.parentContextId) break;
       [identity] = await db.select().from(runIdentityContexts).where(and(
         eq(runIdentityContexts.id, identity.parentContextId),
-        eq(runIdentityContexts.companyId, endpoint.companyId),
         eq(runIdentityContexts.status, "accepted"),
       )).limit(1);
     }
@@ -107,7 +99,6 @@ export async function authorizeSlackBoardPublication(
     .select({ payload: chatActions.payload, status: chatActions.status })
     .from(chatActions)
     .where(and(
-      eq(chatActions.companyId, endpoint.companyId),
       eq(chatActions.endpointId, endpoint.id),
       eq(chatActions.conversationId, conversation.id),
       eq(chatActions.kind, "slack_board_message"),

@@ -28,7 +28,6 @@ import { publishChatPublicationCommitSignal } from "../chat-publication-reconcil
 import { nativeSha256 } from "./canonical.js";
 
 export interface PaperclipControlPlaneBinding {
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -91,8 +90,7 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
   }
 
   #matchesPersistedBinding(run: typeof heartbeatRuns.$inferSelect): boolean {
-    return run.companyId === this.#binding.companyId
-      && run.agentId === this.#binding.agentId
+    return (run.agentId === this.#binding.agentId)
       && run.runtimeMode === "native"
       && run.nativeIssueId === this.#binding.issueId
       && run.nativeSessionId === this.#binding.sessionId
@@ -104,8 +102,7 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
   async openRun(input: OpenControlPlaneRunInput): Promise<void> {
     const identity = input.identity;
     if (
-      identity.companyId !== this.#binding.companyId
-      || identity.issueId !== this.#binding.issueId
+      (identity.issueId !== this.#binding.issueId)
       || identity.runId !== this.#binding.runId
       || identity.agentId !== this.#binding.agentId
       || identity.sessionId !== this.#binding.sessionId
@@ -116,7 +113,6 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
     const run = await this.#db.select().from(heartbeatRuns)
       .where(and(
         eq(heartbeatRuns.id, this.#binding.runId),
-        eq(heartbeatRuns.companyId, this.#binding.companyId),
         eq(heartbeatRuns.agentId, this.#binding.agentId),
       ))
       .limit(1)
@@ -140,8 +136,7 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
     const snapshot = record(candidate) as Partial<PersistedNativeSession>;
     const identity = record(snapshot.identity);
     if (
-      typeof snapshot.sessionId !== "string"
-      || identity.companyId !== this.#binding.companyId
+      (typeof snapshot.sessionId !== "string")
       || identity.issueId !== this.#binding.issueId
       || identity.runId !== this.#binding.runId
       || identity.agentId !== this.#binding.agentId
@@ -153,8 +148,7 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
   async checkpointSession(snapshot: PersistedNativeSession): Promise<void> {
     const identity = snapshot.identity;
     if (
-      identity.companyId !== this.#binding.companyId
-      || identity.issueId !== this.#binding.issueId
+      (identity.issueId !== this.#binding.issueId)
       || identity.runId !== this.#binding.runId
       || identity.agentId !== this.#binding.agentId
       || this.#sessionId !== identity.sessionId
@@ -194,7 +188,6 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
       throw new Error("native_event_source_binding_mismatch");
     }
     const persisted = await appendHeartbeatRunEvent(this.#db, {
-      companyId: this.#binding.companyId,
       runId: this.#binding.runId,
       agentId: this.#binding.agentId,
       eventType: event.eventType,
@@ -211,7 +204,6 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
     });
     if (persisted.disposition === "committed") {
       publishChatPublicationCommitSignal({
-        companyId: this.#binding.companyId,
         issueId: this.#binding.issueId,
         runId: this.#binding.runId,
         agentId: this.#binding.agentId,
@@ -293,7 +285,7 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
       // before the run, matching task mutations that subsequently update a run.
       // Otherwise concurrent chat/status writes can deadlock after generation.
       await tx.select({ id: issues.id }).from(issues)
-        .where(and(eq(issues.id, this.#binding.issueId), eq(issues.companyId, this.#binding.companyId)))
+        .where(eq(issues.id, this.#binding.issueId))
         .for("key share");
       const run = await tx.select().from(heartbeatRuns)
         .where(eq(heartbeatRuns.id, this.#binding.runId)).for("update").limit(1)
@@ -320,7 +312,6 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
         },
       } as unknown as Record<string, unknown>;
       const inserted = await tx.insert(nativeRunResults).values({
-        companyId: this.#binding.companyId,
         issueId: this.#binding.issueId,
         runId: this.#binding.runId,
         turnId: value.turnId ?? null,
@@ -335,7 +326,6 @@ export class PaperclipControlPlanePort implements ControlPlanePort {
       if (!inserted) throw new Error("native_result_not_persisted");
       await tx.insert(nativeRunFinalizations).values({
         runId: this.#binding.runId,
-        companyId: this.#binding.companyId,
         issueId: this.#binding.issueId,
         phase: "workspace_finalizing",
         resultId: inserted.id,

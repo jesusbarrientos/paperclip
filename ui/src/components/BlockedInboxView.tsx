@@ -27,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 interface BlockedInboxViewProps {
-  companyId: string;
   searchQuery: string;
   agentNameById: ReadonlyMap<string, string>;
   agents?: import("./AgentAvatar").AvatarAgent[];
@@ -49,7 +48,6 @@ interface BlockedInboxViewProps {
 const BLOCKED_LIST_LIMIT = 200;
 
 export function BlockedInboxView({
-  companyId,
   searchQuery,
   agentNameById,
   agents,
@@ -76,9 +74,9 @@ export function BlockedInboxView({
     error,
     refetch,
   } = useQuery({
-    queryKey: [...queryKeys.issues.listBlockedAttention(companyId), "live-descendant-summary"],
+    queryKey: [...queryKeys.issues.listBlockedAttention(), "live-descendant-summary"],
     queryFn: () =>
-      issuesApi.list(companyId, {
+      issuesApi.list({
         attention: "blocked",
         includeBlockedInboxAttention: true,
         includeBlockedBy: true,

@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { ExternalObjectMentionConfidence, ExternalObjectMentionSourceKind } from "@paperclipai/shared";
-import { companies } from "./companies.js";
 import { externalObjects } from "./external_objects.js";
 import { issues } from "./issues.js";
 import { plugins } from "./plugins.js";
@@ -10,7 +9,6 @@ export const externalObjectMentions = pgTable(
   "external_object_mentions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     sourceIssueId: uuid("source_issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     sourceKind: text("source_kind").$type<ExternalObjectMentionSourceKind>().notNull(),
     sourceRecordId: uuid("source_record_id"),
@@ -31,17 +29,14 @@ export const externalObjectMentions = pgTable(
   },
   (table) => ({
     companySourceIssueIdx: index("external_object_mentions_company_source_issue_idx").on(
-      table.companyId,
       table.sourceIssueId,
     ),
-    companyObjectIdx: index("external_object_mentions_company_object_idx").on(table.companyId, table.objectId),
+    companyObjectIdx: index("external_object_mentions_company_object_idx").on(table.objectId),
     companyProviderIdx: index("external_object_mentions_company_provider_idx").on(
-      table.companyId,
       table.providerKey,
       table.objectType,
     ),
     companySourceMentionWithRecordUq: uniqueIndex("external_object_mentions_company_source_record_uq").on(
-      table.companyId,
       table.sourceIssueId,
       table.sourceKind,
       table.sourceRecordId,
@@ -50,7 +45,6 @@ export const externalObjectMentions = pgTable(
       table.canonicalIdentityHash,
     ).where(sql`${table.sourceRecordId} is not null and ${table.canonicalIdentityHash} is not null`),
     companySourceMentionWithoutRecordUq: uniqueIndex("external_object_mentions_company_source_null_record_uq").on(
-      table.companyId,
       table.sourceIssueId,
       table.sourceKind,
       table.documentKey,

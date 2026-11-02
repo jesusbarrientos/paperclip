@@ -9,6 +9,8 @@ import { PAPERCLIP_CORE_SKILL_KEYS } from "./company-skills.js";
 import { goalService } from "./goals.js";
 import { projectService } from "./projects.js";
 import { issueService } from "./issues.js";
+import { organizationService } from "./organization.js";
+import { notFound } from "../errors.js";
 import { readBuiltInAgentMarker } from "./built-in-agent-metadata.js";
 import { logActivity, publishActivity, type ActivityPublication } from "./activity-log.js";
 
@@ -101,20 +103,20 @@ export type OnboardingSeedAuditActor = {
 };
 
 export function onboardingSeedService(db: Db) {
-  async function readRecord(dbx: Db, companyId: string) {
+  async function readRecord(dbx: Db) {
     return dbx
       .select()
       .from(companyOnboardingSeeds)
-      .where(eq(companyOnboardingSeeds.companyId, companyId))
+      .limit(1)
       .then((rows) => rows[0] ?? null);
   }
 
-  async function goalStillExists(dbx: Db, companyId: string, goalId: string | null) {
+  async function goalStillExists(dbx: Db, goalId: string | null) {
     if (!goalId) return false;
     return dbx
       .select({ id: goals.id })
       .from(goals)
-      .where(and(eq(goals.id, goalId), eq(goals.companyId, companyId)))
+      .where(eq(goals.id, goalId))
       .then((rows) => rows.length > 0);
   }
 
@@ -124,12 +126,12 @@ export function onboardingSeedService(db: Db) {
    * already has. Built-in agents are excluded — they are provisioned by the
    * platform and are not the customer's first hire.
    */
-  async function resolveTargetAgentId(dbx: Db, companyId: string, recordedAgentId: string | null) {
+  async function resolveTargetAgentId(dbx: Db, recordedAgentId: string | null) {
     if (recordedAgentId) {
       const recorded = await dbx
         .select({ id: agents.id })
         .from(agents)
-        .where(and(eq(agents.id, recordedAgentId), eq(agents.companyId, companyId)))
+        .where(eq(agents.id, recordedAgentId))
         .then((rows) => rows[0] ?? null);
       if (recorded) return recorded.id;
     }
@@ -138,32 +140,29 @@ export function onboardingSeedService(db: Db) {
       .select({ id: agents.id, metadata: agents.metadata })
       .from(agents)
       .where(and(
-        eq(agents.companyId, companyId),
         eq(agents.role, SEEDED_AGENT_ROLE),
         ne(agents.status, "terminated"),
       ));
     return candidates.find((row) => !readBuiltInAgentMarker(row.metadata))?.id ?? null;
   }
 
-  async function issueStillExists(dbx: Db, companyId: string, issueId: string | null) {
+  async function issueStillExists(dbx: Db, issueId: string | null) {
     if (!issueId) return false;
     return dbx
       .select({ id: issues.id })
       .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+      .where(eq(issues.id, issueId))
       .then((rows) => rows.length > 0);
   }
 
   async function resolveOnboardingProjectId(
     dbx: Db,
     projectSvc: ReturnType<typeof projectService>,
-    companyId: string,
     goalId: string | null,
   ) {
     const existing = await dbx
       .select({ id: projects.id, name: projects.name, status: projects.status })
-      .from(projects)
-      .where(eq(projects.companyId, companyId));
+      .from(projects);
     const reusable = existing.find(
       (project) =>
         project.status !== "cancelled"
@@ -171,7 +170,7 @@ export function onboardingSeedService(db: Db) {
     );
     if (reusable) return reusable.id;
 
-    const created = await projectSvc.create(companyId, {
+    const created = await projectSvc.create({
       name: ONBOARDING_SEED_PROJECT_NAME,
       status: "in_progress",
       ...(goalId ? { goalIds: [goalId] } : {}),
@@ -180,14 +179,14 @@ export function onboardingSeedService(db: Db) {
   }
 
   /**
-   * The seed application proper, run inside the per-company transaction the
+   * The seed application proper, run inside the locked transaction the
    * public `apply` opens. Every read and write goes through `dbx` — the locked
    * transaction — so it is serialized against a concurrent push for the same
    * company. Services are reconstructed on `dbx` for the same reason.
    */
   async function applyWithin(
     dbx: Db,
-    companyId: string,
+    organizationId: string,
     seed: ApplyOnboardingSeed,
   ): Promise<OnboardingSeedApplication> {
     const agentSvc = agentService(dbx);
@@ -195,7 +194,7 @@ export function onboardingSeedService(db: Db) {
     const projectSvc = projectService(dbx);
     const issueSvc = issueService(dbx);
 
-    const existing = await readRecord(dbx, companyId);
+    const existing = await readRecord(dbx);
     if (existing && existing.revision === seed.revision) {
       return {
         revision: existing.revision,
@@ -216,9 +215,9 @@ export function onboardingSeedService(db: Db) {
     let goalId = existing?.goalId ?? null;
     if (mission) {
       const parsed = parseSeedMission(mission);
-      const target = (await goalStillExists(dbx, companyId, goalId))
+      const target = (await goalStillExists(dbx, goalId))
         ? goalId
-        : (await goalSvc.getDefaultCompanyGoal(companyId))?.id ?? null;
+        : (await goalSvc.getDefaultCompanyGoal())?.id ?? null;
       if (target) {
         await goalSvc.update(target, {
           title: parsed.title,
@@ -226,7 +225,7 @@ export function onboardingSeedService(db: Db) {
         });
         goalId = target;
       } else {
-        const created = await goalSvc.create(companyId, {
+        const created = await goalSvc.create({
           title: parsed.title,
           description: parsed.description,
           level: "company",
@@ -238,13 +237,13 @@ export function onboardingSeedService(db: Db) {
 
     // 2. Agent → the customer's first hire, the lead the first task is
     //    assigned to.
-    let agentId = await resolveTargetAgentId(dbx, companyId, existing?.agentId ?? null);
+    let agentId = await resolveTargetAgentId(dbx, existing?.agentId ?? null);
     if (agentName) {
       if (agentId) {
         await agentSvc.update(agentId, { name: agentName, title: agentRole });
       } else {
         const adapterType = seededAgentAdapterType();
-        const created = await agentSvc.create(companyId, {
+        const created = await agentSvc.create({
           name: agentName,
           role: SEEDED_AGENT_ROLE,
           title: agentRole,
@@ -280,7 +279,7 @@ export function onboardingSeedService(db: Db) {
     //    mission-only seed is what keeps it inert on the cloud path.
     let issueId = existing?.issueId ?? null;
     if (firstTaskTitle) {
-      if (await issueStillExists(dbx, companyId, issueId)) {
+      if (await issueStillExists(dbx, issueId)) {
         await issueSvc.update(
           issueId as string,
           {
@@ -297,20 +296,20 @@ export function onboardingSeedService(db: Db) {
           dbx,
         );
       } else {
-        const projectId = await resolveOnboardingProjectId(dbx, projectSvc, companyId, goalId);
+        const projectId = await resolveOnboardingProjectId(dbx, projectSvc, goalId);
         // The idempotency key is what protects two pushes that arrive at once
         // — Cloud's reconcile runs off portfolio fetches, which can overlap.
         // It is deliberately not revision-scoped: if the recorded issue is
         // lost, a later revision should still dedupe against whatever the
         // first push created.
-        const created = await issueSvc.create(companyId, {
+        const created = await issueSvc.create({
           title: firstTaskTitle,
           ...(firstTaskDetails ? { description: firstTaskDetails } : {}),
           ...(agentId ? { assigneeAgentId: agentId } : {}),
           projectId,
           ...(goalId ? { goalId } : {}),
           status: "todo",
-          idempotencyKey: `onboarding-seed:${companyId}`,
+          idempotencyKey: `onboarding-seed:${organizationId}`,
         });
         issueId = created.id;
       }
@@ -320,7 +319,7 @@ export function onboardingSeedService(db: Db) {
     //    this row claims the seed is applied.
     const now = new Date();
     const values = {
-      companyId,
+      companyId: organizationId,
       revision: seed.revision,
       mission,
       agentName,
@@ -371,10 +370,10 @@ export function onboardingSeedService(db: Db) {
    * than as an acknowledged one.
    *
    * Concurrency: Cloud's reconcile runs off portfolio fetches, which can
-   * overlap, so two pushes for the same company can arrive at once. Both would
+   * overlap, so two pushes can arrive at once. Both would
    * otherwise pass the revision check before either wrote the seed record and
    * each create a company goal, a lead agent and an Onboarding project. A
-   * per-company advisory lock held for the transaction serializes them — the
+   * advisory lock held for the transaction serializes them — the
    * same idiom `folders` and `decision-queues` use — so the second push sees
    * the first push's writes (the record, the reused goal/agent/project) and
    * updates in place instead of duplicating.
@@ -389,7 +388,6 @@ export function onboardingSeedService(db: Db) {
    * neither does and the retry re-applies from a clean slate.
    */
   async function apply(
-    companyId: string,
     seed: ApplyOnboardingSeed,
     audit?: OnboardingSeedAuditActor,
   ): Promise<OnboardingSeedApplication> {
@@ -401,16 +399,17 @@ export function onboardingSeedService(db: Db) {
 
     const result = await db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`paperclip:onboarding-seed:${companyId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${"paperclip:onboarding-seed"}, 0))`,
       );
       const dbx = tx as unknown as Db;
-      const applied = await applyWithin(dbx, companyId, seed);
+      const organizationId = await organizationService(dbx).findId();
+      if (!organizationId) throw notFound("Organization not found");
+      const applied = await applyWithin(dbx, organizationId, seed);
 
       if (applied.changed && audit) {
         await logActivity(
           dbx,
           {
-            companyId,
             actorType: audit.actorType,
             actorId: audit.actorId,
             agentId: audit.agentId,
@@ -418,7 +417,7 @@ export function onboardingSeedService(db: Db) {
             agentApiKeyId: audit.agentApiKeyId,
             action: "company.onboarding_seed_applied",
             entityType: "company",
-            entityId: companyId,
+            entityId: organizationId,
             details: {
               revision: applied.revision,
               goalId: applied.goalId,
@@ -437,5 +436,5 @@ export function onboardingSeedService(db: Db) {
     return result;
   }
 
-  return { apply, get: (companyId: string) => readRecord(db, companyId) };
+  return { apply, get: () => readRecord(db) };
 }

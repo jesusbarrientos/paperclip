@@ -166,7 +166,6 @@ const state = vi.hoisted(() => ({
           : "native-cancellation-ack-audit",
     },
     publication: {
-      companyId: "company",
       payload: { action: input.action },
       pluginEvent: null,
     },
@@ -614,7 +613,6 @@ describe("remote controller restart adoption", () => {
     ).rejects.toThrow("runner_remote_process_identity_unavailable");
   });
 });
-
 
 describe("remote runner launch fingerprint compatibility", () => {
   it.each([true, false])("launches with the guaranteed Node runtime when boot identity is available: %s", async (hasBootIdentity) => {
@@ -1342,7 +1340,6 @@ describe("verified native harness backups", () => {
   const backupExecution = {
     provider: { kind: "codex", model: "gpt-5.6-sol", approvalPolicy: "never" },
     binding: {
-      companyId: "company",
       runId: "run",
       issueId: "issue",
       agentId: "agent",
@@ -1704,7 +1701,6 @@ describe("split durable provider checkpoint identity", () => {
     ({
       provider,
       binding: {
-        companyId: "company",
         runId: "run",
         issueId: "issue",
         agentId: "agent",
@@ -2599,7 +2595,6 @@ const execution = {
   schema: "paperclip.native-execution-input.v1",
   provider: { kind: "codex", model: null },
   binding: {
-    companyId: "company",
     runId: "run-native-cancel",
     issueId: "issue",
     agentId: "agent",
@@ -2738,7 +2733,6 @@ describe("retained native cleanup activation", () => {
       .update(
         canonical({
           schema: "paperclip.native-session-scope.v2",
-          companyId: execution.binding.companyId,
           agentId: execution.binding.agentId,
           workspace: {
             kind: "managed",
@@ -3478,7 +3472,6 @@ describe("retained native cleanup activation", () => {
             version: 1,
             phase: "prepared",
             requestId: "native-cleanup:prepared-fixture",
-            companyId: run.companyId,
             agentId: run.agentId,
             runId: run.id,
             nativeSessionId: run.nativeSessionId,
@@ -3625,7 +3618,6 @@ describe("retained native cleanup activation", () => {
           ).toEqual(legacyBytes);
           expect(proofSpy).toHaveBeenCalledOnce();
           expect(proofSpy.mock.calls[0]![0]).toMatchObject({
-            companyId: run.companyId,
             agentId: run.agentId,
             identity,
             requestId: "native-cleanup:prior",
@@ -3701,7 +3693,7 @@ describe("retained native cleanup activation", () => {
       });
       const pendingOutcome = reconcileRetainedNativeSessionCleanup(
         db as unknown as Db,
-        { companyId: run.companyId, runId: run.id },
+        { runId: run.id },
       );
       if (
         [
@@ -4093,7 +4085,7 @@ describe("retained native cleanup activation", () => {
 describe("stopped native conversation physical cleanup", () => {
   it.each(["codex", "acpx"].flatMap(provider => [
     "stopped", "provider_alive", "worker_alive", "missing_receipt", "wrong_receipt", "new_launch",
-    "foreign_run", "foreign_company", "foreign_runner", "remote", "unreleased", "changed_state", "changed_pid", "symlink", "startup_intent", "pending_identity", "wrong_schema", "replacement", "replacement_alive", "agent_alive", "checkpoint_owner_alive", "diagnostic_owner_alive", "normalized_session_receipt",
+    "foreign_run", "foreign_runner", "remote", "unreleased", "changed_state", "changed_pid", "symlink", "startup_intent", "pending_identity", "wrong_schema", "replacement", "replacement_alive", "agent_alive", "checkpoint_owner_alive", "diagnostic_owner_alive", "normalized_session_receipt",
   ].map(mode => ({ provider, mode }))))("$provider $mode", async ({ provider, mode }) => {
     const base = await mkdtemp(join(tmpdir(), "native-conversation-cleanup-"));
     const previous = process.env.PAPERCLIP_RUNNER_STATE_DIR;
@@ -4110,7 +4102,7 @@ describe("stopped native conversation physical cleanup", () => {
       : JSON.stringify(value);
     const hash = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
     const providerScope = input.provider.kind === "acpx" ? { kind: "acpx", agent: input.provider.agent, profile: input.provider.profile } : { kind: "codex" };
-    const root = join(base, hash({ schema: "paperclip.native-session-scope.v2", companyId: input.binding.companyId,
+    const root = join(base, hash({ schema: "paperclip.native-session-scope.v2",
       agentId: input.binding.agentId, workspace: { kind: "managed", executionWorkspaceId: input.binding.executionWorkspaceId },
       provider: { driverKind: input.session.driverKind, identity: providerScope }, normalizedSessionId: input.session.normalizedSessionId }));
     const identity = { runId: input.binding.runId, normalizedSessionId: input.session.normalizedSessionId,
@@ -4142,7 +4134,7 @@ describe("stopped native conversation physical cleanup", () => {
       const q: any = { from: () => q, where: () => q, orderBy: () => q, limit: () => q,
         then: Promise.resolve(rows).then.bind(Promise.resolve(rows)) }; return q;
     } } as unknown as Db;
-    const run = { id: input.binding.runId, companyId: mode === "foreign_company" ? "foreign" : input.binding.companyId,
+    const run = { id: input.binding.runId,
       agentId: input.binding.agentId, nativeIssueId: input.binding.issueId, runtimeMode: "native", status: "failed", finishedAt: new Date(),
       nativeSessionId: input.session.normalizedSessionId, runnerInstanceId: mode === "foreign_runner" ? "foreign" : identity.runnerInstanceId,
       runnerProfileJson: { sessionCheckpoint: { process: { codexPid: mode === "checkpoint_owner_alive" ? process.pid : null } }, nativeExecutionInput: input, nativeToolContractFingerprint: nativeToolContractFingerprintForTarget("local") } } as unknown as typeof heartbeatRuns.$inferSelect;
@@ -4208,7 +4200,6 @@ describe("explicit failed native retry physical evidence", () => {
       .update(
         canonical({
           schema: "paperclip.native-session-scope.v2",
-          companyId: execution.binding.companyId,
           agentId: execution.binding.agentId,
           workspace: {
             kind: "managed",
@@ -4765,7 +4756,6 @@ describe("native governed waits", () => {
 
 type LeaseCoordinator = {
   runId: string;
-  companyId: string;
   issueId: string;
   phase: string;
   attempt: number;
@@ -4784,7 +4774,6 @@ function leaseDb(
 ): Db {
   const coordinator: LeaseCoordinator = {
     runId: boundExecution.binding.runId,
-    companyId: boundExecution.binding.companyId,
     issueId: boundExecution.binding.issueId,
     phase: "observed",
     attempt: 0,
@@ -4820,7 +4809,6 @@ function leaseDb(
                 {
                   id: boundExecution.binding.runId,
                   agentId: boundExecution.binding.agentId,
-                  companyId: boundExecution.binding.companyId,
                   nativeIssueId: boundExecution.binding.issueId,
                   resultJson: runResultJson,
                   runnerProfileJson,
@@ -4832,7 +4820,6 @@ function leaseDb(
               ? [
                   {
                     id: boundExecution.binding.issueId,
-                    companyId: boundExecution.binding.companyId,
                     assigneeAgentId: boundExecution.binding.agentId,
                     status: "in_progress",
                     executionRunId: boundExecution.binding.runId,
@@ -4883,7 +4870,6 @@ function cancellationDb(options?: {
   const initialRun = {
     id: execution.binding.runId,
     agentId: execution.binding.agentId,
-    companyId: execution.binding.companyId,
     nativeIssueId: execution.binding.issueId,
     runtimeMode: "native",
     ...(options?.ownershipHeld
@@ -5457,7 +5443,6 @@ describe("native session cancellation", () => {
     expect(state.persistActivity).toHaveBeenCalledWith(
       persistence.tx,
       expect.objectContaining({
-        companyId: execution.binding.companyId,
         issueId: execution.binding.issueId,
         runId: execution.binding.runId,
       }),
@@ -5576,7 +5561,6 @@ describe("native session execution lease fencing", () => {
     const input = {
       db,
       runId: "run-lease",
-      companyId: "company-lease",
       issueId: "issue-lease",
       leaseOwner: "owner-lease",
       attempt: 4,
@@ -5629,7 +5613,6 @@ describe("native session execution lease fencing", () => {
                 schema: "paperclip.native-cancellation.v1",
                 intentId: "native-cancellation:intent-1",
                 intentAuditId: "native-cancellation-audit",
-                companyId: execution.binding.companyId,
                 runId: execution.binding.runId,
                 issueId: execution.binding.issueId,
                 scope: "run",
@@ -5970,8 +5953,7 @@ describe("native warm session supervision", () => {
       expect(checkpointWarm).toHaveBeenCalledTimes(managedFiles ? 1 : 0);
       if (managedFiles) expect(checkpointWarm.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]!);
       sandboxStopped = true;
-      expect(await reserveWarmNativeInstructionDirectory({ companyId: current.binding.companyId,
-        agentId: current.binding.agentId, previousRunId: current.binding.runId, runId: `${name}-two`,
+      expect(await reserveWarmNativeInstructionDirectory({ agentId: current.binding.agentId, previousRunId: current.binding.runId, runId: `${name}-two`,
         target, canReuse: async () => true })).toBeNull();
       // A corrected credential rotates the native identity on the next run.
       // It must not try to close the stopped prior owner again at startup.
@@ -6088,7 +6070,7 @@ describe("native warm session supervision", () => {
         db: leaseDb(next), execution: next, runnerInstanceId: name, runnerExecutionTarget: target, instructionWorkingCopy: nextCopy });
       await run(current);
       const reserve = (canReuse: () => Promise<boolean>, nextTarget = target) => reserveWarmNativeInstructionDirectory({
-        companyId: current.binding.companyId, agentId: current.binding.agentId, previousRunId: current.binding.runId,
+        agentId: current.binding.agentId, previousRunId: current.binding.runId,
         runId: `${name}-two`, target: nextTarget, canReuse });
       return { current, copy, close, session, target, run, reserve };
     }
@@ -6325,7 +6307,7 @@ describe("native warm session supervision", () => {
       expect(state.execute).toHaveBeenCalledTimes(2);
     });
 
-    it.each(["companyId", "agentId", "issueId", "executionWorkspaceId"] as const)(
+    it.each(["agentId", "issueId", "executionWorkspaceId"] as const)(
       "does not retire an unrelated %s owner", async field => {
         const { base, next, run } = fixture(`identity-isolation-${field}`);
         const close = vi.fn(async () => undefined);
@@ -6626,7 +6608,6 @@ describe("native warm session supervision", () => {
       identity: {
         runId: activeRun.binding.runId,
         sessionId: activeRun.session.normalizedSessionId,
-        companyId: activeRun.binding.companyId,
         issueId: activeRun.binding.issueId,
         agentId: activeRun.binding.agentId,
       },
@@ -7002,7 +6983,6 @@ describe("native warm session supervision", () => {
             identity: {
               runId: first.binding.runId,
               sessionId: first.session.normalizedSessionId,
-              companyId: first.binding.companyId,
               issueId: first.binding.issueId,
               agentId: first.binding.agentId,
             },
@@ -7070,7 +7050,6 @@ describe("native warm session supervision", () => {
           envelope.configDigest = `sha256:${createHash("sha256")
             .update(
               JSON.stringify({
-                companyId: first.binding.companyId,
                 normalizedSessionId: first.session.normalizedSessionId,
                 executionLocation: {
                   executionKind: "local_process",
@@ -7194,87 +7173,6 @@ describe("native warm session supervision", () => {
       }
     },
   );
-
-  it("does not replace a different company's warm session with the same normalized id", async () => {
-    const firstClose = vi.fn(async () => undefined);
-    const secondClose = vi.fn(async () => undefined);
-    const base = {
-      ...execution,
-      binding: {
-        ...execution.binding,
-        companyId: "company-warm-first",
-        runId: "run-warm-first",
-        executionWorkspaceId: "workspace",
-      },
-      workspace: {
-        cwd: "/tmp/warm-native-company-isolation",
-        repoUrl: null,
-        repoRef: null,
-        branchName: null,
-      },
-      session: {
-        normalizedSessionId: "shared-company-warm-session",
-        driverKind: "codex_app_server" as const,
-        protocolVersion: 1 as const,
-        lifecyclePolicy: { mode: "warm" as const, idleTimeoutMs: 20 },
-      },
-    } as NativeExecutionInputV1;
-    const second = {
-      ...base,
-      binding: {
-        ...base.binding,
-        companyId: "company-warm-second",
-        runId: "run-warm-second",
-      },
-    };
-    const result = {
-      result: { summary: "completed" },
-      terminal: { runTerminalState: "succeeded" },
-      turnId: "turn",
-      normalizedSessionId: "shared-company-warm-session",
-      providerSessionId: "provider-warm-native",
-      driverKind: "test",
-      driverVersion: "1",
-      nativeEventCount: 1,
-      highestContiguousSourceSeq: 1,
-      usage: null,
-    };
-    state.execute
-      .mockReset()
-      .mockImplementationOnce(async (options) => {
-        expect(options.existingSession).toBeUndefined();
-        options.onSession?.({ close: firstClose });
-        return result;
-      })
-      .mockImplementationOnce(async (options) => {
-        expect(options.existingSession).toBeUndefined();
-        options.onSession?.({ close: secondClose });
-        return result;
-      });
-
-    await executePaperclipNativeSession({
-      db: leaseDb(base),
-      execution: base,
-      runnerInstanceId: "runner-first",
-    });
-    await executePaperclipNativeSession({
-      db: leaseDb(second),
-      execution: second,
-      runnerInstanceId: "runner-second",
-    });
-    await vi.waitFor(() => expect(firstClose).toHaveBeenCalled(), {
-      timeout: 500,
-    });
-    await vi.waitFor(() => expect(secondClose).toHaveBeenCalled(), {
-      timeout: 500,
-    });
-    expect(firstClose).toHaveBeenCalledWith({
-      reason: "warm native session idle timeout",
-    });
-    expect(secondClose).toHaveBeenCalledWith({
-      reason: "warm native session idle timeout",
-    });
-  });
 
   it.each(["permission", "managed credential"])("replaces an idle warm provider session when its %s changes", async (change) => {
     const firstClose = vi.fn(async () => undefined);
@@ -8001,7 +7899,6 @@ describe("native process ownership", () => {
   it("checks the complete wake-comment receipt before finalizing a successful provider turn", async () => {
     const expectedBinding = {
       schema: "paperclip.current-wake-comments-binding.v1",
-      companyId: execution.binding.companyId,
       issueId: execution.binding.issueId,
       runId: execution.binding.runId,
       agentId: execution.binding.agentId,
@@ -8396,7 +8293,6 @@ describe("runnerd provider runtime wiring", () => {
     expect(state.stageNativeRunnerWakeAttachments).toHaveBeenCalledWith(
       expect.objectContaining({
         binding: expect.objectContaining({
-          companyId: stagedExecution.binding.companyId,
           issueId: stagedExecution.binding.issueId,
           runId: stagedExecution.binding.runId,
           agentId: stagedExecution.binding.agentId,
@@ -8523,7 +8419,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-projectless-continuation",
         runId: "run-projectless-prior",
         executionWorkspaceId: "run-projectless-prior",
       },
@@ -8837,7 +8732,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-legacy-state",
         runId: "run-legacy-state",
       },
       session: {
@@ -8892,24 +8786,6 @@ describe("runnerd provider runtime wiring", () => {
         "/tmp/paperclip-runnerd",
       );
       expect(state.resolveRunnerBinary).toHaveBeenCalled();
-
-      const unrelatedExecution = {
-        ...legacyExecution,
-        binding: {
-          ...legacyExecution.binding,
-          companyId: "company-unrelated-state",
-          runId: "run-unrelated-state",
-        },
-      } as NativeExecutionInputV1;
-      await createRunnerdBackend({
-        db: leaseDb(unrelatedExecution),
-        execution: unrelatedExecution,
-        runnerInstanceId: "runner-unrelated-state",
-      });
-      state.createBackend.mock.calls[1]![1].codexTransportFactory!();
-      expect(state.createTransport.mock.calls[1]![0].stateDirectory).not.toBe(
-        legacyRoot,
-      );
     } finally {
       if (previousStateDirectory === undefined) {
         delete process.env.PAPERCLIP_RUNNER_STATE_DIR;
@@ -8920,7 +8796,7 @@ describe("runnerd provider runtime wiring", () => {
     }
   });
 
-  it("migrates the former company/session scope into the full native session scope", async () => {
+  it("migrates the former session-only scope into the full native session scope", async () => {
     const stateBase = await mkdtemp(
       join(tmpdir(), "paperclip-company-session-state-"),
     );
@@ -8930,7 +8806,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-former-scope",
         runId: "run-former-scope",
         agentId: "agent-former-scope",
         executionWorkspaceId: "workspace-former-scope",
@@ -8943,12 +8818,7 @@ describe("runnerd provider runtime wiring", () => {
     const legacyRoot = join(
       stateBase,
       createHash("sha256")
-        .update(
-          JSON.stringify([
-            legacyExecution.binding.companyId,
-            legacyExecution.session.normalizedSessionId,
-          ]),
-        )
+        .update(legacyExecution.session.normalizedSessionId!)
         .digest("hex"),
     );
     try {
@@ -9004,7 +8874,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-prior-run-scope",
         runId: "run-prior-run-scope",
         agentId: "agent-prior-run-scope",
         executionWorkspaceId: "workspace-prior-run-scope",
@@ -9024,12 +8893,7 @@ describe("runnerd provider runtime wiring", () => {
     const legacyRoot = join(
       stateBase,
       createHash("sha256")
-        .update(
-          JSON.stringify([
-            currentExecution.binding.companyId,
-            currentExecution.session.normalizedSessionId,
-          ]),
-        )
+        .update(currentExecution.session.normalizedSessionId!)
         .digest("hex"),
     );
     const priorRunDb = {
@@ -9202,7 +9066,6 @@ describe("runnerd provider runtime wiring", () => {
         ...execution,
         binding: {
           ...execution.binding,
-          companyId: "company-remote-prior-scope",
           runId: "run-remote-prior-scope",
           agentId: "agent-remote-prior-scope",
           executionWorkspaceId: "workspace-remote-prior-scope",
@@ -9371,7 +9234,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-legacy-terminal-unsuspended",
         runId: "run-legacy-terminal-unsuspended",
         agentId: "agent-legacy-terminal-unsuspended",
         executionWorkspaceId: "workspace-legacy-terminal-unsuspended",
@@ -9391,12 +9253,7 @@ describe("runnerd provider runtime wiring", () => {
     const legacyRoot = join(
       stateBase,
       createHash("sha256")
-        .update(
-          JSON.stringify([
-            currentExecution.binding.companyId,
-            currentExecution.session.normalizedSessionId,
-          ]),
-        )
+        .update(currentExecution.session.normalizedSessionId!)
         .digest("hex"),
     );
     const terminalPriorRunDb = {
@@ -9469,7 +9326,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-running-prior-scope",
         runId: "run-running-prior-scope",
         agentId: "agent-running-prior-scope",
         executionWorkspaceId: "workspace-running-prior-scope",
@@ -9573,7 +9429,6 @@ describe("runnerd provider runtime wiring", () => {
     "provider mismatch",
     "unacknowledged events",
     "runtime request",
-    "wrong company",
     "permission denied process",
     "ambiguous turn start",
     "state symlink",
@@ -9646,10 +9501,6 @@ describe("runnerd provider runtime wiring", () => {
           identity: {
             runId: identity.runId,
             sessionId: identity.normalizedSessionId,
-            companyId:
-              scenario === "wrong company"
-                ? "other-company"
-                : priorExecution.binding.companyId,
             agentId: priorExecution.binding.agentId,
             issueId: priorExecution.binding.issueId,
           },
@@ -9880,7 +9731,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-terminal-unsuspended",
         runId: "run-terminal-unsuspended",
         agentId: "agent-terminal-unsuspended",
         executionWorkspaceId: "workspace-terminal-unsuspended",
@@ -10024,7 +9874,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-current-scoped-state",
         runId: "run-current-scoped-state",
         agentId: "agent-current-scoped-state",
         executionWorkspaceId: "workspace-current-scoped-state",
@@ -10165,7 +10014,6 @@ describe("runnerd provider runtime wiring", () => {
         ...execution,
         binding: {
           ...execution.binding,
-          companyId: `warm-company-${variant}`,
           runId: `warm-run-${variant}`,
           agentId: `warm-agent-${variant}`,
           executionWorkspaceId: `warm-workspace-${variant}`,
@@ -10289,7 +10137,6 @@ describe("runnerd provider runtime wiring", () => {
         ...execution,
         binding: {
           ...execution.binding,
-          companyId: `company-${caseName}-runner-state`,
           runId: `run-${caseName}-runner-state`,
           agentId: `agent-${caseName}-runner-state`,
           executionWorkspaceId: `workspace-${caseName}-runner-state`,
@@ -10383,7 +10230,6 @@ describe("runnerd provider runtime wiring", () => {
         ...execution,
         binding: {
           ...execution.binding,
-          companyId: `company-${caseName}-scoped-state`,
           runId: `run-${caseName}-scoped-state`,
           agentId: `agent-${caseName}-scoped-state`,
           executionWorkspaceId: `workspace-${caseName}-scoped-state`,
@@ -10551,7 +10397,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-symlink-scoped-state",
         runId: "run-symlink-scoped-state",
         agentId: "agent-symlink-scoped-state",
         executionWorkspaceId: "workspace-symlink-scoped-state",
@@ -10614,7 +10459,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-prior-run-mismatch",
         runId: "run-current-prior-mismatch",
         agentId: "agent-current-prior-mismatch",
         executionWorkspaceId: "workspace-prior-mismatch",
@@ -10635,12 +10479,7 @@ describe("runnerd provider runtime wiring", () => {
     const legacyRoot = join(
       stateBase,
       createHash("sha256")
-        .update(
-          JSON.stringify([
-            currentExecution.binding.companyId,
-            currentExecution.session.normalizedSessionId,
-          ]),
-        )
+        .update(currentExecution.session.normalizedSessionId!)
         .digest("hex"),
     );
     const priorRunDb = {
@@ -10707,7 +10546,6 @@ describe("runnerd provider runtime wiring", () => {
       ...execution,
       binding: {
         ...execution.binding,
-        companyId: "company-mismatched-scope",
         runId: "run-current-scope",
         agentId: "agent-current-scope",
         executionWorkspaceId: "workspace-current-scope",
@@ -10720,12 +10558,7 @@ describe("runnerd provider runtime wiring", () => {
     const legacyRoot = join(
       stateBase,
       createHash("sha256")
-        .update(
-          JSON.stringify([
-            currentExecution.binding.companyId,
-            currentExecution.session.normalizedSessionId,
-          ]),
-        )
+        .update(currentExecution.session.normalizedSessionId!)
         .digest("hex"),
     );
     try {
@@ -10760,79 +10593,6 @@ describe("runnerd provider runtime wiring", () => {
     }
   });
 
-  it("isolates durable state and tool authority for equal session ids in different companies", async () => {
-    const scopedExecution = (companyId: string, runId: string) =>
-      ({
-        ...execution,
-        schema: "paperclip.native-execution-input.v4",
-        binding: {
-          ...execution.binding,
-          companyId,
-          runId,
-          executionWorkspaceId: "workspace",
-        },
-        task: {
-          identifier: "DOT-ISOLATION",
-          title: "Isolation test",
-          description: null,
-          prompt: "Verify session isolation.",
-          workMode: "standard",
-        },
-        workspace: {
-          cwd: "/tmp/native-session-isolation",
-          repoUrl: null,
-          repoRef: null,
-          branchName: null,
-        },
-        session: {
-          normalizedSessionId: "shared-normalized-session",
-          driverKind: "codex_app_server",
-          protocolVersion: 1,
-          lifecyclePolicy: { mode: "per_turn", idleTimeoutMs: null },
-        },
-        provider: { kind: "codex", model: null, approvalPolicy: "never" },
-        executionMode: "default",
-        planningContext: null,
-        interactionResponses: [],
-        credentialBindings: [],
-        runtimeContext: nativeRuntimeContextFixture(),
-      }) as unknown as NativeExecutionInputV1;
-    const firstExecution = scopedExecution("company-first", "run-first");
-    const secondExecution = scopedExecution("company-second", "run-second");
-    state.createBackend.mockClear();
-    state.toolAuthorityExecute
-      .mockReset()
-      .mockImplementation((binding: Record<string, unknown>) =>
-        Promise.resolve({ runId: binding.runId }),
-      );
-
-    await createRunnerdBackend({
-      db: leaseDb(firstExecution),
-      execution: firstExecution,
-      runnerInstanceId: "runner-first",
-    });
-    await createRunnerdBackend({
-      db: leaseDb(secondExecution),
-      execution: secondExecution,
-      runnerInstanceId: "runner-second",
-    });
-
-    const firstOptions = state.createBackend.mock.calls[0]![1];
-    const secondOptions = state.createBackend.mock.calls[1]![1];
-    state.createTransport.mockClear();
-    firstOptions.codexTransportFactory!();
-    secondOptions.codexTransportFactory!();
-    expect(state.createTransport.mock.calls[0]![0].stateDirectory).not.toBe(
-      state.createTransport.mock.calls[1]![0].stateDirectory,
-    );
-    await expect(firstOptions.dynamicToolHandler!({})).resolves.toEqual({
-      runId: "run-first",
-    });
-    await expect(secondOptions.dynamicToolHandler!({})).resolves.toEqual({
-      runId: "run-second",
-    });
-  });
-
   it("scopes local durable sessions by agent, workspace, and provider profile while reusing them across runs", async () => {
     const stateBase = await mkdtemp(join(tmpdir(), "paperclip-session-scope-"));
     const previousStateDirectory = process.env.PAPERCLIP_RUNNER_STATE_DIR;
@@ -10848,7 +10608,6 @@ describe("runnerd provider runtime wiring", () => {
         schema: "paperclip.native-execution-input.v4",
         binding: {
           ...execution.binding,
-          companyId: "company-session-scope",
           runId: input.runId,
           issueId: "issue-session-scope",
           agentId: input.agentId ?? "agent-session-scope",

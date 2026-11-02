@@ -587,7 +587,6 @@ export async function testCodexAcpEnvironment(
     const configuredCodexHome = isNonEmpty(envConfig.CODEX_HOME) ? envConfig.CODEX_HOME : null;
     const credentialReadiness = await evaluateCodexCredentialReadiness({
       env: process.env,
-      companyId: ctx.companyId,
       configuredCodexHome,
       configuredApiKey,
     });
@@ -629,7 +628,6 @@ export async function testCodexAcpEnvironment(
     const configuredCodexHome = isNonEmpty(envConfig.CODEX_HOME) ? envConfig.CODEX_HOME : null;
     const credentialReadiness = await evaluateCodexCredentialReadiness({
       env: process.env,
-      companyId: ctx.companyId,
       configuredCodexHome,
       configuredApiKey: configApiKey,
     });

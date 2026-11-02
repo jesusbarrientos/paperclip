@@ -28,6 +28,8 @@ const support = await getEmbeddedPostgresTestSupport();
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("paperclip-slack-idle-");
     db = createDb(database.connectionString);
+    const companyId = randomUUID();
+    await db.insert(companies).values({ id: companyId, name: "Slack", issuePrefix: companyId.slice(0, 8) });
   }, 90000);
   afterAll(async () => {
     await db?.$client.end({ timeout: 0 });
@@ -35,7 +37,6 @@ const support = await getEmbeddedPostgresTestSupport();
   });
 
   async function fixture(native = false) {
-    const companyId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const endpointId = randomUUID();
@@ -47,31 +48,30 @@ const support = await getEmbeddedPostgresTestSupport();
     const applicationId = randomUUID();
     const connectionId = randomUUID();
     const start = new Date(Date.now() - 10000);
-    await db.insert(companies).values({ id: companyId, name: "Slack", issuePrefix: companyId.slice(0, 8) });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Carl", role: "general", adapterType: "codex_local" });
-    await db.insert(issues).values({ id: issueId, companyId, title: "you there?", status: "in_progress", assigneeAgentId: agentId, originKind: "chat_channel" });
-    await db.insert(toolApplications).values({ id: applicationId, companyId, name: "Slack", type: "native" });
-    await db.insert(toolConnections).values({ id: connectionId, companyId, applicationId, name: "Slack", uid: connectionId, transport: "chat_sdk", connectionPurpose: "channel" });
-    await db.insert(chatEndpoints).values({ id: endpointId, companyId, connectionId, provider: "slack", publicId: endpointId, assignedAgentId: agentId, status: "active" });
-    await db.insert(chatConversations).values({ id: conversationId, companyId, endpointId, issueId, externalConversationId: "channel", externalThreadId: runId, externalLabel: "#test" });
-    await db.insert(issueComments).values({ id: wakeId, companyId, issueId, authorType: "user", authorUserId: "local-board", body: "you there?", createdAt: start });
-    await db.insert(chatMessageLinks).values({ companyId, endpointId, conversationId, commentId: wakeId, providerMessageId: wakeId, direction: "inbound" });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "succeeded", runtimeMode: native ? "native" : "legacy", nativeIssueId: native ? issueId : null,
+    await db.insert(agents).values({ id: agentId, name: "Carl", role: "general", adapterType: "codex_local" });
+    await db.insert(issues).values({ id: issueId, title: "you there?", status: "in_progress", assigneeAgentId: agentId, originKind: "chat_channel" });
+    await db.insert(toolApplications).values({ id: applicationId, name: `Slack ${applicationId}`, type: "native" });
+    await db.insert(toolConnections).values({ id: connectionId, applicationId, name: "Slack", uid: connectionId, transport: "chat_sdk", connectionPurpose: "channel" });
+    await db.insert(chatEndpoints).values({ id: endpointId, connectionId, provider: "slack", publicId: endpointId, assignedAgentId: agentId, status: "active" });
+    await db.insert(chatConversations).values({ id: conversationId, endpointId, issueId, externalConversationId: "channel", externalThreadId: runId, externalLabel: "#test" });
+    await db.insert(issueComments).values({ id: wakeId, issueId, authorType: "user", authorUserId: "local-board", body: "you there?", createdAt: start });
+    await db.insert(chatMessageLinks).values({ endpointId, conversationId, commentId: wakeId, providerMessageId: wakeId, direction: "inbound" });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "succeeded", runtimeMode: native ? "native" : "legacy", nativeIssueId: native ? issueId : null,
       resultJson: native ? { finalizationReasonCode: "external_chat_response_waiting" } : null,
       createdAt: new Date(start.getTime() + 1), startedAt: start, finishedAt: new Date(),
       contextSnapshot: { issueId, source: "chat:slack", wakeCommentId: wakeId, wakeCommentIds: [wakeId] } });
-    if (native) await db.insert(nativeRunFinalizations).values({ companyId, issueId, runId, phase: "committed" });
-    await db.insert(issueComments).values({ id: responseId, companyId, issueId, authorType: "agent", authorAgentId: agentId, createdByRunId: runId, body: "Yes, I’m here.",
+    if (native) await db.insert(nativeRunFinalizations).values({ issueId, runId, phase: "committed" });
+    await db.insert(issueComments).values({ id: responseId, issueId, authorType: "agent", authorAgentId: agentId, createdByRunId: runId, body: "Yes, I’m here.",
       metadata: { version: 1, authorizationReason: "allow_chat_run_presentation", sections: [] } });
-    await db.insert(chatPublications).values({ id: publicationId, companyId, endpointId, conversationId, issueId, commentId: responseId,
+    await db.insert(chatPublications).values({ id: publicationId, endpointId, conversationId, issueId, commentId: responseId,
       idempotencyKey: `comment:${responseId}:${endpointId}`, payload: { text: "Yes, I’m here." }, state: "published", providerMessageId: responseId, publishedAt: new Date() });
-    return { companyId, agentId, issueId, endpointId, conversationId, runId, wakeId, responseId, publicationId, start };
+    return { agentId, issueId, endpointId, conversationId, runId, wakeId, responseId, publicationId, start };
   }
   async function state(f: Awaited<ReturnType<typeof fixture>>) {
     return (await db.select({ status: issues.status, externalConversationState: externalConversationStateSql() })
       .from(issues).where(eq(issues.id, f.issueId)))[0];
   }
-  const settle = (f: Awaited<ReturnType<typeof fixture>>) => settleSlackConversation(db, f.companyId, f.issueId);
+  const settle = (f: Awaited<ReturnType<typeof fixture>>) => settleSlackConversation(db, f.issueId);
 
   it.each([false, true])("settles a published answered turn once (native=%s)", async (native) => {
     const f = await fixture(native);
@@ -81,13 +81,13 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(await db.select().from(activityLog).where(and(eq(activityLog.entityId, f.issueId), eq(activityLog.action, "issue.updated")))).toHaveLength(1);
     expect(await db.select().from(issues).where(and(eq(issues.id, f.issueId), executionIssueCondition()))).toHaveLength(0);
     expect((await issueService(db).getById(f.issueId))?.externalConversationState).toBe("waiting");
-    expect(await issueService(db).list(f.companyId)).toHaveLength(0);
-    expect((await dashboardService(db).summary(f.companyId)).tasks.open).toBe(0);
-    expect((await attentionService(db).list(f.companyId)).items.filter((item) => item.issueId === f.issueId)).toHaveLength(0);
-    const results = await companySearchService(db).search(f.companyId, companySearchQuerySchema.parse({ q: "you there" }));
+    expect(await issueService(db).list()).toHaveLength(0);
+    expect((await dashboardService(db).summary()).tasks.open).toBe(0);
+    expect((await attentionService(db).list()).items.filter((item) => item.issueId === f.issueId)).toHaveLength(0);
+    const results = await companySearchService(db).search(companySearchQuerySchema.parse({ q: "you there" }));
     expect(results.results.find((result) => result.issue?.id === f.issueId)?.issue?.externalConversationState).toBe("waiting");
-    expect((await issueService(db).list(f.companyId, { q: "you there" }))[0]?.externalConversationState).toBe("waiting");
-    expect((await issueService(db).listReviewAttention(f.companyId, [{ id: f.issueId, companyId: f.companyId, status: "in_review" }])).get(f.issueId)?.state).toBe("none");
+    expect((await issueService(db).list({ q: "you there" }))[0]?.externalConversationState).toBe("waiting");
+    expect((await issueService(db).listReviewAttention([{ id: f.issueId, status: "in_review" }])).get(f.issueId)?.state).toBe("none");
   });
 
   it("preserves waiting state in compact list responses used by the Inbox", async () => {
@@ -99,10 +99,11 @@ const support = await getEmbeddedPostgresTestSupport();
       next();
     });
     app.use("/api", issueRoutes(db, {} as any));
-    const response = await request(app).get(`/api/companies/${f.companyId}/issues`)
+    const response = await request(app).get(`/api/issues`)
       .query({ view: "compact", q: "you there" });
     expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body).toEqual([expect.objectContaining({ id: f.issueId, status: "in_review", externalConversationState: "waiting" })]);
+    expect(response.body.filter((issue: { id: string }) => issue.id === f.issueId))
+      .toEqual([expect.objectContaining({ id: f.issueId, status: "in_review", externalConversationState: "waiting" })]);
   });
 
   it("reconciles an already-answered conversation without another model run", async () => {
@@ -139,11 +140,11 @@ const support = await getEmbeddedPostgresTestSupport();
     await issueService(db).checkout(f.issueId, f.agentId, ["todo", "backlog", "blocked"], null);
     expect((await state(f))?.status).toBe("in_progress");
     const nextRun = randomUUID();
-    await db.insert(chatMessageLinks).values({ companyId: f.companyId, endpointId: f.endpointId, conversationId: f.conversationId, commentId: followup.id, providerMessageId: followup.id, direction: "inbound" });
-    await db.insert(heartbeatRuns).values({ id: nextRun, companyId: f.companyId, agentId: f.agentId, runtimeMode: "legacy", status: "succeeded", finishedAt: new Date(),
+    await db.insert(chatMessageLinks).values({ endpointId: f.endpointId, conversationId: f.conversationId, commentId: followup.id, providerMessageId: followup.id, direction: "inbound" });
+    await db.insert(heartbeatRuns).values({ id: nextRun, agentId: f.agentId, runtimeMode: "legacy", status: "succeeded", finishedAt: new Date(),
       contextSnapshot: { issueId: f.issueId, source: "chat:slack", wakeCommentId: followup.id } });
-    const [response] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId, authorAgentId: f.agentId, createdByRunId: nextRun, body: "Carl", metadata: { version: 1, authorizationReason: "allow_chat_run_presentation", sections: [] } }).returning();
-    await db.insert(chatPublications).values({ companyId: f.companyId, endpointId: f.endpointId, conversationId: f.conversationId, issueId: f.issueId, commentId: response.id,
+    const [response] = await db.insert(issueComments).values({ issueId: f.issueId, authorAgentId: f.agentId, createdByRunId: nextRun, body: "Carl", metadata: { version: 1, authorizationReason: "allow_chat_run_presentation", sections: [] } }).returning();
+    await db.insert(chatPublications).values({ endpointId: f.endpointId, conversationId: f.conversationId, issueId: f.issueId, commentId: response.id,
       idempotencyKey: nextRun, payload: { text: "Carl" }, state: "published", providerMessageId: nextRun });
     expect(await settle(f)).toBe(true);
     expect((await state(f))?.externalConversationState).toBe("waiting");
@@ -184,8 +185,8 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("does not settle past an unlinked Slack guest's newer message", async () => {
     const f = await fixture();
-    const [message] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId, authorType: "system", body: "one more thing" }).returning();
-    await db.insert(chatMessageLinks).values({ companyId: f.companyId, endpointId: f.endpointId, conversationId: f.conversationId, commentId: message.id, providerMessageId: message.id, direction: "inbound" });
+    const [message] = await db.insert(issueComments).values({ issueId: f.issueId, authorType: "system", body: "one more thing" }).returning();
+    await db.insert(chatMessageLinks).values({ endpointId: f.endpointId, conversationId: f.conversationId, commentId: message.id, providerMessageId: message.id, direction: "inbound" });
     expect(await settle(f)).toBe(false);
   });
 
@@ -200,7 +201,7 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("settles an authorized published reply after an interaction continuation", async () => {
     const f = await fixture(true);
-    const [answer] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId,
+    const [answer] = await db.insert(issueComments).values({ issueId: f.issueId,
       authorType: "user", authorUserId: "local-board", body: "Here is the requested answer", createdAt: new Date(f.start.getTime() + 2) }).returning();
     await db.update(heartbeatRuns).set({ contextSnapshot: {
       issueId: f.issueId, source: "issue.interaction.respond", externalChatContinuation: true, wakeCommentId: answer.id,
@@ -231,7 +232,7 @@ const support = await getEmbeddedPostgresTestSupport();
   it("preserves pending interactions and removes Idle if a real review is requested later", async () => {
     const f = await fixture();
     await settle(f);
-    await db.insert(issueThreadInteractions).values({ companyId: f.companyId, issueId: f.issueId, kind: "request_confirmation", payload: { version: 1, prompt: "Approve?" } });
+    await db.insert(issueThreadInteractions).values({ issueId: f.issueId, kind: "request_confirmation", payload: { version: 1, prompt: "Approve?" } });
     expect((await state(f))?.externalConversationState).toBe("active");
     await db.update(issues).set({ status: "in_progress" }).where(eq(issues.id, f.issueId));
     await db.update(chatConversations).set({ state: "active" }).where(eq(chatConversations.id, f.conversationId));
@@ -258,9 +259,8 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(chatConversations).set({ state }).where(eq(chatConversations.id, f.conversationId));
     expect(await settle(f)).toBe(false);
   });
-  it("respects company, provider, and connection boundaries", async () => {
+  it("respects provider and connection boundaries", async () => {
     const f = await fixture();
-    expect(await settleSlackConversation(db, randomUUID(), f.issueId)).toBe(false);
     await db.update(chatEndpoints).set({ status: "revoked" }).where(eq(chatEndpoints.id, f.endpointId));
     expect(await settle(f)).toBe(false);
     await db.update(chatEndpoints).set({ status: "active", provider: "telegram" }).where(eq(chatEndpoints.id, f.endpointId));
@@ -271,18 +271,18 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(issues).set({ monitorNextCheckAt: new Date(Date.now() + 60000) }).where(eq(issues.id, monitor.issueId));
     expect(await settle(monitor)).toBe(false);
     const queued = await fixture();
-    await db.insert(agentWakeupRequests).values({ companyId: queued.companyId, agentId: queued.agentId, source: "automation", status: "deferred_issue_execution", payload: { issueId: queued.issueId } });
+    await db.insert(agentWakeupRequests).values({ agentId: queued.agentId, source: "automation", status: "deferred_issue_execution", payload: { issueId: queued.issueId } });
     expect(await settle(queued)).toBe(false);
     const newer = await fixture();
-    await db.insert(heartbeatRuns).values({ companyId: newer.companyId, agentId: newer.agentId, status: "scheduled_retry", contextSnapshot: { issueId: newer.issueId } });
+    await db.insert(heartbeatRuns).values({ agentId: newer.agentId, status: "scheduled_retry", contextSnapshot: { issueId: newer.issueId } });
     expect(await settle(newer)).toBe(false);
     const blocked = await fixture();
-    const [blocker] = await db.insert(issues).values({ companyId: blocked.companyId, title: "dependency", status: "todo" }).returning();
-    await db.insert(issueRelations).values({ companyId: blocked.companyId, issueId: blocker.id, relatedIssueId: blocked.issueId, type: "blocks" });
+    const [blocker] = await db.insert(issues).values({ title: "dependency", status: "todo" }).returning();
+    await db.insert(issueRelations).values({ issueId: blocker.id, relatedIssueId: blocked.issueId, type: "blocks" });
     expect(await settle(blocked)).toBe(false);
     const review = await fixture();
-    const [approval] = await db.insert(approvals).values({ companyId: review.companyId, type: "hire_agent", status: "pending", payload: {} }).returning();
-    await db.insert(issueApprovals).values({ companyId: review.companyId, issueId: review.issueId, approvalId: approval.id });
+    const [approval] = await db.insert(approvals).values({ type: "hire_agent", status: "pending", payload: {} }).returning();
+    await db.insert(issueApprovals).values({ issueId: review.issueId, approvalId: approval.id });
     expect(await settle(review)).toBe(false);
   });
 });

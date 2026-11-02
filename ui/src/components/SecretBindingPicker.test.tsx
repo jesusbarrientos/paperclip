@@ -22,8 +22,8 @@ vi.mock("../api/secrets", () => ({
   secretsApi: mockSecretsApi,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ }),
 }));
 
 describe("SecretBindingPicker", () => {
@@ -77,18 +77,16 @@ describe("SecretBindingPicker", () => {
         "22222222-2222-2222-2222-222222222222": {
           name: "DAYTONA_API_KEY",
           status,
-          companyId: "company-2",
-          companyName: "Other Team",
         },
       },
     };
   }
 
-  it("names an active cross-company secret and its owner instead of calling it missing", async () => {
+  it("names an active unlisted secret instead of calling it missing", async () => {
     await render(readyContext("active"));
 
-    expect(container.textContent).toContain("DAYTONA_API_KEY — Other Team");
-    expect(container.textContent).toContain("Owned by the Other Team organization");
+    expect(container.textContent).toContain("DAYTONA_API_KEY");
+    expect(container.textContent).toContain("Not shown in this list");
     expect(container.textContent).not.toContain("Missing secret");
     expect(container.querySelector("select")?.className).not.toContain("border-destructive");
   });
@@ -96,15 +94,15 @@ describe("SecretBindingPicker", () => {
   it("reports a deleted hinted secret as deleted", async () => {
     await render(readyContext("deleted"));
 
-    expect(container.textContent).toContain("DAYTONA_API_KEY — Other Team");
+    expect(container.textContent).toContain("DAYTONA_API_KEY");
     expect(container.textContent).toContain("was deleted");
     expect(container.querySelector("select")?.className).toContain("border-destructive");
   });
 
-  it("does not present a disabled cross-company secret as working", async () => {
+  it("does not present a disabled unlisted secret as working", async () => {
     await render(readyContext("disabled"));
 
-    expect(container.textContent).toContain("DAYTONA_API_KEY — Other Team");
+    expect(container.textContent).toContain("DAYTONA_API_KEY");
     expect(container.textContent).toContain("This secret is disabled");
     expect(container.textContent).not.toContain("keeps working");
     expect(container.querySelector("select")?.className).toContain("border-destructive");

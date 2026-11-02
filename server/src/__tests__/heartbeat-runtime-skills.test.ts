@@ -145,17 +145,15 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
   });
 
   it("materializes different pinned skill versions for different agents at runtime", async () => {
-    const companyId = randomUUID();
     const skillId = randomUUID();
     const firstAgentId = randomUUID();
     const secondAgentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-    const skillKey = `company/${companyId}/runtime-coach`;
+    const issuePrefix = "TRSK";
+    const skillKey = "company/runtime-coach";
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-versioned-runtime-skill-"));
     cleanupDirs.add(skillDir);
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -164,7 +162,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Runtime Coach\n\nVersion one.\n", "utf8");
     await db.insert(companySkills).values({
       id: skillId,
-      companyId,
       key: skillKey,
       slug: "runtime-coach",
       name: "Runtime Coach",
@@ -180,7 +177,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
 
     const skills = companySkillService(db);
     const versionOne = await skills.createVersion(
-      companyId,
       skillId,
       { label: "v1" },
       { type: "user", userId: "board" },
@@ -191,7 +187,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       .set({ markdown: "# Runtime Coach\n\nVersion two.\n", updatedAt: new Date() })
       .where(eq(companySkills.id, skillId));
     const versionTwo = await skills.createVersion(
-      companyId,
       skillId,
       { label: "v2" },
       { type: "user", userId: "board" },
@@ -200,7 +195,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
     await db.insert(agents).values([
       {
         id: firstAgentId,
-        companyId,
         name: "Pinned V1",
         role: "engineer",
         status: "idle",
@@ -215,7 +209,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       },
       {
         id: secondAgentId,
-        companyId,
         name: "Pinned V2",
         role: "engineer",
         status: "idle",
@@ -327,18 +320,15 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
   });
 
   it("delivers installed connections without exposing gateway bearers in adapter config or logs", async () => {
-    const companyId = randomUUID();
     const agentId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
       name: "Runtime MCP Delivery",
-      issuePrefix: `M${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "MRSK",
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Runtime MCP Capture",
       role: "engineer",
       status: "idle",
@@ -348,7 +338,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       permissions: {},
     });
     const [application] = await db.insert(toolApplications).values({
-      companyId,
       applicationKey: `runtime-${randomUUID().slice(0, 8)}`,
       name: "Runtime MCP",
       type: "mcp_http",
@@ -356,7 +345,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
     }).returning();
     const [installed, uninstalled] = await db.insert(toolConnections).values([
       {
-        companyId,
         applicationId: application!.id,
         name: "Installed Runtime MCP",
         uid: `test/${randomUUID()}`,
@@ -366,7 +354,6 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
         config: { url: "https://installed.example.test/mcp" },
       },
       {
-        companyId,
         applicationId: application!.id,
         name: "Uninstalled Runtime MCP",
         uid: `test/${randomUUID()}`,
@@ -377,13 +364,11 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       },
     ]).returning();
     const [profile] = await db.insert(toolProfiles).values({
-      companyId,
       profileKey: `app:${installed!.id}`,
       name: installed!.name,
       defaultAction: "deny",
     }).returning();
     await db.insert(toolProfileEntries).values({
-      companyId,
       profileId: profile!.id,
       selectorType: "connection",
       effect: "include",
@@ -391,13 +376,11 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       connectionId: installed!.id,
     });
     await db.insert(toolProfileBindings).values({
-      companyId,
       profileId: profile!.id,
       targetType: "agent",
       targetId: agentId,
     });
     await db.insert(toolConnectionInstalls).values({
-      companyId,
       connectionId: installed!.id,
       targetType: "agent",
       targetId: agentId,

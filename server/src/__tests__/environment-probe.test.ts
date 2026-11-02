@@ -44,7 +44,6 @@ describe("probeEnvironment", () => {
   it("reports local environments as immediately available", async () => {
     const result = await probeEnvironment({} as any, {
       id: "env-1",
-      companyId: "company-1",
       name: "Local",
       description: null,
       driver: "local",
@@ -68,7 +67,6 @@ describe("probeEnvironment", () => {
 
     const result = await probeEnvironment({} as any, {
       id: "env-ssh",
-      companyId: "company-1",
       name: "SSH Fixture",
       description: null,
       driver: "ssh",
@@ -106,7 +104,6 @@ describe("probeEnvironment", () => {
   it("reports fake sandbox environments as ready without external calls", async () => {
     const result = await probeEnvironment({} as any, {
       id: "env-sandbox",
-      companyId: "company-1",
       name: "Fake Sandbox",
       description: null,
       driver: "sandbox",
@@ -148,7 +145,6 @@ describe("probeEnvironment", () => {
 
     const result = await probeEnvironment({} as any, {
       id: "env-sandbox-plugin",
-      companyId: "company-1",
       name: "Fake Plugin Sandbox",
       description: null,
       driver: "sandbox",
@@ -167,7 +163,6 @@ describe("probeEnvironment", () => {
     expect(mockProbePluginSandboxProviderDriver).toHaveBeenCalledWith({
       db: expect.anything(),
       workerManager,
-      companyId: "instance",
       environmentId: "env-sandbox-plugin",
       provider: "fake-plugin",
       config: {
@@ -187,7 +182,6 @@ describe("probeEnvironment", () => {
       },
       lease: {
         id: "lease-1",
-        companyId: "company-1",
         environmentId: "env-sandbox-plugin",
         executionWorkspaceId: null,
         issueId: null,
@@ -214,7 +208,6 @@ describe("probeEnvironment", () => {
 
     const environment = {
       id: "env-sandbox-plugin",
-      companyId: "company-1",
       name: "Daytona",
       description: null,
       driver: "sandbox" as const,
@@ -230,7 +223,6 @@ describe("probeEnvironment", () => {
     };
 
     const result = await probeEnvironment({} as any, environment, {
-      companyId: "company-1",
       pluginWorkerManager: {} as any,
       applyCustomImageTemplate: true,
       acquireSandboxRuntimeLease: true,
@@ -243,7 +235,6 @@ describe("probeEnvironment", () => {
     });
     expect(mockProbePluginSandboxProviderDriver).not.toHaveBeenCalled();
     expect(mockRuntimeAcquireRunLease).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       issueId: null,
       agentId: null,
       heartbeatRunId: null,
@@ -276,7 +267,6 @@ describe("probeEnvironment", () => {
 
     const result = await probeEnvironment({} as any, {
       id: "env-plugin",
-      companyId: "company-1",
       name: "Plugin Sandbox",
       description: null,
       driver: "plugin",
@@ -295,7 +285,6 @@ describe("probeEnvironment", () => {
     expect(mockProbePluginEnvironmentDriver).toHaveBeenCalledWith({
       db: expect.anything(),
       workerManager,
-      companyId: "instance",
       environmentId: "env-plugin",
       config: {
         pluginKey: "acme.environments",
@@ -316,7 +305,6 @@ describe("probeEnvironment", () => {
 
     const result = await probeEnvironment({} as any, {
       id: "env-ssh",
-      companyId: "company-1",
       name: "SSH Fixture",
       description: null,
       driver: "ssh",

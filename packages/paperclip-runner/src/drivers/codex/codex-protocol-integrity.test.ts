@@ -453,7 +453,6 @@ describe("Codex protocol integrity propagation", () => {
       const input: NativeExecutionInputV1 = {
         schema: "paperclip.native-execution-input.v1",
         binding: {
-          companyId: `composed-company-${scenario}`,
           issueId: `composed-issue-${scenario}`,
           agentId: `composed-agent-${scenario}`,
           runId: identity.runId,
@@ -565,6 +564,10 @@ describe("Codex protocol integrity propagation", () => {
         transportFactory: () => bundle.transport,
       });
       const backend = new HarnessDriverBackend(driver);
+      // The cleanup quarantine is keyed by backend kind/name, so each scenario
+      // needs its own name to keep a prior scenario's quarantine out of it.
+      const harnessDescriptor = backend.descriptor.bind(backend);
+      backend.descriptor = async () => ({ ...(await harnessDescriptor()), name: `codex-${scenario}` });
       const admitted = vi.fn();
       const execution = executeNativeSession({
         input,
@@ -990,7 +993,6 @@ describe("Codex protocol integrity propagation", () => {
         identity: {
           runId: "run-integrity",
           sessionId: "session-integrity",
-          companyId: "company",
           issueId: "issue",
           agentId: "agent",
         },

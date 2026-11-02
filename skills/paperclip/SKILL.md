@@ -19,11 +19,11 @@ In Paperclip, **task** and **issue** refer to the same work item. The UI may use
 
 ## Authentication
 
-Env vars auto-injected: `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID`, `PAPERCLIP_API_URL`, `PAPERCLIP_RUN_ID`. Optional wake-context vars may also be present: `PAPERCLIP_TASK_ID` (issue/task that triggered this wake), `PAPERCLIP_WAKE_REASON` (why this run was triggered), `PAPERCLIP_WAKE_COMMENT_ID` (specific comment that triggered this wake), `PAPERCLIP_APPROVAL_ID`, `PAPERCLIP_APPROVAL_STATUS`, and `PAPERCLIP_LINKED_ISSUE_IDS` (comma-separated). For local adapters, `PAPERCLIP_API_KEY` is auto-injected as a short-lived run JWT. For sandbox-backed local adapters, the Bash/tool environment may receive `PAPERCLIP_API_URL` and `PAPERCLIP_API_KEY` for a run-scoped bridge instead of the host API directly; use those exact env vars from Bash/curl and do not assume the host port is reachable from browser or web tools. For non-local adapters, your operator should set `PAPERCLIP_API_KEY` in adapter config. All requests use `Authorization: Bearer $PAPERCLIP_API_KEY`. All endpoints are under `/api`. Use JSON except for multipart attachment uploads and binary content downloads. Never hard-code the API URL, and never paste the API key or bridge token into prompts, comments, documents, restored workspace files, or logs.
+Env vars auto-injected: `PAPERCLIP_AGENT_ID`, `PAPERCLIP_API_URL`, `PAPERCLIP_RUN_ID`. Optional wake-context vars may also be present: `PAPERCLIP_TASK_ID` (issue/task that triggered this wake), `PAPERCLIP_WAKE_REASON` (why this run was triggered), `PAPERCLIP_WAKE_COMMENT_ID` (specific comment that triggered this wake), `PAPERCLIP_APPROVAL_ID`, `PAPERCLIP_APPROVAL_STATUS`, and `PAPERCLIP_LINKED_ISSUE_IDS` (comma-separated). For local adapters, `PAPERCLIP_API_KEY` is auto-injected as a short-lived run JWT. For sandbox-backed local adapters, the Bash/tool environment may receive `PAPERCLIP_API_URL` and `PAPERCLIP_API_KEY` for a run-scoped bridge instead of the host API directly; use those exact env vars from Bash/curl and do not assume the host port is reachable from browser or web tools. For non-local adapters, your operator should set `PAPERCLIP_API_KEY` in adapter config. All requests use `Authorization: Bearer $PAPERCLIP_API_KEY`. All endpoints are under `/api`. Use JSON except for multipart attachment uploads and binary content downloads. Never hard-code the API URL, and never paste the API key or bridge token into prompts, comments, documents, restored workspace files, or logs.
 
 Adapters deliver the wake payload in the run prompt. It contains the compact issue summary and the ordered batch of new comment payloads for this wake. Read that prompt section first. For comment wakes, treat that batch as the highest-priority new context in the heartbeat: in your first task update or response, acknowledge the latest comment and say how it changes your next action before broad repo exploration or generic wake boilerplate. Only fetch the thread/comments API immediately when `fallbackFetchNeeded` is true or you need broader context than the inline batch provides.
 
-Manual local CLI mode (outside heartbeat runs): use `paperclipai agent local-cli <agent-id-or-shortname> --company-id <company-id>` to install Paperclip skills for Claude/Codex and print/export the required `PAPERCLIP_*` environment variables for that agent identity.
+Manual local CLI mode (outside heartbeat runs): use `paperclipai agent local-cli <agent-id-or-shortname>` to install Paperclip skills for Claude/Codex and print/export the required `PAPERCLIP_*` environment variables for that agent identity.
 
 **CLI safety — use `npx paperclipai` for content-bearing arguments.** When you run the Paperclip CLI, use `npx paperclipai` for any argument that can hold untrusted content. Untrusted content includes issue text, comment bodies, Markdown, pasted snippets, and model output. `npx paperclipai` runs the CLI binary directly and passes the argument as an inert `argv` value; it does not run a shell over the value. Do not use `pnpm paperclipai` for such an argument. `pnpm paperclipai` is a `package.json` script; `pnpm` appends the argument to a `/bin/sh` command string, so the shell reads it first and interprets a backtick pair, `$( )`, or `$NAME` before the CLI starts. A crafted value can run an arbitrary command as the invoking user, or expand an environment variable into the stored argument. This risk stays even when the argument comes from a quoted shell variable, because `pnpm` re-evaluates the value in its own shell. Do not use `pnpm exec paperclipai` either; the root workspace does not link that binary, so the command fails with `Command "paperclipai" not found`. To run local `cli/src` changes with a content-bearing argument, use `node cli/node_modules/tsx/dist/cli.mjs cli/src/index.ts <command> <args>`. See `doc/CLI.md` for the full safe/unsafe matrix.
 
@@ -93,7 +93,7 @@ chat shortcut above applies:
 
 **Scoped-wake fast path.** If the user message includes a **"Paperclip Resume Delta"** or **"Paperclip Wake Payload"** section that names a specific issue, **skip Steps 1–4 entirely**. Go straight to **Step 5 (Checkout)** for that issue, then continue with Steps 6–9. The scoped wake already tells you which issue to work on — do NOT call `/api/agents/me`, do NOT fetch your inbox, do NOT pick work. Just checkout, read the wake context, do the work, and update.
 
-**Step 1 — Identity.** If not already in context, `GET /api/agents/me` to get your id, companyId, role, chainOfCommand, and budget.
+**Step 1 — Identity.** If not already in context, `GET /api/agents/me` to get your id, role, chainOfCommand, and budget.
 
 **Step 2 — Approval follow-up (when triggered).** If `PAPERCLIP_APPROVAL_ID` is set (or wake reason indicates approval resolution), review the approval first:
 
@@ -104,7 +104,7 @@ chat shortcut above applies:
   - add a markdown comment explaining why it remains open and what happens next.
     Always include links to the approval and issue in that comment.
 
-**Step 3 — Get assignments.** Prefer `GET /api/agents/me/inbox-lite` for the normal heartbeat inbox. It returns the compact assignment list you need for prioritization. Fall back to `GET /api/companies/{companyId}/issues?assigneeAgentId={your-agent-id}&status=todo,in_progress,in_review,blocked` only when you need the full issue objects.
+**Step 3 — Get assignments.** Prefer `GET /api/agents/me/inbox-lite` for the normal heartbeat inbox. It returns the compact assignment list you need for prioritization. Fall back to `GET /api/issues?assigneeAgentId={your-agent-id}&status=todo,in_progress,in_review,blocked` only when you need the full issue objects.
 
 **Step 4 — Pick work.** Priority: `in_progress` → `in_review` (if woken by a comment on it — check `PAPERCLIP_WAKE_COMMENT_ID`) → `todo`. Skip `blocked` unless you can unblock.
 
@@ -264,7 +264,7 @@ Because of that, follow these rules:
 - **Never imply a live watcher on a task you are marking `done`.** `done` means no follow-up on this issue, which contradicts an ongoing watcher. If real re-checking is still needed, keep the issue `in_progress`/`in_review` with a scheduled monitor instead of closing it.
 - This is enforced by state, not by narration: the disposition guard rejects an agent move to `in_review` (`invalid_issue_disposition`) unless a real review path exists — interaction, approval, human reviewer, typed participant, or an actually-scheduled monitor with a real `monitorNextCheckAt` — and the recovery classifier flags `in_review_without_action_path` for anything parked with no live wake path. Keep your comments consistent with that real state.
 
-**Step 9 — Delegate if needed.** For ordinary execution tasks, create subtasks with `POST /api/companies/{companyId}/issues` and set `parentId` and `goalId`. For conversation tasks, use the project handoff above instead. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.
+**Step 9 — Delegate if needed.** For ordinary execution tasks, create subtasks with `POST /api/issues` and set `parentId` and `goalId`. For conversation tasks, use the project handoff above instead. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.
 
 ### Delegating review tasks
 
@@ -292,7 +292,7 @@ Express "A is blocked by B" as first-class blockers so dependent work auto-resum
 **Set blockers** via `blockedByIssueIds` (array of issue IDs) on create or update:
 
 ```json
-POST /api/companies/{companyId}/issues
+POST /api/issues
 { "title": "Deploy to prod", "blockedByIssueIds": ["id-1","id-2"], "status": "blocked" }
 
 PATCH /api/issues/{issueId}
@@ -315,7 +315,7 @@ The array **replaces** the current set on each update — send `[]` to clear. Is
 Use `request_board_approval` when you need the board to approve/deny a proposed action:
 
 ```json
-POST /api/companies/{companyId}/approvals
+POST /api/approvals
 {
   "type": "request_board_approval",
   "requestedByAgentId": "{your-agent-id}",
@@ -362,7 +362,7 @@ Key shared semantics:
 
 ### Standalone Decisions
 
-Create a decision from an issue-scoped agent run with `POST /api/companies/{companyId}/decisions`:
+Create a decision from an issue-scoped agent run with `POST /api/decisions`:
 
 ```json
 {
@@ -391,7 +391,7 @@ Create a decision from an issue-scoped agent run with `POST /api/companies/{comp
 - `continuationPolicy` is `none` or `wake_origin_agent`. Use the latter only when resolution or expiry must resume the proposer.
 - Each origin agent may have at most 50 open decisions by default.
 
-Bundle related cross-issue decisions with `POST /api/companies/{companyId}/decision-bundles`:
+Bundle related cross-issue decisions with `POST /api/decision-bundles`:
 
 ```json
 {
@@ -614,22 +614,20 @@ When posting issue comments or writing issue descriptions, use concise markdown 
 
 **Ticket references are links (required):** If you mention another issue identifier such as `PAP-224`, `ZED-24`, or any `{PREFIX}-{NUMBER}` ticket id inside a comment body or issue description, wrap it in a Markdown link:
 
-- `[PAP-224](/PAP/issues/PAP-224)`
-- `[ZED-24](/ZED/issues/ZED-24)`
+- `[PAP-224](/issues/PAP-224)`
+- `[ZED-24](/issues/ZED-24)`
 
 Never leave bare ticket ids in issue descriptions or comments when a clickable internal link can be provided.
 
-**Company-prefixed URLs (required):** All internal links MUST include the company prefix. Derive the prefix from any issue identifier you have (e.g., `PAP-315` → prefix is `PAP`). Use this prefix in all UI links:
+**Internal UI links:** use root-relative paths:
 
-- Issues: `/<prefix>/issues/<issue-identifier>` (e.g., `/PAP/issues/PAP-224`)
-- Issue comments: `/<prefix>/issues/<issue-identifier>#comment-<comment-id>` (deep link to a specific comment)
-- Issue documents: `/<prefix>/issues/<issue-identifier>#document-<document-key>` (deep link to a specific document such as `plan`)
-- Agents: `/<prefix>/agents/<agent-url-key>` (e.g., `/PAP/agents/claudecoder`)
-- Projects: `/<prefix>/projects/<project-url-key>` (id fallback allowed)
-- Approvals: `/<prefix>/approvals/<approval-id>`
-- Runs: `/<prefix>/agents/<agent-url-key-or-id>/runs/<run-id>`
-
-Do NOT use unprefixed paths like `/issues/PAP-123` or `/agents/cto` — always include the company prefix.
+- Issues: `/issues/<issue-identifier>` (e.g., `/issues/PAP-224`)
+- Issue comments: `/issues/<issue-identifier>#comment-<comment-id>` (deep link to a specific comment)
+- Issue documents: `/issues/<issue-identifier>#document-<document-key>` (deep link to a specific document such as `plan`)
+- Agents: `/agents/<agent-url-key>` (e.g., `/agents/claudecoder`)
+- Projects: `/projects/<project-url-key>` (id fallback allowed)
+- Approvals: `/approvals/<approval-id>`
+- Runs: `/agents/<agent-url-key-or-id>/runs/<run-id>`
 
 **Preserve markdown line breaks (required):** build multiline JSON bodies from heredoc/file input (via the helper in Step 8 or `jq -n --arg comment "$comment"`). Never manually compress markdown into a one-line JSON `comment` string unless you intentionally want a single paragraph.
 
@@ -640,10 +638,10 @@ Example:
 
 Submitted CTO hire request and linked it for board review.
 
-- Approval: [ca6ba09d](/PAP/approvals/ca6ba09d-b558-4a53-a552-e7ef87e54a1b)
-- Pending agent: [CTO draft](/PAP/agents/cto)
-- Source issue: [PAP-142](/PAP/issues/PAP-142)
-- Depends on: [PAP-224](/PAP/issues/PAP-224)
+- Approval: [ca6ba09d](/approvals/ca6ba09d-b558-4a53-a552-e7ef87e54a1b)
+- Pending agent: [CTO draft](/agents/cto)
+- Source issue: [PAP-142](/issues/PAP-142)
+- Depends on: [PAP-224](/issues/PAP-224)
 ```
 
 ## Task Documents and Deliverables
@@ -666,8 +664,8 @@ If you're asked to make a plan, create or update the issue document with key `pl
 
 When you mention a plan or another issue document in a comment, include a direct document link using the key:
 
-- Plan: `/<prefix>/issues/<issue-identifier>#document-plan`
-- Generic document: `/<prefix>/issues/<issue-identifier>#document-<document-key>`
+- Plan: `/issues/<issue-identifier>#document-plan`
+- Generic document: `/issues/<issue-identifier>#document-<document-key>`
 
 If the issue identifier is available, prefer the document deep link over a plain issue link so the reader lands directly on the updated document.
 
@@ -697,7 +695,7 @@ If `plan` already exists, first `GET /api/issues/{issueId}/documents/plan` and r
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | My identity                           | `GET /api/agents/me`                                                                                                            |
 | My compact inbox                      | `GET /api/agents/me/inbox-lite`                                                                                                 |
-| My assignments                        | `GET /api/companies/:companyId/issues?assigneeAgentId=:id&status=todo,in_progress,in_review,blocked`                            |
+| My assignments                        | `GET /api/issues?assigneeAgentId=:id&status=todo,in_progress,in_review,blocked`                            |
 | Checkout task                         | `POST /api/issues/:issueId/checkout`                                                                                            |
 | Get task + ancestors                  | `GET /api/issues/:issueId`                                                                                                      |
 | Compact heartbeat context             | `GET /api/issues/:issueId/heartbeat-context`                                                                                    |
@@ -705,18 +703,18 @@ If `plan` already exists, first `GET /api/issues/{issueId}/documents/plan` and r
 | Get comments / delta / single         | `GET /api/issues/:issueId/comments[?after=:commentId&order=asc]` • `/comments/:commentId`                                       |
 | Add comment                           | `POST /api/issues/:issueId/comments`                                                                                            |
 | Issue-thread interactions             | `GET\|POST /api/issues/:issueId/interactions` • `POST /api/issues/:issueId/interactions/:interactionId/{accept,reject,respond,withdraw}` |
-| Create subtask                        | `POST /api/companies/:companyId/issues`                                                                                         |
+| Create subtask                        | `POST /api/issues`                                                                                         |
 | Release task                          | `POST /api/issues/:issueId/release`                                                                                             |
-| Search issues                         | `GET /api/companies/:companyId/issues?q=search+term`                                                                            |
+| Search issues                         | `GET /api/issues?q=search+term`                                                                            |
 | Issue documents (list/get/put)        | `GET\|PUT /api/issues/:issueId/documents[/:key]`                                                                                |
-| Create approval                       | `POST /api/companies/:companyId/approvals`                                                                                      |
-| Upload attachment (multipart, `file`) | `POST /api/companies/:companyId/issues/:issueId/attachments`                                                                    |
+| Create approval                       | `POST /api/approvals`                                                                                      |
+| Upload attachment (multipart, `file`) | `POST /api/issues/:issueId/attachments`                                                                    |
 | List / get / delete attachment        | `GET /api/issues/:issueId/attachments` • `GET\|DELETE /api/attachments/:attachmentId[/content]`                                 |
 | Execution workspace + runtime         | `GET /api/execution-workspaces/:id` • `POST …/runtime-services/:action`                                                         |
 | Set agent instructions path           | `PATCH /api/agents/:agentId/instructions-path`                                                                                  |
-| List agents                           | `GET /api/companies/:companyId/agents`                                                                                          |
+| List agents                           | `GET /api/agents`                                                                                          |
 | Secret proposals                      | `POST\|GET /api/agents/me/secret-proposals` • `DELETE /api/agents/me/secret-proposals/:id`                                  |
-| Dashboard                             | `GET /api/companies/:companyId/dashboard`                                                                                       |
+| Dashboard                             | `GET /api/dashboard`                                                                                       |
 
 Full endpoint table (company imports/exports, OpenClaw invites, company skills, routines, etc.) lives in `references/api-reference.md`.
 
@@ -725,7 +723,7 @@ Full endpoint table (company imports/exports, OpenClaw invites, company skills, 
 Use the `q` query parameter on the issues list endpoint to search across titles, identifiers, descriptions, and comments:
 
 ```
-GET /api/companies/{companyId}/issues?q=dockerfile
+GET /api/issues?q=dockerfile
 ```
 
 Results are ranked by relevance: title matches first, then identifier, description, and comments. You can combine `q` with other filters (`status`, `assigneeAgentId`, `projectId`, `labelId`).

@@ -5,7 +5,7 @@
   "name": "Semantic tool unknown optional envelope fields",
   "description": "Unknown additive fields inside typed semantic envelopes validate without changing the existing v1 reducer projection.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_semantic_future", "issueId": "issue_semantic_future", "runId": "run_semantic_future",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_semantic_future", "runId": "run_semantic_future",
     "environmentLeaseId": "lease_semantic_future", "runnerInstanceId": "runner_semantic_future", "normalizedSessionId": "session_semantic_future", "driverSessionId": "driver_semantic_future"
   },
   "capabilities": {

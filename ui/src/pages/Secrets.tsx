@@ -52,7 +52,6 @@ import type {
   UserSecretDefinition,
 } from "@paperclipai/shared";
 import { hidesCompanySection } from "@paperclipai/shared";
-import { useCompany } from "../context/CompanyContext";
 import { useHiddenSettings } from "../hooks/useHiddenSettings";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
@@ -342,7 +341,6 @@ function normalizeUserSecretKeyForPreview(input: string) {
     .replace(/^_+|_+$/g, "")
     .slice(0, 120);
 }
-
 
 function modeLabel(managedMode: SecretManagedMode) {
   return managedMode === "paperclip_managed" ? "Paperclip-managed" : "Linked external";
@@ -638,7 +636,6 @@ function getAwsProviderVaultDiscoveryQuery(form: ProviderVaultForm): string | nu
 export function getAwsManagedPathPreview(input: {
   provider: SecretProviderDescriptor | null | undefined;
   health: SecretProviderHealthResponse | null;
-  companyId: string;
   secretKeySource: string;
 }) {
   if (input.provider?.id !== "aws_secrets_manager") return null;
@@ -646,12 +643,11 @@ export function getAwsManagedPathPreview(input: {
   const prefix = detailString(healthEntry?.details, "prefix") ?? "paperclip";
   const deploymentId = detailString(healthEntry?.details, "deploymentId") ?? "{deploymentId}";
   const secretKey = normalizeSecretKeyForPreview(input.secretKeySource) || "{secretKey}";
-  return `${prefix}/${deploymentId}/${input.companyId}/${secretKey}`;
+  return `${prefix}/${deploymentId}/${secretKey}`;
 }
 
 export function Secrets() {
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const [activeTab, setActiveTab] = useState<SecretsTab>("secrets");
@@ -735,63 +731,43 @@ export function Secrets() {
   }, [setBreadcrumbs]);
 
   const secretsQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.list(selectedCompanyId)
-      : ["secrets", "__disabled__"],
-    queryFn: () => secretsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
   });
 
   const userDefinitionsQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.userDefinitions(selectedCompanyId)
-      : ["user-secret-definitions", "__disabled__"],
-    queryFn: () => secretsApi.listUserSecretDefinitions(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.userDefinitions(),
+    queryFn: () => secretsApi.listUserSecretDefinitions(),
   });
 
   const myUserSecretsQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.myUserSecrets(selectedCompanyId)
-      : ["my-user-secrets", "__disabled__"],
-    queryFn: () => secretsApi.listMyUserSecrets(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.myUserSecrets(),
+    queryFn: () => secretsApi.listMyUserSecrets(),
   });
 
   const providersQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.providers(selectedCompanyId)
-      : ["secret-providers", "__disabled__"],
-    queryFn: () => secretsApi.providers(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.providers(),
+    queryFn: () => secretsApi.providers(),
     staleTime: 5 * 60_000,
   });
 
   const providerHealthQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? ["secret-provider-health", selectedCompanyId]
-      : ["secret-provider-health", "__disabled__"],
-    queryFn: () => secretsApi.providerHealth(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: ["secret-provider-health"],
+    queryFn: () => secretsApi.providerHealth(),
     refetchInterval: 60_000,
     retry: false,
   });
 
   const providerConfigsQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.providerConfigs(selectedCompanyId)
-      : ["secret-provider-configs", "__disabled__"],
-    queryFn: () => secretsApi.providerConfigs(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.providerConfigs(),
+    queryFn: () => secretsApi.providerConfigs(),
     retry: false,
   });
 
   const proposalsQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.proposals(selectedCompanyId, "pending")
-      : ["secret-proposals", "__disabled__"],
-    queryFn: () => secretsApi.listProposals(selectedCompanyId!, "pending"),
-    enabled: Boolean(selectedCompanyId) && !hideProposalsTab,
+    queryKey: queryKeys.secrets.proposals("pending"),
+    queryFn: () => secretsApi.listProposals("pending"),
+    enabled: !hideProposalsTab,
   });
 
   const secrets = secretsQuery.data ?? EMPTY_SECRETS;
@@ -862,7 +838,6 @@ export function Secrets() {
   const awsManagedPathPreview = getAwsManagedPathPreview({
     provider: selectedCreateProvider,
     health: providerHealthQuery.data ?? null,
-    companyId: selectedCompanyId ?? "{companyId}",
     secretKeySource: createForm.key.trim() || createForm.name,
   });
 
@@ -1015,15 +990,14 @@ export function Secrets() {
   });
 
   function invalidateAll(extraIds: string[] = []) {
-    if (!selectedCompanyId) return;
-    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions(selectedCompanyId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.myUserSecrets(selectedCompanyId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.providerConfigs(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.myUserSecrets() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.providerConfigs() });
     for (const id of extraIds) {
       queryClient.invalidateQueries({ queryKey: queryKeys.secrets.usage(id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.secrets.accessEvents(id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitionCoverage(selectedCompanyId, id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitionCoverage(id) });
     }
   }
 
@@ -1079,14 +1053,13 @@ export function Secrets() {
       };
       if (editingDefinition) {
         const definition = await secretsApi.updateUserSecretDefinition(
-          selectedCompanyId!,
           editingDefinition.id,
           sharedDefinitionPayload,
         );
         return { kind: "user" as const, item: definition, action: "updated" as const };
       }
       if (secretValueProvider === "user") {
-        const definition = await secretsApi.createUserSecretDefinition(selectedCompanyId!, {
+        const definition = await secretsApi.createUserSecretDefinition({
           ...sharedDefinitionPayload,
           key: createForm.key.trim(),
           status: "active",
@@ -1107,7 +1080,7 @@ export function Secrets() {
       } else {
         input.externalRef = createForm.externalRef.trim();
       }
-      const secret = await secretsApi.create(selectedCompanyId!, input);
+      const secret = await secretsApi.create(input);
       return { kind: "company" as const, item: secret, action: "created" as const };
     },
     onSuccess: (result) => {
@@ -1207,7 +1180,7 @@ export function Secrets() {
 
   const definitionStatusMutation = useMutation({
     mutationFn: ({ definition, status }: { definition: UserSecretDefinition; status: SecretStatus }) =>
-      secretsApi.updateUserSecretDefinition(selectedCompanyId!, definition.id, { status }),
+      secretsApi.updateUserSecretDefinition(definition.id, { status }),
     onSuccess: (updated) => {
       pushToast({ title: `User-provided secret ${updated.status}`, body: updated.name, tone: "info" });
       invalidateAll([updated.id]);
@@ -1240,7 +1213,7 @@ export function Secrets() {
 
   const deleteDefinitionMutation = useMutation({
     mutationFn: (definition: UserSecretDefinition) =>
-      secretsApi.removeUserSecretDefinition(selectedCompanyId!, definition.id),
+      secretsApi.removeUserSecretDefinition(definition.id),
     onSuccess: (_response, definition) => {
       pushToast({ title: "User-provided secret removed", body: definition.name, tone: "info" });
       setDefinitionDeleteConfirm(null);
@@ -1267,7 +1240,7 @@ export function Secrets() {
       if (editingVault) {
         return secretsApi.updateProviderConfig(editingVault.id, data);
       }
-      return secretsApi.createProviderConfig(selectedCompanyId!, {
+      return secretsApi.createProviderConfig({
         ...(data as UpdateSecretProviderConfigInput),
         provider: vaultForm.provider,
       } as CreateSecretProviderConfigInput);
@@ -1287,7 +1260,7 @@ export function Secrets() {
 
   const discoverVaultMutation = useMutation({
     mutationFn: () =>
-      secretsApi.providerConfigDiscoveryPreview(selectedCompanyId!, {
+      secretsApi.providerConfigDiscoveryPreview({
         provider: "aws_secrets_manager",
         config: buildProviderVaultConfig(vaultForm),
         query: getAwsProviderVaultDiscoveryQuery(vaultForm),
@@ -1797,11 +1770,6 @@ export function Secrets() {
     );
   }
 
-  if (!selectedCompanyId) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">Select an organization to manage secrets.</div>
-    );
-  }
 
   return (
     <TooltipProvider>
@@ -2109,7 +2077,7 @@ export function Secrets() {
                                 <span> · {row.secret.managedMode === "external_reference" ? "linked" : "managed"}</span>
                               </span>
                             ) : (
-                              <CoverageInline companyId={selectedCompanyId} definitionId={row.definition.id} compact />
+                              <CoverageInline definitionId={row.definition.id} compact />
                             )}
                           </div>
                           <div role="cell">
@@ -2170,7 +2138,7 @@ export function Secrets() {
                             <>
                               <UserSecretChip label="Each user" />
                               <StatusBadge status={status} />
-                              <CoverageInline companyId={selectedCompanyId} definitionId={row.definition.id} compact />
+                              <CoverageInline definitionId={row.definition.id} compact />
                             </>
                           )}
                         </div>
@@ -2201,7 +2169,7 @@ export function Secrets() {
           value="my-secrets"
           className="flex flex-col gap-3"
         >
-          <MyUserSecretsTab companyId={selectedCompanyId} />
+          <MyUserSecretsTab />
         </TabsContent>
         {!hideVaultsTab && (
         <TabsContent value="vaults">
@@ -2230,9 +2198,7 @@ export function Secrets() {
         )}
         {!hideProposalsTab && (
         <TabsContent value="proposals">
-          {selectedCompanyId ? (
-            <ProposalsTab companyId={selectedCompanyId} providerConfigs={providerConfigs} />
-          ) : null}
+          <ProposalsTab providerConfigs={providerConfigs} />
         </TabsContent>
         )}
       </Tabs>
@@ -2354,7 +2320,6 @@ export function Secrets() {
                   <TabsContent value="details">
                     <div className="space-y-3">
                       <AgentAccessSection
-                        companyId={selectedCompanyId}
                         reference={selectedSecretAccessReference!}
                       />
                       <SecretDetailsTab
@@ -2372,7 +2337,6 @@ export function Secrets() {
                     <SecretEventsTab
                       loading={eventsQuery.isPending}
                       events={eventsQuery.data ?? []}
-                      companyId={selectedCompanyId}
                     />
                   </TabsContent>
                 </div>
@@ -2408,7 +2372,7 @@ export function Secrets() {
                 <div className="flex flex-wrap gap-1.5">
                   <UserSecretChip label="Each user" />
                   <MetaChip>
-                    <CoverageInline companyId={selectedCompanyId} definitionId={selectedDefinition.id} compact />
+                    <CoverageInline definitionId={selectedDefinition.id} compact />
                   </MetaChip>
                 </div>
               </SheetHeader>
@@ -2493,11 +2457,9 @@ export function Secrets() {
                   <TabsContent value="details">
                     <div className="space-y-3">
                       <AgentAccessSection
-                        companyId={selectedCompanyId}
                         reference={selectedDefinitionAccessReference!}
                       />
                       <UserSecretDetailsTab
-                        companyId={selectedCompanyId}
                         definition={selectedDefinition}
                         onViewCoverage={() => setSecretDetailTab("coverage")}
                       />
@@ -2505,7 +2467,6 @@ export function Secrets() {
                   </TabsContent>
                   <TabsContent value="coverage">
                     <UserSecretCoverageTab
-                      companyId={selectedCompanyId}
                       definitionId={selectedDefinition.id}
                     />
                   </TabsContent>
@@ -2544,14 +2505,13 @@ export function Secrets() {
         </DialogContent>
       </Dialog>
 
-      {selectedCompanyId && (
+      {(
         <ImportFromVaultDialog
           open={importOpen}
           onOpenChange={(open) => {
             setImportOpen(open);
             if (!open) setImportInitialVaultId(null);
           }}
-          companyId={selectedCompanyId}
           providerConfigs={providerConfigs}
           existingSecrets={secrets}
           initialProviderConfigId={importInitialVaultId}
@@ -3227,7 +3187,6 @@ export function Secrets() {
       </Dialog>
 
       <SetMyUserSecretDialog
-        companyId={selectedCompanyId}
         definition={setMyValueFor?.definition ?? null}
         existingSecret={setMyValueFor?.secret ?? null}
         open={setMyValueFor !== null}
@@ -4183,17 +4142,15 @@ function TextField({
 }
 
 function CoverageInline({
-  companyId,
   definitionId,
   compact = false,
 }: {
-  companyId: string;
   definitionId: string;
   compact?: boolean;
 }) {
   const coverageQuery = useQuery({
-    queryKey: queryKeys.secrets.userDefinitionCoverage(companyId, definitionId),
-    queryFn: () => secretsApi.userSecretDefinitionCoverage(companyId, definitionId),
+    queryKey: queryKeys.secrets.userDefinitionCoverage(definitionId),
+    queryFn: () => secretsApi.userSecretDefinitionCoverage(definitionId),
     staleTime: 30_000,
   });
   const summary = coverageQuery.data;
@@ -4217,11 +4174,9 @@ function CoverageInline({
 }
 
 function UserSecretDetailsTab({
-  companyId,
   definition,
   onViewCoverage,
 }: {
-  companyId: string;
   definition: UserSecretDefinition;
   onViewCoverage: () => void;
 }) {
@@ -4241,7 +4196,7 @@ function UserSecretDetailsTab({
           className="inline-flex min-w-0 items-center gap-1 text-left text-primary hover:underline"
           onClick={onViewCoverage}
         >
-          <CoverageInline companyId={companyId} definitionId={definition.id} />
+          <CoverageInline definitionId={definition.id} />
           <span className="shrink-0 text-muted-foreground">· View in Coverage</span>
         </button>
       </DetailRow>
@@ -4258,15 +4213,13 @@ function UserSecretDetailsTab({
 }
 
 function UserSecretCoverageTab({
-  companyId,
   definitionId,
 }: {
-  companyId: string;
   definitionId: string;
 }) {
   const coverageQuery = useQuery({
-    queryKey: queryKeys.secrets.userDefinitionCoverage(companyId, definitionId),
-    queryFn: () => secretsApi.userSecretDefinitionCoverage(companyId, definitionId),
+    queryKey: queryKeys.secrets.userDefinitionCoverage(definitionId),
+    queryFn: () => secretsApi.userSecretDefinitionCoverage(definitionId),
     staleTime: 30_000,
   });
   if (coverageQuery.isPending) {
@@ -4377,10 +4330,8 @@ function apiAliasesReferencingSecret(adapterConfig: unknown, reference: AgentAcc
 }
 
 function AgentAccessSection({
-  companyId,
   reference,
 }: {
-  companyId: string;
   reference: AgentAccessReference;
 }) {
   const queryClient = useQueryClient();
@@ -4394,8 +4345,8 @@ function AgentAccessSection({
   const referenceName = reference.kind === "company" ? reference.secret.name : reference.definition.name;
 
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
     staleTime: 30_000,
   });
   const agents = useMemo(
@@ -4435,7 +4386,7 @@ function AgentAccessSection({
   }, [referenceId]);
 
   function invalidateAfterChange(agentId: string) {
-    queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
     queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
     if (reference.kind === "company") {
       queryClient.invalidateQueries({ queryKey: queryKeys.secrets.usage(reference.secret.id) });
@@ -4445,7 +4396,7 @@ function AgentAccessSection({
   const grantMutation = useMutation({
     mutationFn: async ({ agentId, key }: { agentId: string; key: string }) => {
       // Re-fetch right before patching so we merge into the freshest env config.
-      const detail = await agentsApi.get(agentId, companyId);
+      const detail = await agentsApi.get(agentId);
       const adapterConfig = { ...((detail.adapterConfig ?? {}) as Record<string, unknown>) };
       const env = { ...((adapterConfig.env ?? {}) as Record<string, unknown>) };
       if (env[key] !== undefined) {
@@ -4458,7 +4409,6 @@ function AgentAccessSection({
       return agentsApi.update(
         agentId,
         { adapterConfig: { ...adapterConfig, env }, replaceAdapterConfig: true },
-        companyId,
       );
     },
     onSuccess: (agent, variables) => {
@@ -4474,7 +4424,7 @@ function AgentAccessSection({
 
   const revokeMutation = useMutation({
     mutationFn: async ({ agentId }: { agentId: string }) => {
-      const detail = await agentsApi.get(agentId, companyId);
+      const detail = await agentsApi.get(agentId);
       const adapterConfig = { ...((detail.adapterConfig ?? {}) as Record<string, unknown>) };
       const env = { ...((adapterConfig.env ?? {}) as Record<string, unknown>) };
       const keys = envKeysReferencingSecret(env, reference);
@@ -4485,7 +4435,6 @@ function AgentAccessSection({
       return agentsApi.update(
         agentId,
         { adapterConfig: { ...adapterConfig, env }, replaceAdapterConfig: true },
-        companyId,
       );
     },
     onSuccess: (agent, variables) => {
@@ -4768,11 +4717,9 @@ export function SecretUsageTab({ loading, bindings }: { loading: boolean; bindin
 export function SecretEventsTab({
   loading,
   events,
-  companyId,
 }: {
   loading: boolean;
   events: SecretAccessEvent[];
-  companyId: string;
 }) {
   // Resolve responsible/owner user ids to human names for user-scoped events.
   const anyUserScoped = events.some(
@@ -4780,8 +4727,8 @@ export function SecretEventsTab({
       event.secretScope === "user" || event.responsibleUserId || event.credentialOwnerUserId,
   );
   const { data: directory } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(companyId),
-    queryFn: () => accessApi.listUserDirectory(companyId),
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
     enabled: anyUserScoped,
     staleTime: 60_000,
   });

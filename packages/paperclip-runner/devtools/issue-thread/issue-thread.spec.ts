@@ -616,7 +616,6 @@ function cleanRoomPayload(identifier: string, withTurn = false) {
     identity: {
       token: identifier.toLowerCase().replace("mck-", "tok"),
       sequence: Number(identifier.slice(4)),
-      companyId: `company-cleanroom-${identifier}`,
       actorId: `actor-cleanroom-${identifier}`,
       taskId: `task-cleanroom-${identifier}`,
       identifier,

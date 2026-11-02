@@ -2136,6 +2136,27 @@
       "when": 1793573175698,
       "tag": "0306_instance_level_access",
       "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1793596316338,
+      "tag": "0307_remove_company_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1793600000000,
+      "tag": "0308_single_organization_skill_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1793624865003,
+      "tag": "0309_single_organization_singletons",
+      "breakpoints": true
     }
   ]
 }

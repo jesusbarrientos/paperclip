@@ -8,7 +8,6 @@ import type {
 
 export interface ExternalObject {
   id: string;
-  companyId: string;
   providerKey: string;
   pluginId: string | null;
   objectType: string;
@@ -41,7 +40,6 @@ export interface ExternalObject {
 
 export interface ExternalObjectMention {
   id: string;
-  companyId: string;
   sourceIssueId: string;
   sourceKind: ExternalObjectMentionSourceKind;
   sourceRecordId: string | null;

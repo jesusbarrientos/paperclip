@@ -72,16 +72,14 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Teams fixture",
       adapterType: "codex_local",
     });
     await db
       .insert(toolApplications)
-      .values({ id: applicationId, companyId, name: "Teams", type: "chat" });
+      .values({ id: applicationId, name: `Teams ${applicationId}`, type: "chat" });
     await db.insert(toolConnections).values({
       id: connectionId,
-      companyId,
       applicationId,
       uid: randomUUID(),
       name: "Teams",
@@ -90,7 +88,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     });
     await db.insert(chatEndpoints).values({
       id: endpointId,
-      companyId,
       connectionId,
       provider: "microsoft-teams",
       publicId: randomUUID(),
@@ -99,10 +96,9 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     });
     await db
       .insert(issues)
-      .values({ id: issueId, companyId, title: "Exact file output" });
+      .values({ id: issueId, title: "Exact file output" });
     await db.insert(chatConversations).values({
       id: conversationId,
-      companyId,
       endpointId,
       issueId,
       externalConversationId: "a:personal",
@@ -112,21 +108,18 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     });
     await db.insert(chatExternalPrincipals).values({
       id: principalId,
-      companyId,
       provider: "microsoft-teams",
       providerAccountId: randomUUID(),
       externalId: randomUUID(),
     });
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId,
       body: "Preserve original comment",
       authorUserId: "fixture-user",
     });
     await db.insert(assets).values({
       id: assetId,
-      companyId,
       provider: "local_disk",
       objectKey: `fixture/${assetId}`,
       contentType: "text/plain",
@@ -136,14 +129,12 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     });
     await db.insert(issueAttachments).values({
       id: attachmentId,
-      companyId,
       issueId,
       assetId,
       issueCommentId: commentId,
     });
     await db.insert(chatPublications).values({
       id: publicationId,
-      companyId,
       endpointId,
       conversationId,
       issueId,
@@ -179,7 +170,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     };
     await db.insert(chatTeamsFileTransfers).values({
       id,
-      companyId,
       endpointId,
       conversationId,
       publicationId,
@@ -226,7 +216,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
           ?.action === "mark_delivered";
       return {
         id,
-        companyId,
         endpointId,
         conversationId,
         issueId,
@@ -272,7 +261,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
         .then((rows) => rows[0]!);
     return {
       id,
-      companyId,
       endpointId,
       conversationId,
       issueId,
@@ -406,7 +394,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
       other = randomUUID();
     await db.insert(chatPublications).values({
       id: other,
-      companyId: f.companyId,
       endpointId: f.endpointId,
       conversationId: f.conversationId,
       issueId: f.issueId,
@@ -415,7 +402,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
       payload: { text: "Other" },
     });
     await db.insert(chatMessageLinks).values({
-      companyId: f.companyId,
       endpointId: f.endpointId,
       conversationId: f.conversationId,
       publicationId: other,
@@ -429,7 +415,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     expect((await f.endpoint()).lastPublicationAt).toBeNull();
   });
   it.each([
-    "companyId",
     "endpointId",
     "conversationId",
     "issueId",
@@ -482,7 +467,6 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
     await db
       .insert(chatActions)
       .values({
-        companyId: f.companyId,
         endpointId: f.endpointId,
         conversationId: f.conversationId,
         kind: "teams_file_effect_intent",

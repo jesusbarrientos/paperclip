@@ -59,7 +59,6 @@ describe("CommentThread external object decoration (integration)", () => {
               <CommentThread
                 comments={[{
                   id: "comment-mixed",
-                  companyId: "company-1",
                   issueId: "issue-1",
                   authorAgentId: null,
                   authorUserId: "user-1",

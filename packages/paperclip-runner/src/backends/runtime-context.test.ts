@@ -308,7 +308,6 @@ describe("native runtime context files", () => {
       },
       credentialBindings: [],
       binding: {
-        companyId: "company",
         runId: "run",
         issueId: "issue",
         agentId: "agent",

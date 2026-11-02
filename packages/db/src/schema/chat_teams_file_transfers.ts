@@ -11,7 +11,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import {
   chatConversations,
   chatEndpoints,
@@ -26,9 +25,6 @@ export const chatTeamsFileTransfers = pgTable(
   "chat_teams_file_transfers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id, { onDelete: "cascade" }),
     endpointId: uuid("endpoint_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
     publicationId: uuid("publication_id").notNull(),
@@ -77,7 +73,6 @@ export const chatTeamsFileTransfers = pgTable(
   },
   (t) => [
     uniqueIndex("chat_teams_file_transfers_publication_uq").on(
-      t.companyId,
       t.publicationId,
     ),
     uniqueIndex("chat_teams_file_transfers_token_uq").on(
@@ -90,21 +85,20 @@ export const chatTeamsFileTransfers = pgTable(
       t.expiresAt,
     ),
     foreignKey({
-      columns: [t.companyId, t.endpointId],
-      foreignColumns: [chatEndpoints.companyId, chatEndpoints.id],
+      columns: [t.endpointId],
+      foreignColumns: [chatEndpoints.id],
     }).onDelete("cascade"),
     foreignKey({
-      columns: [t.companyId, t.publicationId],
-      foreignColumns: [chatPublications.companyId, chatPublications.id],
+      columns: [t.publicationId],
+      foreignColumns: [chatPublications.id],
     }).onDelete("cascade"),
     foreignKey({
-      columns: [t.companyId, t.conversationId],
-      foreignColumns: [chatConversations.companyId, chatConversations.id],
+      columns: [t.conversationId],
+      foreignColumns: [chatConversations.id],
     }).onDelete("cascade"),
     foreignKey({
-      columns: [t.companyId, t.principalId],
+      columns: [t.principalId],
       foreignColumns: [
-        chatExternalPrincipals.companyId,
         chatExternalPrincipals.id,
       ],
     }),

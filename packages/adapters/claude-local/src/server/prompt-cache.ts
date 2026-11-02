@@ -24,19 +24,13 @@ function nonEmpty(value: string | undefined): string | null {
 
 function resolveManagedClaudePromptCacheRoot(
   env: NodeJS.ProcessEnv,
-  companyId: string,
 ): string {
   const instanceRoot = resolvePaperclipInstanceRootForAdapter({
     homeDir: nonEmpty(env.PAPERCLIP_HOME) ?? undefined,
     instanceId: nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? undefined,
     env,
   });
-  return path.resolve(
-    instanceRoot,
-    "companies",
-    companyId,
-    "claude-prompt-cache",
-  );
+  return path.resolve(instanceRoot, "organization", "claude-prompt-cache");
 }
 
 async function hashPathContents(
@@ -132,17 +126,16 @@ async function ensureReadableFile(targetPath: string, contents: string): Promise
 }
 
 export async function prepareClaudePromptBundle(input: {
-  companyId: string;
   skills: SkillEntry[];
   instructionsContents: string | null;
   onLog: AdapterExecutionContext["onLog"];
 }): Promise<ClaudePromptBundle> {
-  const { companyId, skills, instructionsContents, onLog } = input;
+  const { skills, instructionsContents, onLog } = input;
   const bundleKey = await buildClaudePromptBundleKey({
     skills,
     instructionsContents,
   });
-  const rootDir = path.join(resolveManagedClaudePromptCacheRoot(process.env, companyId), bundleKey);
+  const rootDir = path.join(resolveManagedClaudePromptCacheRoot(process.env), bundleKey);
   const skillsHome = path.join(rootDir, ".claude", "skills");
   await fs.mkdir(skillsHome, { recursive: true });
 

@@ -135,7 +135,6 @@ function stableJson(value: unknown): string {
 
 function resolution(
   pluginKey: string,
-  companyId: string,
   declaration: PluginManagedSkillDeclaration,
   skill: CompanySkill | null,
   status: PluginManagedSkillResolution["status"],
@@ -145,7 +144,6 @@ function resolution(
     pluginKey,
     resourceKind: "skill",
     resourceKey: declaration.skillKey,
-    companyId,
     skillId: skill?.id ?? null,
     skill,
     status,
@@ -167,12 +165,11 @@ export function pluginManagedSkillService(
     return declaration;
   }
 
-  async function getBinding(companyId: string, skillKey: string) {
+  async function getBinding(skillKey: string) {
     return db
       .select()
       .from(pluginManagedResources)
       .where(and(
-        eq(pluginManagedResources.companyId, companyId),
         eq(pluginManagedResources.pluginId, options.pluginId),
         eq(pluginManagedResources.resourceKind, MANAGED_SKILL_RESOURCE_KIND),
         eq(pluginManagedResources.resourceKey, skillKey),
@@ -181,12 +178,11 @@ export function pluginManagedSkillService(
   }
 
   async function upsertBinding(
-    companyId: string,
     declaration: PluginManagedSkillDeclaration,
     skillId: string,
   ) {
     const defaultsJson = buildSkillDefaults(options.pluginKey, declaration);
-    const existing = await getBinding(companyId, declaration.skillKey);
+    const existing = await getBinding(declaration.skillKey);
     if (existing) {
       if (
         existing.resourceId === skillId &&
@@ -208,7 +204,6 @@ export function pluginManagedSkillService(
     return db
       .insert(pluginManagedResources)
       .values({
-        companyId,
         pluginId: options.pluginId,
         pluginKey: options.pluginKey,
         resourceKind: MANAGED_SKILL_RESOURCE_KIND,
@@ -220,12 +215,11 @@ export function pluginManagedSkillService(
       .then((rows) => rows[0]);
   }
 
-  async function getSkill(companyId: string, skillId: string) {
-    return skills.getById(companyId, skillId);
+  async function getSkill(skillId: string) {
+    return skills.getById(skillId);
   }
 
   async function managedSkillDefaultDrift(
-    companyId: string,
     skill: CompanySkill | null,
     declaration: PluginManagedSkillDeclaration,
   ): Promise<PluginManagedSkillResolution["defaultDrift"]> {
@@ -243,7 +237,7 @@ export function pluginManagedSkillService(
         continue;
       }
       try {
-        currentFiles[filePath] = (await skills.readFile(companyId, skill.id, filePath))?.content ?? null;
+        currentFiles[filePath] = (await skills.readFile(skill.id, filePath))?.content ?? null;
       } catch {
         currentFiles[filePath] = null;
       }
@@ -256,35 +250,31 @@ export function pluginManagedSkillService(
   }
 
   async function resolvedSkill(
-    companyId: string,
     declaration: PluginManagedSkillDeclaration,
     skill: CompanySkill | null,
     status: PluginManagedSkillResolution["status"],
   ) {
     return resolution(
       options.pluginKey,
-      companyId,
       declaration,
       skill,
       status,
-      await managedSkillDefaultDrift(companyId, skill, declaration),
+      await managedSkillDefaultDrift(skill, declaration),
     );
   }
 
   async function importDeclaredSkill(
-    companyId: string,
     declaration: PluginManagedSkillDeclaration,
     mode: "reconcile" | "reset",
   ) {
     const beforeByKey = mode === "reconcile"
-      ? await skills.getByKey(companyId, canonicalSkillKey(options.pluginKey, declaration.skillKey))
+      ? await skills.getByKey(canonicalSkillKey(options.pluginKey, declaration.skillKey))
       : null;
     if (beforeByKey) {
-      await upsertBinding(companyId, declaration, beforeByKey.id);
+      await upsertBinding(declaration, beforeByKey.id);
       return { skill: beforeByKey, status: "relinked" as const };
     }
     const results = await skills.importPackageFiles(
-      companyId,
       buildPackageFiles(options.pluginKey, declaration),
       { onConflict: "replace" },
     );
@@ -296,29 +286,28 @@ export function pluginManagedSkillService(
     if (!imported) {
       throw notFound(`Managed skill was not imported: ${declaration.skillKey}`);
     }
-    await upsertBinding(companyId, declaration, imported.id);
+    await upsertBinding(declaration, imported.id);
     const status: PluginManagedSkillResolution["status"] = mode === "reset" ? "reset" : "created";
     return { skill: imported, status };
   }
 
-  async function get(skillKey: string, companyId: string) {
+  async function get(skillKey: string) {
     const declaration = declarationFor(skillKey);
-    const binding = await getBinding(companyId, skillKey);
-    if (!binding) return resolvedSkill(companyId, declaration, null, "missing");
-    const skill = await getSkill(companyId, binding.resourceId);
-    return resolvedSkill(companyId, declaration, skill, skill ? "resolved" : "missing");
+    const binding = await getBinding(skillKey);
+    if (!binding) return resolvedSkill(declaration, null, "missing");
+    const skill = await getSkill(binding.resourceId);
+    return resolvedSkill(declaration, skill, skill ? "resolved" : "missing");
   }
 
-  async function reconcile(skillKey: string, companyId: string) {
+  async function reconcile(skillKey: string) {
     const declaration = declarationFor(skillKey);
-    const current = await get(skillKey, companyId);
+    const current = await get(skillKey);
     if (current.skill) {
-      await upsertBinding(companyId, declaration, current.skill.id);
+      await upsertBinding(declaration, current.skill.id);
       return current;
     }
-    const imported = await importDeclaredSkill(companyId, declaration, "reconcile");
+    const imported = await importDeclaredSkill(declaration, "reconcile");
     await logActivity(db, {
-      companyId,
       actorType: "plugin",
       actorId: options.pluginId,
       action: "plugin.managed_skill.reconciled",
@@ -330,14 +319,13 @@ export function pluginManagedSkillService(
         status: imported.status,
       },
     });
-    return resolvedSkill(companyId, declaration, imported.skill, imported.status);
+    return resolvedSkill(declaration, imported.skill, imported.status);
   }
 
-  async function reset(skillKey: string, companyId: string) {
+  async function reset(skillKey: string) {
     const declaration = declarationFor(skillKey);
-    const imported = await importDeclaredSkill(companyId, declaration, "reset");
+    const imported = await importDeclaredSkill(declaration, "reset");
     await logActivity(db, {
-      companyId,
       actorType: "plugin",
       actorId: options.pluginId,
       action: "plugin.managed_skill.reset",
@@ -348,7 +336,7 @@ export function pluginManagedSkillService(
         managedResourceKey: declaration.skillKey,
       },
     });
-    return resolvedSkill(companyId, declaration, imported.skill, "reset");
+    return resolvedSkill(declaration, imported.skill, "reset");
   }
 
   return {

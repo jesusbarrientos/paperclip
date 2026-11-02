@@ -41,7 +41,6 @@ describe("monthly spend hydration", () => {
         updatedAt: new Date(),
       }],
       [{
-        companyId: "company-1",
         spentMonthlyCents: 420,
       }],
     ]);
@@ -56,7 +55,6 @@ describe("monthly spend hydration", () => {
     const dbStub = createSelectSequenceDb([
       [{
         id: "agent-1",
-        companyId: "company-1",
         name: "Budget Agent",
         role: "general",
         title: null,
@@ -77,7 +75,6 @@ describe("monthly spend hydration", () => {
       }],
       [{
         id: "agent-1",
-        companyId: "company-1",
         name: "Budget Agent",
         role: "general",
         title: null,

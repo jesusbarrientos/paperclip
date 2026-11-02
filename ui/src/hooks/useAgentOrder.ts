@@ -11,7 +11,6 @@ import {
 
 type UseAgentOrderParams = {
   agents: Agent[];
-  companyId: string | null | undefined;
   userId: string | null | undefined;
 };
 
@@ -32,31 +31,23 @@ function buildOrderIds(agents: Agent[], orderedIds: string[], options: AgentSide
   return sortAgentsByStoredOrder(agents, orderedIds, options).map((agent) => agent.id);
 }
 
-export function useAgentOrder({ agents, companyId, userId }: UseAgentOrderParams) {
+export function useAgentOrder({ agents, userId }: UseAgentOrderParams) {
   const sortOptions = useMemo<AgentSidebarOrderOptions>(
     () => ({ leadershipFirst: true }),
     [],
   );
-  const storageKey = useMemo(() => {
-    if (!companyId) return null;
-    return getAgentOrderStorageKey(companyId, userId);
-  }, [companyId, userId]);
+  const storageKey = useMemo(() => getAgentOrderStorageKey(userId), [userId]);
 
-  const [orderedIds, setOrderedIds] = useState<string[]>(() => {
-    if (!storageKey) return agents.map((agent) => agent.id);
-    return buildOrderIds(agents, readAgentOrder(storageKey), sortOptions);
-  });
+  const [orderedIds, setOrderedIds] = useState<string[]>(() =>
+    buildOrderIds(agents, readAgentOrder(storageKey), sortOptions),
+  );
 
   useEffect(() => {
-    const nextIds = storageKey
-      ? buildOrderIds(agents, readAgentOrder(storageKey), sortOptions)
-      : agents.map((agent) => agent.id);
+    const nextIds = buildOrderIds(agents, readAgentOrder(storageKey), sortOptions);
     setOrderedIds((current) => (areEqual(current, nextIds) ? current : nextIds));
   }, [agents, storageKey, sortOptions]);
 
   useEffect(() => {
-    if (!storageKey) return;
-
     const syncFromIds = (ids: string[]) => {
       const nextIds = buildOrderIds(agents, ids, sortOptions);
       setOrderedIds((current) => (areEqual(current, nextIds) ? current : nextIds));
@@ -94,9 +85,7 @@ export function useAgentOrder({ agents, companyId, userId }: UseAgentOrderParams
       }
 
       setOrderedIds((current) => (areEqual(current, filtered) ? current : filtered));
-      if (storageKey) {
-        writeAgentOrder(storageKey, filtered);
-      }
+      writeAgentOrder(storageKey, filtered);
     },
     [agents, storageKey, sortOptions],
   );

@@ -45,16 +45,16 @@ const TRANSFER_ID = "6e0a4f6e-6f7d-4a37-9a83-0b8f2f9f2b11";
  * or transfer can exist, so a uniform 403 is clearer than a mixed surface.
  */
 const IMPORT_ROUTES: Array<{ method: "get" | "post" | "put"; path: string }> = [
-  { method: "post", path: "/api/companies/import/preview" },
-  { method: "post", path: "/api/companies/import" },
-  { method: "get", path: "/api/companies/import/jobs/some-job" },
-  { method: "post", path: "/api/companies/import/transfers" },
-  { method: "put", path: `/api/companies/import/transfers/${TRANSFER_ID}/parts/0` },
-  { method: "get", path: `/api/companies/import/transfers/${TRANSFER_ID}` },
-  { method: "post", path: `/api/companies/import/transfers/${TRANSFER_ID}/preview` },
-  { method: "post", path: `/api/companies/import/transfers/${TRANSFER_ID}/apply` },
-  { method: "post", path: "/api/companies/11111111-2222-4333-8444-555555555555/imports/preview" },
-  { method: "post", path: "/api/companies/11111111-2222-4333-8444-555555555555/imports/apply" },
+  { method: "post", path: "/api/organization/import/preview" },
+  { method: "post", path: "/api/organization/import" },
+  { method: "get", path: "/api/organization/import/jobs/some-job" },
+  { method: "post", path: "/api/organization/import/transfers" },
+  { method: "put", path: `/api/organization/import/transfers/${TRANSFER_ID}/parts/0` },
+  { method: "get", path: `/api/organization/import/transfers/${TRANSFER_ID}` },
+  { method: "post", path: `/api/organization/import/transfers/${TRANSFER_ID}/preview` },
+  { method: "post", path: `/api/organization/import/transfers/${TRANSFER_ID}/apply` },
+  { method: "post", path: "/api/organization/imports/preview" },
+  { method: "post", path: "/api/organization/imports/apply" },
 ];
 
 async function createApp(actor: Record<string, unknown>) {
@@ -68,7 +68,7 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api/companies", companyRoutes({} as any));
+  app.use("/api/organization", companyRoutes({} as any));
   app.use(errorHandler);
   return app;
 }
@@ -119,7 +119,7 @@ describe("company import Cloud floor", () => {
     process.env.PAPERCLIP_MANAGED_CONFIG = JSON.stringify({ v: 1, mode: "cloud" });
     const app = await createApp(boardAdmin);
 
-    const res = await request(app).post("/api/companies/import").send({});
+    const res = await request(app).post("/api/organization/import").send({});
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ code: "cloud_managed" });
@@ -131,10 +131,10 @@ describe("company import Cloud floor", () => {
     // An agent actor never passes the import routes' own assertBoard, and the
     // body is not schema-valid either — the floor must still answer first so a
     // Cloud caller sees one consistent refusal.
-    const app = await createApp({ type: "agent", agentId: "agent-1", companyId: "company-1" });
+    const app = await createApp({ type: "agent", agentId: "agent-1" });
 
     const res = await request(app)
-      .post("/api/companies/import/transfers")
+      .post("/api/organization/import/transfers")
       .send({ nonsense: true });
 
     expect(res.status).toBe(403);
@@ -160,7 +160,7 @@ describe("company import Cloud floor", () => {
     process.env.PAPERCLIP_HIDDEN_SETTINGS = "company.secrets,company.members";
     const app = await createApp(boardAdmin);
 
-    const res = await request(app).get("/api/companies/import/jobs/unknown-job");
+    const res = await request(app).get("/api/organization/import/jobs/unknown-job");
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "Import job not found" });
@@ -172,7 +172,7 @@ describe("company import Cloud floor", () => {
     const app = await createApp(boardAdmin);
 
     const res = await request(app)
-      .post("/api/companies/11111111-2222-4333-8444-555555555555/exports")
+      .post("/api/organization/exports")
       .send({});
 
     expect(res.status).toBe(200);
@@ -184,7 +184,7 @@ describe("company import Cloud floor", () => {
     const app = await createApp(boardAdmin);
 
     const res = await request(app)
-      .post("/api/companies/import/preview")
+      .post("/api/organization/import/preview")
       .send({
         source: { type: "github", url: "https://github.com/example/export" },
         target: { mode: "new_company" },
@@ -197,7 +197,7 @@ describe("company import Cloud floor", () => {
   it("preserves self-hosted import job polling", async () => {
     const app = await createApp(boardAdmin);
 
-    const res = await request(app).get("/api/companies/import/jobs/unknown-job");
+    const res = await request(app).get("/api/organization/import/jobs/unknown-job");
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "Import job not found" });

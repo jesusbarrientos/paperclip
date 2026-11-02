@@ -38,10 +38,6 @@ const mockLocation = vi.hoisted(() => ({
   pathname: "/projects/project-1/plugin-operations",
   search: "",
 }));
-const mockCompanyContext = vi.hoisted(() => ({
-  companies: [{ id: "company-1", issuePrefix: "PAP" }] as Array<{ id: string; issuePrefix: string }>,
-  selectedCompanyId: "company-1" as string | null,
-}));
 const mockUsePluginSlots = vi.hoisted(() => vi.fn(() => ({ slots: [] as unknown[], isLoading: false })));
 const mockPluginSlotMount = vi.hoisted(() => vi.fn());
 
@@ -63,12 +59,8 @@ vi.mock("@/lib/router", () => ({
   useParams: () => mockParams,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: mockCompanyContext.companies,
-    selectedCompanyId: mockCompanyContext.selectedCompanyId,
-    setSelectedCompanyId: vi.fn(),
-  }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 vi.mock("../context/PanelContext", () => ({ usePanel: () => ({ closePanel: vi.fn() }) }));
 vi.mock("../context/ToastContext", () => ({ useToastActions: () => ({ pushToast: vi.fn() }) }));
@@ -126,7 +118,6 @@ function project(overrides: Partial<Project> = {}): Project {
   const now = new Date("2026-05-01T00:00:00Z");
   return {
     id: "project-1",
-    companyId: "company-1",
     urlKey: "project-1",
     goalId: null,
     goalIds: [],
@@ -183,8 +174,6 @@ describe("ProjectDetail", () => {
     mockLocation.pathname = "/projects/project-1/plugin-operations";
     mockLocation.search = "";
     mockParams.projectId = "project-1";
-    mockCompanyContext.companies = [{ id: "company-1", issuePrefix: "PAP" }];
-    mockCompanyContext.selectedCompanyId = "company-1";
     mockUsePluginSlots.mockReturnValue({ slots: [], isLoading: false });
     mockProjectsApi.get.mockResolvedValue(project());
     mockProjectsApi.list.mockResolvedValue([project()]);
@@ -214,7 +203,7 @@ describe("ProjectDetail", () => {
     vi.clearAllMocks();
   });
 
-  it.each(["alias", "other project", "other company"])("preserves a draft only for a same-project route alias (%s)", async target => {
+  it.each(["alias", "other project"])("preserves a draft only for a same-project route alias (%s)", async target => {
     const loaded = project({ urlKey: "managed-project" });
     mockLocation.pathname = "/projects/project-1/configuration";
     mockProjectsApi.get.mockResolvedValueOnce(loaded);
@@ -228,7 +217,6 @@ describe("ProjectDetail", () => {
     draft!.value = "Unsaved repository removal";
     mockProjectsApi.get.mockImplementation(() => new Promise(() => {}));
     mockParams.projectId = target === "other project" ? "different-project" : "managed-project";
-    if (target === "other company") mockCompanyContext.selectedCompanyId = "company-2";
     mockLocation.pathname = `/projects/${mockParams.projectId}/configuration`;
     await act(render);
     const after = container.querySelector<HTMLInputElement>('input[aria-label="Unsaved project field"]');
@@ -260,7 +248,6 @@ describe("ProjectDetail", () => {
     expect(container.textContent).toContain("Managed by Missions");
     expect(container.textContent).toContain("Project summary card");
     expect(mockSummarySlotCard).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       scopeKind: "project",
       scopeId: "project-1",
       title: "Project summary",
@@ -269,7 +256,7 @@ describe("ProjectDetail", () => {
     const summaryCard = container.querySelector('[data-testid="summary-slot-card"]');
     expect(titleEditor && summaryCard ? Boolean(titleEditor.compareDocumentPosition(summaryCard) & Node.DOCUMENT_POSITION_FOLLOWING) : false).toBe(true);
     expect(container.textContent).toContain("Plugin operations");
-    expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
+    expect(mockIssuesApi.list).toHaveBeenCalledWith({
       projectId: "project-1",
       originKindPrefix: "plugin:paperclip.missions",
     });
@@ -335,20 +322,6 @@ describe("ProjectDetail", () => {
 
       expect(container.querySelector('[data-testid="navigate"]')).toBeNull();
       expect(container.querySelector('[data-testid="plugin-slot-mount"]')).toBeNull();
-    });
-
-    it("does not bounce to the issues tab before the company for the slots query resolves", async () => {
-      // Cold reload race: the slots query is disabled until a company is
-      // known, and a disabled query reports isLoading=false.
-      mockLocation.pathname = "/projects/project-1";
-      mockLocation.search = `?tab=${encodeURIComponent(PLUGIN_TAB)}`;
-      mockCompanyContext.companies = [];
-      mockCompanyContext.selectedCompanyId = null;
-      mockUsePluginSlots.mockReturnValue({ slots: [], isLoading: false });
-
-      await renderDetail();
-
-      expect(container.querySelector('[data-testid="navigate"]')).toBeNull();
     });
 
     it("renders the registered plugin tab for a direct deep link", async () => {

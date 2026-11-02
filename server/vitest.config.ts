@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
+import { isolatedPaperclipHome } from "../scripts/vitest-isolated-paperclip-home.ts";
 
 export default defineConfig({
   resolve: {
@@ -15,6 +16,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    env: { PAPERCLIP_HOME: isolatedPaperclipHome() },
     include: ["src/**/*.test.ts", "scripts/**/*.test.mjs"],
     // Each server suite boots + tears down its own embedded Postgres in
     // beforeAll/afterAll. Under the loaded serial shard (maxWorkers=1) the

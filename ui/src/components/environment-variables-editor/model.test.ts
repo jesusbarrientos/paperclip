@@ -17,7 +17,6 @@ import {
 function makeUserSecretDefinition(overrides: { key: string; status?: "active" | "disabled" | "archived" }): UserSecretDefinition {
   return {
     id: `def-${overrides.key}`,
-    companyId: "co",
     key: overrides.key,
     name: overrides.key.toUpperCase(),
     description: null,
@@ -39,7 +38,6 @@ function makeUserSecretDefinition(overrides: { key: string; status?: "active" | 
 
 function makeSecret(overrides: Partial<CompanySecret> & Pick<CompanySecret, "id">): CompanySecret {
   return {
-    companyId: "co",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,

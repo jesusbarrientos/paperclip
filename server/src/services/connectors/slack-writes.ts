@@ -57,7 +57,6 @@ export async function executeSlackWrite(
         .from(toolInvocations)
         .where(
           and(
-            eq(toolInvocations.companyId, binding.companyId),
             eq(toolInvocations.id, invocationId),
             eq(toolInvocations.runId, binding.runId),
             eq(toolInvocations.agentId, binding.agentId),
@@ -79,7 +78,6 @@ export async function executeSlackWrite(
     name === "slack_create_channel" &&
     !(await slackPublicationAllowed(
       db,
-      binding.companyId,
       authority.endpoint.id,
       binding.issueId,
       "new-channel",
@@ -103,7 +101,6 @@ export async function executeSlackWrite(
   const [created] = await db
     .insert(chatActions)
     .values({
-      companyId: binding.companyId,
       endpointId: authority.endpoint.id,
       conversationId: authority.conversation?.id ?? null,
       principalId: authority.principalId,
@@ -199,15 +196,11 @@ export async function executeSlackWrite(
         .from(issueAttachments)
         .innerJoin(
           assets,
-          and(
-            eq(assets.id, issueAttachments.assetId),
-            eq(assets.companyId, binding.companyId),
-          ),
+          eq(assets.id, issueAttachments.assetId),
         )
         .where(
           and(
             eq(issueAttachments.id, String(args.attachmentId)),
-            eq(issueAttachments.companyId, binding.companyId),
             eq(issueAttachments.issueId, binding.issueId),
           ),
         );
@@ -216,7 +209,6 @@ export async function executeSlackWrite(
           "Upload requires an attachment on this task, at most 20 MB",
         );
       const stored = await getStorageService().getObject(
-        binding.companyId,
         attachment.asset.objectKey,
       );
       const chunks: Buffer[] = [];
@@ -382,10 +374,7 @@ export async function executeSlackWrite(
           .select({ id: chatEndpoints.id })
           .from(chatEndpoints)
           .where(
-            and(
-              eq(chatEndpoints.id, authority.endpoint.id),
-              eq(chatEndpoints.companyId, binding.companyId),
-            ),
+            eq(chatEndpoints.id, authority.endpoint.id),
           )
           .for("update");
         const created = await api(tool.method, parameters);
@@ -395,7 +384,6 @@ export async function executeSlackWrite(
         await tx
           .insert(chatEndpointResources)
           .values({
-            companyId: binding.companyId,
             endpointId: authority.endpoint.id,
             type: "channel",
             providerResourceId: channel.id,
@@ -441,7 +429,6 @@ export async function executeSlackWrite(
       .set({ status: "processed", result: receipt, updatedAt: new Date() })
       .where(eq(chatActions.id, action.id));
     await logActivity(db, {
-      companyId: binding.companyId,
       actorType: "agent",
       actorId: binding.agentId,
       agentId: binding.agentId,

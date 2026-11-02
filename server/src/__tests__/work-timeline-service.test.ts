@@ -63,14 +63,13 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       (req as any).actor = {
         type: "board",
         userId: "local-board",
-        companyIds: [],
         memberships: [],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
       next();
     });
-    app.use("/api/companies", companyRoutes(db, {} as any));
+    app.use("/api/organization", companyRoutes(db, {} as any));
     app.use(errorHandler);
     return app;
   }
@@ -97,7 +96,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     await db.insert(agents).values([
       {
         id: agentAId,
-        companyId,
         name: "Coder",
         role: "engineer",
         status: "active",
@@ -108,7 +106,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: agentBId,
-        companyId,
         name: "QA",
         role: "qa",
         status: "active",
@@ -118,7 +115,7 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
         permissions: {},
       },
     ]);
-    return { companyId, userId, agentAId, agentBId };
+    return { userId, agentAId, agentBId };
   }
 
   it("normalizes timeline windows with a 31 day cap", () => {
@@ -132,7 +129,7 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
   });
 
   it("aggregates runs, human events, approvals, and delegation edges", async () => {
-    const { companyId, userId, agentAId, agentBId } = await seedBase();
+    const { userId, agentAId, agentBId } = await seedBase();
     const parentIssueId = randomUUID();
     const childIssueId = randomUUID();
     const contextRunId = randomUUID();
@@ -142,7 +139,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     await db.insert(issues).values([
       {
         id: parentIssueId,
-        companyId,
         title: "Parent",
         identifier: "TL-1",
         status: "in_progress",
@@ -154,7 +150,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: childIssueId,
-        companyId,
         title: "Child",
         identifier: "TL-2",
         status: "in_progress",
@@ -169,7 +164,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: contextRunId,
-        companyId,
         agentId: agentBId,
         status: "running",
         invocationSource: "issue_assigned",
@@ -180,7 +174,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: activityRunId,
-        companyId,
         agentId: agentAId,
         status: "completed",
         invocationSource: "manual",
@@ -191,7 +184,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     ]);
     await db.insert(activityLog).values([
       {
-        companyId,
         actorType: "agent",
         actorId: agentAId,
         action: "issue.updated",
@@ -202,7 +194,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
         createdAt: new Date("2026-03-01T12:35:00Z"),
       },
       {
-        companyId,
         actorType: "user",
         actorId: userId,
         action: "issue.assigned",
@@ -213,7 +204,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
     ]);
     await db.insert(issueComments).values({
-      companyId,
       issueId: childIssueId,
       authorUserId: userId,
       body: "Looks good",
@@ -221,17 +211,15 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     });
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
       type: "request_board_approval",
       status: "approved",
       payload: {},
       decidedByUserId: userId,
       decidedAt: new Date("2026-03-01T14:00:00Z"),
     });
-    await db.insert(issueApprovals).values({ companyId, issueId: childIssueId, approvalId });
+    await db.insert(issueApprovals).values({ issueId: childIssueId, approvalId });
 
     const result = await workTimelineService(db).getTimeline({
-      companyId,
       from: new Date("2026-03-01T00:00:00Z"),
       to: new Date("2026-03-02T00:00:00Z"),
     });
@@ -261,14 +249,13 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
   });
 
   it("preserves delegation edges when parent and child cross a page boundary", async () => {
-    const { companyId, userId, agentAId, agentBId } = await seedBase();
+    const { userId, agentAId, agentBId } = await seedBase();
     const parentIssueId = randomUUID();
     const childIssueId = randomUUID();
 
     await db.insert(issues).values([
       {
         id: parentIssueId,
-        companyId,
         title: "Parent",
         status: "in_progress",
         priority: "medium",
@@ -279,7 +266,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: childIssueId,
-        companyId,
         title: "Child",
         status: "in_progress",
         priority: "medium",
@@ -292,7 +278,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     ]);
 
     const result = await workTimelineService(db).getTimeline({
-      companyId,
       from: new Date("2026-03-01T00:00:00Z"),
       to: new Date("2026-03-02T00:00:00Z"),
       limit: 1,
@@ -316,74 +301,8 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     }));
   });
 
-  it("does not join activity rows to runs from another company", async () => {
-    const { companyId, agentAId } = await seedBase();
-    const otherCompanyId = randomUUID();
-    const otherAgentId = randomUUID();
-    const issueId = randomUUID();
-    const foreignRunId = randomUUID();
-
-    await db.insert(companies).values({
-      id: otherCompanyId,
-      name: "Other Timeline Co",
-      issuePrefix: `O${randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase()}`,
-      requireBoardApprovalForNewAgents: false,
-    });
-    await db.insert(agents).values({
-      id: otherAgentId,
-      companyId: otherCompanyId,
-      name: "Foreign Coder",
-      role: "engineer",
-      status: "active",
-      adapterType: "codex_local",
-      adapterConfig: {},
-      runtimeConfig: {},
-      permissions: {},
-    });
-    await db.insert(issues).values({
-      id: issueId,
-      companyId,
-      title: "Local issue",
-      status: "todo",
-      priority: "medium",
-      assigneeAgentId: agentAId,
-      createdAt: new Date("2026-03-02T10:00:00Z"),
-      updatedAt: new Date("2026-03-02T10:00:00Z"),
-    });
-    await db.insert(heartbeatRuns).values({
-      id: foreignRunId,
-      companyId: otherCompanyId,
-      agentId: otherAgentId,
-      status: "completed",
-      invocationSource: "manual",
-      startedAt: new Date("2026-03-02T11:00:00Z"),
-      finishedAt: new Date("2026-03-02T11:15:00Z"),
-      contextSnapshot: {},
-    });
-    await db.insert(activityLog).values({
-      companyId,
-      actorType: "agent",
-      actorId: agentAId,
-      action: "issue.updated",
-      entityType: "issue",
-      entityId: issueId,
-      agentId: agentAId,
-      runId: foreignRunId,
-      createdAt: new Date("2026-03-02T11:05:00Z"),
-    });
-
-    const result = await workTimelineService(db).getTimeline({
-      companyId,
-      from: new Date("2026-03-02T00:00:00Z"),
-      to: new Date("2026-03-03T00:00:00Z"),
-    });
-
-    expect(result.events.map((event) => event.issueId)).toContain(issueId);
-    expect(result.spans.map((span) => span.runId)).not.toContain(foreignRunId);
-  });
-
   it("applies the user lens as a transitive issue subtree", async () => {
-    const { companyId, userId, agentAId, agentBId } = await seedBase();
+    const { userId, agentAId, agentBId } = await seedBase();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
     const unrelatedIssueId = randomUUID();
@@ -391,7 +310,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "User root",
         status: "todo",
         priority: "medium",
@@ -402,7 +320,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: childIssueId,
-        companyId,
         title: "Delegated child",
         status: "todo",
         priority: "medium",
@@ -414,7 +331,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: unrelatedIssueId,
-        companyId,
         title: "Unrelated",
         status: "todo",
         priority: "medium",
@@ -425,7 +341,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     ]);
 
     const result = await workTimelineService(db).getTimeline({
-      companyId,
       userId,
       from: new Date("2026-03-03T00:00:00Z"),
       to: new Date("2026-03-04T00:00:00Z"),
@@ -436,13 +351,12 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
   });
 
   it("filters unreadable issues before emitting timeline rows", async () => {
-    const { companyId, agentAId } = await seedBase();
+    const { agentAId } = await seedBase();
     const visibleIssueId = randomUUID();
     const hiddenIssueId = randomUUID();
     await db.insert(issues).values([
       {
         id: visibleIssueId,
-        companyId,
         title: "Visible",
         status: "todo",
         priority: "medium",
@@ -452,7 +366,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
       },
       {
         id: hiddenIssueId,
-        companyId,
         title: "Denied",
         status: "todo",
         priority: "medium",
@@ -463,7 +376,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     ]);
 
     const result = await workTimelineService(db).getTimeline({
-      companyId,
       from: new Date("2026-03-04T00:00:00Z"),
       to: new Date("2026-03-05T00:00:00Z"),
       canReadIssue: async (issue) => issue.id !== hiddenIssueId,
@@ -475,11 +387,10 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
   });
 
   it("bounds pre-pagination ACL checks", async () => {
-    const { companyId, agentAId } = await seedBase();
+    const { agentAId } = await seedBase();
     const issueCount = 40;
     await db.insert(issues).values(Array.from({ length: issueCount }, (_, index) => ({
       id: randomUUID(),
-      companyId,
       title: `Visible ${index}`,
       status: "todo",
       priority: "medium",
@@ -491,7 +402,6 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     let activeChecks = 0;
     let maxActiveChecks = 0;
     const result = await workTimelineService(db).getTimeline({
-      companyId,
       from: new Date("2026-03-04T00:00:00Z"),
       to: new Date("2026-03-05T00:00:00Z"),
       limit: issueCount,
@@ -508,12 +418,11 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     expect(maxActiveChecks).toBeLessThanOrEqual(16);
   });
 
-  it("serves GET /api/companies/:companyId/timeline", async () => {
-    const { companyId, agentAId } = await seedBase();
+  it("serves GET /api/organization/timeline", async () => {
+    const { agentAId } = await seedBase();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Route issue",
       identifier: "TL-9",
       status: "todo",
@@ -524,7 +433,7 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     });
 
     const res = await request(createApp())
-      .get(`/api/companies/${companyId}/timeline`)
+      .get(`/api/organization/timeline`)
       .query({ from: "2026-03-05T00:00:00Z", to: "2026-03-06T00:00:00Z" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);

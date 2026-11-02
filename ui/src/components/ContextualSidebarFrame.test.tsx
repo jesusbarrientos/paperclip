@@ -10,8 +10,8 @@ import { rememberContextualSidebarOrigin } from "@/lib/shell-navigation";
 const mockNavigate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/router", () => ({ useNavigate: () => mockNavigate }));
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompany: { name: "Paperclip", issuePrefix: "PAP" } }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 vi.mock("@/context/SidebarContext", () => ({
   useSidebar: () => ({ isMobile: false, setSidebarOpen: vi.fn(), collapsed: true, peeking: false }),
@@ -58,18 +58,17 @@ describe("ContextualSidebarFrame", () => {
     act(() => root.unmount());
   });
 
-  it("returns to the same-company route that opened the contextual surface", () => {
+  it("returns to the route that opened the contextual surface", () => {
     rememberContextualSidebarOrigin({
       surface: "settings",
-      companyPrefix: "PAP",
-      previousPathname: "/PAP/issues/task-1",
+      previousPathname: "/issues/task-1",
     });
     const root = render();
 
     act(() => {
       container.querySelector<HTMLButtonElement>('button[aria-label="Back from Settings"]')?.click();
     });
-    expect(mockNavigate).toHaveBeenCalledWith("/PAP/issues/task-1");
+    expect(mockNavigate).toHaveBeenCalledWith("/issues/task-1");
     act(() => root.unmount());
   });
 

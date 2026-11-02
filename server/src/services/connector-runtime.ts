@@ -21,7 +21,7 @@ import {
 import { materializeAsset } from "./native-runtime/runtime-context.js";
 import { BROWSER_USE_CLOUD_SKILL } from "./connectors/browser-use-cloud/skill.js";
 
-type AgentBinding = { companyId: string; agentId: string; runId?: string; issueId?: string };
+type AgentBinding = { agentId: string; runId?: string; issueId?: string };
 type ToolBinding = AgentBinding & {
   runId: string;
   issueId: string;
@@ -85,7 +85,7 @@ const connectors: ConnectorDefinition[] = [
         heartbeat: { wakeup: async () => null },
       });
       return (
-        await service.assignedInboxes(binding.companyId, binding.agentId)
+        await service.assignedInboxes(binding.agentId)
       ).map(({ id, address, connectionId }) => ({
         id,
         label: address ?? id,

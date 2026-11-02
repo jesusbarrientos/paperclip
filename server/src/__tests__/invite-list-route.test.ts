@@ -37,18 +37,16 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
+describeEmbeddedPostgres("GET /invites", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
-
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-invite-list-route-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
 
   beforeEach(async () => {
-    companyId = randomUUID();
+    const companyId = randomUUID();
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
@@ -67,7 +65,7 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
     await tempDb?.cleanup();
   });
 
-  function createApp(currentCompanyId: string) {
+  function createApp() {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
@@ -75,7 +73,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
         type: "board",
         source: "local_implicit",
         userId: null,
-        companyIds: [currentCompanyId],
       };
       next();
     });
@@ -141,9 +138,9 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
       updatedAt: new Date("2026-04-12T00:05:00.000Z"),
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
 
-    const firstPage = await request(app).get(`/api/companies/${companyId}/invites?limit=2`);
+    const firstPage = await request(app).get(`/api/invites?limit=2`);
 
     expect(firstPage.status).toBe(200);
     expect(firstPage.body.invites).toHaveLength(2);
@@ -151,7 +148,7 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
     expect(firstPage.body.invites[0].relatedJoinRequestId).toBeTruthy();
     expect(firstPage.body.nextOffset).toBe(2);
 
-    const secondPage = await request(app).get(`/api/companies/${companyId}/invites?limit=2&offset=2`);
+    const secondPage = await request(app).get(`/api/invites?limit=2&offset=2`);
 
     expect(secondPage.status).toBe(200);
     expect(secondPage.body.invites).toHaveLength(1);

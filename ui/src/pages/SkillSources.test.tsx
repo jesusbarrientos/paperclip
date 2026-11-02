@@ -7,7 +7,7 @@ import { SkillSources } from './SkillSources';
 import { skillSourcesApi } from '@/api/skillSources';
 
 const context = vi.hoisted(() => ({ navigate: vi.fn(), breadcrumbs: vi.fn(), sourceId: 'new' }));
-vi.mock('@/context/CompanyContext', () => ({ useCompany: () => ({ selectedCompanyId: 'company-1', selectedCompany: { name: 'Acme' } }) }));
+vi.mock('@/context/OrganizationContext', () => ({ useOrganization: () => ({ organization: { name: 'Acme' } }) }));
 vi.mock('@/context/BreadcrumbContext', () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: context.breadcrumbs }) }));
 vi.mock('@/lib/router', () => ({
   Link: ({ to, children, ...props }: { to: string; children: ReactNode }) => <a href={to} {...props}>{children}</a>,
@@ -61,7 +61,7 @@ afterEach(async () => {
 describe('GitHub skill source import', () => {
   it('shows measured Git download progress before skill discovery and retains the automatically chosen connection', async () => {
     let finish!: (value: typeof discovery & { connectionId: string }) => void;
-    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_company, _input, update) => {
+    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_input, update) => {
       update({ type: 'progress', phase: 'downloading', download: { stage: 'receiving', percent: 64, receivedBytes: 18 * 1024 * 1024 }, totalSkills: null, checkedSkills: 0, currentPath: null, checkedFiles: 0, totalFiles: null });
       return new Promise(resolve => { finish = resolve; });
     });
@@ -74,11 +74,11 @@ describe('GitHub skill source import', () => {
     expect(document.querySelector('progress')?.value).toBe(64);
     expect(skillSourcesApi.create).not.toHaveBeenCalled();
     await act(async () => finish({ ...discovery, connectionId: 'shared' })); await flush();
-    expect(JSON.parse(sessionStorage.getItem('paperclip.skill-source-draft:company-1:new')!).connectionId).toBe('shared');
+    expect(JSON.parse(sessionStorage.getItem('paperclip.skill-source-draft:new')!).connectionId).toBe('shared');
   });
   it('shows streamed candidates without allowing a partial import, then discards them on failure', async () => {
     let fail!: (error: Error) => void;
-    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_company, _input, update) => {
+    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_input, update) => {
       update({ type: 'progress', phase: 'checking', totalSkills: 20, checkedSkills: 1, currentPath: 'one/references/guide.md', checkedFiles: 2, totalFiles: 10 });
       update({ type: 'candidate', candidate: { path: 'one/SKILL.md', name: 'Code review', description: null, fileCount: 10, error: null } });
       return new Promise((_resolve, reject) => { fail = reject; });
@@ -98,7 +98,7 @@ describe('GitHub skill source import', () => {
     expect(button('Find skills').disabled).toBe(false);
   });
   it('bounds the live feed while keeping the full server progress count', async () => {
-    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_company, _input, update, signal) => {
+    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_input, update, signal) => {
       for (let index = 0; index < 40; index++) update({ type: 'candidate', candidate: { path: `${index}/SKILL.md`, name: `Skill ${index}`, description: null, fileCount: 1, error: null } });
       update({ type: 'progress', phase: 'checking', totalSkills: 100, checkedSkills: 40, currentPath: '40/SKILL.md', checkedFiles: 0, totalFiles: 1 });
       return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }));
@@ -114,9 +114,9 @@ describe('GitHub skill source import', () => {
   });
   it('cancels a scan, preserves the repository, and ignores late progress and completion', async () => {
     let finish!: (result: typeof discovery) => void;
-    let update!: Parameters<typeof skillSourcesApi.discoverStream>[2];
+    let update!: Parameters<typeof skillSourcesApi.discoverStream>[1];
     let signal: AbortSignal | undefined;
-    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_company, _input, callback, active) => {
+    vi.mocked(skillSourcesApi.discoverStream).mockImplementation((_input, callback, active) => {
       update = callback; signal = active; return new Promise(resolve => { finish = resolve; });
     });
     await mount();
@@ -130,7 +130,7 @@ describe('GitHub skill source import', () => {
     }); await flush();
     expect(document.body.textContent).not.toContain('Late result');
     expect(button('Find skills').disabled).toBe(false);
-    expect(JSON.parse(sessionStorage.getItem('paperclip.skill-source-draft:company-1:new')!).repositoryUrl).toBe('https://github.com/acme/team-skills');
+    expect(JSON.parse(sessionStorage.getItem('paperclip.skill-source-draft:new')!).repositoryUrl).toBe('https://github.com/acme/team-skills');
   });
 
   it('searches the combined repository inventory and uses the selected repository’s authorized connection', async () => {
@@ -148,20 +148,20 @@ describe('GitHub skill source import', () => {
     expect(document.querySelectorAll('[cmdk-item]')).toHaveLength(1);
     await act(async () => (document.querySelector('[cmdk-item]') as HTMLElement).click());
     await act(async () => button('Find skills').click());
-    expect(skillSourcesApi.discoverStream).toHaveBeenCalledWith('company-1', { repositoryUrl: 'https://github.com/acme/design', connectionId: 'shared' }, expect.any(Function), expect.any(AbortSignal));
+    expect(skillSourcesApi.discoverStream).toHaveBeenCalledWith({ repositoryUrl: 'https://github.com/acme/design', connectionId: 'shared' }, expect.any(Function), expect.any(AbortSignal));
   });
   it('recognizes pasted branch URLs and does not reuse their branch or credentials for another repository', async () => {
     await mount();
     await act(async () => button('... or add public repo by URL').click());
     await input('input[placeholder="https://github.com/owner/repository"]', 'https://github.com/ACME/team-skills/tree/feature/new-skills');
     await act(async () => button('Find skills').click());
-    expect(skillSourcesApi.discoverStream).toHaveBeenLastCalledWith('company-1', { repositoryUrl: 'https://github.com/ACME/team-skills/tree/feature/new-skills', connectionId: 'personal' }, expect.any(Function), expect.any(AbortSignal));
+    expect(skillSourcesApi.discoverStream).toHaveBeenLastCalledWith({ repositoryUrl: 'https://github.com/ACME/team-skills/tree/feature/new-skills', connectionId: 'personal' }, expect.any(Function), expect.any(AbortSignal));
     await flush();
     expect(document.body.textContent).toContain('feature/new-skills');
     await act(async () => button('Back').click());
     await input('input[placeholder="https://github.com/owner/repository"]', 'https://github.com/public/skills');
     await act(async () => button('Find skills').click());
-    expect(skillSourcesApi.discoverStream).toHaveBeenLastCalledWith('company-1', { repositoryUrl: 'https://github.com/public/skills', connectionId: null }, expect.any(Function), expect.any(AbortSignal));
+    expect(skillSourcesApi.discoverStream).toHaveBeenLastCalledWith({ repositoryUrl: 'https://github.com/public/skills', connectionId: null }, expect.any(Function), expect.any(AbortSignal));
   });
   it('links empty repositories to standard GitHub setup in Apps while preserving the import draft', async () => {
     vi.mocked(skillSourcesApi.repositories).mockResolvedValue({ repositories: [], connections: [], connectionCount: 0, failedConnectionCount: 0 });
@@ -174,7 +174,7 @@ describe('GitHub skill source import', () => {
     expect(document.body.textContent).not.toContain('Uses the default branch');
     await input('input[placeholder="https://github.com/owner/repository"]', 'https://github.com/acme/team-skills/tree/release');
     await act(async () => root.unmount());
-    expect(JSON.parse(sessionStorage.getItem('paperclip.skill-source-draft:company-1:new')!).repositoryUrl).toBe('https://github.com/acme/team-skills/tree/release');
+    expect(JSON.parse(sessionStorage.getItem('paperclip.skill-source-draft:new')!).repositoryUrl).toBe('https://github.com/acme/team-skills/tree/release');
     // Returning from Apps remounts the importer and rechecks the new inventory.
     host.remove();
     await mount();

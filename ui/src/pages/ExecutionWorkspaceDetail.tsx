@@ -37,7 +37,6 @@ import {
 } from "../components/WorkspaceRuntimeControls";
 import { WorkspaceServiceControlBar } from "../components/WorkspaceServiceControlBar";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 import { useManagedSandboxOnly } from "../hooks/useManagedSandboxOnly";
 import { useToastActions } from "../context/ToastContext";
 import { collectLiveIssueIds } from "../lib/liveIssueIds";
@@ -508,14 +507,12 @@ function WorkspaceLink({
 }
 
 function ExecutionWorkspaceIssuesList({
-  companyId,
   workspace,
   issues,
   isLoading,
   error,
   project,
 }: {
-  companyId: string;
   workspace: ExecutionWorkspace;
   issues: Issue[];
   isLoading: boolean;
@@ -525,24 +522,21 @@ function ExecutionWorkspaceIssuesList({
   const queryClient = useQueryClient();
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
-    enabled: !!companyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
-  const liveRunsQueryKey = queryKeys.liveRuns(companyId);
+  const liveRunsQueryKey = queryKeys.liveRuns();
   const sharedLiveRuns = useSharedPollingQuery({
-    companyId,
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
-    enabled: !!companyId,
     // Event-sourced via LiveUpdatesProvider (issue 9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
   const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
     queryKey: liveRunsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(companyId),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedLiveRuns.enabled,
     refetchInterval: sharedLiveRuns.refetchInterval,
   });
@@ -553,10 +547,10 @@ function ExecutionWorkspaceIssuesList({
   const updateIssue = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => issuesApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByExecutionWorkspace(companyId, workspace.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByExecutionWorkspace(workspace.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() });
       if (project?.id) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, project.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(project.id) });
       }
     },
   });
@@ -655,13 +649,13 @@ function ExecutionWorkspaceRoutinesList({
   const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null);
 
   const { data: routines, isLoading, error } = useQuery({
-    queryKey: queryKeys.routines.list(workspace.companyId, { projectId: workspace.projectId }),
-    queryFn: () => routinesApi.list(workspace.companyId, { projectId: workspace.projectId }),
+    queryKey: queryKeys.routines.list({ projectId: workspace.projectId }),
+    queryFn: () => routinesApi.list({ projectId: workspace.projectId }),
   });
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(workspace.companyId),
-    queryFn: () => agentsApi.list(workspace.companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const workspaceRoutines = useMemo(
@@ -688,10 +682,10 @@ function ExecutionWorkspaceRoutinesList({
     onSuccess: async (_, { id }) => {
       setRunDialogRoutine(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["routines", workspace.companyId] }),
+        queryClient.invalidateQueries({ queryKey: ["routines"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByExecutionWorkspace(workspace.companyId, workspace.id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(workspace.companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByExecutionWorkspace(workspace.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() }),
       ]);
       pushToast({
         title: "Routine started",
@@ -755,7 +749,6 @@ function ExecutionWorkspaceRoutinesList({
         onOpenChange={(next) => {
           if (!next) setRunDialogRoutine(null);
         }}
-        companyId={workspace.companyId}
         routineName={runDialogRoutine?.title ?? null}
         agents={agents ?? []}
         projects={project ? [project] : []}
@@ -780,7 +773,6 @@ export function ExecutionWorkspaceDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { hideHostPaths } = useManagedSandboxOnly();
   const [form, setForm] = useState<WorkspaceFormState | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -803,8 +795,8 @@ export function ExecutionWorkspaceDetail() {
   const workspace = workspaceQuery.data ?? null;
 
   const projectQuery = useQuery({
-    queryKey: workspace ? [...queryKeys.projects.detail(workspace.projectId), workspace.companyId] : ["projects", "detail", "__pending__"],
-    queryFn: () => projectsApi.get(workspace!.projectId, workspace!.companyId),
+    queryKey: workspace ? [...queryKeys.projects.detail(workspace.projectId)] : ["projects", "detail", "__pending__"],
+    queryFn: () => projectsApi.get(workspace!.projectId),
     enabled: Boolean(workspace?.projectId),
   });
   const project = projectQuery.data ?? null;
@@ -826,10 +818,10 @@ export function ExecutionWorkspaceDetail() {
   const derivedWorkspace = derivedWorkspaceQuery.data ?? null;
   const linkedIssuesQuery = useQuery({
     queryKey: workspace
-      ? queryKeys.issues.listByExecutionWorkspace(workspace.companyId, workspace.id)
+      ? queryKeys.issues.listByExecutionWorkspace(workspace.id)
       : ["issues", "__execution-workspace__", "__none__"],
-    queryFn: () => issuesApi.list(workspace!.companyId, { executionWorkspaceId: workspace!.id }),
-    enabled: Boolean(workspace?.companyId),
+    queryFn: () => issuesApi.list({ executionWorkspaceId: workspace!.id }),
+    enabled: Boolean(workspace),
   });
   const linkedIssues = linkedIssuesQuery.data ?? [];
 
@@ -845,8 +837,7 @@ export function ExecutionWorkspaceDetail() {
   } = usePluginSlots({
     slotTypes: ["detailTab"],
     entityType: "execution_workspace",
-    companyId: workspace?.companyId ?? null,
-    enabled: !!workspace?.companyId,
+    enabled: !!workspace,
   });
   const workspacePluginTabItems = useMemo(
     () => workspacePluginDetailSlots.map((slot) => ({
@@ -891,10 +882,6 @@ export function ExecutionWorkspaceDetail() {
   const isDirty = Boolean(form && initialState && JSON.stringify(form) !== JSON.stringify(initialState));
   const projectRef = project ? projectRouteRef(project) : workspace?.projectId ?? "";
 
-  useEffect(() => {
-    if (!workspace?.companyId || workspace.companyId === selectedCompanyId) return;
-    setSelectedCompanyId(workspace.companyId, { source: "route_sync" });
-  }, [workspace?.companyId, selectedCompanyId, setSelectedCompanyId]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -956,7 +943,7 @@ export function ExecutionWorkspaceDetail() {
       executionWorkspacesApi.controlRuntimeCommands(workspace!.id, request.action, request),
     onSuccess: (result, request) => {
       queryClient.setQueryData(queryKeys.executionWorkspaces.detail(result.workspace.id), result.workspace);
-      queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.overview(result.workspace.companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.overview() });
       queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.workspaceOperations(result.workspace.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(result.workspace.projectId) });
       setRuntimeActionErrorMessage(null);
@@ -1004,7 +991,6 @@ export function ExecutionWorkspaceDetail() {
     pendingRequests: pendingRuntimeActions,
   });
   const pluginSlotContext = {
-    companyId: workspace.companyId,
     projectId: workspace.projectId,
     entityId: workspace.id,
     entityType: "execution_workspace" as const,
@@ -1561,14 +1547,12 @@ export function ExecutionWorkspaceDetail() {
         ) : activeTab === "issues" ? (
           <div className="space-y-6">
             <SummarySlotCard
-              companyId={workspace.companyId}
               scopeKind="execution_workspace"
               scopeId={workspace.id}
               title="Workspace summary"
               description="Summarizer keeps the latest workspace status, next step, and operator-needed items here."
             />
             <ExecutionWorkspaceIssuesList
-              companyId={workspace.companyId}
               workspace={workspace}
               issues={linkedIssues}
               isLoading={linkedIssuesQuery.isLoading}
@@ -1612,12 +1596,12 @@ export function ExecutionWorkspaceDetail() {
         onOpenChange={setCloseDialogOpen}
         onClosed={(nextWorkspace) => {
           queryClient.setQueryData(queryKeys.executionWorkspaces.detail(nextWorkspace.id), nextWorkspace);
-          queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.overview(nextWorkspace.companyId) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.overview() });
           queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.closeReadiness(nextWorkspace.id) });
           queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.workspaceOperations(nextWorkspace.id) });
           if (project) {
             queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list(project.companyId, { projectId: project.id }) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list({ projectId: project.id }) });
           }
           if (sourceIssue) {
             queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(sourceIssue.id) });

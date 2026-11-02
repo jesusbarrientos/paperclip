@@ -19,7 +19,7 @@ import { OnboardingCard, OnboardingHeading } from "@/components/onboarding/Onboa
 import { Field } from "@/components/agent-config-primitives";
 import { NewIssueDialog } from "@/components/NewIssueDialog";
 import { useDialog } from "@/context/DialogContext";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentsApi } from "@/api/agents";
@@ -103,7 +103,6 @@ export function NewAgentWizard({ initialScreen = "name", initialAdapter = null, 
   initialTestState?: TestState; testOutcome?: TestOutcome; testDelayMs?: number;
 }) {
   const { openNewIssue, closeNewIssue } = useDialog();
-  const { setSelectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const [taskCreated, setTaskCreated] = useState<string | null>(null);
   const [testState, setTestState] = useState<TestState>(initialTestState);
@@ -172,14 +171,14 @@ export function NewAgentWizard({ initialScreen = "name", initialAdapter = null, 
   useNewAgentFixtures(previewAgent, testOutcome, testDelayMs, setTaskCreated);
   useEffect(() => () => {
     testRun.current++; closeNewIssue();
-    queryClient.setQueryData<Agent[]>(queryKeys.agents.list(PREVIEW_COMPANY_ID), previous => previous?.filter(agent => agent.id !== PREVIEW_AGENT_ID));
+    queryClient.setQueryData<Agent[]>(queryKeys.agents.list(), previous => previous?.filter(agent => agent.id !== PREVIEW_AGENT_ID));
   }, [closeNewIssue, queryClient]);
   async function runTest() {
     if (!validateRuntime()) return;
     const run = ++testRun.current;
     setTestState("running"); setTestResult(null); setError(null);
     try {
-      const result = await agentsApi.testEnvironment(PREVIEW_COMPANY_ID, selected, {
+      const result = await agentsApi.testEnvironment(selected, {
         adapterConfig,
         environmentId: environment === "Paperclip Computer" ? "environment-storybook-sandbox"
           : environment === "Local machine" ? "environment-storybook-local" : null,
@@ -193,8 +192,7 @@ export function NewAgentWizard({ initialScreen = "name", initialAdapter = null, 
   }
   useEffect(() => { if (initialTestState === "running") void runTest(); }, []);
   function assignTask() {
-    setSelectedCompanyId(PREVIEW_COMPANY_ID);
-    queryClient.setQueryData(queryKeys.agents.list(PREVIEW_COMPANY_ID), [...storybookAgents, previewAgent]);
+    queryClient.setQueryData(queryKeys.agents.list(), [...storybookAgents, previewAgent]);
     openNewIssue({ assigneeAgentId: PREVIEW_AGENT_ID, status: "todo" });
   }
   const steps: { screen: NewAgentScreen; label: string }[] = [

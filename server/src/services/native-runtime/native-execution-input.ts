@@ -31,7 +31,6 @@ const NATIVE_GITHUB_ATTACHMENT_RECOVERY_GUIDANCE = [
 
 /** Closed constructor: callers cannot spread legacy context or environment data. */
 export function buildNativeExecutionInput(input: {
-  companyId: string;
   runId: string;
   issue: {
     id: string;
@@ -203,7 +202,6 @@ export function buildNativeExecutionInput(input: {
     executionMode,
     planningContext: input.planningContext ?? null,
     binding: {
-      companyId: input.companyId,
       runId: input.runId,
       issueId: input.issue.id,
       agentId: input.agentId,

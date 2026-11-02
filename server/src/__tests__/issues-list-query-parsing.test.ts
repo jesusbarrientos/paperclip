@@ -24,14 +24,13 @@ describeEmbeddedPostgres("issue list status query parsing", () => {
 
   async function listStatuses(query: string) {
     const company = await seedCompanyWithBoardAccess(ctx.db, "Status parsing");
-    const companyId = company.companyId;
     await ctx.db.insert(issues).values([
-      { id: randomUUID(), companyId, title: "Todo", status: "todo", priority: "medium" },
-      { id: randomUUID(), companyId, title: "In progress", status: "in_progress", priority: "medium" },
-      { id: randomUUID(), companyId, title: "Done", status: "done", priority: "medium" },
+      { id: randomUUID(), title: "Todo", status: "todo", priority: "medium" },
+      { id: randomUUID(), title: "In progress", status: "in_progress", priority: "medium" },
+      { id: randomUUID(), title: "Done", status: "done", priority: "medium" },
     ]);
     const res = await request(routeApp(ctx.db, company.actor, issueRoutes))
-      .get(`/api/companies/${companyId}/issues${query}`)
+      .get(`/api/issues${query}`)
       .expect(200);
     return (res.body as { status: string }[]).map((issue) => issue.status).sort();
   }

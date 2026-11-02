@@ -10,7 +10,7 @@ type AccessTools = NonNullable<ConnectionIntentInteraction["payload"]["accessReq
 
 /** Called inside the caller's transaction after identity and installation checks. */
 export async function grantConnectionAgentTools(db: Db, input: {
-  connection: Pick<typeof toolConnections.$inferSelect, "id" | "companyId" | "applicationId">;
+  connection: Pick<typeof toolConnections.$inferSelect, "id" | "applicationId">;
   agentId: string;
   userId: string;
   tools: AccessTools;
@@ -18,9 +18,7 @@ export async function grantConnectionAgentTools(db: Db, input: {
   context?: { issueId: string; projectId: string | null };
 }) {
   const { connection, agentId, userId, tools, interactionId, context } = input;
-  const catalog = await db.select().from(toolCatalogEntries).where(and(
-    eq(toolCatalogEntries.companyId, connection.companyId), eq(toolCatalogEntries.connectionId, connection.id),
-  )).for("update");
+  const catalog = await db.select().from(toolCatalogEntries).where(eq(toolCatalogEntries.connectionId, connection.id)).for("update");
   for (const requested of tools) {
     const tool = catalog.find(entry => entry.id === requested.catalogEntryId);
     if (!tool || tool.status !== "active" || tool.entryKind !== "tool" || tool.toolName !== requested.toolName
@@ -28,7 +26,6 @@ export async function grantConnectionAgentTools(db: Db, input: {
       throw conflict("The requested tools changed. Ask the agent for a new access request.");
     }
     const decision = await toolAccessPolicyService(db).decide({
-      companyId: connection.companyId,
       actor: { actorType: "agent", actorId: agentId, agentId: agentId },
       runContext: context ?? {},
       request: { connectionId: connection.id, catalogEntryId: tool.id, toolName: tool.toolName, arguments: {} },
@@ -41,33 +38,31 @@ export async function grantConnectionAgentTools(db: Db, input: {
   // and company-wide assignments intact. The caller supplies the exact reviewed tool set.
   const profileKey = `connection-intent:${connection.id}:${agentId}`;
   const [profile] = await db.insert(toolProfiles).values({
-    companyId: connection.companyId, profileKey, name: profileKey, defaultAction: "deny",
+    profileKey, name: profileKey, defaultAction: "deny",
     metadata: { source: "connection_intent", connectionId: connection.id, agentId: agentId },
-  }).onConflictDoUpdate({ target: [toolProfiles.companyId, toolProfiles.profileKey], set: { status: "active", updatedAt: new Date() } }).returning();
-  const entries = await db.select().from(toolProfileEntries).where(and(
-    eq(toolProfileEntries.companyId, connection.companyId), eq(toolProfileEntries.profileId, profile.id),
-  ));
+  }).onConflictDoUpdate({ target: [toolProfiles.profileKey], set: { status: "active", updatedAt: new Date() } }).returning();
+  const entries = await db.select().from(toolProfileEntries).where(eq(toolProfileEntries.profileId, profile.id));
   for (const tool of tools) {
     if (!entries.some(entry => entry.catalogEntryId === tool.catalogEntryId && entry.effect === "include")) {
-      await db.insert(toolProfileEntries).values({ companyId: connection.companyId, profileId: profile.id,
+      await db.insert(toolProfileEntries).values({ profileId: profile.id,
         selectorType: "catalog_entry", effect: "include", catalogEntryId: tool.catalogEntryId,
         connectionId: connection.id, applicationId: connection.applicationId });
     }
     if (tool.permission === "ask_first") {
       const name = `connection-intent:${agentId}:${tool.catalogEntryId}`;
-      await db.insert(toolPolicies).values({ companyId: connection.companyId, name, policyType: "require_approval", priority: 0,
+      await db.insert(toolPolicies).values({ name, policyType: "require_approval", priority: 0,
         selectors: { connectionId: connection.id, catalogEntryId: tool.catalogEntryId },
         conditions: { actor: { agentId: agentId } },
         config: { source: "connection_intent", connectionId: connection.id, agentId: agentId },
         createdByUserId: userId,
-      }).onConflictDoUpdate({ target: [toolPolicies.companyId, toolPolicies.name], set: { enabled: true, updatedAt: new Date() } });
+      }).onConflictDoUpdate({ target: [toolPolicies.name], set: { enabled: true, updatedAt: new Date() } });
     }
   }
-  await db.insert(toolProfileBindings).values({ companyId: connection.companyId, profileId: profile.id,
+  await db.insert(toolProfileBindings).values({ profileId: profile.id,
     targetType: "agent", targetId: agentId, priority: 100, createdByUserId: userId,
     metadata: { source: "connection_intent", connectionId: connection.id },
   }).onConflictDoNothing();
-  await logActivity(db, { companyId: connection.companyId, actorType: "user", actorId: userId,
+  await logActivity(db, { actorType: "user", actorId: userId,
     action: "tool_connection.agent_access_granted", entityType: "tool_connection", entityId: connection.id,
     details: { ...(interactionId ? { interactionId } : {}), agentId, profileId: profile.id, tools: tools } });
 }

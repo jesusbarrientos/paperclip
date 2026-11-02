@@ -150,8 +150,7 @@ async function runExecutor(
   const result = await execute({
     runId: "run-1",
     agent: {
-      id: "agent-1",
-      companyId: "company-1",
+      id: "agent-1"
     },
       runtime: {},
       config,
@@ -248,7 +247,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-six-inputs",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, timeoutSec: 120 },
       context: {},
@@ -301,7 +300,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-summary",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -330,7 +329,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-no-text",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -362,7 +361,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-transports",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -426,7 +425,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-timeout",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd, timeoutSec: 1 },
       context: {},
@@ -465,7 +464,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-throw",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -507,7 +506,7 @@ describe("ACPX engine turn characterization", () => {
     });
     const first = await firstExecute({
       runId: "run-resume-a",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -543,7 +542,7 @@ describe("ACPX engine turn characterization", () => {
     });
     const second = await secondExecute({
       runId: "run-resume-b",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: (first as { sessionParams?: unknown }).sessionParams },
       config,
       context: {},
@@ -590,7 +589,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-failed",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context: {},
@@ -654,7 +653,7 @@ describe("ACPX engine turn characterization", () => {
 
     const result = await execute({
       runId: "run-prepare-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir },
       context,

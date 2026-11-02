@@ -10,7 +10,6 @@ import {
 
 const activeMember = (overrides: Partial<CompanyMember>): CompanyMember => ({
   id: overrides.id ?? "member-1",
-  companyId: overrides.companyId ?? "company-1",
   principalType: "user",
   principalId: overrides.principalId ?? "user-1",
   status: overrides.status ?? "active",

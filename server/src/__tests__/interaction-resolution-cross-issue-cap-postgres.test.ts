@@ -92,17 +92,16 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     return testApp;
   }
 
-  function agentActor(companyId: string, agentId: string, runId: string) {
-    return { type: "agent", source: "agent_key", companyId, agentId, runId };
+  function agentActor(agentId: string, runId: string) {
+    return { type: "agent", source: "agent_key", agentId, runId };
   }
 
-  function boardActor(companyId: string, userId: string) {
+  function boardActor(userId: string) {
     return {
       type: "board",
       source: "session",
       userId,
-      companyIds: [companyId],
-      memberships: [{ companyId, status: "active", membershipRole: "operator" }],
+      memberships: [{ status: "active", membershipRole: "operator" }],
       isInstanceAdmin: false,
     };
   }
@@ -161,7 +160,6 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: `${prefix} Resolver`,
       role: "engineer",
       status: "idle",
@@ -176,17 +174,16 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
       status: "active",
       membershipRole: "operator",
     }).onConflictDoUpdate(membershipUpsert);
-    return { companyId, agentId, userId };
+    return { agentId, userId };
   }
 
   let issueSequence = 0;
 
-  async function seedIssue(companyId: string, prefix: string, assigneeAgentId: string | null) {
+  async function seedIssue(prefix: string, assigneeAgentId: string | null) {
     const issueId = randomUUID();
     issueSequence += 1;
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: `${prefix}-${issueSequence}`,
       title: `${prefix} issue ${issueSequence}`,
       status: "in_progress",
@@ -197,11 +194,10 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
   }
 
   /** A run whose persisted context names `sourceIssueId`, not the target issue. */
-  async function seedRun(companyId: string, agentId: string, sourceIssueId: string) {
+  async function seedRun(agentId: string, sourceIssueId: string) {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -211,10 +207,9 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     return runId;
   }
 
-  async function seedInteraction(companyId: string, issueId: string, route: ResolutionRoute) {
+  async function seedInteraction(issueId: string, route: ResolutionRoute) {
     const fixture = INTERACTION_FIXTURES[route];
     const [row] = await db.insert(issueThreadInteractions).values({
-      companyId,
       issueId,
       kind: fixture.kind,
       status: "pending",
@@ -226,10 +221,9 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     return row.id;
   }
 
-  async function spendBudget(companyId: string, agentId: string, runId: string, attempts: number) {
+  async function spendBudget(agentId: string, runId: string, attempts: number) {
     if (attempts === 0) return;
     await db.insert(activityLog).values(Array.from({ length: attempts }, () => ({
-      companyId,
       actorType: "agent" as const,
       actorId: agentId,
       agentId,
@@ -240,12 +234,11 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     })));
   }
 
-  async function countInfluenceRows(companyId: string, runId: string, action: string) {
+  async function countInfluenceRows(runId: string, action: string) {
     const rows = await db
       .select({ id: activityLog.id })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
         eq(activityLog.runId, runId),
         eq(activityLog.action, action),
       ));
@@ -255,14 +248,14 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
   it.each(["accept", "reject", "respond", "verdicts"] as const)(
     "fails a capped run closed on cross-issue %s with no interaction, task, activity, or wake",
     async (route) => {
-      const { companyId, agentId } = await seedCompanyAndAgent("CAP");
-      const sourceIssueId = await seedIssue(companyId, "CAP", agentId);
-      const targetIssueId = await seedIssue(companyId, "CAP", agentId);
-      const runId = await seedRun(companyId, agentId, sourceIssueId);
-      await spendBudget(companyId, agentId, runId, CROSS_ISSUE_INFLUENCE_LIMIT);
-      const interactionId = await seedInteraction(companyId, targetIssueId, route);
+      const { agentId } = await seedCompanyAndAgent("CAP");
+      const sourceIssueId = await seedIssue("CAP", agentId);
+      const targetIssueId = await seedIssue("CAP", agentId);
+      const runId = await seedRun(agentId, sourceIssueId);
+      await spendBudget(agentId, runId, CROSS_ISSUE_INFLUENCE_LIMIT);
+      const interactionId = await seedInteraction(targetIssueId, route);
 
-      const res = await request(app(agentActor(companyId, agentId, runId)))
+      const res = await request(app(agentActor(agentId, runId)))
         .post(`/api/issues/${targetIssueId}/interactions/${interactionId}/${route}`)
         .send(INTERACTION_FIXTURES[route].body);
 
@@ -287,50 +280,46 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
       const childIssues = await db
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.companyId, companyId), eq(issues.parentId, targetIssueId)));
+        .where(eq(issues.parentId, targetIssueId));
       expect(childIssues).toEqual([]);
 
       const wakes = await db
         .select({ id: agentWakeupRequests.id })
-        .from(agentWakeupRequests)
-        .where(eq(agentWakeupRequests.companyId, companyId));
+        .from(agentWakeupRequests);
       expect(wakes).toEqual([]);
 
       const resolutionActivity = await db
         .select({ action: activityLog.action })
         .from(activityLog)
-        .where(and(eq(activityLog.companyId, companyId), eq(activityLog.entityId, targetIssueId)));
+        .where(eq(activityLog.entityId, targetIssueId));
       expect(resolutionActivity.map((row) => row.action)).toEqual([
         "issue.cross_issue_influence_cap_rejected",
       ]);
-      expect(await countInfluenceRows(companyId, runId, "issue.cross_issue_influence_observed"))
+      expect(await countInfluenceRows(runId, "issue.cross_issue_influence_observed"))
         .toBe(CROSS_ISSUE_INFLUENCE_LIMIT);
     },
     30_000,
   );
 
   it("charges one budget slot for an allowed cross-issue resolution", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent("ALW");
-    const sourceIssueId = await seedIssue(companyId, "ALW", agentId);
-    const targetIssueId = await seedIssue(companyId, "ALW", agentId);
-    const runId = await seedRun(companyId, agentId, sourceIssueId);
-    const interactionId = await seedInteraction(companyId, targetIssueId, "respond");
+    const { agentId } = await seedCompanyAndAgent("ALW");
+    const sourceIssueId = await seedIssue("ALW", agentId);
+    const targetIssueId = await seedIssue("ALW", agentId);
+    const runId = await seedRun(agentId, sourceIssueId);
+    const interactionId = await seedInteraction(targetIssueId, "respond");
 
-    const res = await request(app(agentActor(companyId, agentId, runId)))
+    const res = await request(app(agentActor(agentId, runId)))
       .post(`/api/issues/${targetIssueId}/interactions/${interactionId}/respond`)
       .send(INTERACTION_FIXTURES.respond.body);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toMatchObject({ status: "answered" });
-    expect(await countInfluenceRows(companyId, runId, "issue.cross_issue_influence_observed")).toBe(1);
+    expect(await countInfluenceRows(runId, "issue.cross_issue_influence_observed")).toBe(1);
 
     const [observed] = await db
       .select({ details: activityLog.details })
       .from(activityLog)
-      .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "issue.cross_issue_influence_observed"),
-      ));
+      .where(eq(activityLog.action, "issue.cross_issue_influence_observed"));
     expect(observed.details).toMatchObject({
       kind: "interaction_resolution",
       sourceIssueId,
@@ -340,40 +329,40 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
   }, 30_000);
 
   it("leaves same-issue and board resolutions outside the counter", async () => {
-    const { companyId, agentId, userId } = await seedCompanyAndAgent("SME");
-    const issueId = await seedIssue(companyId, "SME", agentId);
-    const boardIssueId = await seedIssue(companyId, "SME", agentId);
-    const runId = await seedRun(companyId, agentId, issueId);
-    await spendBudget(companyId, agentId, runId, CROSS_ISSUE_INFLUENCE_LIMIT);
-    const sameIssueInteractionId = await seedInteraction(companyId, issueId, "respond");
-    const boardInteractionId = await seedInteraction(companyId, boardIssueId, "respond");
+    const { agentId, userId } = await seedCompanyAndAgent("SME");
+    const issueId = await seedIssue("SME", agentId);
+    const boardIssueId = await seedIssue("SME", agentId);
+    const runId = await seedRun(agentId, issueId);
+    await spendBudget(agentId, runId, CROSS_ISSUE_INFLUENCE_LIMIT);
+    const sameIssueInteractionId = await seedInteraction(issueId, "respond");
+    const boardInteractionId = await seedInteraction(boardIssueId, "respond");
 
-    const sameIssue = await request(app(agentActor(companyId, agentId, runId)))
+    const sameIssue = await request(app(agentActor(agentId, runId)))
       .post(`/api/issues/${issueId}/interactions/${sameIssueInteractionId}/respond`)
       .send(INTERACTION_FIXTURES.respond.body);
     expect(sameIssue.status, JSON.stringify(sameIssue.body)).toBe(200);
 
-    const board = await request(app(boardActor(companyId, userId)))
+    const board = await request(app(boardActor(userId)))
       .post(`/api/issues/${boardIssueId}/interactions/${boardInteractionId}/respond`)
       .send(INTERACTION_FIXTURES.respond.body);
     expect(board.status, JSON.stringify(board.body)).toBe(200);
 
-    expect(await countInfluenceRows(companyId, runId, "issue.cross_issue_influence_observed"))
+    expect(await countInfluenceRows(runId, "issue.cross_issue_influence_observed"))
       .toBe(CROSS_ISSUE_INFLUENCE_LIMIT);
-    expect(await countInfluenceRows(companyId, runId, "issue.cross_issue_influence_cap_rejected")).toBe(0);
+    expect(await countInfluenceRows(runId, "issue.cross_issue_influence_cap_rejected")).toBe(0);
   }, 30_000);
 
   it("cannot let concurrent cross-issue resolutions race past the cap", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent("RCE");
-    const sourceIssueId = await seedIssue(companyId, "RCE", agentId);
-    const firstTargetId = await seedIssue(companyId, "RCE", agentId);
-    const secondTargetId = await seedIssue(companyId, "RCE", agentId);
-    const runId = await seedRun(companyId, agentId, sourceIssueId);
+    const { agentId } = await seedCompanyAndAgent("RCE");
+    const sourceIssueId = await seedIssue("RCE", agentId);
+    const firstTargetId = await seedIssue("RCE", agentId);
+    const secondTargetId = await seedIssue("RCE", agentId);
+    const runId = await seedRun(agentId, sourceIssueId);
     // One slot left in the shared budget for two simultaneous resolutions.
-    await spendBudget(companyId, agentId, runId, CROSS_ISSUE_INFLUENCE_LIMIT - 1);
-    const firstInteractionId = await seedInteraction(companyId, firstTargetId, "respond");
-    const secondInteractionId = await seedInteraction(companyId, secondTargetId, "respond");
-    const client = app(agentActor(companyId, agentId, runId));
+    await spendBudget(agentId, runId, CROSS_ISSUE_INFLUENCE_LIMIT - 1);
+    const firstInteractionId = await seedInteraction(firstTargetId, "respond");
+    const secondInteractionId = await seedInteraction(secondTargetId, "respond");
+    const client = app(agentActor(agentId, runId));
 
     const results = await Promise.all([
       request(client)
@@ -385,14 +374,13 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     ]);
 
     expect(results.map((res) => res.status).sort()).toEqual([200, 429]);
-    expect(await countInfluenceRows(companyId, runId, "issue.cross_issue_influence_observed"))
+    expect(await countInfluenceRows(runId, "issue.cross_issue_influence_observed"))
       .toBe(CROSS_ISSUE_INFLUENCE_LIMIT);
-    expect(await countInfluenceRows(companyId, runId, "issue.cross_issue_influence_cap_rejected")).toBe(1);
+    expect(await countInfluenceRows(runId, "issue.cross_issue_influence_cap_rejected")).toBe(1);
 
     const answered = await db
       .select({ status: issueThreadInteractions.status })
-      .from(issueThreadInteractions)
-      .where(eq(issueThreadInteractions.companyId, companyId));
+      .from(issueThreadInteractions);
     expect(answered.map((row) => row.status).sort()).toEqual(["answered", "pending"]);
   }, 30_000);
 });

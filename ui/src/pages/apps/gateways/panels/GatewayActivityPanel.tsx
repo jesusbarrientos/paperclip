@@ -139,16 +139,14 @@ function ActivityRow({ event }: { event: ToolGatewayActivityEvent }) {
 }
 
 export function GatewayActivityPanel({
-  companyId,
   gateway,
 }: {
-  companyId: string;
   gateway: ToolMcpGatewayWithTokens;
 }) {
   const activityQuery = useInfiniteQuery({
-    queryKey: queryKeys.tools.activity(companyId, { gateway: gateway.id, window: "30d" }),
+    queryKey: queryKeys.tools.activity({ gateway: gateway.id, window: "30d" }),
     queryFn: ({ pageParam }) =>
-      toolsApi.listActivity(companyId, {
+      toolsApi.listActivity({
         gateway: gateway.id,
         window: "30d",
         limit: PAGE_SIZE,

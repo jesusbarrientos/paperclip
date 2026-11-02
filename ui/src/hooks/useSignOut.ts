@@ -77,7 +77,7 @@ export function useSignOut({ onSignedOut }: UseSignOutOptions = {}) {
       // but does not notify the observers already subscribed to those entries,
       // so a mounted `useQuery` keeps returning its last result until some
       // unrelated re-render happens to rebuild the query. That is not a corner
-      // case here — CompanyProvider sits above the router and stays mounted
+      // case here — OrganizationProvider sits above the router and stays mounted
       // across the whole sign-out/sign-in cycle. Reset notifies them, so the
       // old data is gone from the cache *and* from everything reading it.
       //

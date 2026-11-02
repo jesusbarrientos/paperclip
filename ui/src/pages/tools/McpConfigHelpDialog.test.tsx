@@ -81,7 +81,7 @@ describe("Paste a config — MCP config help", () => {
       nextRoot.render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter>
-            <PasteConfigTab companyId="company-1" />
+            <PasteConfigTab />
           </MemoryRouter>
         </QueryClientProvider>,
       );

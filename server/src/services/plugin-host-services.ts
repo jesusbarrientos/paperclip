@@ -16,7 +16,6 @@ import {
 import { eq, and, like, desc, inArray, sql, isNull, isNotNull, gt, lte } from "drizzle-orm";
 import type {
   HostServices,
-  Company,
   Agent,
   Project,
   Issue,
@@ -42,7 +41,7 @@ import { budgetService } from "./budgets.js";
 import { issueApprovalService } from "./issue-approvals.js";
 import { approvalService } from "./approvals.js";
 import { getStorageService } from "../storage/index.js";
-import { subscribeCompanyLiveEvents } from "./live-events.js";
+import { subscribeLiveEvents } from "./live-events.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { pluginRegistryService } from "./plugin-registry.js";
@@ -413,14 +412,6 @@ function sanitiseMeta(meta: Record<string, unknown> | null | undefined): Record<
 interface BufferedLogEntry {
   db: Db;
   pluginId: string;
-  /**
-   * Owning tenant for `plugin_logs.company_id` — populated when the caller
-   * attributes the log/metric to a specific company so the row participates
-   * in the `ON DELETE CASCADE` from `companies`. `null` means instance-scope
-   * (cron jobs / public webhooks without a tenant); those rows survive
-   * company deletes but are still attributable.
-   */
-  companyId: string | null;
   level: string;
   message: string;
   meta: Record<string, unknown> | null;
@@ -453,7 +444,6 @@ export async function flushPluginLogBuffer(): Promise<void> {
   for (const [dbInstance, group] of byDb) {
     const values = group.map((e) => ({
       pluginId: e.pluginId,
-      companyId: e.companyId,
       level: e.level,
       message: e.message,
       meta: e.meta,
@@ -715,13 +705,13 @@ export function buildHostServices(
     pluginId,
     pluginKey,
     manifest: options.manifest,
-    instructionTemplateVariables: async (companyId) => {
+    instructionTemplateVariables: async () => {
       const variables: Record<string, string | null | undefined> = {};
       for (const declaration of options.manifest?.localFolders ?? []) {
         const status = await inspectPluginLocalFolder({
           folderKey: declaration.folderKey,
           declaration,
-          storedConfig: await getStoredLocalFolderConfig(companyId, declaration.folderKey),
+          storedConfig: await getStoredLocalFolderConfig(declaration.folderKey),
         });
         const prefix = `localFolders.${declaration.folderKey}`;
         variables[`${prefix}.path`] = status.realPath ?? status.path ?? null;
@@ -762,11 +752,6 @@ export function buildHostServices(
   const activeSubscriptions = new Set<{ unsubscribe: () => void; timer: ReturnType<typeof setTimeout> }>();
   let disposed = false;
 
-  const ensureCompanyId = (companyId?: string) => {
-    if (!companyId) throw new Error("companyId is required for this operation");
-    return companyId;
-  };
-
   const parseWindowValue = (value: unknown): number | null => {
     if (typeof value === "number" && Number.isFinite(value)) {
       return Math.max(0, Math.floor(value));
@@ -798,34 +783,24 @@ export function buildHostServices(
     return sql`(${sql.join(conditions, sql` OR `)})`;
   };
 
-  /**
-   * Plugins are instance-wide in the current runtime. Company IDs are still
-   * required for company-scoped data access, but there is no per-company
-   * availability gate to enforce here.
-   */
-  const ensurePluginAvailableForCompany = async (_companyId: string) => {};
-
   const getLocalFolderDeclaration = (folderKey: string) =>
     requireLocalFolderDeclaration(options.manifest?.localFolders, folderKey);
 
-  const getStoredLocalFolderConfig = async (companyId: string, folderKey: string) => {
-    ensureCompanyId(companyId);
-    await ensurePluginAvailableForCompany(companyId);
-    const settings = await registry.getCompanySettings(pluginId, companyId);
+  const getStoredLocalFolderConfig = async (folderKey: string) => {
+    const settings = await registry.getCompanySettings(pluginId);
     return getStoredLocalFolders(settings?.settingsJson)[folderKey] ?? null;
   };
 
-  const inspectStoredLocalFolder = async (companyId: string, folderKey: string) =>
+  const inspectStoredLocalFolder = async (folderKey: string) =>
     inspectPluginLocalFolder({
       folderKey,
       declaration: getLocalFolderDeclaration(folderKey),
-      storedConfig: await getStoredLocalFolderConfig(companyId, folderKey),
+      storedConfig: await getStoredLocalFolderConfig(folderKey),
     });
 
-  const inCompany = <T extends { companyId: string | null | undefined }>(
+  const exists = <T extends object>(
     record: T | null | undefined,
-    companyId: string,
-  ): record is T => Boolean(record && record.companyId === companyId);
+  ): record is T => Boolean(record);
 
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
@@ -844,7 +819,6 @@ export function buildHostServices(
     workspace: NonNullable<Awaited<ReturnType<typeof executionWorkspaces.getById>>>,
   ): PluginExecutionWorkspaceMetadata => ({
     id: workspace.id,
-    companyId: workspace.companyId,
     projectId: workspace.projectId,
     projectWorkspaceId: workspace.projectWorkspaceId,
     path: workspace.cwd ?? workspace.providerRef,
@@ -856,19 +830,18 @@ export function buildHostServices(
     providerMetadata: readProviderMetadata(workspace.metadata),
   });
 
-  const requireInCompany = <T extends { companyId: string | null | undefined }>(
+  const requireFound = <T extends object>(
     entityName: string,
     record: T | null | undefined,
-    companyId: string,
   ): T => {
-    if (!inCompany(record, companyId)) {
+    if (!exists(record)) {
       throw new Error(`${entityName} not found`);
     }
     return record;
   };
 
   /**
-   * Verify `userId` is an active human member of `companyId` before letting a
+   * Verify `userId` is an active human member before letting a
    * plugin attribute a mutation to them. Mirrors the authorization bar the
    * web app's own board routes apply — a plugin can only ever attribute an
    * action to an identity that could have taken it in the web app itself.
@@ -887,7 +860,6 @@ export function buildHostServices(
    * `{ allowViewer: true }`; the default is failure-closed.
    */
   const requireActiveHumanMember = async (
-    companyId: string,
     userId: string,
     { allowViewer = false }: { allowViewer?: boolean } = {},
   ): Promise<void> => {
@@ -901,7 +873,7 @@ export function buildHostServices(
       ))
       .limit(1);
     if (!membership) {
-      throw new Error(`actorUserId "${userId}" is not an active human member of this company`);
+      throw new Error(`actorUserId "${userId}" is not an active human member of this organization`);
     }
     if (!allowViewer && membership.membershipRole === "viewer") {
       throw new Error(`actorUserId "${userId}" has viewer (read-only) access and cannot take this write action`);
@@ -1050,7 +1022,6 @@ export function buildHostServices(
   };
 
   const logPluginActivity = async (input: {
-    companyId: string;
     action: string;
     entityType: string;
     entityId: string;
@@ -1058,7 +1029,6 @@ export function buildHostServices(
     actor?: { actorAgentId?: string | null; actorUserId?: string | null; actorRunId?: string | null };
   }) => {
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: "plugin",
       actorId: pluginId,
       agentId: input.actor?.actorAgentId ?? null,
@@ -1070,7 +1040,7 @@ export function buildHostServices(
     });
   };
 
-  const collectIssueSubtreeIds = async (companyId: string, rootIssueId: string) => {
+  const collectIssueSubtreeIds = async (rootIssueId: string) => {
     const seen = new Set<string>([rootIssueId]);
     let frontier = [rootIssueId];
 
@@ -1078,7 +1048,7 @@ export function buildHostServices(
       const children = await db
         .select({ id: issuesTable.id })
         .from(issuesTable)
-        .where(and(eq(issuesTable.companyId, companyId), inArray(issuesTable.parentId, frontier)));
+        .where(and(inArray(issuesTable.parentId, frontier)));
       frontier = children.map((child) => child.id).filter((id) => !seen.has(id));
       for (const id of frontier) seen.add(id);
     }
@@ -1087,7 +1057,6 @@ export function buildHostServices(
   };
 
   const getIssueRunSummaries = async (
-    companyId: string,
     issueIds: string[],
     options: { activeOnly?: boolean } = {},
   ) => {
@@ -1110,7 +1079,7 @@ export function buildHostServices(
         createdAt: heartbeatRuns.createdAt,
       })
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.companyId, companyId), inArray(issueIdExpr, issueIds), statusCondition))
+      .where(and(inArray(issueIdExpr, issueIds), statusCondition))
       .orderBy(desc(heartbeatRuns.createdAt))
       .limit(100);
 
@@ -1124,14 +1093,13 @@ export function buildHostServices(
 
   const setBlockedByWithActivity = async (params: {
     issueId: string;
-    companyId: string;
     blockedByIssueIds: string[];
     mutation: "set" | "add" | "remove";
     actorAgentId?: string | null;
     actorUserId?: string | null;
     actorRunId?: string | null;
   }) => {
-    const existing = requireInCompany("Issue", await issues.getById(params.issueId), params.companyId);
+    const existing = requireFound("Issue", await issues.getById(params.issueId));
     const previous = await issues.getRelationSummaries(params.issueId);
     await issues.update(params.issueId, {
       blockedByIssueIds: params.blockedByIssueIds,
@@ -1140,7 +1108,6 @@ export function buildHostServices(
     } as any);
     const relations = await issues.getRelationSummaries(params.issueId);
     await logPluginActivity({
-      companyId: params.companyId,
       action: "issue.relations.updated",
       entityType: "issue",
       entityId: params.issueId,
@@ -1160,7 +1127,6 @@ export function buildHostServices(
   };
 
   const getIssueCostSummary = async (
-    companyId: string,
     issueIds: string[],
     billingCode?: string | null,
   ) => {
@@ -1186,7 +1152,7 @@ export function buildHostServices(
         outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::double precision`,
       })
       .from(costEvents)
-      .where(and(eq(costEvents.companyId, companyId), scopeCondition));
+      .where(scopeCondition);
 
     return {
       costCents: Number(row?.costCents ?? 0),
@@ -1197,7 +1163,7 @@ export function buildHostServices(
     };
   };
 
-  const getOpenBudgetIncidents = async (companyId: string) => {
+  const getOpenBudgetIncidents = async () => {
     const rows = await db
       .select({
         id: budgetIncidents.id,
@@ -1213,7 +1179,7 @@ export function buildHostServices(
         createdAt: budgetIncidents.createdAt,
       })
       .from(budgetIncidents)
-      .where(and(eq(budgetIncidents.companyId, companyId), eq(budgetIncidents.status, "open")))
+      .where(eq(budgetIncidents.status, "open"))
       .orderBy(desc(budgetIncidents.createdAt));
 
     return rows.map((row) => ({
@@ -1260,11 +1226,10 @@ export function buildHostServices(
     return "active" as const;
   };
 
-  const redactInvite = (invite: typeof invites.$inferSelect, companyId: string) => {
+  const redactInvite = (invite: typeof invites.$inferSelect) => {
     const { tokenHash: _tokenHash, defaultsPayload, ...safeInvite } = invite;
     return {
       ...safeInvite,
-      companyId,
       allowedJoinTypes: safeInvite.allowedJoinTypes as InviteJoinType,
       defaultsPayload: defaultsPayload && typeof defaultsPayload === "object"
         ? sanitizeRecord(defaultsPayload)
@@ -1308,50 +1273,43 @@ export function buildHostServices(
     return sanitizeRecord(defaults);
   };
 
-  const redactGrant = (grant: typeof principalPermissionGrants.$inferSelect, companyId: string) => ({
+  const redactGrant = (grant: typeof principalPermissionGrants.$inferSelect) => ({
     ...grant,
-    companyId,
     principalType: grant.principalType as PrincipalType,
     permissionKey: grant.permissionKey as PermissionKey,
     scope: grant.scope && typeof grant.scope === "object" ? sanitizeRecord(grant.scope) : grant.scope ?? null,
   });
 
-  const loadPluginMember = async (companyId: string, memberId: string) => {
-    const member = await access.getMemberById(companyId, memberId);
+  const loadPluginMember = async (memberId: string) => {
+    const member = await access.getMemberById(memberId);
     if (!member) return null;
     const grants = await access.listPrincipalGrants(
-      companyId,
       member.principalType as PrincipalType,
       member.principalId,
     );
     return {
       ...member,
-      companyId,
       principalType: member.principalType as PrincipalType,
       status: member.status as "pending" | "active" | "suspended" | "archived",
-      grants: grants.map((grant) => redactGrant(grant, companyId)),
+      grants: grants.map((grant) => redactGrant(grant)),
     };
   };
 
   const pluginAssignmentActor = (actor: {
     type: "agent" | "board";
     agentId?: string | null;
-    companyId?: string | null;
     userId?: string | null;
-    companyIds?: string[];
   }): AuthorizationActor => {
     if (actor.type === "agent") {
       return {
         type: "agent",
         agentId: actor.agentId ?? null,
-        companyId: actor.companyId ?? null,
         source: "agent_key",
       };
     }
     return {
       type: "board",
       userId: actor.userId ?? null,
-      companyIds: Array.isArray(actor.companyIds) ? actor.companyIds : [],
       source: "session",
     };
   };
@@ -1369,16 +1327,15 @@ export function buildHostServices(
     }
   };
 
-  const readAuthorizationPolicy = async (companyId: string, resourceType: "company" | "agent" | "project" | "issue", resourceId: string) => {
+  const readAuthorizationPolicy = async (resourceType: "company" | "agent" | "project" | "issue", resourceId: string) => {
     const pathInfo = policyPathForResource(resourceType);
     if (pathInfo.table === "agent") {
       const agent = await agents.getById(resourceId);
-      if (!inCompany(agent, companyId)) return null;
+      if (!exists(agent)) return null;
       const permissions = agent.permissions && typeof agent.permissions === "object" ? agent.permissions as Record<string, unknown> : {};
       return {
         resourceType,
         resourceId,
-        companyId,
         policy: permissions.authorizationPolicy && typeof permissions.authorizationPolicy === "object"
           ? sanitizeRecord(permissions.authorizationPolicy as Record<string, unknown>)
           : null,
@@ -1387,43 +1344,39 @@ export function buildHostServices(
     }
     if (pathInfo.table === "project") {
       const project = await projects.getById(resourceId);
-      if (!inCompany(project, companyId)) return null;
+      if (!exists(project)) return null;
       const policy = project.executionWorkspacePolicy && typeof project.executionWorkspacePolicy === "object"
         ? (project.executionWorkspacePolicy as unknown as Record<string, unknown>).authorizationPolicy
         : null;
       return {
         resourceType,
         resourceId,
-        companyId,
         policy: policy && typeof policy === "object" ? sanitizeRecord(policy as Record<string, unknown>) : null,
         updatedAt: project.updatedAt,
       };
     }
     if (pathInfo.table === "issue") {
       const issue = await issues.getById(resourceId);
-      if (!inCompany(issue, companyId)) return null;
+      if (!exists(issue)) return null;
       const policy = issue.executionPolicy && typeof issue.executionPolicy === "object"
         ? (issue.executionPolicy as Record<string, unknown>).authorizationPolicy
         : null;
       return {
         resourceType,
         resourceId,
-        companyId,
         policy: policy && typeof policy === "object" ? sanitizeRecord(policy as Record<string, unknown>) : null,
         updatedAt: issue.updatedAt,
       };
     }
     const company = await companies.getById(resourceId);
-    if (!company || company.id !== companyId) return null;
-    return { resourceType, resourceId, companyId, policy: null, updatedAt: company.updatedAt };
+    if (!company) return null;
+    return { resourceType, resourceId, policy: null, updatedAt: company.updatedAt };
   };
 
   return {
     config: {
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const configRow = await registry.getConfig(pluginId, companyId);
+        const configRow = await registry.getConfig(pluginId);
         return configRow?.configJson ?? {};
       },
     },
@@ -1434,10 +1387,8 @@ export function buildHostServices(
       },
 
       async configure(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const declaration = getLocalFolderDeclaration(params.folderKey);
-        const existing = await registry.getCompanySettings(pluginId, companyId);
+        const existing = await registry.getCompanySettings(pluginId);
         const existingConfig = getStoredLocalFolders(existing?.settingsJson)[params.folderKey] ?? null;
         await preparePluginLocalFolder({
           folderKey: params.folderKey,
@@ -1462,7 +1413,7 @@ export function buildHostServices(
           requiredDirectories: status.requiredDirectories,
           requiredFiles: status.requiredFiles,
         });
-        await registry.upsertCompanySettings(pluginId, companyId, {
+        await registry.upsertCompanySettings(pluginId, {
           enabled: existing?.enabled ?? true,
           settingsJson: nextSettings,
           lastError: status.healthy ? null : status.problems.map((item: { message: string }) => item.message).join("; "),
@@ -1471,11 +1422,11 @@ export function buildHostServices(
       },
 
       async status(params) {
-        return inspectStoredLocalFolder(params.companyId, params.folderKey);
+        return inspectStoredLocalFolder(params.folderKey);
       },
 
       async list(params) {
-        const status = await inspectStoredLocalFolder(params.companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(params.folderKey);
         assertConfiguredLocalFolder(status);
         const listing = await listPluginLocalFolderEntries(status.realPath!, {
           relativePath: params.relativePath,
@@ -1486,30 +1437,28 @@ export function buildHostServices(
       },
 
       async readText(params) {
-        const status = await inspectStoredLocalFolder(params.companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(params.folderKey);
         assertConfiguredLocalFolder(status);
         return readPluginLocalFolderText(status.realPath!, params.relativePath);
       },
 
       async writeTextAtomic(params) {
-        const companyId = ensureCompanyId(params.companyId);
         await preparePluginLocalFolder({
           folderKey: params.folderKey,
           declaration: getLocalFolderDeclaration(params.folderKey),
-          storedConfig: await getStoredLocalFolderConfig(companyId, params.folderKey),
+          storedConfig: await getStoredLocalFolderConfig(params.folderKey),
         });
-        const status = await inspectStoredLocalFolder(companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(params.folderKey);
         assertWritableConfiguredLocalFolder(status);
         await writePluginLocalFolderTextAtomic(status.realPath!, params.relativePath, params.contents);
-        return inspectStoredLocalFolder(companyId, params.folderKey);
+        return inspectStoredLocalFolder(params.folderKey);
       },
 
       async deleteFile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        const status = await inspectStoredLocalFolder(companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(params.folderKey);
         assertWritableConfiguredLocalFolder(status);
         await deletePluginLocalFolderFile(status.realPath!, params.relativePath, params.folderKey);
-        return inspectStoredLocalFolder(companyId, params.folderKey);
+        return inspectStoredLocalFolder(params.folderKey);
       },
     },
 
@@ -1560,10 +1509,7 @@ export function buildHostServices(
 
     events: {
       async emit(params) {
-        if (params.companyId) {
-          await ensurePluginAvailableForCompany(params.companyId);
-        }
-        await scopedBus.emit(params.name, params.companyId, params.payload);
+        await scopedBus.emit(params.name, params.payload);
       },
       async subscribe(params: { eventPattern: string; filter?: Record<string, unknown> | null }) {
         const handler = async (event: import("@paperclipai/plugin-sdk").PluginEvent) => {
@@ -1599,18 +1545,13 @@ export function buildHostServices(
 
     secrets: {
       async resolve(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return secretsHandler.resolve({ ...params, companyId });
+        return secretsHandler.resolve({ ...params });
       },
     },
 
     activity: {
       async log(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         await logActivity(db, {
-          companyId,
           actorType: "plugin",
           actorId: pluginId,
           action: params.message,
@@ -1633,7 +1574,6 @@ export function buildHostServices(
         _logBuffer.push({
           db,
           pluginId,
-          companyId: params.companyId ?? null,
           level: "metric",
           message: safeName,
           meta: sanitiseMeta({ value: params.value, tags: params.tags ?? null }),
@@ -1682,7 +1622,6 @@ export function buildHostServices(
         _logBuffer.push({
           db,
           pluginId,
-          companyId: params.companyId ?? null,
           level: level ?? "info",
           message: safeMessage,
           meta: safeMeta,
@@ -1706,33 +1645,17 @@ export function buildHostServices(
       },
     },
 
-    companies: {
-      async list(params) {
-        return applyWindow((await companies.list()) as Company[], params);
-      },
-      async get(params) {
-        await ensurePluginAvailableForCompany(params.companyId);
-        return (await companies.getById(params.companyId)) as Company;
-      },
-    },
-
     projects: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return applyWindow((await projects.list(companyId)) as Project[], params);
+        return applyWindow((await projects.list()) as Project[], params);
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const project = await projects.getById(params.projectId);
-        return (inCompany(project, companyId) ? project : null) as Project | null;
+        return (exists(project) ? project : null) as Project | null;
       },
       async listWorkspaces(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const project = await projects.getById(params.projectId);
-        if (!inCompany(project, companyId)) return [];
+        if (!exists(project)) return [];
         const rows = await projects.listWorkspaces(params.projectId);
         return rows.map((row) => {
           const path = sanitizeWorkspacePath(row.cwd);
@@ -1752,10 +1675,8 @@ export function buildHostServices(
         });
       },
       async getPrimaryWorkspace(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const project = await projects.getById(params.projectId);
-        if (!inCompany(project, companyId)) return null;
+        if (!exists(project)) return null;
         const row = project.primaryWorkspace;
         const path = sanitizeWorkspacePath(project.codebase.effectiveLocalFolder);
         const name = sanitizeWorkspaceName(row?.name ?? project.name, path);
@@ -1774,14 +1695,12 @@ export function buildHostServices(
       },
 
       async getWorkspaceForIssue(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const issue = await issues.getById(params.issueId);
-        if (!inCompany(issue, companyId)) return null;
+        if (!exists(issue)) return null;
         const projectId = (issue as Record<string, unknown>).projectId as string | null;
         if (!projectId) return null;
         const project = await projects.getById(projectId);
-        if (!inCompany(project, companyId)) return null;
+        if (!exists(project)) return null;
         const row = project.primaryWorkspace;
         const path = sanitizeWorkspacePath(project.codebase.effectiveLocalFolder);
         const name = sanitizeWorkspaceName(row?.name ?? project.name, path);
@@ -1799,10 +1718,7 @@ export function buildHostServices(
         };
       },
       async getManaged(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         return projects.resolveManagedProject({
-          companyId,
           pluginId,
           pluginKey,
           projectKey: params.projectKey,
@@ -1810,20 +1726,14 @@ export function buildHostServices(
         });
       },
       async reconcileManaged(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         return projects.resolveManagedProject({
-          companyId,
           pluginId,
           pluginKey,
           projectKey: params.projectKey,
         });
       },
       async resetManaged(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         return projects.resolveManagedProject({
-          companyId,
           pluginId,
           pluginKey,
           projectKey: params.projectKey,
@@ -1834,10 +1744,8 @@ export function buildHostServices(
 
     executionWorkspaces: {
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const workspace = await executionWorkspaces.getById(params.workspaceId);
-        if (inCompany(workspace, companyId)) {
+        if (exists(workspace)) {
           return toPluginExecutionWorkspaceMetadata(workspace);
         }
         return null;
@@ -1846,37 +1754,27 @@ export function buildHostServices(
 
     routines: {
       async managedGet(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedRoutines.get(params.routineKey, companyId);
+        return managedRoutines.get(params.routineKey);
       },
       async managedReconcile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedRoutines.reconcile(params.routineKey, companyId, {
+        return managedRoutines.reconcile(params.routineKey, {
           assigneeAgentId: params.assigneeAgentId,
           projectId: params.projectId,
         });
       },
       async managedReset(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedRoutines.reset(params.routineKey, companyId, {
+        return managedRoutines.reset(params.routineKey, {
           assigneeAgentId: params.assigneeAgentId,
           projectId: params.projectId,
         });
       },
       async managedUpdate(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedRoutines.update(params.routineKey, companyId, {
+        return managedRoutines.update(params.routineKey, {
           status: params.status,
         });
       },
       async managedRun(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedRoutines.run(params.routineKey, companyId, {
+        return managedRoutines.run(params.routineKey, {
           assigneeAgentId: params.assigneeAgentId,
           projectId: params.projectId,
         });
@@ -1885,45 +1783,33 @@ export function buildHostServices(
 
     skills: {
       async managedGet(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedSkills.get(params.skillKey, companyId);
+        return managedSkills.get(params.skillKey);
       },
       async managedReconcile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedSkills.reconcile(params.skillKey, companyId);
+        return managedSkills.reconcile(params.skillKey);
       },
       async managedReset(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedSkills.reset(params.skillKey, companyId);
+        return managedSkills.reset(params.skillKey);
       },
     },
 
     issues: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         assertReadableOriginFilter(params.originKind);
-        return applyWindow((await issues.list(companyId, params as any)) as Issue[], params);
+        return applyWindow((await issues.list(params as any)) as Issue[], params);
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const issue = await issues.getById(params.issueId);
-        return (inCompany(issue, companyId) ? issue : null) as Issue | null;
+        return (exists(issue) ? issue : null) as Issue | null;
       },
       async create(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const { actorAgentId, actorUserId, actorRunId, originKind, surfaceVisibility, ...issueInput } = params;
         const normalizedOriginKind = normalizePluginOriginKind(
           surfaceVisibility === "plugin_operation" && !originKind
             ? pluginOperationIssueOriginKind(pluginKey)
             : originKind,
         );
-        const issue = (await issues.create(companyId, {
+        const issue = (await issues.create({
           ...(issueInput as any),
           originKind: normalizedOriginKind,
           originId: params.originId ?? null,
@@ -1934,7 +1820,6 @@ export function buildHostServices(
           trustExplicitResponsibleUserId: true,
         })) as Issue;
         await logPluginActivity({
-          companyId,
           action: "issue.created",
           entityType: "issue",
           entityId: issue.id,
@@ -1951,9 +1836,7 @@ export function buildHostServices(
         return issue;
       },
       async update(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const existing = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const existing = requireFound("Issue", await issues.getById(params.issueId));
         const patch = { ...(params.patch as Record<string, unknown>) };
         const actorAgentId = typeof patch.actorAgentId === "string" ? patch.actorAgentId : null;
         const actorUserId = typeof patch.actorUserId === "string" ? patch.actorUserId : null;
@@ -1970,7 +1853,6 @@ export function buildHostServices(
           actorUserId,
         })) as Issue;
         await logPluginActivity({
-          companyId,
           action: "issue.updated",
           entityType: "issue",
           entityId: updated.id,
@@ -1988,16 +1870,11 @@ export function buildHostServices(
         return updated;
       },
       async getRelations(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        requireFound("Issue", await issues.getById(params.issueId));
         return await issues.getRelationSummaries(params.issueId);
       },
       async setBlockedBy(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         return setBlockedByWithActivity({
-          companyId,
           issueId: params.issueId,
           blockedByIssueIds: params.blockedByIssueIds,
           mutation: "set",
@@ -2007,9 +1884,7 @@ export function buildHostServices(
         });
       },
       async addBlockers(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        requireFound("Issue", await issues.getById(params.issueId));
         const previous = await issues.getRelationSummaries(params.issueId);
         const nextBlockedByIssueIds = [
           ...new Set([
@@ -2018,7 +1893,6 @@ export function buildHostServices(
           ]),
         ];
         return setBlockedByWithActivity({
-          companyId,
           issueId: params.issueId,
           blockedByIssueIds: nextBlockedByIssueIds,
           mutation: "add",
@@ -2028,16 +1902,13 @@ export function buildHostServices(
         });
       },
       async removeBlockers(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        requireFound("Issue", await issues.getById(params.issueId));
         const previous = await issues.getRelationSummaries(params.issueId);
         const removals = new Set(params.blockerIssueIds);
         const nextBlockedByIssueIds = previous.blockedBy
           .map((relation) => relation.id)
           .filter((issueId) => !removals.has(issueId));
         return setBlockedByWithActivity({
-          companyId,
           issueId: params.issueId,
           blockedByIssueIds: nextBlockedByIssueIds,
           mutation: "remove",
@@ -2047,9 +1918,7 @@ export function buildHostServices(
         });
       },
       async assertCheckoutOwner(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        requireFound("Issue", await issues.getById(params.issueId));
         const ownership = await issues.assertCheckoutOwner(
           params.issueId,
           params.actorAgentId,
@@ -2057,7 +1926,6 @@ export function buildHostServices(
         );
         if (ownership.adoptedFromRunId) {
           await logPluginActivity({
-            companyId,
             action: "issue.checkout_lock_adopted",
             entityType: "issue",
             entityId: params.issueId,
@@ -2081,17 +1949,15 @@ export function buildHostServices(
         };
       },
       async getSubtree(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const rootIssue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const rootIssue = requireFound("Issue", await issues.getById(params.issueId));
         const includeRoot = params.includeRoot !== false;
-        const subtreeIssueIds = await collectIssueSubtreeIds(companyId, rootIssue.id);
+        const subtreeIssueIds = await collectIssueSubtreeIds(rootIssue.id);
         const issueIds = includeRoot ? subtreeIssueIds : subtreeIssueIds.filter((issueId) => issueId !== rootIssue.id);
         const issueRows = issueIds.length > 0
           ? await db
             .select()
             .from(issuesTable)
-            .where(and(eq(issuesTable.companyId, companyId), inArray(issuesTable.id, issueIds)))
+            .where(and(inArray(issuesTable.id, issueIds)))
           : [];
         const issuesById = new Map(issueRows.map((issue) => [issue.id, issue as Issue]));
         const outputIssues = issueIds
@@ -2122,7 +1988,7 @@ export function buildHostServices(
             )
             : Promise.resolve(null),
           params.includeActiveRuns
-            ? getIssueRunSummaries(companyId, issueIds, { activeOnly: true })
+            ? getIssueRunSummaries(issueIds, { activeOnly: true })
             : Promise.resolve(null),
           params.includeAssignees && assigneeAgentIds.length > 0
             ? db
@@ -2134,7 +2000,7 @@ export function buildHostServices(
                 status: agentsTable.status,
               })
               .from(agentsTable)
-              .where(and(eq(agentsTable.companyId, companyId), inArray(agentsTable.id, assigneeAgentIds)))
+              .where(and(inArray(agentsTable.id, assigneeAgentIds)))
             : Promise.resolve(params.includeAssignees ? [] : null),
         ]);
 
@@ -2147,7 +2013,6 @@ export function buildHostServices(
 
         return {
           rootIssueId: rootIssue.id,
-          companyId,
           issueIds,
           issues: outputIssues,
           ...(relationPairs ? { relations: Object.fromEntries(relationPairs) } : {}),
@@ -2164,9 +2029,7 @@ export function buildHostServices(
         };
       },
       async requestWakeup(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const issue = requireFound("Issue", await issues.getById(params.issueId));
         if (!issue.assigneeAgentId) {
           throw new Error("Issue has no assigned agent to wake");
         }
@@ -2178,7 +2041,7 @@ export function buildHostServices(
         if (unresolvedBlockers.length > 0) {
           throw new Error("Issue is blocked by unresolved blockers");
         }
-        const budgetBlock = await budgets.getInvocationBlock(companyId, issue.assigneeAgentId, {
+        const budgetBlock = await budgets.getInvocationBlock(issue.assigneeAgentId, {
           issueId: issue.id,
           projectId: issue.projectId,
         });
@@ -2210,7 +2073,6 @@ export function buildHostServices(
           },
         });
         await logPluginActivity({
-          companyId,
           action: "issue.assignment_wakeup_requested",
           entityType: "issue",
           entityId: issue.id,
@@ -2230,11 +2092,9 @@ export function buildHostServices(
         return { queued: Boolean(run), runId: run?.id ?? null };
       },
       async requestWakeups(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const results = [];
         for (const issueId of [...new Set(params.issueIds)]) {
-          const issue = requireInCompany("Issue", await issues.getById(issueId), companyId);
+          const issue = requireFound("Issue", await issues.getById(issueId));
           if (!issue.assigneeAgentId) {
             throw new Error("Issue has no assigned agent to wake");
           }
@@ -2246,7 +2106,7 @@ export function buildHostServices(
           if (unresolvedBlockers.length > 0) {
             throw new Error("Issue is blocked by unresolved blockers");
           }
-          const budgetBlock = await budgets.getInvocationBlock(companyId, issue.assigneeAgentId, {
+          const budgetBlock = await budgets.getInvocationBlock(issue.assigneeAgentId, {
             issueId: issue.id,
             projectId: issue.projectId,
           });
@@ -2278,7 +2138,6 @@ export function buildHostServices(
             },
           });
           await logPluginActivity({
-            companyId,
             action: "issue.assignment_wakeup_requested",
             entityType: "issue",
             entityId: issue.id,
@@ -2300,11 +2159,9 @@ export function buildHostServices(
         return results;
       },
       async getOrchestrationSummary(params): Promise<PluginIssueOrchestrationSummary> {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const rootIssue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const rootIssue = requireFound("Issue", await issues.getById(params.issueId));
         const subtreeIssueIds = params.includeSubtree
-          ? await collectIssueSubtreeIds(companyId, rootIssue.id)
+          ? await collectIssueSubtreeIds(rootIssue.id)
           : [rootIssue.id];
         const relationPairs = await Promise.all(
           subtreeIssueIds.map(async (issueId) => [issueId, await issues.getRelationSummaries(issueId)] as const),
@@ -2328,9 +2185,9 @@ export function buildHostServices(
           )
         ).flat();
         const [runs, costsSummary, openBudgetIncidents] = await Promise.all([
-          getIssueRunSummaries(companyId, subtreeIssueIds),
-          getIssueCostSummary(companyId, subtreeIssueIds, params.billingCode ?? rootIssue.billingCode ?? null),
-          getOpenBudgetIncidents(companyId),
+          getIssueRunSummaries(subtreeIssueIds),
+          getIssueCostSummary(subtreeIssueIds, params.billingCode ?? rootIssue.billingCode ?? null),
+          getOpenBudgetIncidents(),
         ]);
         const issueRows = await db
           .select({
@@ -2339,13 +2196,13 @@ export function buildHostServices(
             projectId: issuesTable.projectId,
           })
           .from(issuesTable)
-          .where(and(eq(issuesTable.companyId, companyId), inArray(issuesTable.id, subtreeIssueIds)));
+          .where(and(inArray(issuesTable.id, subtreeIssueIds)));
         const invocationBlocks = (
           await Promise.all(
             issueRows
               .filter((issueRow) => issueRow.assigneeAgentId)
               .map(async (issueRow) => {
-                const block = await budgets.getInvocationBlock(companyId, issueRow.assigneeAgentId!, {
+                const block = await budgets.getInvocationBlock(issueRow.assigneeAgentId!, {
                   issueId: issueRow.id,
                   projectId: issueRow.projectId,
                 });
@@ -2364,7 +2221,6 @@ export function buildHostServices(
         ).filter((block): block is NonNullable<typeof block> => block !== null);
         return {
           issueId: rootIssue.id,
-          companyId,
           subtreeIssueIds,
           relations: Object.fromEntries(relationPairs),
           approvals: approvalRows,
@@ -2375,17 +2231,13 @@ export function buildHostServices(
         };
       },
       async listComments(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        if (!inCompany(await issues.getById(params.issueId), companyId)) return [];
+        if (!exists(await issues.getById(params.issueId))) return [];
         return (await issues.listComments(params.issueId)) as IssueComment[];
       },
       async createComment(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const issue = requireFound("Issue", await issues.getById(params.issueId));
         if (params.actorUserId) {
-          await requireActiveHumanMember(companyId, params.actorUserId);
+          await requireActiveHumanMember(params.actorUserId);
         }
         const comment = (await issues.addComment(
           params.issueId,
@@ -2393,7 +2245,6 @@ export function buildHostServices(
           { agentId: params.actorUserId ? undefined : params.authorAgentId, userId: params.actorUserId },
         )) as IssueComment;
         await logPluginActivity({
-          companyId,
           action: "issue.comment.created",
           entityType: "issue",
           entityId: issue.id,
@@ -2467,14 +2318,11 @@ export function buildHostServices(
         return comment;
       },
       async createInteraction(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const issue = requireFound("Issue", await issues.getById(params.issueId));
         const interaction = await issueThreadInteractionService(db).create(issue, params.interaction as CreateIssueThreadInteraction, {
           agentId: params.authorAgentId ?? null,
         });
         await logPluginActivity({
-          companyId,
           action: "issue.thread_interaction_created",
           entityType: "issue",
           entityId: issue.id,
@@ -2490,15 +2338,11 @@ export function buildHostServices(
         return interaction as any;
       },
       async listInteractions(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        if (!inCompany(await issues.getById(params.issueId), companyId)) return [];
+        if (!exists(await issues.getById(params.issueId))) return [];
         return (await interactions.listForIssue(params.issueId)) as any;
       },
       async respondInteraction(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const issue = requireFound("Issue", await issues.getById(params.issueId));
         // Resolving an interaction is a board-user action (the web app's
         // interaction-resolve routes are board-only). The host re-verifies the
         // paired user is an active human member at apply time and never trusts
@@ -2506,10 +2350,10 @@ export function buildHostServices(
         if (!params.actorUserId) {
           throw new Error("actorUserId is required to respond to an interaction on behalf of a board user");
         }
-        await requireActiveHumanMember(companyId, params.actorUserId);
+        await requireActiveHumanMember(params.actorUserId);
 
         const current = await interactions.getById(params.interactionId);
-        if (!current || current.issueId !== issue.id || current.companyId !== companyId) {
+        if (!current || current.issueId !== issue.id) {
           throw new Error(`Interaction "${params.interactionId}" not found for this issue`);
         }
         // Idempotent replay: an already-resolved interaction converges without
@@ -2529,7 +2373,6 @@ export function buildHostServices(
           const result = await interactions.acceptInteraction(
             {
               id: issue.id,
-              companyId,
               projectId: issue.projectId ?? null,
               goalId: issue.goalId ?? null,
               status: issue.status,
@@ -2548,7 +2391,7 @@ export function buildHostServices(
           }
         } else {
           resolved = (await interactions.rejectInteraction(
-            { id: issue.id, companyId, status: issue.status },
+            { id: issue.id, status: issue.status },
             params.interactionId,
             { reason: params.reason ?? undefined },
             actor,
@@ -2556,7 +2399,6 @@ export function buildHostServices(
         }
 
         await logPluginActivity({
-          companyId,
           action: params.action === "accept"
             ? "issue.thread_interaction_accepted"
             : "issue.thread_interaction_rejected",
@@ -2581,18 +2423,12 @@ export function buildHostServices(
         return { interaction: resolved as any, applied: true };
       },
       async listAttachments(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        if (!inCompany(await issues.getById(params.issueId), companyId)) return [];
+        if (!exists(await issues.getById(params.issueId))) return [];
         return (await issues.listAttachments(params.issueId)) as any;
       },
       async getAttachmentContent(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const attachment = await issues.getAttachmentById(params.attachmentId);
-        // Unknown and cross-company ids are deliberately indistinguishable to
-        // the plugin: both return null (no existence oracle across companies).
-        if (!attachment || attachment.companyId !== companyId) return null;
+        if (!attachment) return null;
 
         const maxBytes = typeof params.maxBytes === "number" && params.maxBytes > 0 ? params.maxBytes : null;
         if (maxBytes !== null && attachment.byteSize > maxBytes) {
@@ -2601,7 +2437,7 @@ export function buildHostServices(
           );
         }
 
-        const object = await getStorageService().getObject(attachment.companyId, attachment.objectKey);
+        const object = await getStorageService().getObject(attachment.objectKey);
         const chunks: Buffer[] = [];
         let total = 0;
         for await (const chunk of object.stream) {
@@ -2618,7 +2454,6 @@ export function buildHostServices(
         const bytes = Buffer.concat(chunks);
 
         await logPluginActivity({
-          companyId,
           action: "issue.attachment.read",
           entityType: "issue",
           entityId: attachment.issueId,
@@ -2642,25 +2477,19 @@ export function buildHostServices(
 
     approvals: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const rows = await approvalSvc.list(companyId, params.status ?? undefined);
+        const rows = await approvalSvc.list(params.status ?? undefined);
         // Match the web app's approval read surface: payloads are redacted so
         // the chat bridge never receives secrets the web app itself hides.
         return rows.map((approval) => redactApprovalPayload(approval)) as any;
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const approval = await approvalSvc.getById(params.approvalId);
-        if (!approval || approval.companyId !== companyId) return null;
+        if (!approval) return null;
         return redactApprovalPayload(approval) as any;
       },
       async decide(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const existing = await approvalSvc.getById(params.approvalId);
-        if (!existing || existing.companyId !== companyId) {
+        if (!existing) {
           throw new Error(`Approval "${params.approvalId}" not found`);
         }
         // Deciding an approval is a board-user action (the web app's approval
@@ -2669,14 +2498,13 @@ export function buildHostServices(
         if (!params.actorUserId) {
           throw new Error("actorUserId is required to decide an approval on behalf of a board user");
         }
-        await requireActiveHumanMember(companyId, params.actorUserId);
+        await requireActiveHumanMember(params.actorUserId);
 
         const { approval, applied } = params.action === "approve"
           ? await approvalSvc.approve(params.approvalId, params.actorUserId, params.decisionNote ?? null)
           : await approvalSvc.reject(params.approvalId, params.actorUserId, params.decisionNote ?? null);
 
         await logPluginActivity({
-          companyId,
           action: params.action === "approve" ? "approval.approved" : "approval.rejected",
           entityType: "approval",
           entityId: approval.id,
@@ -2721,23 +2549,17 @@ export function buildHostServices(
 
     issueDocuments: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        requireFound("Issue", await issues.getById(params.issueId));
         const rows = await documents.listIssueDocuments(params.issueId);
         return rows as any;
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        requireFound("Issue", await issues.getById(params.issueId));
         const doc = await documents.getIssueDocumentByKey(params.issueId, params.key);
         return (doc ?? null) as any;
       },
       async upsert(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const issue = requireFound("Issue", await issues.getById(params.issueId));
         const result = await documents.upsertIssueDocument({
           issueId: params.issueId,
           key: params.key,
@@ -2747,7 +2569,6 @@ export function buildHostServices(
           changeSummary: params.changeSummary ?? null,
         });
         await logPluginActivity({
-          companyId,
           action: "issue.document_upserted",
           entityType: "issue",
           entityId: issue.id,
@@ -2761,12 +2582,9 @@ export function buildHostServices(
         return result.document as any;
       },
       async delete(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const issue = requireFound("Issue", await issues.getById(params.issueId));
         await documents.deleteIssueDocument(params.issueId, params.key);
         await logPluginActivity({
-          companyId,
           action: "issue.document_deleted",
           entityType: "issue",
           entityId: issue.id,
@@ -2780,39 +2598,29 @@ export function buildHostServices(
 
     agents: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const rows = await agents.list(companyId);
+        const rows = await agents.list();
         return applyWindow(
           rows.filter((agent) => !params.status || agent.status === params.status) as Agent[],
           params,
         );
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const agent = await agents.getById(params.agentId);
-        return (inCompany(agent, companyId) ? agent : null) as Agent | null;
+        return (exists(agent) ? agent : null) as Agent | null;
       },
       async pause(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const agent = await agents.getById(params.agentId);
-        requireInCompany("Agent", agent, companyId);
+        requireFound("Agent", agent);
         return (await agents.pause(params.agentId)) as Agent;
       },
       async resume(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const agent = await agents.getById(params.agentId);
-        requireInCompany("Agent", agent, companyId);
+        requireFound("Agent", agent);
         return (await agents.resume(params.agentId)) as Agent;
       },
       async invoke(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const agent = await agents.getById(params.agentId);
-        requireInCompany("Agent", agent, companyId);
+        requireFound("Agent", agent);
         const run = await heartbeat.wakeup(params.agentId, {
           source: "automation",
           triggerDetail: "system",
@@ -2833,27 +2641,19 @@ export function buildHostServices(
         return { runId: run.id };
       },
       async managedGet(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedAgents.get(params.agentKey, companyId);
+        return managedAgents.get(params.agentKey);
       },
       async managedReconcile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedAgents.reconcile(params.agentKey, companyId);
+        return managedAgents.reconcile(params.agentKey);
       },
       async managedReset(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return managedAgents.reset(params.agentKey, companyId);
+        return managedAgents.reset(params.agentKey);
       },
     },
 
     goals: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const rows = await goals.list(companyId);
+        const rows = await goals.list();
         return applyWindow(
           rows.filter((goal) =>
             (!params.level || goal.level === params.level) &&
@@ -2863,15 +2663,11 @@ export function buildHostServices(
         );
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const goal = await goals.getById(params.goalId);
-        return (inCompany(goal, companyId) ? goal : null) as Goal | null;
+        return (exists(goal) ? goal : null) as Goal | null;
       },
       async create(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return (await goals.create(companyId, {
+        return (await goals.create({
           title: params.title,
           description: params.description,
           level: params.level as any,
@@ -2881,18 +2677,14 @@ export function buildHostServices(
         })) as Goal;
       },
       async update(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        requireInCompany("Goal", await goals.getById(params.goalId), companyId);
+        requireFound("Goal", await goals.getById(params.goalId));
         return (await goals.update(params.goalId, params.patch as any)) as Goal;
       },
     },
 
     access: {
       async listMembers(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const rows = await access.listMembers(companyId);
+        const rows = await access.listMembers();
         const visibleRows = params.includeArchived ? rows : rows.filter((row) => row.status !== "archived");
         const grants = await db
           .select()
@@ -2906,24 +2698,18 @@ export function buildHostServices(
         }
         return visibleRows.map((member) => ({
           ...member,
-          companyId,
           principalType: member.principalType as PrincipalType,
           status: member.status as "pending" | "active" | "suspended" | "archived",
-          grants: (grantsByPrincipal.get(`${member.principalType}:${member.principalId}`) ?? []).map((grant) => redactGrant(grant, companyId)),
+          grants: (grantsByPrincipal.get(`${member.principalType}:${member.principalId}`) ?? []).map((grant) => redactGrant(grant)),
         }));
       },
       async getMember(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return loadPluginMember(companyId, params.memberId);
+        return loadPluginMember(params.memberId);
       },
       async updateMember(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        const updated = await access.updateMember(companyId, params.memberId, params.patch);
+        const updated = await access.updateMember(params.memberId, params.patch);
         if (!updated) throw new Error("Member not found");
         await logPluginActivity({
-          companyId,
           action: "company_member.updated_by_plugin",
           entityType: "company_membership",
           entityId: params.memberId,
@@ -2931,11 +2717,9 @@ export function buildHostServices(
             patch: sanitizeRecord(params.patch as Record<string, unknown>),
           },
         });
-        return (await loadPluginMember(companyId, params.memberId))!;
+        return (await loadPluginMember(params.memberId))!;
       },
       async listInvites(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const limit = Math.min(Math.max(Number(params.limit ?? 20), 1), 100);
         const offset = Math.max(Number(params.offset ?? 0), 0);
         const stateClause = inviteStateWhereClause(params.state);
@@ -2948,13 +2732,11 @@ export function buildHostServices(
           .offset(offset);
         const hasMore = rows.length > limit;
         return {
-          invites: rows.slice(0, limit).map((invite) => redactInvite(invite, companyId)),
+          invites: rows.slice(0, limit).map((invite) => redactInvite(invite)),
           nextOffset: hasMore ? offset + limit : null,
         };
       },
       async createInvite(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const normalizedAgentMessage = typeof params.agentMessage === "string"
           ? params.agentMessage.trim() || null
           : null;
@@ -2988,7 +2770,6 @@ export function buildHostServices(
         }
         if (!token || !created) throw new Error("Failed to generate a unique invite token");
         await logPluginActivity({
-          companyId,
           action: "invite.created_by_plugin",
           entityType: "invite",
           entityId: created.id,
@@ -2998,11 +2779,9 @@ export function buildHostServices(
             hasAgentMessage: Boolean(normalizedAgentMessage),
           },
         });
-        return { ...redactInvite(created, companyId), token };
+        return { ...redactInvite(created), token };
       },
       async revokeInvite(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const invite = await db
           .select()
           .from(invites)
@@ -3010,7 +2789,7 @@ export function buildHostServices(
           .then((rows) => rows[0] ?? null);
         if (!invite) throw new Error("Invite not found");
         if (invite.acceptedAt) throw new Error("Invite already consumed");
-        if (invite.revokedAt) return redactInvite(invite, companyId);
+        if (invite.revokedAt) return redactInvite(invite);
         const revoked = await db
           .update(invites)
           .set({ revokedAt: new Date(), updatedAt: new Date() })
@@ -3018,19 +2797,16 @@ export function buildHostServices(
           .returning()
           .then((rows) => rows[0] ?? invite);
         await logPluginActivity({
-          companyId,
           action: "invite.revoked_by_plugin",
           entityType: "invite",
           entityId: invite.id,
         });
-        return redactInvite(revoked, companyId);
+        return redactInvite(revoked);
       },
     },
 
     authorization: {
       async listGrants(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const conditions = [
           params.principalType ? eq(principalPermissionGrants.principalType, params.principalType) : undefined,
           params.principalId ? eq(principalPermissionGrants.principalId, params.principalId) : undefined,
@@ -3040,22 +2816,19 @@ export function buildHostServices(
           .from(principalPermissionGrants)
           .where(and(...conditions))
           .orderBy(principalPermissionGrants.principalType, principalPermissionGrants.principalId, principalPermissionGrants.permissionKey);
-        return rows.map((grant) => redactGrant(grant, companyId));
+        return rows.map((grant) => redactGrant(grant));
       },
       async setGrants(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         if (params.principalType !== "agent" && params.principalType !== "user") {
           throw new Error("principalType must be 'agent' or 'user'");
         }
         if (params.principalType === "agent") {
-          requireInCompany("Agent", await agents.getById(params.principalId), companyId);
+          requireFound("Agent", await agents.getById(params.principalId));
         } else {
-          const membership = await access.getMembership(companyId, params.principalType as PrincipalType, params.principalId);
+          const membership = await access.getMembership(params.principalType as PrincipalType, params.principalId);
           if (!membership) throw new Error("Principal is not a member of this company");
         }
         await access.setPrincipalGrants(
-          companyId,
           params.principalType as PrincipalType,
           params.principalId,
           params.grants.map((grant) => ({
@@ -3065,27 +2838,23 @@ export function buildHostServices(
           params.grantedByUserId ?? null,
         );
         await logPluginActivity({
-          companyId,
           action: "authorization.grants_updated_by_plugin",
           entityType: "principal_permission_grants",
           entityId: `${params.principalType}:${params.principalId}`,
           details: { grantCount: params.grants.length },
         });
         return access
-          .listPrincipalGrants(companyId, params.principalType as PrincipalType, params.principalId)
-          .then((rows) => rows.map((grant) => redactGrant(grant, companyId)));
+          .listPrincipalGrants(params.principalType as PrincipalType, params.principalId)
+          .then((rows) => rows.map((grant) => redactGrant(grant)));
       },
       async policySummary(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const [members, grants] = await Promise.all([
-          access.listMembers(companyId),
+          access.listMembers(),
           db
             .select({ id: principalPermissionGrants.id })
             .from(principalPermissionGrants),
         ]);
         return {
-          companyId,
           permissionsMode: "simple" as const,
           memberCount: members.length,
           activeMemberCount: members.filter((member) => member.status === "active").length,
@@ -3094,16 +2863,12 @@ export function buildHostServices(
         };
       },
       async getPolicy(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
-        return readAuthorizationPolicy(companyId, params.resourceType, params.resourceId);
+        return readAuthorizationPolicy(params.resourceType, params.resourceId);
       },
       async updatePolicy(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const policy = params.policy ? sanitizeRecord(params.policy) : null;
         if (params.resourceType === "agent") {
-          const agent = requireInCompany("Agent", await agents.getById(params.resourceId), companyId);
+          const agent = requireFound("Agent", await agents.getById(params.resourceId));
           const permissions = agent.permissions && typeof agent.permissions === "object"
             ? { ...(agent.permissions as Record<string, unknown>) }
             : {};
@@ -3114,7 +2879,7 @@ export function buildHostServices(
             .set({ permissions, updatedAt: new Date() })
             .where(eq(agentsTable.id, agent.id));
         } else if (params.resourceType === "project") {
-          const project = requireInCompany("Project", await projects.getById(params.resourceId), companyId);
+          const project = requireFound("Project", await projects.getById(params.resourceId));
           const executionWorkspacePolicy = project.executionWorkspacePolicy && typeof project.executionWorkspacePolicy === "object"
             ? { ...(project.executionWorkspacePolicy as unknown as Record<string, unknown>) }
             : {};
@@ -3125,7 +2890,7 @@ export function buildHostServices(
             .set({ executionWorkspacePolicy, updatedAt: new Date() })
             .where(eq(projectsTable.id, project.id));
         } else if (params.resourceType === "issue") {
-          const issue = requireInCompany("Issue", await issues.getById(params.resourceId), companyId);
+          const issue = requireFound("Issue", await issues.getById(params.resourceId));
           const executionPolicy = issue.executionPolicy && typeof issue.executionPolicy === "object"
             ? { ...(issue.executionPolicy as Record<string, unknown>) }
             : {};
@@ -3137,27 +2902,24 @@ export function buildHostServices(
             .where(eq(issuesTable.id, issue.id));
         } else {
           const company = await companies.getById(params.resourceId);
-          if (!company || company.id !== companyId) throw new Error("Company not found");
+          if (!company) throw new Error("Company not found");
           throw new Error("Company authorization policy updates are not supported by the current core schema");
         }
         await logPluginActivity({
-          companyId,
           action: "authorization.policy_updated_by_plugin",
           entityType: params.resourceType,
           entityId: params.resourceId,
           details: { hasPolicy: Boolean(policy) },
         });
-        const updated = await readAuthorizationPolicy(companyId, params.resourceType, params.resourceId);
+        const updated = await readAuthorizationPolicy(params.resourceType, params.resourceId);
         if (!updated) throw new Error("Policy resource not found");
         return updated;
       },
       async previewAssignment(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         return authorization.decide({
           actor: pluginAssignmentActor(params.actor),
           action: "tasks:assign",
-          resource: { type: "issue", companyId, ...params.target },
+          resource: { type: "issue", ...params.target },
           scope: {
             issueId: params.target.issueId ?? null,
             projectId: params.target.projectId ?? null,
@@ -3168,12 +2930,10 @@ export function buildHostServices(
         });
       },
       async explainAssignment(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         return authorization.decide({
           actor: pluginAssignmentActor(params.actor),
           action: "tasks:assign",
-          resource: { type: "issue", companyId, ...params.target },
+          resource: { type: "issue", ...params.target },
           scope: {
             issueId: params.target.issueId ?? null,
             projectId: params.target.projectId ?? null,
@@ -3184,15 +2944,12 @@ export function buildHostServices(
         });
       },
       async searchAudit(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const limit = Math.min(Math.max(Number(params.limit ?? 50), 1), 100);
         const offset = Math.max(Number(params.offset ?? 0), 0);
         const decisionFilter = typeof params.decision === "string" && params.decision.trim()
           ? params.decision.trim().toLowerCase()
           : null;
         const conditions = [
-          eq(activityLog.companyId, companyId),
           params.action ? eq(activityLog.action, params.action) : undefined,
           params.actorType ? eq(activityLog.actorType, params.actorType) : undefined,
           params.actorId ? eq(activityLog.actorId, params.actorId) : undefined,
@@ -3218,16 +2975,13 @@ export function buildHostServices(
 
     agentSessions: {
       async create(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const agent = await agents.getById(params.agentId);
-        requireInCompany("Agent", agent, companyId);
+        requireFound("Agent", agent);
         const taskKey = params.taskKey ?? `plugin:${pluginKey}:session:${randomUUID()}`;
 
         const row = await db
           .insert(agentTaskSessionsTable)
           .values({
-            companyId,
             agentId: params.agentId,
             adapterType: agent!.adapterType,
             taskKey,
@@ -3242,22 +2996,18 @@ export function buildHostServices(
         return {
           sessionId: row!.id,
           agentId: params.agentId,
-          companyId,
           status: "active" as const,
           createdAt: row!.createdAt.toISOString(),
         };
       },
 
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const rows = await db
           .select()
           .from(agentTaskSessionsTable)
           .where(
             and(
               eq(agentTaskSessionsTable.agentId, params.agentId),
-              eq(agentTaskSessionsTable.companyId, companyId),
               like(agentTaskSessionsTable.taskKey, `plugin:${pluginKey}:session:%`),
             ),
           )
@@ -3266,7 +3016,6 @@ export function buildHostServices(
         return rows.map((row) => ({
           sessionId: row.id,
           agentId: row.agentId,
-          companyId: row.companyId,
           status: "active" as const,
           createdAt: row.createdAt.toISOString(),
         }));
@@ -3277,8 +3026,6 @@ export function buildHostServices(
           throw new Error("Host services have been disposed");
         }
 
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
 
         // Verify session exists and belongs to this plugin
         const session = await db
@@ -3287,7 +3034,6 @@ export function buildHostServices(
           .where(
             and(
               eq(agentTaskSessionsTable.id, params.sessionId),
-              eq(agentTaskSessionsTable.companyId, companyId),
               like(agentTaskSessionsTable.taskKey, `plugin:${pluginKey}:session:%`),
             ),
           )
@@ -3328,7 +3074,7 @@ export function buildHostServices(
             activeSubscriptions.delete(entry);
           };
 
-          const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+          const unsubscribe = subscribeLiveEvents((event) => {
             const payload = event.payload as Record<string, unknown> | undefined;
             if (!payload || payload.runId !== run.id) return;
 
@@ -3389,14 +3135,11 @@ export function buildHostServices(
       },
 
       async close(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForCompany(companyId);
         const deleted = await db
           .delete(agentTaskSessionsTable)
           .where(
             and(
               eq(agentTaskSessionsTable.id, params.sessionId),
-              eq(agentTaskSessionsTable.companyId, companyId),
               like(agentTaskSessionsTable.taskKey, `plugin:${pluginKey}:session:%`),
             ),
           )

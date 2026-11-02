@@ -57,7 +57,7 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     wakeCommentIds: [commentId],
     commentId,
   };
-  const binding = { companyId, agentId, issueId, runId };
+  const binding = { agentId, issueId, runId };
   const attest = (contextSnapshot: Record<string, unknown> = context) =>
     attestReviewedExternalChatRun({ db, ...binding, contextSnapshot });
 
@@ -78,7 +78,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(agents)
       .values({
         id: agentId,
-        companyId,
         name: "Chat runner",
         adapterType: "paperclip_runner",
         adapterConfig: { provider: "codex" },
@@ -88,7 +87,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(issues)
       .values({
         id: issueId,
-        companyId,
         title: "Reviewed conversation",
         issueNumber: 1,
         identifier: "RCB-1",
@@ -98,7 +96,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       });
     await db.insert(issues).values({
       id: otherIssueId,
-      companyId,
       title: "Unrelated conversation",
       issueNumber: 2,
       identifier: "RCB-2",
@@ -109,7 +106,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(heartbeatRuns)
       .values({
         id: runId,
-        companyId,
         agentId,
         status: "running",
         runtimeMode: "native",
@@ -126,7 +122,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(issueThreadInteractions)
       .values({
         id: interactionId,
-        companyId,
         issueId,
         sourceRunId: runId,
         kind: "request_confirmation",
@@ -143,7 +138,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(toolApplications)
       .values({
         id: applicationId,
-        companyId,
         applicationKey: `chat:${provider}:${endpointId}`,
         name: "Discord",
         type: "chat",
@@ -153,7 +147,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(toolConnections)
       .values({
         id: connectionId,
-        companyId,
         applicationId,
         name: "Discord",
         uid: `chat-${provider}-${endpointId}`,
@@ -166,7 +159,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(chatEndpoints)
       .values({
         id: endpointId,
-        companyId,
         connectionId,
         provider,
         publicId: randomUUID(),
@@ -179,7 +171,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(chatEndpointResources)
       .values({
         id: resourceId,
-        companyId,
         endpointId,
         type: "channel",
         providerResourceId: "channel-1",
@@ -191,7 +182,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(chatConversations)
       .values({
         id: conversationId,
-        companyId,
         endpointId,
         resourceId,
         issueId,
@@ -204,7 +194,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(chatExternalPrincipals)
       .values({
         id: principalId,
-        companyId,
         provider,
         providerAccountId: "guild-1",
         externalId: "user-1",
@@ -213,7 +202,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     await db
       .insert(chatIdentityLinks)
       .values({
-        companyId,
         endpointId,
         principalId,
         paperclipUserId: userId,
@@ -231,7 +219,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(issueComments)
       .values({
         id: commentId,
-        companyId,
         issueId,
         authorType: "user",
         authorUserId: userId,
@@ -241,7 +228,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
       .insert(chatDeliveries)
       .values({
         id: deliveryId,
-        companyId,
         endpointId,
         conversationId,
         principalId,
@@ -256,7 +242,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     await db
       .insert(chatMessageLinks)
       .values({
-        companyId,
         endpointId,
         conversationId,
         deliveryId,
@@ -297,7 +282,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     });
     const wake = await buildPaperclipWakePayload({
       db,
-      companyId,
       agentId,
       contextSnapshot: {
         ...context,
@@ -356,12 +340,9 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     });
   });
 
-  it("denies recovery after access revocation or a changed company, task, or message binding", async () => {
+  it("denies recovery after access revocation or a changed task or message binding", async () => {
     await withReviewRecovery(async (recovery) => {
       await expect(attest(recovery)).resolves.toBe(true);
-      await expect(attestReviewedExternalChatRun({
-        db, ...binding, companyId: randomUUID(), contextSnapshot: recovery,
-      })).resolves.toBe(false);
       await expect(attestReviewedExternalChatRun({
         db, ...binding, issueId: otherIssueId, contextSnapshot: recovery,
       })).resolves.toBe(false);
@@ -555,7 +536,6 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     expect(await attest()).toBe(true);
     const wake = await buildPaperclipWakePayload({
       db,
-      companyId,
       agentId,
       contextSnapshot: {
         ...context,

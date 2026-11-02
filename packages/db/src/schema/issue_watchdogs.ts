@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 
@@ -9,7 +8,6 @@ export const issueWatchdogs = pgTable(
   "issue_watchdogs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     watchdogAgentId: uuid("watchdog_agent_id").notNull().references(() => agents.id),
     instructions: text("instructions"),
@@ -32,11 +30,11 @@ export const issueWatchdogs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyIssueIdx: uniqueIndex("issue_watchdogs_company_issue_uq").on(table.companyId, table.issueId),
-    companyStatusIdx: index("issue_watchdogs_company_status_idx").on(table.companyId, table.status),
-    companyAgentIdx: index("issue_watchdogs_company_agent_idx").on(table.companyId, table.watchdogAgentId),
+    companyIssueIdx: uniqueIndex("issue_watchdogs_company_issue_uq").on(table.issueId),
+    companyStatusIdx: index("issue_watchdogs_company_status_idx").on(table.status),
+    companyAgentIdx: index("issue_watchdogs_company_agent_idx").on(table.watchdogAgentId),
     companyWatchdogIssueIdx: uniqueIndex("issue_watchdogs_company_watchdog_issue_uq")
-      .on(table.companyId, table.watchdogIssueId)
+      .on(table.watchdogIssueId)
       .where(sql`${table.watchdogIssueId} is not null`),
   }),
 );

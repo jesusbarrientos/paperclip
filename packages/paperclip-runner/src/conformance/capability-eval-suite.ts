@@ -261,7 +261,6 @@ async function runtimeFor(actorGrants: string[] = []) {
   const seed: CapabilityFixtureSeed = {
     actors: [{
       id: "actor-1",
-      companyId: "company-1",
       name: "Eval fixture actor",
       role: "engineer",
       status: "active",
@@ -275,7 +274,6 @@ async function runtimeFor(actorGrants: string[] = []) {
     identity: {
       runId: "run-capability-eval",
       sessionId: "session-capability-eval",
-      companyId: "company-1",
       issueId: "task-1",
       agentId: "actor-1",
     },
@@ -423,7 +421,6 @@ function liveFixtureSeed(actorGrants: readonly string[]): CapabilityFixtureSeed 
   return {
     actors: [{
       id: "actor-1",
-      companyId: "company-1",
       name: "Eval fixture actor",
       role: "engineer",
       status: "active",

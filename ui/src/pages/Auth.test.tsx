@@ -46,15 +46,13 @@ vi.mock("../context/ThemeContext", () => ({
 }));
 
 // The router's navigate wrapper reads the active company prefix from context.
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompany: null,
-    selectedCompanyId: null,
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: null,
     companies: [],
     selectionSource: "manual",
     loading: false,
     error: null,
-    setSelectedCompanyId: vi.fn(),
     reloadCompanies: vi.fn(),
     createCompany: vi.fn(),
   }),

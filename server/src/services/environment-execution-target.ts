@@ -222,7 +222,6 @@ function setSandboxExecSpanFailure(
 
 export async function resolveEnvironmentExecutionTarget(input: {
   db: Db;
-  companyId: string;
   adapterType: string;
   environment: {
     id?: string;
@@ -259,7 +258,7 @@ export async function resolveEnvironmentExecutionTarget(input: {
       return null;
     }
 
-    const parsed = await resolveEnvironmentDriverConfigForRuntime(input.db, input.companyId, {
+    const parsed = await resolveEnvironmentDriverConfigForRuntime(input.db, {
       id: input.environment.id,
       driver: input.environment.driver as "sandbox",
       config: parseObject(input.environment.config),
@@ -634,7 +633,7 @@ export async function resolveEnvironmentExecutionTarget(input: {
     return null;
   }
 
-  const parsed = await resolveEnvironmentDriverConfigForRuntime(input.db, input.companyId, {
+  const parsed = await resolveEnvironmentDriverConfigForRuntime(input.db, {
     id: input.environment.id,
     driver: input.environment.driver as "ssh",
     config: parseObject(input.environment.config),

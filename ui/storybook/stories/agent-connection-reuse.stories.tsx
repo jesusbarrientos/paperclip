@@ -26,7 +26,6 @@ function ConnectionStory({
         </div>
       ) : (
         <AgentProviderConnection
-          companyId="company-storybook"
           adapterType={adapterType}
           environmentId={STORYBOOK_SANDBOX_ENVIRONMENT_ID}
           canLogin

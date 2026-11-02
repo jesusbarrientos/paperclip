@@ -4,15 +4,15 @@ import { fn } from "storybook/test";
 export const consentSubmission = fn();
 export const request: McpConnectionRequest = {
   id: "storybook-request", clientName: "Codex", redirectOrigin: "https://chatgpt.com",
-  requestedWrite: true, offlineAccess: true, requiresSignIn: false, requestedCompanyId: null,
+  requestedWrite: true, offlineAccess: true, requiresSignIn: false, 
   companies: [
     { id: "00000000-0000-4000-8000-000000000001", name: "Acme Research", logoUrl: null, canWrite: true },
     { id: "00000000-0000-4000-8000-000000000002", name: "Design Partners", logoUrl: null, canWrite: false },
   ], setupUrl: null,
 };
 const connections: McpConnection[] = [
-  { id: "codex", companyId: request.companies[0].id, companyName: "Acme Research", clientName: "Codex", scopes: ["paperclip:read", "paperclip:write"], createdAt: "2020-01-01T00:00:00Z", revokedAt: null },
-  { id: "claude", companyId: request.companies[1].id, companyName: "Design Partners", clientName: "Claude", scopes: ["paperclip:read"], createdAt: "2020-01-01T00:00:00Z", revokedAt: null },
+  { id: "codex", companyName: "Acme Research", clientName: "Codex", scopes: ["paperclip:read", "paperclip:write"], createdAt: "2020-01-01T00:00:00Z", revokedAt: null },
+  { id: "claude", companyName: "Design Partners", clientName: "Claude", scopes: ["paperclip:read"], createdAt: "2020-01-01T00:00:00Z", revokedAt: null },
 ];
 export interface PublicMcpFixture {
   request?: Partial<McpConnectionRequest>;

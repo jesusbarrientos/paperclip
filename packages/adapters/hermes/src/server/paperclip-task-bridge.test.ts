@@ -65,7 +65,7 @@ describe("paperclip-task-bridge helper", () => {
         return;
       }
       if (req.method === "GET" && req.url === "/api/agents/me") {
-        res.end(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", companyId: "22222222-2222-4222-8222-222222222222" }));
+        res.end(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }));
         return;
       }
       if (req.method === "GET" && req.url === "/api/agents/me/inbox-lite") {
@@ -82,7 +82,7 @@ describe("paperclip-task-bridge helper", () => {
         ]));
         return;
       }
-      if (req.method === "POST" && req.url === "/api/companies/22222222-2222-4222-8222-222222222222/issues") {
+      if (req.method === "POST" && req.url === "/api/issues") {
         res.statusCode = 201;
         res.end(JSON.stringify({
           id: "44444444-4444-4444-8444-444444444444",
@@ -135,7 +135,6 @@ describe("paperclip-task-bridge helper", () => {
     return {
       PAPERCLIP_API_URL: baseUrl,
       PAPERCLIP_BRIDGE_API_KEY: apiKey,
-      PAPERCLIP_COMPANY_ID: "22222222-2222-4222-8222-222222222222",
       PAPERCLIP_AGENT_ID: "11111111-1111-4111-8111-111111111111",
       PAPERCLIP_RUN_ID: "66666666-6666-4666-8666-666666666666",
     };
@@ -157,7 +156,7 @@ describe("paperclip-task-bridge helper", () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('"identifier": "PAP-124"');
-    const createRequest = requests.find((request) => request.method === "POST" && request.url.includes("/companies/"));
+    const createRequest = requests.find((request) => request.method === "POST" && request.url === "/api/issues");
     expect(createRequest?.headers["x-paperclip-run-id"]).toBe("66666666-6666-4666-8666-666666666666");
     expect(createRequest?.body).toMatchObject({
       title: "Bridge task",

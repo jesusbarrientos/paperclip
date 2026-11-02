@@ -17,7 +17,7 @@ describe("confirmation reply through the native API tool", () => {
     const f = await server.fixture({ conversation: true, disableWakeOnDemand: true, mode });
     const [issue] = await server.db.select().from(issues).where(eq(issues.id, f.issueId));
     const card = await issueThreadInteractionService(server.db).create(issue!, createIssueThreadInteractionSchema.parse({ kind: "request_confirmation", payload: { version: 1, prompt: "Write the welcome note?" } }), { agentId: f.agentId });
-    const [comment] = await server.db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId, authorType: "user", authorUserId: f.userId, body: "Yes, write it." }).returning();
+    const [comment] = await server.db.insert(issueComments).values({ issueId: f.issueId, authorType: "user", authorUserId: f.userId, body: "Yes, write it." }).returning();
     const call = { tool: "call_api", callId: randomUUID(), arguments: { operationId: "POST /api/issues/{id}/interactions/{interactionId}/resolve-from-comment", pathParams: { id: f.issueId, interactionId: card.id }, body: { commentId: comment!.id, decision: "accept" } } };
     return { f, card, comment: comment!, call };
   }
@@ -49,7 +49,7 @@ describe("confirmation reply through the native API tool", () => {
     const { f, card, call, comment } = await seed();
     const url = `${server.apiUrl}/api/issues/${f.issueId}/interactions/${card.id}/resolve-from-comment`;
     expect((await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call.arguments.body) })).status).toBe(404);
-    const token = createLocalAgentJwt(f.agentId, f.companyId, "paperclip_runner", f.runId, f.userId);
+    const token = createLocalAgentJwt(f.agentId, "paperclip_runner", f.runId, f.userId);
     expect((await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...call.arguments.body, actorUserId: f.userId }) })).status).toBe(400);
   });
   it("does not open the ordinary interaction or governance mutation routes", () => {

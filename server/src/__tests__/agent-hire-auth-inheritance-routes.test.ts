@@ -44,8 +44,8 @@ type Db = ReturnType<typeof createDb>;
 // fixed key. Any other shape is a replacement or a weaker binding.
 const FIXED_CLAUDE_OAUTH_BINDING = { type: "user_secret_ref", key: "CLAUDE_CODE_OAUTH_TOKEN" } as const;
 
-function agentActor(companyId: string, agentId: string): Express.Request["actor"] {
-  return { type: "agent", agentId, companyId, source: "agent_jwt" };
+function agentActor(agentId: string): Express.Request["actor"] {
+  return { type: "agent", agentId, source: "agent_jwt" };
 }
 
 // The local implicit board actor always passes authorization, so it stands in
@@ -116,11 +116,10 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     return companyId;
   }
 
-  async function seedParentAgent(companyId: string, adapterType: string, env: Record<string, unknown>) {
+  async function seedParentAgent(adapterType: string, env: Record<string, unknown>) {
     const [row] = await db
       .insert(agents)
       .values({
-        companyId,
         name: `Parent ${randomUUID().slice(0, 8)}`,
         role: "engineer",
         adapterType,
@@ -132,8 +131,8 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     return row!;
   }
 
-  async function createCompanySecret(companyId: string, value: string) {
-    return secretService(db).create(companyId, {
+  async function createCompanySecret(value: string) {
+    return secretService(db).create({
       name: `cred-${randomUUID()}`,
       provider: "local_encrypted",
       value,
@@ -144,9 +143,9 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     return { type: "secret_ref" as const, secretId, ...extra };
   }
 
-  function hire(actor: Express.Request["actor"], companyId: string, payload: Record<string, unknown>) {
+  function hire(actor: Express.Request["actor"], payload: Record<string, unknown>) {
     const app = createApp(db, actor);
-    return request(app).post(`/api/companies/${companyId}/agent-hires`).send(payload);
+    return request(app).post(`/api/agent-hires`).send(payload);
   }
 
   function childEnvOf(res: request.Response): Record<string, unknown> {
@@ -155,12 +154,12 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("inherits the parent secret_ref for a codex_local hire with no env, and derives the child binding", async () => {
     const companyId = await seedCompany();
-    const secret = await createCompanySecret(companyId, "sk-openai-parent");
-    const parent = await seedParentAgent(companyId, "codex_local", {
+    const secret = await createCompanySecret("sk-openai-parent");
+    const parent = await seedParentAgent("codex_local", {
       OPENAI_API_KEY: secretRef(secret.id),
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Codex Child",
       role: "engineer",
       adapterType: "codex_local",
@@ -174,7 +173,6 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
       .from(companySecretBindings)
       .where(
         and(
-          eq(companySecretBindings.companyId, companyId),
           eq(companySecretBindings.targetType, "agent"),
           eq(companySecretBindings.targetId, res.body.agent.id),
         ),
@@ -189,12 +187,12 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("keeps a pinned version selector on the copied reference and its derived binding", async () => {
     const companyId = await seedCompany();
-    const secret = await createCompanySecret(companyId, "sk-openai-pinned");
-    const parent = await seedParentAgent(companyId, "codex_local", {
+    const secret = await createCompanySecret("sk-openai-pinned");
+    const parent = await seedParentAgent("codex_local", {
       OPENAI_API_KEY: secretRef(secret.id, { version: 3 }),
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Codex Pinned Child",
       role: "engineer",
       adapterType: "codex_local",
@@ -207,22 +205,19 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
       .select()
       .from(companySecretBindings)
       .where(
-        and(
-          eq(companySecretBindings.companyId, companyId),
-          eq(companySecretBindings.targetId, res.body.agent.id),
-        ),
+        eq(companySecretBindings.targetId, res.body.agent.id),
       );
     expect(bindings[0]?.versionSelector).toBe("3");
   });
 
   it("retains version, required, and allowMissingOverride on a copied user_secret_ref", async () => {
     const companyId = await seedCompany();
-    await secretService(db).createUserSecretDefinition(companyId, {
+    await secretService(db).createUserSecretDefinition({
       key: "openai_shared_key",
       name: "Shared OpenAI key",
       provider: "local_encrypted",
     });
-    const parent = await seedParentAgent(companyId, "codex_local", {
+    const parent = await seedParentAgent("codex_local", {
       OPENAI_API_KEY: {
         type: "user_secret_ref",
         key: "openai_shared_key",
@@ -232,7 +227,7 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
       },
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Codex User Secret Child",
       role: "engineer",
       adapterType: "codex_local",
@@ -250,12 +245,12 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("inherits a grok_local parent's XAI_API_KEY reference", async () => {
     const companyId = await seedCompany();
-    const secret = await createCompanySecret(companyId, "xai-parent-key");
-    const parent = await seedParentAgent(companyId, "grok_local", {
+    const secret = await createCompanySecret("xai-parent-key");
+    const parent = await seedParentAgent("grok_local", {
       XAI_API_KEY: secretRef(secret.id),
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Grok Child",
       role: "engineer",
       adapterType: "grok_local",
@@ -267,12 +262,12 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("inherits a claude_local parent's ANTHROPIC_API_KEY reference", async () => {
     const companyId = await seedCompany();
-    const secret = await createCompanySecret(companyId, "ant-parent-key");
-    const parent = await seedParentAgent(companyId, "claude_local", {
+    const secret = await createCompanySecret("ant-parent-key");
+    const parent = await seedParentAgent("claude_local", {
       ANTHROPIC_API_KEY: secretRef(secret.id),
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Claude Child",
       role: "engineer",
       adapterType: "claude_local",
@@ -284,14 +279,14 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("keeps the child-supplied ANTHROPIC_API_KEY and inherits no Claude credential at all", async () => {
     const companyId = await seedCompany();
-    const childSecret = await createCompanySecret(companyId, "ant-child-key");
+    const childSecret = await createCompanySecret("ant-child-key");
     // The parent holds the fixed Claude OAuth binding, which is normally
     // inheritable, but the child already supplies its own Claude credential.
-    const parent = await seedParentAgent(companyId, "claude_local", {
+    const parent = await seedParentAgent("claude_local", {
       CLAUDE_CODE_OAUTH_TOKEN: { ...FIXED_CLAUDE_OAUTH_BINDING },
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Claude Child With Own Key",
       role: "engineer",
       adapterType: "claude_local",
@@ -306,11 +301,11 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("does not inherit a plain environment value", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "grok_local", {
+    const parent = await seedParentAgent("grok_local", {
       XAI_API_KEY: "xai-plain-value",
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Grok Plain Value Child",
       role: "engineer",
       adapterType: "grok_local",
@@ -322,12 +317,12 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("does not inherit across a mismatched adapter type", async () => {
     const companyId = await seedCompany();
-    const secret = await createCompanySecret(companyId, "sk-openai-mismatch");
-    const parent = await seedParentAgent(companyId, "codex_local", {
+    const secret = await createCompanySecret("sk-openai-mismatch");
+    const parent = await seedParentAgent("codex_local", {
       OPENAI_API_KEY: secretRef(secret.id),
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Claude Child From Codex Parent",
       role: "engineer",
       adapterType: "claude_local",
@@ -337,74 +332,14 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     expect(Object.keys(childEnvOf(res))).toHaveLength(0);
   });
 
-  it("does not inherit a codex_local credential from a hiring agent in another company", async () => {
-    const parentCompanyId = await seedCompany();
-    const targetCompanyId = await seedCompany();
-    const secret = await createCompanySecret(parentCompanyId, "sk-openai-other-company");
-    const parent = await seedParentAgent(parentCompanyId, "codex_local", {
-      OPENAI_API_KEY: secretRef(secret.id),
-    });
-
-    // The actor claims the target company, but the named hiring agent belongs
-    // to a different company. The route must reject the request and must
-    // never copy the other company's credential reference.
-    const res = await hire(agentActor(targetCompanyId, parent.id), targetCompanyId, {
-      name: "Codex Cross-Company Child",
-      role: "engineer",
-      adapterType: "codex_local",
-    });
-
-    expect(res.status).toBe(403);
-    const children = await db.select().from(agents).where(eq(agents.companyId, targetCompanyId));
-    expect(children).toHaveLength(0);
-  });
-
-  it("does not inherit a grok_local credential from a hiring agent in another company", async () => {
-    const parentCompanyId = await seedCompany();
-    const targetCompanyId = await seedCompany();
-    const secret = await createCompanySecret(parentCompanyId, "xai-other-company");
-    const parent = await seedParentAgent(parentCompanyId, "grok_local", {
-      XAI_API_KEY: secretRef(secret.id),
-    });
-
-    const res = await hire(agentActor(targetCompanyId, parent.id), targetCompanyId, {
-      name: "Grok Cross-Company Child",
-      role: "engineer",
-      adapterType: "grok_local",
-    });
-
-    expect(res.status).toBe(403);
-    const children = await db.select().from(agents).where(eq(agents.companyId, targetCompanyId));
-    expect(children).toHaveLength(0);
-  });
-
-  it("does not inherit a claude_local credential, including the fixed OAuth binding, from a hiring agent in another company", async () => {
-    const parentCompanyId = await seedCompany();
-    const targetCompanyId = await seedCompany();
-    const parent = await seedParentAgent(parentCompanyId, "claude_local", {
-      ANTHROPIC_API_KEY: secretRef((await createCompanySecret(parentCompanyId, "ant-other-company")).id),
-      CLAUDE_CODE_OAUTH_TOKEN: { ...FIXED_CLAUDE_OAUTH_BINDING, version: 1 },
-    });
-
-    const res = await hire(agentActor(targetCompanyId, parent.id), targetCompanyId, {
-      name: "Claude Cross-Company Child",
-      role: "engineer",
-      adapterType: "claude_local",
-    });
-
-    expect(res.status).toBe(403);
-    const children = await db.select().from(agents).where(eq(agents.companyId, targetCompanyId));
-    expect(children).toHaveLength(0);
-  });
-
   it("carves out a per-agent CODEX_HOME when the child inherits OPENAI_API_KEY", async () => {
     const companyId = await seedCompany();
-    const secret = await createCompanySecret(companyId, "sk-openai-isolated");
-    const parent = await seedParentAgent(companyId, "codex_local", {
+    const secret = await createCompanySecret("sk-openai-isolated");
+    const parent = await seedParentAgent("codex_local", {
       OPENAI_API_KEY: secretRef(secret.id),
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Codex Isolated Child",
       role: "engineer",
       adapterType: "codex_local",
@@ -420,9 +355,9 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("keeps the shared company Codex home when the child inherits no key", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "codex_local", {});
+    const parent = await seedParentAgent("codex_local", {});
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Codex Shared Home Child",
       role: "engineer",
       adapterType: "codex_local",
@@ -434,9 +369,9 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("adds no home override for a grok_local child with no inherited key", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "grok_local", {});
+    const parent = await seedParentAgent("grok_local", {});
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Grok No Key Child",
       role: "engineer",
       adapterType: "grok_local",
@@ -452,7 +387,7 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     const companyId = await seedCompany();
     // No hiring-agent context exists for a user actor. The merge must not run
     // at all, so an otherwise-inheritable key is simply never considered.
-    const res = await hire(userActor(), companyId, {
+    const res = await hire(userActor(), {
       name: "User Hired Child",
       role: "engineer",
       adapterType: "claude_local",
@@ -464,8 +399,8 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("rejects native runtime inheritance for a board actor", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "paperclip_runner", {});
-    const res = await hire(userActor(), companyId, {
+    const parent = await seedParentAgent("paperclip_runner", {});
+    const res = await hire(userActor(), {
       name: "Board Inheritance Attempt", role: "engineer", adapterType: "paperclip_runner", inheritRuntimeFrom: "caller",
     });
     expect(res.status).toBe(403);
@@ -474,35 +409,24 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("rejects inheritance from a legacy caller", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "codex_local", {});
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const parent = await seedParentAgent("codex_local", {});
+    const res = await hire(agentActor(parent.id), {
       name: "Legacy Inheritance Attempt", role: "engineer", adapterType: "paperclip_runner", inheritRuntimeFrom: "caller",
     });
     expect(res.status).toBe(422);
     expect(res.body.error).toContain("paperclip_runner adapter");
   });
 
-  it("rejects native runtime inheritance across companies", async () => {
-    const parentCompanyId = await seedCompany();
-    const targetCompanyId = await seedCompany();
-    const parent = await seedParentAgent(parentCompanyId, "paperclip_runner", { provider: "codex", model: "gpt-5.6-sol" });
-    const res = await hire(agentActor(targetCompanyId, parent.id), targetCompanyId, {
-      name: "Cross Company Inheritance Attempt", role: "engineer", adapterType: "paperclip_runner", inheritRuntimeFrom: "caller",
-    });
-    expect(res.status).toBe(403);
-    expect(await db.select().from(agents).where(eq(agents.companyId, targetCompanyId))).toHaveLength(0);
-  });
-
   it("records only inherited safe settings in an approval snapshot", async () => {
     const companyId = await seedCompany();
     await db.update(companies).set({ requireBoardApprovalForNewAgents: true }).where(eq(companies.id, companyId));
-    const parent = await seedParentAgent(companyId, "paperclip_runner", {});
+    const parent = await seedParentAgent("paperclip_runner", {});
     await db.update(agents).set({ adapterConfig: {
       provider: "acpx", acpxAgent: "claude", model: "claude-sonnet-5", acpxPermissionMode: "approve-all",
       env: { ANTHROPIC_API_KEY: secretRef("parent-secret") }, cwd: "/private/parent",
       invocationLimits: { maxIterations: 3, credentials: "never-copy" },
     } }).where(eq(agents.id, parent.id));
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Approval Snapshot Child", role: "engineer", adapterType: "paperclip_runner", inheritRuntimeFrom: "caller",
     });
     expect(res.status).toBe(201);
@@ -519,25 +443,25 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     ["aws_agentcore", "agentCoreProfileId", "agentCoreRetentionAcknowledged", "Remote Agent"],
   ])("revalidates the inherited %s company profile before creating a hire", async (provider, profileKey, retentionKey, label) => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "paperclip_runner", {});
+    const parent = await seedParentAgent("paperclip_runner", {});
     await db.update(agents).set({ adapterConfig: {
       provider, [profileKey]: randomUUID(), [retentionKey]: true,
     } }).where(eq(agents.id, parent.id));
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Missing Profile Child", role: "engineer", adapterType: "paperclip_runner", inheritRuntimeFrom: "caller",
     });
     expect(res.status, JSON.stringify(res.body)).toBe(404);
     expect(res.body.error).toBe(`${label} profile not found`);
-    expect(await db.select().from(agents).where(eq(agents.companyId, companyId))).toHaveLength(1);
+    expect(await db.select().from(agents)).toHaveLength(1);
   });
 
   it("validates and preserves an inherited caller default environment", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "paperclip_runner", {});
+    const parent = await seedParentAgent("paperclip_runner", {});
     const environmentId = randomUUID();
     await db.insert(environments).values({ id: environmentId, name: `Local ${environmentId}`, driver: "local" });
     await db.update(agents).set({ defaultEnvironmentId: environmentId }).where(eq(agents.id, parent.id));
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Invalid Environment Child", role: "engineer", adapterType: "paperclip_runner", inheritRuntimeFrom: "caller",
     });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -546,11 +470,11 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("inherits the fixed Claude OAuth binding, keeps its version, and leaks no token value", async () => {
     const companyId = await seedCompany();
-    const parent = await seedParentAgent(companyId, "claude_local", {
+    const parent = await seedParentAgent("claude_local", {
       CLAUDE_CODE_OAUTH_TOKEN: { ...FIXED_CLAUDE_OAUTH_BINDING, version: 3 },
     });
 
-    const res = await hire(agentActor(companyId, parent.id), companyId, {
+    const res = await hire(agentActor(parent.id), {
       name: "Claude OAuth Child",
       role: "engineer",
       adapterType: "claude_local",
@@ -580,7 +504,7 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     const hireActivity = await db
       .select()
       .from(activityLog)
-      .where(and(eq(activityLog.companyId, companyId), eq(activityLog.action, "agent.hire_created")));
+      .where(eq(activityLog.action, "agent.hire_created"));
     expect(hireActivity).toHaveLength(1);
     const detailsText = JSON.stringify(hireActivity[0]!.details);
     expect(detailsText).not.toContain("adapterConfig");

@@ -15,10 +15,10 @@ function statusBadge(repo: ProjectClonedRepository) {
 }
 
 /** Live on-disk state of every repository checkout belonging to the project. */
-export function ProjectClonedRepositories({ projectId, companyId }: { projectId: string; companyId: string }) {
+export function ProjectClonedRepositories({ projectId }: { projectId: string }) {
   const query = useQuery({
     queryKey: queryKeys.projects.clonedRepositories(projectId),
-    queryFn: () => projectsApi.listClonedRepositories(projectId, companyId),
+    queryFn: () => projectsApi.listClonedRepositories(projectId),
   });
   return <div className="flex min-w-0 flex-col gap-2" aria-label="Cloned repositories">
     <div className="flex items-center justify-between gap-2">

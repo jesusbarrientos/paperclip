@@ -50,6 +50,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/context/ToastContext";
 import { EmptyState } from "@/components/EmptyState";
+import { useOrganization } from "@/context/OrganizationContext";
 import {
   CapabilityBadges,
   ErrorState,
@@ -93,14 +94,14 @@ function statusVariant(status: ToolProfileStatus): "default" | "secondary" | "ou
 }
 
 function targetIdForType(input: {
-  companyId: string;
   targetType: ToolProfileBindingTargetType;
+  organizationId: string | null;
   agentId: string;
   projectId: string;
   routineId: string;
   issueId: string;
 }) {
-  if (input.targetType === "company") return input.companyId;
+  if (input.targetType === "company") return input.organizationId;
   if (input.targetType === "agent") return input.agentId;
   if (input.targetType === "project") return input.projectId;
   if (input.targetType === "routine") return input.routineId;
@@ -150,13 +151,12 @@ function bindingLabel(
   targetType: ToolProfileBindingTargetType,
   targetId: string,
   labels: {
-    companyId: string;
     agentsById: Map<string, string>;
     projectsById: Map<string, string>;
     routinesById: Map<string, string>;
   },
 ) {
-  if (targetType === "company") return targetId === labels.companyId ? "Company" : targetId;
+  if (targetType === "company") return "Organization";
   if (targetType === "agent") return labels.agentsById.get(targetId) ?? targetId;
   if (targetType === "project") return labels.projectsById.get(targetId) ?? targetId;
   if (targetType === "routine") return labels.routinesById.get(targetId) ?? targetId;
@@ -307,26 +307,26 @@ export function resolveAllowList(
   return rows.sort((a, b) => a.toolName.localeCompare(b.toolName));
 }
 
-function useLookupData(companyId: string) {
+function useLookupData() {
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const projects = useQuery({
-    queryKey: queryKeys.projects.list(companyId, { includeArchived: true }),
-    queryFn: () => projectsApi.list(companyId, { includeArchived: true }),
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
   const routines = useQuery({
-    queryKey: queryKeys.routines.list(companyId),
-    queryFn: () => routinesApi.list(companyId),
+    queryKey: queryKeys.routines.list(),
+    queryFn: () => routinesApi.list(),
   });
   const applications = useQuery({
-    queryKey: queryKeys.tools.applications(companyId),
-    queryFn: () => toolsApi.listApplications(companyId),
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const connections = useQuery({
-    queryKey: queryKeys.tools.connections(companyId),
-    queryFn: () => toolsApi.listConnections(companyId),
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
 
   const maps = useMemo(() => ({
@@ -471,13 +471,13 @@ function EntryFields({
   );
 }
 
-export function EffectiveAgentPanel({ companyId, agentOptions }: { companyId: string; agentOptions: Array<{ id: string; name: string }> }) {
+export function EffectiveAgentPanel({ agentOptions }: { agentOptions: Array<{ id: string; name: string }> }) {
   const [agentId, setAgentId] = useState("");
   const effective = useQuery({
     queryKey: agentId
-      ? queryKeys.tools.effectiveProfilesForAgent(companyId, agentId)
-      : ["tools", companyId, "profiles", "effective", "agent", "__none__"],
-    queryFn: () => toolsApi.getEffectiveProfilesForAgent(companyId, agentId),
+      ? queryKeys.tools.effectiveProfilesForAgent(agentId)
+      : ["tools", "profiles", "effective", "agent", "__none__"],
+    queryFn: () => toolsApi.getEffectiveProfilesForAgent(agentId),
     enabled: Boolean(agentId),
   });
 
@@ -636,8 +636,9 @@ function AllowList({ rows, catalogLoading }: { rows: AllowListRow[]; catalogLoad
   );
 }
 
-export function ProfilesTab({ companyId }: { companyId: string }) {
+export function ProfilesTab() {
   const qc = useQueryClient();
+  const { organization } = useOrganization();
   const { pushToast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [editProfile, setEditProfile] = useState<ToolProfileWithDetails | null>(null);
@@ -666,10 +667,10 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
   const [targetIssueId, setTargetIssueId] = useState("");
   const [priority, setPriority] = useState("100");
 
-  const lookups = useLookupData(companyId);
+  const lookups = useLookupData();
   const profiles = useQuery({
-    queryKey: queryKeys.tools.profiles(companyId),
-    queryFn: () => toolsApi.listProfiles(companyId),
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
   });
 
   const connectionList = lookups.connections.data?.connections ?? [];
@@ -696,8 +697,8 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
   const routineOptions = lookups.routines.data ?? [];
 
   const invalidateProfiles = () => {
-    qc.invalidateQueries({ queryKey: queryKeys.tools.profiles(companyId) });
-    qc.invalidateQueries({ queryKey: ["tools", companyId, "profiles", "effective"] });
+    qc.invalidateQueries({ queryKey: queryKeys.tools.profiles() });
+    qc.invalidateQueries({ queryKey: ["tools", "profiles", "effective"] });
     qc.invalidateQueries({ queryKey: queryKeys.tools.testAgentAccesses() });
   };
 
@@ -720,7 +721,7 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
   };
 
   const createProfile = useMutation({
-    mutationFn: (input: CreateToolProfileInput) => toolsApi.createProfile(companyId, input),
+    mutationFn: (input: CreateToolProfileInput) => toolsApi.createProfile(input),
     onSuccess: (created) => {
       invalidateProfiles();
       setCreateOpen(false);
@@ -783,7 +784,7 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
 
   const bind = useMutation({
     mutationFn: ({ profileId, input }: { profileId: string; input: ToolProfileBindingInput }) =>
-      toolsApi.bindProfile(companyId, profileId, input),
+      toolsApi.bindProfile(profileId, input),
     onSuccess: () => {
       invalidateProfiles();
       setBindProfileFor(null);
@@ -803,7 +804,7 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
       profileId: string;
       targetType: ToolProfileBindingTargetType;
       targetId: string;
-    }) => toolsApi.unbindProfile(companyId, profileId, { targetType, targetId }),
+    }) => toolsApi.unbindProfile(profileId, { targetType, targetId }),
     onSuccess: () => {
       invalidateProfiles();
       pushToast({ title: "Binding removed", tone: "success" });
@@ -886,8 +887,8 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
   const saveBinding = () => {
     if (!bindProfileFor) return;
     const targetId = targetIdForType({
-      companyId,
       targetType,
+      organizationId: organization?.id ?? null,
       agentId: targetAgentId,
       projectId: targetProjectId,
       routineId: targetRoutineId,
@@ -920,7 +921,7 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
         }
       />
 
-      <EffectiveAgentPanel companyId={companyId} agentOptions={agentOptions} />
+      <EffectiveAgentPanel agentOptions={agentOptions} />
 
       {list.length === 0 ? (
         <EmptyState
@@ -980,7 +981,6 @@ export function ProfilesTab({ companyId }: { companyId: string }) {
               catalog={catalog}
               catalogLoading={catalogLoading}
               maps={lookups.maps}
-              companyId={companyId}
               onEdit={() => openEdit(selected)}
               onAddEntry={() => {
                 setEntryProfile(selected);
@@ -1225,7 +1225,6 @@ function ProfileDetail({
   catalog,
   catalogLoading,
   maps,
-  companyId,
   onEdit,
   onAddEntry,
   onBind,
@@ -1236,14 +1235,12 @@ function ProfileDetail({
   catalog: ToolCatalogEntry[];
   catalogLoading: boolean;
   maps: {
-    companyId?: string;
     agentsById: Map<string, string>;
     projectsById: Map<string, string>;
     routinesById: Map<string, string>;
     applicationsById: Map<string, string>;
     connectionsById: Map<string, string>;
   };
-  companyId: string;
   onEdit: () => void;
   onAddEntry: () => void;
   onBind: () => void;
@@ -1304,7 +1301,7 @@ function ProfileDetail({
             ) : profile.bindings.map((binding) => (
               <span key={binding.id} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs">
                 <Badge variant="outline">{binding.targetType}</Badge>
-                <span>{bindingLabel(binding.targetType, binding.targetId, { companyId, ...maps })}</span>
+                <span>{bindingLabel(binding.targetType, binding.targetId, maps)}</span>
                 <span className="text-muted-foreground">p{binding.priority}</span>
                 <button
                   type="button"

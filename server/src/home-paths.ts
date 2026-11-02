@@ -66,28 +66,25 @@ function sanitizeFriendlyPathSegment(value: string | null | undefined, fallback 
 
 /**
  * Resolve the managed checkout directory for one project:
- * `<instanceRoot>/projects/<companyId>/<projectId>/<repoName|_default>`.
+ * `<instanceRoot>/projects/<projectId>/<repoName|_default>`.
  *
  * Per-project directory isolation invariant: the `projectId` is a distinct path segment, so two
- * different projects always resolve to sibling directories under `<companyId>/`. One project's
+ * different projects always resolve to sibling directories under `projects/`. One project's
  * directory can never nest inside, or be a path prefix of, another project's directory. A run that
  * materializes several referenced projects can therefore place each in its own directory without
  * collision. See the "distinct, non-nested managed dirs" test in `heartbeat-project-env.test.ts`.
  */
 export function resolveManagedProjectWorkspaceDir(input: {
-  companyId: string;
   projectId: string;
   repoName?: string | null;
 }): string {
-  const companyId = input.companyId.trim();
   const projectId = input.projectId.trim();
-  if (!companyId || !projectId) {
-    throw new Error("Managed project workspace path requires companyId and projectId.");
+  if (!projectId) {
+    throw new Error("Managed project workspace path requires projectId.");
   }
   return path.resolve(
     resolvePaperclipInstanceRoot(),
     "projects",
-    sanitizeFriendlyPathSegment(companyId, "company"),
     sanitizeFriendlyPathSegment(projectId, "project"),
     sanitizeFriendlyPathSegment(input.repoName, "_default"),
   );

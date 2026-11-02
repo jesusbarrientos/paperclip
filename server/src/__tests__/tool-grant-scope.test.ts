@@ -39,7 +39,6 @@ suite("tool grant restrictions", () => {
     const fixture = await createListingFixture(db, 6);
     await db.update(principalPermissionGrants).set({ scope }).where(eq(principalPermissionGrants.principalId, fixture.agent.id));
     const result = await toolAccessPolicyService(db).decide({
-      companyId: fixture.company.id,
       actor: { actorType: "agent", actorId: fixture.agent.id, agentId: fixture.agent.id },
       runContext: { heartbeatRunId: fixture.run.id },
       request: { connectionId: fixture.connection.id, catalogEntryId: fixture.entries[4]!.id, toolName: "tool_0004" },
@@ -50,10 +49,10 @@ suite("tool grant restrictions", () => {
   it("lists and calls only granted tools through the HTTP gateway, then observes revocation", async () => {
     const fixture = await createListingFixture(db, 6);
     await db.update(toolProfiles).set({ defaultAction: "deny" }).where(eq(toolProfiles.id, fixture.namedGateway.profileId));
-    await db.delete(toolPolicies).where(eq(toolPolicies.companyId, fixture.company.id));
+    await db.delete(toolPolicies);
     await db.update(principalPermissionGrants).set({ scope: {} })
       .where(eq(principalPermissionGrants.principalId, fixture.agent.id));
-    await db.insert(connectionGrants).values({ companyId: fixture.company.id, connectionId: fixture.connection.id,
+    await db.insert(connectionGrants).values({ connectionId: fixture.connection.id,
       kind: "organization", status: "active", isDefault: true });
     const calls: string[] = [];
     const service = createToolGatewayService(db, { remoteHttpRequest: async (_url, init) => {

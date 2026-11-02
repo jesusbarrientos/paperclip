@@ -29,7 +29,6 @@ afterEach(async () => {
 describe("heartbeat run scratch cleanup", () => {
   it("removes only a marked run-owned scratch directory", async () => {
     const scratch = await trackScratch(await prepareHeartbeatRunScratch({
-      companyId: "company-1",
       agentId: "agent-1",
       runId: "run-1",
       issueId: "issue-1",
@@ -52,7 +51,6 @@ describe("heartbeat run scratch cleanup", () => {
       markerPath: path.join(dir, HEARTBEAT_RUN_SCRATCH_MARKER),
       metadata: {
         version: 1,
-        companyId: "company-1",
         agentId: "agent-1",
         runId: "run-1",
         issueId: null,
@@ -69,7 +67,6 @@ describe("heartbeat run scratch cleanup", () => {
 
   it("preserves marked scratch when the marker owner does not match the run", async () => {
     const scratch = await trackScratch(await prepareHeartbeatRunScratch({
-      companyId: "company-1",
       agentId: "agent-1",
       runId: "run-1",
     }));
@@ -89,7 +86,6 @@ describe("heartbeat run scratch cleanup", () => {
 
   it("skips cleanup while the run process group is still alive", async () => {
     const scratch = await trackScratch(await prepareHeartbeatRunScratch({
-      companyId: "company-1",
       agentId: "agent-1",
       runId: "run-1",
     }));
@@ -106,7 +102,6 @@ describe("heartbeat run scratch cleanup", () => {
 
   it("builds explicit scratch env without clobbering configured temp dirs", async () => {
     const scratch = await trackScratch(await prepareHeartbeatRunScratch({
-      companyId: "company-1",
       agentId: "agent-1",
       runId: "run-1",
     }));

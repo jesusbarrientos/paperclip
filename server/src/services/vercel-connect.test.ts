@@ -68,19 +68,17 @@ describe("Vercel Connect credential adapter", () => {
     });
   });
 
-  it("derives stable company- and user-bound subjects without browser input", () => {
+  it("derives stable user-bound subjects without browser input", () => {
     vi.stubEnv("PAPERCLIP_INSTANCE_ID", "instance-one");
     const base = {
       credential,
       connectionId: "connection-one",
-      companyId: "company-one",
       grantKind: "user" as const,
       subjectUserId: "user-one",
     };
     const first = deriveVercelConnectSubject(base);
     expect(first).toEqual(deriveVercelConnectSubject(base));
     expect(first.subject).toMatchObject({ type: "user", id: expect.stringMatching(/^pc_/) });
-    expect(deriveVercelConnectSubject({ ...base, companyId: "company-two" }).subject).not.toEqual(first.subject);
     expect(deriveVercelConnectSubject({ ...base, subjectUserId: "user-two" }).subject).not.toEqual(first.subject);
   });
 
@@ -89,13 +87,11 @@ describe("Vercel Connect credential adapter", () => {
     expect(deriveVercelConnectSubject({
       credential: appCredential,
       connectionId: "connection-one",
-      companyId: "company-one",
       grantKind: "organization",
     })).toEqual({ subject: { type: "app" } });
     expect(vercelTokenRequest({
       credential: appCredential,
       connectionId: "connection-one",
-      companyId: "company-one",
       resources: ["https://mcp.posthog.com/mcp"],
       grant: { kind: "organization", subjectUserId: null, externalCredential: null },
     })).toMatchObject({

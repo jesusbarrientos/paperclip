@@ -5,7 +5,7 @@ import type {
   CompanySkillFileDetail,
   CompanySkillVersion,
 } from "@paperclipai/shared";
-import { SkillDetailPage } from "@/pages/CompanySkills";
+import { SkillDetailPage } from "@/pages/OrganizationSkills";
 
 type DetailTab = "overview" | "files" | "versions" | "agents";
 
@@ -13,7 +13,6 @@ const NOW = new Date("2026-06-01T12:00:00Z");
 
 const MOCK_DETAIL: CompanySkillDetail = {
   id: "skill-1",
-  companyId: "company-1",
   key: "paperclipai/paperclip/deep-research",
   slug: "deep-research",
   name: "deep-research",
@@ -39,7 +38,6 @@ const MOCK_DETAIL: CompanySkillDetail = {
   sharingScope: "company",
   publicShareToken: null,
   forkedFromSkillId: null,
-  forkedFromCompanyId: null,
   starCount: 211,
   installCount: 96,
   forkCount: 17,
@@ -62,7 +60,6 @@ const MOCK_DETAIL: CompanySkillDetail = {
   sourcePath: "github.com/paperclipai/skills/tree/main/deep-research",
   currentVersion: {
     id: "v-2",
-    companyId: "company-1",
     companySkillId: "skill-1",
     revisionNumber: 2,
     label: "tighten verifier",
@@ -80,7 +77,6 @@ const MOCK_DETAIL: CompanySkillDetail = {
 const MOCK_VERSIONS: CompanySkillVersion[] = [
   {
     id: "v-2",
-    companyId: "company-1",
     companySkillId: "skill-1",
     revisionNumber: 2,
     label: "tighten verifier",
@@ -94,7 +90,6 @@ const MOCK_VERSIONS: CompanySkillVersion[] = [
   },
   {
     id: "v-1",
-    companyId: "company-1",
     companySkillId: "skill-1",
     revisionNumber: 1,
     label: null,

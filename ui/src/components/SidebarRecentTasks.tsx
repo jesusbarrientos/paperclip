@@ -35,9 +35,9 @@ const RECENT_TASK_MENU_ITEM_CLASS =
   "h-(--profile-popover-row-height) gap-(--profile-popover-row-gap) rounded-lg px-2.5 py-0 text-(length:--text-compact) font-medium leading-(--profile-popover-label-line-height) focus:bg-accent/50 focus:text-foreground";
 const RESTART_WAKE_RETRY_STORAGE_SUFFIX = ":restart-wake-retry";
 
-function restartWakeRetryStorageKey(companyId: string, userId: string | null) {
+function restartWakeRetryStorageKey(userId: string | null) {
   // Action retry state must survive changes to the recent-task snapshot format.
-  return `paperclip.recentTasks:${companyId}:${userId ?? "__local_board__"}${RESTART_WAKE_RETRY_STORAGE_SUFFIX}`;
+  return `paperclip.recentTasks:${userId ?? "__local_board__"}${RESTART_WAKE_RETRY_STORAGE_SUFFIX}`;
 }
 
 function readRestartWakeRetryIssueIds(storageKey: string | null) {
@@ -68,10 +68,8 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function SidebarRecentTasks({
-  companyId,
   liveIssueIds,
 }: {
-  companyId: string | null | undefined;
   liveIssueIds: ReadonlySet<string>;
 }) {
   const { collapsed, peeking } = useSidebar();
@@ -82,13 +80,12 @@ export function SidebarRecentTasks({
     retry: false,
   });
 
-  if (!companyId || isPending) return null;
+  if (isPending) return null;
 
   const userId = session?.user?.id ?? session?.session?.userId ?? null;
   return (
     <RecentTasksList
-      key={`${companyId}:${userId ?? "__local_board__"}`}
-      companyId={companyId}
+      key={userId ?? "__local_board__"}
       userId={userId}
       liveIssueIds={liveIssueIds}
       rail={rail}
@@ -97,30 +94,28 @@ export function SidebarRecentTasks({
 }
 
 function RecentTasksList({
-  companyId,
   userId,
   liveIssueIds,
   rail,
 }: {
-  companyId: string;
   userId: string | null;
   liveIssueIds: ReadonlySet<string>;
   rail: boolean;
 }) {
-  const { entries, storageKey } = useRecentTasks({ companyId, userId });
+  const { entries, storageKey } = useRecentTasks({ userId });
   const queryClient = useQueryClient();
   const toastActions = useOptionalToastActions();
   const [renameEntry, setRenameEntry] = useState<RecentTaskEntry | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingAction, setPendingAction] = useState<"rename" | "archive" | "pause" | null>(null);
-  const restartRetryStorageKey = restartWakeRetryStorageKey(companyId, userId);
+  const restartRetryStorageKey = restartWakeRetryStorageKey(userId);
 
   if (entries.length === 0) return null;
 
   const refreshIssueQueries = async (issueId: string) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issueId) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.activity(issueId) }),
     ]);
   };
@@ -142,7 +137,7 @@ function RecentTasksList({
     try {
       const updated = await issuesApi.update(renameEntry.id, { title: nextTitle });
       queryClient.setQueryData(queryKeys.issues.detail(renameEntry.id), updated);
-      if (storageKey) updateRecentTaskSnapshots(storageKey, companyId, [updated]);
+      if (storageKey) updateRecentTaskSnapshots(storageKey, [updated]);
       await refreshIssueQueries(renameEntry.id);
       setRenameEntry(null);
       toastActions?.pushToast({ title: "Task renamed", tone: "success" });
@@ -163,7 +158,7 @@ function RecentTasksList({
       await issuesApi.archiveFromInbox(entry.id);
       await refreshIssueQueries(entry.id);
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.sidebarBadges(companyId),
+        queryKey: queryKeys.sidebarBadges(),
       });
       toastActions?.pushToast({ title: "Task archived from inbox", tone: "success" });
     } catch (error) {
@@ -196,7 +191,6 @@ function RecentTasksList({
               reason: "recent_task_restart",
               payload: { issueId: restartIssue.id },
             },
-            restartIssue.companyId,
           );
           if (!("id" in wakeResult)) {
             throw new Error(wakeResult.message ?? "The assignee wake was skipped.");
@@ -217,7 +211,6 @@ function RecentTasksList({
               reason: "recent_task_restart_retry",
               payload: { issueId: restartIssue.id },
             },
-            restartIssue.companyId,
           );
           if (!("id" in wakeResult)) {
             throw new Error(wakeResult.message ?? "The assignee wake was skipped.");

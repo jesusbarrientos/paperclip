@@ -14,7 +14,6 @@ import {
 const input: NativeExecutionInputV1 = {
   schema: "paperclip.native-execution-input.v1",
   binding: {
-    companyId: "company-1",
     runId: "run-1",
     issueId: "issue-1",
     agentId: "agent-1",

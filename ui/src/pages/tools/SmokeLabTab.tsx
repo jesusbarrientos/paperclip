@@ -66,22 +66,22 @@ const HEALTH_STYLES: Record<string, string> = {
   unknown: "bg-muted-foreground/40",
 };
 
-export function SmokeLabTab({ companyId }: { companyId: string }) {
+export function SmokeLabTab() {
   const { enabled, loaded } = useSmokeLabEnabled();
   const qc = useQueryClient();
   const { pushToast } = useToast();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const servicesQuery = useQuery({
-    queryKey: queryKeys.smokeLab.services(companyId),
-    queryFn: () => smokeLabApi.listServices(companyId),
+    queryKey: queryKeys.smokeLab.services(),
+    queryFn: () => smokeLabApi.listServices(),
     enabled: enabled && loaded,
     refetchInterval: enabled ? 10_000 : false,
   });
 
   const runsQuery = useQuery({
-    queryKey: queryKeys.smokeLab.runs(companyId),
-    queryFn: () => smokeLabApi.listRuns(companyId),
+    queryKey: queryKeys.smokeLab.runs(),
+    queryFn: () => smokeLabApi.listRuns(),
     enabled: enabled && loaded,
     refetchInterval: enabled ? 10_000 : false,
   });
@@ -90,8 +90,8 @@ export function SmokeLabTab({ companyId }: { companyId: string }) {
   const activeRunId = selectedRunId ?? runs[0]?.id ?? null;
 
   const runDetailQuery = useQuery({
-    queryKey: queryKeys.smokeLab.run(companyId, activeRunId ?? "__none__"),
-    queryFn: () => smokeLabApi.getRun(companyId, activeRunId!),
+    queryKey: queryKeys.smokeLab.run(activeRunId ?? "__none__"),
+    queryFn: () => smokeLabApi.getRun(activeRunId!),
     enabled: enabled && loaded && !!activeRunId,
     refetchInterval: enabled && !!activeRunId ? 10_000 : false,
   });
@@ -101,13 +101,13 @@ export function SmokeLabTab({ companyId }: { companyId: string }) {
   const activeRun = runDetailQuery.data?.run;
 
   function refresh() {
-    qc.invalidateQueries({ queryKey: queryKeys.smokeLab.services(companyId) });
-    qc.invalidateQueries({ queryKey: queryKeys.smokeLab.runs(companyId) });
-    if (activeRunId) qc.invalidateQueries({ queryKey: queryKeys.smokeLab.run(companyId, activeRunId) });
+    qc.invalidateQueries({ queryKey: queryKeys.smokeLab.services() });
+    qc.invalidateQueries({ queryKey: queryKeys.smokeLab.runs() });
+    if (activeRunId) qc.invalidateQueries({ queryKey: queryKeys.smokeLab.run(activeRunId) });
   }
 
   const startMutation = useMutation({
-    mutationFn: () => smokeLabApi.startServices(companyId),
+    mutationFn: () => smokeLabApi.startServices(),
     onSuccess: () => {
       pushToast({ title: "Smoke services started", tone: "success" });
       refresh();
@@ -116,7 +116,7 @@ export function SmokeLabTab({ companyId }: { companyId: string }) {
   });
 
   const stopMutation = useMutation({
-    mutationFn: () => smokeLabApi.stopServices(companyId),
+    mutationFn: () => smokeLabApi.stopServices(),
     onSuccess: () => {
       pushToast({ title: "Smoke services stopped", tone: "info" });
       refresh();
@@ -125,7 +125,7 @@ export function SmokeLabTab({ companyId }: { companyId: string }) {
   });
 
   const installMutation = useMutation({
-    mutationFn: () => smokeLabApi.installFixtures(companyId),
+    mutationFn: () => smokeLabApi.installFixtures(),
     onSuccess: (r) => {
       pushToast({
         title: r.created ? "Fixture apps installed" : "Fixture apps already present",
@@ -137,7 +137,7 @@ export function SmokeLabTab({ companyId }: { companyId: string }) {
   });
 
   const resetMutation = useMutation({
-    mutationFn: () => smokeLabApi.reset(companyId),
+    mutationFn: () => smokeLabApi.reset(),
     onSuccess: () => {
       pushToast({ title: "Smoke Lab reset", tone: "info" });
       setSelectedRunId(null);
@@ -147,7 +147,7 @@ export function SmokeLabTab({ companyId }: { companyId: string }) {
   });
 
   const runSmokeMutation = useMutation({
-    mutationFn: () => smokeLabApi.createRun(companyId, { trigger: "manual", summary: {} }),
+    mutationFn: () => smokeLabApi.createRun({ trigger: "manual", summary: {} }),
     onSuccess: (r) => {
       pushToast({
         title: "Smoke run started",

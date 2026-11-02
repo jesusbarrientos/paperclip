@@ -14,13 +14,12 @@ const MAX_TASK_TITLE_RECEIPTS_PER_RUN = 64;
 /** Caller owns the transaction and publishes the activity only after commit. */
 export async function setIssueTitle(
   tx: Db,
-  companyId: string,
   issueId: string,
   input: SetIssueTitle,
   actor: TitleActor,
 ): Promise<{ result: TitleResult; publication: ActivityPublication | null }> {
   const { title, onlyIfProvisional, idempotencyKey } = setIssueTitleSchema.parse(input);
-  const predicate = and(eq(issues.id, issueId), eq(issues.companyId, companyId));
+  const predicate = eq(issues.id, issueId);
   const [issue] = await tx.select().from(issues).where(predicate).for("update");
   if (!issue) throw notFound("Task not found");
   let authorizedRun: typeof heartbeatRuns.$inferSelect | undefined;
@@ -29,7 +28,7 @@ export async function setIssueTitle(
       throw forbidden("Setting a task title requires its assigned agent's active run");
     }
     const [run] = await tx.select().from(heartbeatRuns).where(and(
-      eq(heartbeatRuns.id, actor.runId), eq(heartbeatRuns.companyId, companyId),
+      eq(heartbeatRuns.id, actor.runId),
       eq(heartbeatRuns.agentId, actor.actorId),
     )).for("update");
     const snapshot = run?.contextSnapshot ?? {};
@@ -73,7 +72,7 @@ export async function setIssueTitle(
   await tx.update(issues).set({ title, titleNeedsGeneration: false, updatedAt: new Date() }).where(predicate);
   await issueReferenceService(tx).syncIssue(issueId, tx);
   const { publication } = await persistActivity(tx, {
-    ...actor, companyId, action: "issue.updated", entityType: "issue", entityId: issueId,
+    ...actor, action: "issue.updated", entityType: "issue", entityId: issueId,
     details: { title, previous: { title: issue.title }, titleNeedsGeneration: false },
   });
   return { result: await saveReceipt({ id: issueId, title, titleNeedsGeneration: false, changed: true }), publication };

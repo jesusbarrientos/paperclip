@@ -21,7 +21,7 @@ export const DISPOSITION_REPAIR_BASE_DELAYS_MS = [0, 60_000, 120_000, 240_000, 4
 type DispositionRepairIssue = Pick<
   typeof issues.$inferSelect,
   | "id"
-  | "companyId"
+
   | "status"
   | "assigneeAgentId"
   | "assigneeUserId"
@@ -91,11 +91,10 @@ export async function collectDispositionRepairSourceState(
         .from(issueRelations)
         .innerJoin(
           issues,
-          and(eq(issues.companyId, issueRelations.companyId), eq(issues.id, issueRelations.issueId)),
+          eq(issues.id, issueRelations.issueId),
         )
         .where(
           and(
-            eq(issueRelations.companyId, issue.companyId),
             eq(issueRelations.relatedIssueId, issue.id),
             eq(issueRelations.type, "blocks"),
             notInArray(issues.status, ["done", "cancelled"]),
@@ -107,7 +106,6 @@ export async function collectDispositionRepairSourceState(
         .from(issues)
         .where(
           and(
-            eq(issues.companyId, issue.companyId),
             eq(issues.parentId, issue.id),
             notInArray(issues.status, ["done", "cancelled"]),
             sql`${issues.hiddenAt} is null`,
@@ -124,7 +122,6 @@ export async function collectDispositionRepairSourceState(
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, issue.companyId),
             eq(issueThreadInteractions.issueId, issue.id),
             inArray(issueThreadInteractions.status, ["pending", "accepted", "answered"]),
           ),
@@ -134,15 +131,10 @@ export async function collectDispositionRepairSourceState(
         .from(issueApprovals)
         .innerJoin(
           approvals,
-          and(
-            eq(issueApprovals.approvalId, approvals.id),
-            eq(issueApprovals.companyId, approvals.companyId),
-          ),
+          eq(issueApprovals.approvalId, approvals.id),
         )
         .where(
           and(
-            eq(issueApprovals.companyId, issue.companyId),
-            eq(approvals.companyId, issue.companyId),
             eq(issueApprovals.issueId, issue.id),
             inArray(approvals.status, ["pending", "revision_requested", "approved"]),
           ),
@@ -157,17 +149,13 @@ export async function collectDispositionRepairSourceState(
         })
         .from(issueWorkProducts)
         .where(
-          and(
-            eq(issueWorkProducts.companyId, issue.companyId),
-            eq(issueWorkProducts.issueId, issue.id),
-          ),
+          eq(issueWorkProducts.issueId, issue.id),
         ),
       db
         .select({ id: heartbeatRuns.id, agentId: heartbeatRuns.agentId, status: heartbeatRuns.status })
         .from(heartbeatRuns)
         .where(
           and(
-            eq(heartbeatRuns.companyId, issue.companyId),
             inArray(heartbeatRuns.status, [...ACTIVE_RUN_STATUSES]),
             sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issue.id}`,
             input.excludeRunId ? ne(heartbeatRuns.id, input.excludeRunId) : sql`true`,
@@ -178,7 +166,6 @@ export async function collectDispositionRepairSourceState(
         .from(agentWakeupRequests)
         .where(
           and(
-            eq(agentWakeupRequests.companyId, issue.companyId),
             inArray(agentWakeupRequests.status, ["queued", "deferred_issue_execution"]),
             sql`${agentWakeupRequests.payload} ->> 'issueId' = ${issue.id}`,
             input.excludeWakeupRequestId

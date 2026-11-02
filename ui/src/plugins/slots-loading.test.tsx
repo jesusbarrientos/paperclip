@@ -10,13 +10,13 @@ import { _resetPluginModuleLoader, ensurePluginContributionLoaded, usePluginSlot
 const contribution: PluginUiContribution = {
   pluginId: "navigation", pluginKey: "fixture.navigation", displayName: "Navigation", version: "1",
   uiEntryFile: "index.js", launchers: [],
-  slots: [{ type: "organizationSwitcher", id: "navigation", displayName: "Organizations", exportName: "Switcher" }],
+  slots: [{ type: "dashboardWidget", id: "navigation", displayName: "Navigation", exportName: "Widget" }],
 };
 let root: Root;
 let container: HTMLDivElement;
 let client: QueryClient;
 function Consumer() {
-  const { isLoading } = usePluginSlots({ slotTypes: ["organizationSwitcher"] });
+  const { isLoading } = usePluginSlots({ slotTypes: ["dashboardWidget"] });
   return <span>{isLoading ? "Loading" : "Ready"}</span>;
 }
 async function render() {

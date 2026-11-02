@@ -77,7 +77,6 @@ describeEmbeddedPostgres("agent secret routes", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Secret reader",
       role: "engineer",
       adapterType: "codex_local",
@@ -87,12 +86,11 @@ describeEmbeddedPostgres("agent secret routes", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: heartbeatRunId,
-      companyId,
       agentId,
       status: "running",
       contextSnapshot: {},
     });
-    return { companyId, agentId, heartbeatRunId };
+    return { agentId, heartbeatRunId };
   }
 
   function createApp(
@@ -106,7 +104,6 @@ describeEmbeddedPostgres("agent secret routes", () => {
       req.actor = {
         type: "agent",
         agentId: fixture.agentId,
-        companyId: fixture.companyId,
         runId: fixture.heartbeatRunId,
         keyScope,
         keyId: source === "agent_key" ? randomUUID() : undefined,
@@ -122,40 +119,38 @@ describeEmbeddedPostgres("agent secret routes", () => {
   it("lists metadata only, reads env and access grants, and audits success and failure", async () => {
     const fixture = await seedAgentRun();
     const svc = secretService(db);
-    const envSecret = await svc.create(fixture.companyId, {
+    const envSecret = await svc.create({
       key: "ENV_ONLY_KEY",
       name: "Env only",
       description: "Injected and API-readable",
       provider: "local_encrypted",
       value: "env-secret-value",
     });
-    const apiSecret = await svc.create(fixture.companyId, {
+    const apiSecret = await svc.create({
       key: "API_ONLY_KEY",
       name: "API only",
       provider: "local_encrypted",
       value: "api-secret-value",
     });
-    const unboundSecret = await svc.create(fixture.companyId, {
+    const unboundSecret = await svc.create({
       key: "UNBOUND_KEY",
       name: "Unbound",
       provider: "local_encrypted",
       value: "unbound-secret-value",
     });
-    const projectSecret = await svc.create(fixture.companyId, {
+    const projectSecret = await svc.create({
       key: "PROJECT_KEY",
       name: "Project layer",
       provider: "local_encrypted",
       value: "project-secret-value",
     });
     await svc.createBinding({
-      companyId: fixture.companyId,
       secretId: envSecret.id,
       targetType: "agent",
       targetId: fixture.agentId,
       configPath: "env.ENV_ONLY_KEY",
     });
     await svc.createBinding({
-      companyId: fixture.companyId,
       secretId: apiSecret.id,
       targetType: "agent",
       targetId: fixture.agentId,
@@ -163,7 +158,6 @@ describeEmbeddedPostgres("agent secret routes", () => {
       projectionClass: "class_2_runtime_only",
     });
     const projectBinding = await svc.createBinding({
-      companyId: fixture.companyId,
       secretId: projectSecret.id,
       targetType: "project",
       targetId: randomUUID(),
@@ -229,7 +223,7 @@ describeEmbeddedPostgres("agent secret routes", () => {
 
   it("fails closed when run redaction registration cannot be persisted", async () => {
     const fixture = await seedAgentRun();
-    await expect(createRunSecretRedactionRegistry(db).register(fixture.companyId, randomUUID(), "must-not-return"))
+    await expect(createRunSecretRedactionRegistry(db).register(randomUUID(), "must-not-return"))
       .rejects.toThrow("Heartbeat run redaction registration failed");
   });
 
@@ -238,8 +232,8 @@ describeEmbeddedPostgres("agent secret routes", () => {
     const registry = createRunSecretRedactionRegistry(db);
 
     await Promise.all([
-      registry.register(fixture.companyId, fixture.heartbeatRunId, "duplicate-secret"),
-      registry.register(fixture.companyId, fixture.heartbeatRunId, "duplicate-secret"),
+      registry.register(fixture.heartbeatRunId, "duplicate-secret"),
+      registry.register(fixture.heartbeatRunId, "duplicate-secret"),
     ]);
 
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, fixture.heartbeatRunId));
@@ -249,21 +243,21 @@ describeEmbeddedPostgres("agent secret routes", () => {
     expect((run.contextSnapshot as { paperclipSecretRedactions: unknown[] }).paperclipSecretRedactions).toHaveLength(1);
   });
 
-  it("redacts batched runs from projected registries and enforces company scope", async () => {
+  it("redacts batched runs with each run's own registry", async () => {
     const first = await seedAgentRun();
-    const foreign = await seedAgentRun();
+    const second = await seedAgentRun();
     const registry = createRunSecretRedactionRegistry(db);
-    await registry.register(first.companyId, first.heartbeatRunId, "first-secret-value");
-    await registry.register(foreign.companyId, foreign.heartbeatRunId, "foreign-secret-value");
+    await registry.register(first.heartbeatRunId, "first-secret-value");
+    await registry.register(second.heartbeatRunId, "second-secret-value");
     const runs = [
-      { id: first.heartbeatRunId, text: "first-secret-value foreign-secret-value", createdAt: new Date() },
-      { id: foreign.heartbeatRunId, text: "foreign-secret-value", createdAt: new Date() },
+      { id: first.heartbeatRunId, text: "first-secret-value second-secret-value", createdAt: new Date() },
+      { id: second.heartbeatRunId, text: "second-secret-value", createdAt: new Date() },
     ];
-    const redacted = await registry.redactForRuns(first.companyId, runs);
-    expect(redacted[0].text).toBe(`${REDACTED_EVENT_VALUE} foreign-secret-value`);
+    const redacted = await registry.redactForRuns(runs);
+    expect(redacted[0].text).toBe(`${REDACTED_EVENT_VALUE} second-secret-value`);
     expect(redacted[0].createdAt).toEqual(runs[0].createdAt);
-    expect(redacted[1].text).toBe("foreign-secret-value");
-    expect(await registry.redactForRun(first.companyId, first.heartbeatRunId, runs[0].text))
+    expect(redacted[1].text).toBe(REDACTED_EVENT_VALUE);
+    expect(await registry.redactForRun(first.heartbeatRunId, runs[0].text))
       .toBe(redacted[0].text);
   });
 

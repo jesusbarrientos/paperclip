@@ -108,11 +108,11 @@ const filePhaseLabels: Record<ChatFileTransferPhase, string> = {
   conflict: "File delivery needs review",
 };
 
-export function useIssueChatBinding(companyId: string, issueId: string) {
+export function useIssueChatBinding(issueId: string) {
   const { enabled } = useChatConnectorsEnabled();
-  const queryEnabled = enabled && Boolean(companyId && issueId) && !issueId.startsWith("chat:");
+  const queryEnabled = enabled && Boolean(issueId) && !issueId.startsWith("chat:");
   const query = useQuery({
-    queryKey: ["issue-chat-binding", companyId, issueId],
+    queryKey: ["issue-chat-binding", issueId],
     queryFn: () => chatEndpointsApi.getIssueBinding(issueId),
     enabled: queryEnabled,
   });
@@ -124,18 +124,16 @@ export function useIssueChatBinding(companyId: string, issueId: string) {
 
 type ConnectedTaskProps = {
   attachments?: IssueAttachment[];
-  companyId: string;
   issueId: string;
   issueCacheRefs?: string[];
 };
 
 export function ExternallyConnectedTaskBanner(props: ConnectedTaskProps) {
-  const { binding } = useIssueChatBinding(props.companyId, props.issueId);
+  const { binding } = useIssueChatBinding(props.issueId);
   if (!binding || binding.provider === "agentmail") return null;
   return (
     <ConnectedTaskComposer
       key={boardSendDraftKey(
-        props.companyId,
         props.issueId,
         binding.endpointId,
         binding.conversationId,
@@ -148,7 +146,6 @@ export function ExternallyConnectedTaskBanner(props: ConnectedTaskProps) {
 
 function ConnectedTaskComposer({
   attachments = [],
-  companyId,
   issueId,
   issueCacheRefs,
   binding,
@@ -189,7 +186,6 @@ function ConnectedTaskComposer({
   }, []);
   const storageKey = binding
     ? boardSendDraftKey(
-        companyId,
         issueId,
         binding.endpointId,
         binding.conversationId,
@@ -264,7 +260,6 @@ function ConnectedTaskComposer({
   const publicationStatus = useQuery({
     queryKey: [
       "chat-publication-batch",
-      companyId,
       binding?.endpointId,
       binding?.conversationId,
       publication?.id,
@@ -393,7 +388,6 @@ function ConnectedTaskComposer({
     setUploadError(null);
     try {
       const attachment = await issuesApi.uploadAttachment(
-        companyId,
         issueId,
         file,
       );

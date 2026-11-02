@@ -22,7 +22,6 @@ import {
 } from "./paperclip-cloud-connector.js";
 
 const instanceId = "inst_test";
-const companyId = "company_test";
 const subject = "user_test";
 
 // Captured from the producer's in-memory HTTP integration test, using synthetic
@@ -60,7 +59,7 @@ describe("Paperclip Cloud connector", () => {
       request: vi.fn(async () => response) as typeof fetch,
     });
     return connector.startAuthorization({
-      subject, companyId, profile: "gmail.read",
+      subject, profile: "gmail.read",
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "private-state",
     }).catch((error: unknown) => error);
@@ -187,7 +186,7 @@ describe("Paperclip Cloud connector", () => {
       return Response.json({ confirmationUrl: "https://my.example.test/connections/confirm?session=chat", expiresAt: "2099-01-01T00:00:00Z" });
     });
     const connector = createPaperclipCloudConnector({ config: keys.config, request: request as typeof fetch });
-    await connector.startAuthorization({ subject, companyId, profile,
+    await connector.startAuthorization({ subject, profile,
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback", returnState: "chat-state" });
     expect(request).toHaveBeenCalledOnce();
   });
@@ -206,7 +205,6 @@ describe("Paperclip Cloud connector", () => {
         iss: instanceId,
         aud: "https://my.example.test/v1/connector/sessions",
         sub: subject,
-        cid: companyId,
         env: "staging",
         op: "session",
         prv: "google",
@@ -228,7 +226,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.startAuthorization({
       subject,
-      companyId,
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "state-1",
     })).resolves.toMatchObject({
@@ -253,7 +250,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.startAuthorization({
       subject,
-      companyId,
       profile: "github.code",
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "state-direct",
@@ -277,7 +273,7 @@ describe("Paperclip Cloud connector", () => {
           authorizationUrl, expiresAt: "2099-01-01T00:00:00Z" });
       }) as typeof fetch,
     });
-    const result = connector.startAuthorization({ subject, companyId, profile: "asana.mcp",
+    const result = connector.startAuthorization({ subject, profile: "asana.mcp",
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback", returnState: "state" });
     if (accepted) await expect(result).resolves.toMatchObject({ authorizationUrl });
     else await expect(result).rejects.toMatchObject({ code: "CONNECTOR_BAD_RESPONSE" });
@@ -296,7 +292,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.startAuthorization({
       subject,
-      companyId,
       profile: "gmail.draft",
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "state-direct-google",
@@ -326,7 +321,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.startAuthorization({
       subject,
-      companyId,
       profile: "github.code",
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "state-malformed-direct",
@@ -354,7 +348,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.setWebhookBinding({
       subject,
-      companyId,
       id: "binding-1",
       installationId: "42",
       connectionId: "connection-1",
@@ -364,7 +357,6 @@ describe("Paperclip Cloud connector", () => {
     })).resolves.toBeUndefined();
     await expect(connector.setWebhookBinding({
       subject,
-      companyId,
       id: "binding-2",
       installationId: "43",
       connectionId: "connection-1",
@@ -385,7 +377,6 @@ describe("Paperclip Cloud connector", () => {
     });
     await expect(legacy.startAuthorization({
       subject,
-      companyId,
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "state-legacy",
     })).resolves.not.toHaveProperty("handoff");
@@ -400,7 +391,6 @@ describe("Paperclip Cloud connector", () => {
     });
     await expect(malformed.startAuthorization({
       subject,
-      companyId,
       returnUri: "https://paperclip.example.test/api/tools/oauth/cloud-connector/callback",
       returnState: "state-malformed",
     })).rejects.toMatchObject({ code: "CONNECTOR_BAD_RESPONSE" });
@@ -417,7 +407,6 @@ describe("Paperclip Cloud connector", () => {
       refreshTokenExpiresAt: null,
       scopes: [...GMAIL_CONNECTOR_SCOPES],
       subject,
-      companyId,
       instanceId,
       environment: "staging" as const,
       provider: "google" as const,
@@ -433,7 +422,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.claim({
       subject,
-      companyId,
       claimId: "clm_test",
       redemptionId: "local-oauth-state-1",
     })).resolves.toEqual(credentials);
@@ -451,7 +439,6 @@ describe("Paperclip Cloud connector", () => {
       refreshTokenExpiresAt: null,
       scopes: [...GOOGLE_WORKSPACE_CONNECTOR_PROFILES[profile].scopes],
       subject,
-      companyId,
       instanceId,
       environment: "staging" as const,
       provider: "google" as const,
@@ -470,7 +457,6 @@ describe("Paperclip Cloud connector", () => {
 
     await expect(connector.claim({
       subject,
-      companyId,
       profile,
       claimId: "clm_drive",
       redemptionId: "local-oauth-state-drive",
@@ -487,7 +473,6 @@ describe("Paperclip Cloud connector", () => {
         iss: instanceId,
         aud: "https://my.example.test/v1/connector/instance-status",
         sub: "instance-capabilities",
-        cid: "instance-capabilities",
         env: "staging",
         op: "status",
       });
@@ -531,7 +516,6 @@ describe("Paperclip Cloud connector", () => {
         iss: instanceId,
         aud: "https://my.example.test/v1/connector/instance-status",
         sub: "instance-status",
-        cid: "instance-status",
         env: "staging",
         op: "status",
       });
@@ -562,7 +546,7 @@ describe("Paperclip Cloud connector", () => {
     }), { status: 502 }));
     const connector = createPaperclipCloudConnector({ config: keys.config, request: request as typeof fetch });
 
-    const error = await connector.refresh({ subject, companyId, refreshToken: "refresh-secret" }).catch((caught) => caught);
+    const error = await connector.refresh({ subject, refreshToken: "refresh-secret" }).catch((caught) => caught);
     expect(error).toBeInstanceOf(PaperclipCloudConnectorError);
     expect(String(error)).not.toContain("access-secret");
     expect(String(error)).not.toContain("refresh-secret");

@@ -4,7 +4,6 @@ import type { PostCommitEffect, PromoteScheduledRetryOutcome } from "./types.js"
 export function createEvaluateScheduledRetryGate(deps: { reader: ScheduledRetryReader }) {
   return (input: {
     runId: string;
-    companyId: string;
     retryReasonOverride: string;
     now?: Date;
   }) => deps.reader.evaluateScheduledRetryGate({ ...input, now: input.now ?? new Date() });
@@ -13,12 +12,10 @@ export function createEvaluateScheduledRetryGate(deps: { reader: ScheduledRetryR
 export function createPromoteScheduledRetry(deps: { writer: RunDispatchWriter }) {
   return (input: {
     runId: string;
-    companyId: string;
     now?: Date;
   }): Promise<PromoteScheduledRetryOutcome> =>
     deps.writer.promoteOrCancelDueRetry({
       runId: input.runId,
-      companyId: input.companyId,
       now: input.now ?? new Date(),
     });
 }
@@ -51,7 +48,6 @@ export function createPromoteDueScheduledRetries(deps: {
 export function createCancelStaleQueuedRun(deps: { writer: RunDispatchWriter }) {
   return (input: {
     runId: string;
-    companyId: string;
     expectedStatus: "queued" | "running";
     now?: Date;
   }) => deps.writer.cancelStaleQueuedRun({ ...input, now: input.now ?? new Date() });
@@ -60,7 +56,6 @@ export function createCancelStaleQueuedRun(deps: { writer: RunDispatchWriter }) 
 export function createDispatchResolvedInteractionIfCurrent(deps: { writer: RunDispatchWriter }) {
   return <T>(input: {
     runId: string;
-    companyId: string;
     expectedStatus: "queued" | "running";
     dispatch: (markDispatchStarted: () => void) => Promise<T>;
     now?: Date;

@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { projectToolContext } from "../services/project-tool-context.js";
 import { callProjectTool, projectToolDefinitions } from "../services/project-tools.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertOrgAccess } from "./authz.js";
 import { forbidden } from "../errors.js";
 
 /** Mounted after actor middleware; connection-scoped tokens cannot authenticate here. */
@@ -10,7 +10,7 @@ export function projectToolRoutes(db: Db) {
   const router = Router();
   router.post("/mcp/project-tools", async (req, res) => {
     const context = await projectToolContext(db, req.actor);
-    assertCompanyAccess(req, context.run.companyId);
+    assertOrgAccess(req);
     const { id = null, method, params } = req.body;
     const send = (result: unknown) => res.json({ jsonrpc: "2.0", id, result });
     if (method === "initialize") return send({ protocolVersion: "2025-03-26", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "paperclip-project-tools", version: "1" } });
@@ -24,8 +24,7 @@ export function projectToolRoutes(db: Db) {
       if (!apiUrl) throw new Error("Paperclip API origin is unavailable");
       const result = await callProjectTool({
         name: params.name, arguments: params.arguments ?? {}, apiUrl,
-        token: req.header("authorization")!.replace(/^Bearer\s+/i, ""),
-        companyId: context.run.companyId, issueId: context.issue.id, agentId: context.run.agentId,
+        token: req.header("authorization")!.replace(/^Bearer\s+/i, ""), issueId: context.issue.id, agentId: context.run.agentId,
         conversation: Boolean(context.issue.conversationAgentId),
       });
       return send({ content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result });

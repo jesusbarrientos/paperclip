@@ -460,11 +460,10 @@ export interface SessionFingerprintIdentity {
 
 /**
  * The company, agent, and task parts of the session key. The key form is
- * `paperclip:companyId:agentId:taskKey:fingerprint`. These parts stay out of
+ * `paperclip:agentId:taskKey:fingerprint`. These parts stay out of
  * the fingerprint hash.
  */
 export interface SessionKeyIdentity {
-  readonly companyId: string;
   readonly agentId: string;
   readonly taskKey: string;
 }

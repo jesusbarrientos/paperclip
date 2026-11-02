@@ -11,8 +11,8 @@ import { ActionsSection } from "./PermissionsPanel";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1", selectedCompany: { id: "company-1", issuePrefix: "PAP" } }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", issuePrefix: "PAP" } }),
 }));
 
 let container: HTMLDivElement | null = null;

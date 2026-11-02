@@ -443,7 +443,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
   it("emits an explicit OAuth-token check on the ACP lane when CLAUDE_CODE_OAUTH_TOKEN is set", async () => {
     probeResult.value = { exitCode: 0, stdout: helloStdout, stderr: "", timedOut: false };
     const result = await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp", env: { CLAUDE_CODE_OAUTH_TOKEN: "oauth-token-secret" } },
       executionTarget: null,
@@ -507,7 +506,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
 
   it("reports an explicitly selected API key as normal authentication on the ACP lane", async () => {
     const result = await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp", agentCommand: process.execPath, env: { ANTHROPIC_API_KEY: "selected-test-key" } },
       executionTarget: null,
@@ -533,7 +531,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
     probeResult.value = { exitCode: 0, stdout: helloStdout, stderr: "", timedOut: false };
 
     const result = await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp" },
       executionTarget: null,
@@ -566,7 +563,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
     probeResult.value = { exitCode: 0, stdout: helloStdout, stderr: "", timedOut: false };
 
     const result = await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp" },
       executionTarget: null,
@@ -596,7 +592,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
     probeResult.value = { exitCode: 0, stdout: helloStdout, stderr: "", timedOut: false };
 
     const result = await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp" },
       executionTarget: null,
@@ -624,7 +619,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
     probeResult.value = { exitCode: 0, stdout: helloStdout, stderr: "", timedOut: false };
 
     const result = await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp" },
       executionTarget: null,
@@ -650,7 +644,6 @@ describe("Claude ACP hello probe on local and SSH targets", () => {
     probeResult.value = { exitCode: 0, stdout: helloStdout, stderr: "", timedOut: false };
 
     await testClaudeAcpEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "acp" },
       executionTarget: sshTarget,

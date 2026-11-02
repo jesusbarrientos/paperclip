@@ -8,12 +8,12 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { resourceMembershipState, useResourceMemberships } from "@/hooks/useResourceMemberships";
 
-/** Account- and company-scoped data for the secondary chat navigation. */
+/** Account-scoped data for the secondary chat navigation. */
 export function AgentConversationsSidebar() {
-  const { companyId, userId, agents, chats, session } = useAgentChatNavigation();
-  const openChat = useOpenAgentChat(companyId, userId);
+  const { userId, agents, chats, session } = useAgentChatNavigation();
+  const openChat = useOpenAgentChat(userId);
   const navigate = useNavigate();
-  const memberships = useResourceMemberships(companyId);
+  const memberships = useResourceMemberships();
   const { isMobile, setSidebarOpen } = useSidebar();
   const { pathname } = useLocation();
   const activeRef = pathname.split("/chats/")[1]?.split("/")[0];
@@ -22,7 +22,7 @@ export function AgentConversationsSidebar() {
   const missingIds = agents.isSuccess ? [...new Set((chats.data ?? [])
     .flatMap(chat => chat.conversationAgentId && !roster.some(agent => agent.id === chat.conversationAgentId) ? [chat.conversationAgentId] : []))] : [];
   const historyAgents = useQueries({ queries: missingIds.map(id => ({
-    queryKey: queryKeys.agents.detail(id), queryFn: () => agentsApi.get(id, companyId!),
+    queryKey: queryKeys.agents.detail(id), queryFn: () => agentsApi.get(id),
   })) });
   const byId = new Map(roster.map(agent => [agent.id, agent]));
   for (const result of historyAgents) if (result.data) byId.set(result.data.id, result.data);
@@ -43,7 +43,7 @@ export function AgentConversationsSidebar() {
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
   const previews = Object.fromEntries((chats.data ?? []).filter(chat => chat.conversationState === "active")
     .map(chat => [chat.conversationAgentId!, "Working…"]));
-  return <AgentConversationSidebar key={`${companyId}:${userId}`} agents={[...conversations, ...teammates]} availableAgents={roster}
+  return <AgentConversationSidebar key={userId} agents={[...conversations, ...teammates]} availableAgents={roster}
     existingChatAgentIds={conversations.map(agent => agent.id)}
     activeId={active?.id} previews={previews}
     loading={agents.isPending || chats.isPending || session.isPending}

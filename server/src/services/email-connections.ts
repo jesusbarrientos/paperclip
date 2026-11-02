@@ -12,6 +12,7 @@ import type { EmailConnectionInput, EmailCredentialOption } from "@paperclipai/s
 import { badRequest, forbidden, HttpError, notFound } from "../errors.js";
 import { secretService } from "./secrets.js";
 import { toolAccessService } from "./tool-access.js";
+import { organizationService } from "./organization.js";
 import { agentmailApi } from "./agentmail-api.js";
 import { logActivity } from "./activity-log.js";
 import type { EmailActor } from "./email-channels.js";
@@ -21,13 +22,12 @@ export function emailConnectionService(
   fetchImpl: typeof fetch = fetch,
 ) {
   const secrets = secretService(db);
-  async function get(companyId: string, id: string, actor?: EmailActor) {
+  async function get(id: string, actor?: EmailActor) {
     const [connection] = await db
       .select()
       .from(toolConnections)
       .where(
         and(
-          eq(toolConnections.companyId, companyId),
           eq(toolConnections.id, id),
           eq(toolConnections.status, "active"),
           eq(toolConnections.enabled, true),
@@ -38,7 +38,7 @@ export function emailConnectionService(
     if (connection.config.emailCredential) {
       const id = connection.credentialSecretRefs.find((ref) => ref.configPath === "credentials.controlKey")?.secretId;
       const [secret] = id ? await db.select({ id: companySecrets.id }).from(companySecrets).where(and(
-        eq(companySecrets.id, id), eq(companySecrets.companyId, companyId),
+        eq(companySecrets.id, id),
         eq(companySecrets.status, "active"), isNull(companySecrets.deletedAt),
       )) : [];
       if (!secret) throw forbidden("AgentMail credential is unavailable");
@@ -75,9 +75,9 @@ export function emailConnectionService(
     }
     return connection;
   }
-  async function listCredentials(companyId: string, actor: EmailActor): Promise<EmailCredentialOption[]> {
+  async function listCredentials(actor: EmailActor): Promise<EmailCredentialOption[]> {
     const connections = await db.select().from(toolConnections).where(and(
-      eq(toolConnections.companyId, companyId), eq(toolConnections.status, "active"),
+      eq(toolConnections.status, "active"),
       eq(toolConnections.enabled, true),
     ));
     const options: EmailCredentialOption[] = [];
@@ -93,7 +93,7 @@ export function emailConnectionService(
       while (next < candidates.length) {
         const connection = candidates[next++];
         try {
-          await get(companyId, connection.id, actor);
+          await get(connection.id, actor);
         } catch (error) {
           if (error instanceof HttpError && [403, 404].includes(error.status)) continue;
           throw error;
@@ -104,7 +104,7 @@ export function emailConnectionService(
         let inboxId = typeof connection.config.emailInboxId === "string" ? connection.config.emailInboxId : null;
         if (scope === "unavailable" && !deadline.aborted) {
           try {
-            const saved = await credential(companyId, connection.id, actor);
+            const saved = await credential(connection.id, actor);
             if (!deadline.aborted) {
               const identity = await agentmailApi(saved.value, discoveryFetch).whoami();
               scope = identity.scope_type;
@@ -126,24 +126,20 @@ export function emailConnectionService(
       - Number(a.scope === "organization" || a.scope === "pod") || b.createdAt.localeCompare(a.createdAt));
   }
   async function assertAgentAccess(
-    companyId: string,
     id: string,
     agentId: string,
   ) {
-    await get(companyId, id);
+    await get(id);
     const installs = await db
       .select()
       .from(toolConnectionInstalls)
       .where(
-        and(
-          eq(toolConnectionInstalls.companyId, companyId),
-          eq(toolConnectionInstalls.connectionId, id),
-        ),
+        eq(toolConnectionInstalls.connectionId, id),
       );
     if (
       !installs.some(
         (i) =>
-          (i.targetType === "company" && i.targetId === companyId) ||
+          i.targetType === "company" ||
           (i.targetType === "agent" && i.targetId === agentId),
       )
     )
@@ -151,14 +147,13 @@ export function emailConnectionService(
         "This agent no longer has access to the AgentMail connection",
       );
   }
-  async function credential(companyId: string, id: string, actor?: EmailActor) {
-    const connection = await get(companyId, id, actor);
+  async function credential(id: string, actor?: EmailActor) {
+    const connection = await get(id, actor);
     const ref = connection.credentialSecretRefs.find(
       (r) => r.configPath === "credentials.controlKey",
     );
     if (!ref) throw badRequest("Reconnect AgentMail to restore its API key");
     const value = await secrets.resolveSecretValue(
-      companyId,
       ref.secretId,
       ref.versionSelector ?? "latest",
       {
@@ -172,7 +167,6 @@ export function emailConnectionService(
     return { connection, ref, value };
   }
   async function connect(
-    companyId: string,
     input: EmailConnectionInput,
     actor: EmailActor,
   ) {
@@ -180,7 +174,7 @@ export function emailConnectionService(
     return db.transaction(async (tx) => {
       const db = tx as unknown as Db;
       await db.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`email-account:${companyId}:${input.idempotencyKey}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`email-account:${input.idempotencyKey}`}, 0))`,
       );
       const secrets = secretService(db);
       const tools = toolAccessService(db);
@@ -191,7 +185,6 @@ export function emailConnectionService(
           .where(
             and(
               eq(agents.id, agentId),
-              eq(agents.companyId, companyId),
               ne(agents.status, "terminated"),
             ),
           );
@@ -201,26 +194,22 @@ export function emailConnectionService(
         .select()
         .from(toolConnections)
         .where(
-          and(
-            eq(toolConnections.companyId, companyId),
-            eq(
-              toolConnections.uid,
-              `agentmail-account-${input.idempotencyKey}`,
-            ),
-          ),
+          eq(
+                          toolConnections.uid,
+                          `agentmail-account-${input.idempotencyKey}`,
+                        ),
         );
       if (previous[0])
         return emailConnectionService(db, fetchImpl).get(
-          companyId,
           previous[0].id,
           actor,
         );
-      const secret = await secrets.create(companyId, {
+      const secret = await secrets.create({
         name: `AgentMail ${identity.scope_type === "inbox" ? "inbox" : "account"} API key ${randomUUID().slice(0, 8)}`,
         provider: "local_encrypted",
         value: input.apiKey,
       });
-      const app = await tools.createApplication(companyId, {
+      const app = await tools.createApplication({
         name: `AgentMail ${input.idempotencyKey.slice(0, 8)}`,
         applicationKey: `agentmail-account:${input.idempotencyKey}`,
         type: "chat",
@@ -228,7 +217,6 @@ export function emailConnectionService(
         metadata: { sourceTemplateKey: "agentmail" },
       });
       const connection = await tools.createConnection(
-        companyId,
         {
           applicationId: app.id,
           name: "AgentMail",
@@ -275,11 +263,16 @@ export function emailConnectionService(
             subjectUserId: actor.userId ?? "board",
           })
           .where(eq(connectionGrants.connectionId, connection.id));
+      const organizationId = input.allAgents
+        ? await organizationService(db).findId()
+        : null;
+      if (input.allAgents && !organizationId)
+        throw notFound("Organization not found");
       await tools.putConnectionInstalls(
         connection.id,
         {
           installs: input.allAgents
-            ? [{ targetType: "company", targetId: companyId }]
+            ? [{ targetType: "company", targetId: organizationId! }]
             : input.agentIds.map((targetId) => ({
                 targetType: "agent" as const,
                 targetId,
@@ -297,7 +290,6 @@ export function emailConnectionService(
         config: { ...connection.config, emailSetupInitialInstallIds: initialInstalls.map(install => install.id) },
       }).where(eq(toolConnections.id, connection.id));
       await logActivity(db, {
-        companyId,
         actorType: "user",
         actorId: actor.userId ?? "board",
         action: "email.connection.created",
@@ -309,11 +301,10 @@ export function emailConnectionService(
           agentIds: input.agentIds,
         },
       });
-      return tools.getConnection(connection.id, companyId);
+      return tools.getConnection(connection.id);
     });
   }
   async function allowAgent(
-    companyId: string,
     id: string,
     agentId: string,
     actor: EmailActor,
@@ -325,13 +316,10 @@ export function emailConnectionService(
         .select()
         .from(toolConnections)
         .where(
-          and(
-            eq(toolConnections.id, id),
-            eq(toolConnections.companyId, companyId),
-          ),
+          eq(toolConnections.id, id),
         )
         .for("update");
-      const connection = await emailConnectionService(db, fetchImpl).get(companyId, id, actor);
+      const connection = await emailConnectionService(db, fetchImpl).get(id, actor);
       const tools = toolAccessService(db);
       const installs = await db
         .select()
@@ -372,7 +360,6 @@ export function emailConnectionService(
         },
       );
       await logActivity(db, {
-        companyId,
         actorType: "user",
         actorId: actor.userId ?? "board",
         action: replaceInitialAccess ? "email.connection.agents_updated" : "email.connection.agent_added",

@@ -185,14 +185,13 @@ export function describeGitAuthFailure(input: {
       : "the server-environment GitHub credential";
     return `The operation authenticated with ${label}, which was rejected or lacks access to this repository.`;
   }
-  return "No GitHub credential is configured — add a GITHUB_TOKEN or GH_TOKEN company secret in Settings → Secrets, or configure a local checkout cwd for this project workspace.";
+  return "No GitHub credential is configured — add a GITHUB_TOKEN or GH_TOKEN secret in Settings → Secrets, or configure a local checkout cwd for this project workspace.";
 }
 
 type SecretServiceLike = ReturnType<typeof secretService>;
 
 type GitCredentialSecretsDeps = {
   getByName: (
-    companyId: string,
     name: string,
   ) => Promise<{ id: string } | null | undefined> | ReturnType<SecretServiceLike["getByName"]>;
   resolveSecretValue: SecretServiceLike["resolveSecretValue"];
@@ -201,7 +200,7 @@ type GitCredentialSecretsDeps = {
 
 /**
  * Build the credential provider for one run. Resolution order: the managed GitHub identity
- * resolver, then a company secret by well-known name, then the server process environment
+ * resolver, then a secret by well-known name, then the server process environment
  * (`GITHUB_TOKEN`/`GH_TOKEN`) for self-hosted operators. A configured managed identity fails
  * closed instead of falling through to legacy credentials. The lookup is memoized per
  * provider instance so one run performs at most one secret resolution (and writes at most
@@ -209,7 +208,6 @@ type GitCredentialSecretsDeps = {
  */
 export function createGitRemoteAuthProvider(
   db: Db,
-  companyId: string,
   context?: {
     issueId?: string | null;
     heartbeatRunId?: string | null;
@@ -232,19 +230,19 @@ export function createGitRemoteAuthProvider(
     // always supplies a real DB and therefore always checks managed identities before
     // considering legacy secrets or process environment credentials.
     const managed = db
-      ? await resolveManagedGitHubCredential(db, secrets, companyId, context ?? {})
+      ? await resolveManagedGitHubCredential(db, secrets, context ?? {})
       : { configured: false as const };
     if (managed.configured) {
       if (!managed.credential) throw new Error(managed.error ?? "Managed GitHub connection is unavailable");
       return managed.credential;
     }
     for (const secretName of secretNames) {
-      const secret = await Promise.resolve(secrets.getByName(companyId, secretName)).catch(() => null);
+      const secret = await Promise.resolve(secrets.getByName(secretName)).catch(() => null);
       if (!secret) continue;
       // A resolution failure (inactive secret, provider outage) records its own failure audit
       // event; fall through to the next source instead of failing the whole git operation here.
       const token = await secrets
-        .resolveSecretValue(companyId, secret.id, "latest", {
+        .resolveSecretValue(secret.id, "latest", {
           accessContext: {
             consumerType: "system",
             consumerId: "workspace-git-credential",
@@ -267,12 +265,12 @@ export function createGitRemoteAuthProvider(
     if (!isSupportedGitHubRemoteUrl(remoteUrl)) return null;
     if (db && context?.heartbeatRunId && context.agentId) {
       const [run] = await db.select({ contextId: heartbeatRuns.activeIdentityContextId }).from(heartbeatRuns).where(and(
-        eq(heartbeatRuns.id, context.heartbeatRunId), eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, context.agentId),
+        eq(heartbeatRuns.id, context.heartbeatRunId), eq(heartbeatRuns.agentId, context.agentId),
       ));
       if (run?.contextId) {
         const { resolveGitHubOperationCredentials } = await import("./github-operation-credentials.js");
         const result = await resolveGitHubOperationCredentials(db, {
-          companyId, runId: context.heartbeatRunId, agentId: context.agentId,
+          runId: context.heartbeatRunId, agentId: context.agentId,
         });
         if (result.status === "absent") {
           const credential = await resolveCredential();
@@ -295,7 +293,6 @@ export function createGitRemoteAuthProvider(
 
 export async function resolveManagedGitHubIdentitySelection(
   db: Db,
-  companyId: string,
   context: {
     responsibleUserId?: string | null;
     agentId?: string | null;
@@ -308,7 +305,7 @@ export async function resolveManagedGitHubIdentitySelection(
   grant?: typeof connectionGrants.$inferSelect;
   error?: string;
 }> {
-  const connections = await db.select().from(toolConnections).where(eq(toolConnections.companyId, companyId));
+  const connections = await db.select().from(toolConnections);
   const githubConnections = connections.filter((connection) => {
     const config = connection.config && typeof connection.config === "object" ? connection.config as Record<string, unknown> : {};
     const transportConfig = connection.transportConfig && typeof connection.transportConfig === "object"
@@ -319,13 +316,10 @@ export async function resolveManagedGitHubIdentitySelection(
   if (githubConnections.length === 0) return { configured: false };
 
   const connectionIds = githubConnections.map((connection) => connection.id);
-  const installs = await db.select().from(toolConnectionInstalls).where(and(
-    eq(toolConnectionInstalls.companyId, companyId),
-    inArray(toolConnectionInstalls.connectionId, connectionIds),
-  ));
+  const installs = await db.select().from(toolConnectionInstalls).where(inArray(toolConnectionInstalls.connectionId, connectionIds));
   const eligibleConnectionIds = new Set(githubConnections.filter((connection) => installs.some((install) =>
     install.connectionId === connection.id && (
-      (install.targetType === "company" && install.targetId === companyId)
+      install.targetType === "company"
       || (install.targetType === "agent" && install.targetId === context.agentId)
     )
   )).map((connection) => connection.id));
@@ -335,7 +329,6 @@ export async function resolveManagedGitHubIdentitySelection(
   // suppress their otherwise-eligible legacy credential fallback.
   if (eligibleConnectionIds.size === 0) return { configured: false };
   const grants = await db.select().from(connectionGrants).where(and(
-    eq(connectionGrants.companyId, companyId),
     inArray(connectionGrants.connectionId, [...eligibleConnectionIds]),
     or(eq(connectionGrants.kind, "agent"), eq(connectionGrants.kind, "user")),
   ));
@@ -350,7 +343,6 @@ export async function resolveManagedGitHubIdentitySelection(
     : [];
   const delegated = context.allowStandingDelegation !== false && !context.responsibleUserId && context.agentId
     ? await db.select({ grantId: connectionGrantDelegations.grantId }).from(connectionGrantDelegations).where(and(
-        eq(connectionGrantDelegations.companyId, companyId),
         eq(connectionGrantDelegations.agentId, context.agentId),
         inArray(connectionGrantDelegations.grantId, grants.map((grant) => grant.id)),
       )).then((rows) => {
@@ -382,12 +374,7 @@ export async function resolveManagedGitHubIdentitySelection(
         id: companySecrets.id, status: companySecrets.status, deletedAt: companySecrets.deletedAt,
         scope: companySecrets.scope, ownerUserId: companySecrets.ownerUserId,
         definitionStatus: userSecretDefinitions.status, definitionDeletedAt: userSecretDefinitions.deletedAt,
-      }).from(companySecrets).leftJoin(userSecretDefinitions, and(
-        eq(userSecretDefinitions.id, companySecrets.userSecretDefinitionId),
-        eq(userSecretDefinitions.companyId, companyId),
-      )).where(and(
-        eq(companySecrets.companyId, companyId), inArray(companySecrets.id, credentialIds),
-      ))
+      }).from(companySecrets).leftJoin(userSecretDefinitions, eq(userSecretDefinitions.id, companySecrets.userSecretDefinitionId)).where(inArray(companySecrets.id, credentialIds))
     : [];
   const hasCredentialRecord = (grant: typeof connectionGrants.$inferSelect) => {
     if (candidates.length === 1) return true;
@@ -433,7 +420,6 @@ export async function filterResolvedGitHubConnectionsForRun<T extends {
   transportConfig?: unknown;
 }>(input: {
   db: Db;
-  companyId: string;
   agentId: string;
   responsibleUserId?: string | null;
   connections: T[];
@@ -448,7 +434,7 @@ export async function filterResolvedGitHubConnectionsForRun<T extends {
     return config.sourceTemplateKey === "github" || transportConfig.sourceTemplateKey === "github";
   });
   if (githubConnections.length === 0) return input.connections;
-  const selection = await resolveManagedGitHubIdentitySelection(input.db, input.companyId, {
+  const selection = await resolveManagedGitHubIdentitySelection(input.db, {
     agentId: input.agentId,
     responsibleUserId: input.responsibleUserId ?? null,
   });
@@ -462,7 +448,6 @@ export async function filterResolvedGitHubConnectionsForRun<T extends {
 export async function resolveManagedGitHubCredential(
   db: Db,
   secrets: GitCredentialSecretsDeps,
-  companyId: string,
   context: {
     issueId?: string | null;
     heartbeatRunId?: string | null;
@@ -471,7 +456,7 @@ export async function resolveManagedGitHubCredential(
     allowStandingDelegation?: boolean;
   },
 ): Promise<{ configured: boolean; identitySource?: "personal" | "dedicated"; credential?: GitCredential; error?: string }> {
-  const selection = await resolveManagedGitHubIdentitySelection(db, companyId, context);
+  const selection = await resolveManagedGitHubIdentitySelection(db, context);
   if (!selection.configured) return { configured: false };
   if (!selection.grant) return { configured: true, identitySource: selection.identitySource, error: selection.error };
   const acquire = async (selection: Awaited<ReturnType<typeof resolveManagedGitHubIdentitySelection>>) => {
@@ -494,7 +479,6 @@ export async function resolveManagedGitHubCredential(
       || refreshedMs <= Date.now() - 30 * 24 * 60 * 60_000
     )) {
       grant = await toolAccessService(db).refreshOAuthGrantCredentials({
-        companyId,
         connectionId: grant.connectionId,
         grantId: grant.id,
         actor: { actorType: "system", actorId: "workspace-git-credential" },
@@ -525,12 +509,11 @@ export async function resolveManagedGitHubCredential(
       const [secret] = await db.select({
         userSecretDefinitionId: companySecrets.userSecretDefinitionId,
       }).from(companySecrets).where(and(
-        eq(companySecrets.companyId, companyId),
         eq(companySecrets.id, accessRef.secretId),
         eq(companySecrets.ownerUserId, grant.subjectUserId),
       )).limit(1);
       if (!secret?.userSecretDefinitionId) return { configured: true, identitySource: selection.identitySource, error: "The personal GitHub credential is invalid" };
-      const resolved = await secrets.resolveUserSecretValue(companyId, {
+      const resolved = await secrets.resolveUserSecretValue({
         definitionId: secret.userSecretDefinitionId,
         responsibleUserId: grant.subjectUserId,
         version: accessRef.versionSelector ?? "latest",
@@ -539,7 +522,7 @@ export async function resolveManagedGitHubCredential(
       if (!resolved) return { configured: true, identitySource: selection.identitySource, error: "The personal GitHub credential is missing" };
       token = resolved.value;
     } else {
-      token = await secrets.resolveSecretValue(companyId, accessRef.secretId, accessRef.versionSelector ?? "latest", { accessContext });
+      token = await secrets.resolveSecretValue(accessRef.secretId, accessRef.versionSelector ?? "latest", { accessContext });
     }
     return {
       configured: true, identitySource: selection.identitySource,
@@ -564,7 +547,7 @@ export async function resolveManagedGitHubCredential(
   }
   // Retry credential acquisition, never the GitHub operation. An alternate
   // authorization must still belong to this exact principal and account.
-  const alternate = await resolveManagedGitHubIdentitySelection(db, companyId, {
+  const alternate = await resolveManagedGitHubIdentitySelection(db, {
     ...context, excludeGrantId: selection.grant.id,
   });
   const accountId = selection.grant.providerTenant?.github?.userId;

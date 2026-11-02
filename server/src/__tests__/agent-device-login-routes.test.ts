@@ -14,15 +14,13 @@ import type {
   LoginSessionRuntime,
 } from "../services/device-login-service.js";
 
-// The company-scoped adapter device-login routes. These tests drive the real
+// The adapter device-login routes. These tests drive the real
 // login-session service through the route layer. A fake in-memory store models
-// the active company-adapter slot, and a fake runtime models the sandbox, so the
+// the active owner-adapter slot, and a fake runtime models the sandbox, so the
 // tests run with no database and no provider. The tests assert the owner
 // authorization contract, the environment guard, the concurrency conflict, and
 // the redaction of logs and activity.
 
-const COMPANY_1 = "company-1";
-const COMPANY_2 = "company-2";
 const OWNER_A = "user-a";
 const OWNER_B = "user-b";
 const SANDBOX_ENV_1 = "11111111-1111-4111-8111-111111111111";
@@ -64,8 +62,8 @@ const mockAccessService = vi.hoisted(() => ({
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config })),
+  normalizeAdapterConfigForPersistence: vi.fn(async (config: Record<string, unknown>) => config),
+  resolveAdapterConfigForRuntime: vi.fn(async (config: Record<string, unknown>) => ({ config })),
   collectMissingRuntimeBindings: vi.fn(async () => [] as Array<Record<string, unknown>>),
   resolveEnvBindings: vi.fn(async () => ({
     env: {} as Record<string, string>,
@@ -75,21 +73,21 @@ const mockSecretService = vi.hoisted(() => ({
   // The account-home secret lookup and creation. Absent by default, so a
   // successful promotion creates it; a test overrides either to drive the
   // idempotent-repeat-login and secret-creation-failure paths.
-  getByName: vi.fn(async (_companyId: string, _name: string) => null as Record<string, unknown> | null),
-  create: vi.fn(async (_companyId: string, _input: Record<string, unknown>) => ({ id: "secret-1" })),
+  getByName: vi.fn(async (_name: string) => null as Record<string, unknown> | null),
+  create: vi.fn(async (_input: Record<string, unknown>) => ({ id: "secret-1" })),
   // The company-wide secret listing the cleanup-safety scan reads. Empty by
   // default, so a cleanup that finds no other claimant removes the
   // directory; a test overrides it with a differently named secret to prove
   // the scan finds a claimant a name-only check would miss.
   list: vi.fn(
-    async (_companyId: string) => [] as Array<{ id: string; name: string; provider: string }>,
+    async () => [] as Array<{ id: string; name: string; provider: string }>,
   ),
   // The pre-existing-secret value check. Defaults to a value that never
   // matches an account home, so a test that leaves this unset and still
   // reaches an existing-secret branch fails loud instead of passing by
   // accident; a test overrides it to the account home under test.
   resolveSecretValueForDeviceLoginCheck: vi.fn(
-    async (_companyId: string, _secretId: string, _context: { configPath: string }) =>
+    async (_secretId: string, _context: { configPath: string }) =>
       "/unset-mock-value" as string,
   ),
 }));
@@ -97,9 +95,6 @@ const mockSecretService = vi.hoisted(() => ({
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
   releaseLease: vi.fn(),
-  // The login guard reads the companies that own the environment. An empty
-  // list marks an instance-global environment, so the guard stays open.
-  listBoundCompanyIds: vi.fn(async () => [] as string[]),
 }));
 
 const mockEnvironmentRuntime = vi.hoisted(() => ({
@@ -221,21 +216,20 @@ vi.mock("../services/device-login-service.js", async (importOriginal) => {
   };
 });
 
-// An in-memory session store. It mimics the active company-adapter slot: the
-// partial unique index allows one active session per company and adapter, so a
+// An in-memory session store. It mimics the active owner-adapter slot: the
+// partial unique index allows one active session per owner and adapter, so a
 // second active start throws the conflict error.
 function createMemoryStore(): AdapterAuthSessionStore & { rows: Map<string, AdapterAuthSessionRow> } {
   const rows = new Map<string, AdapterAuthSessionRow>();
   const activeSlots = new Set<string>();
-  // The active slot is scoped to the company, the owner, and the adapter.
-  const slotKey = (companyId: string, startedByUserId: string, adapterType: string) =>
-    `${companyId}|${startedByUserId}|${adapterType}`;
+  const slotKey = (startedByUserId: string, adapterType: string) =>
+    `${startedByUserId}|${adapterType}`;
   const isActive = (status: AdapterAuthSessionRow["status"]) =>
     status === "starting" || status === "waiting_for_user" || status === "promoting";
   return {
     rows,
     async insert(input) {
-      const key = slotKey(input.companyId, input.startedByUserId, input.adapterType);
+      const key = slotKey(input.startedByUserId, input.adapterType);
       if (activeSlots.has(key)) {
         throw new AdapterAuthSessionConflictError();
       }
@@ -243,7 +237,6 @@ function createMemoryStore(): AdapterAuthSessionStore & { rows: Map<string, Adap
       rows.set(input.id, {
         id: input.id,
         publicSessionId: input.publicSessionId,
-        companyId: input.companyId,
         environmentId: input.environmentId,
         adapterType: input.adapterType,
         startedByUserId: input.startedByUserId,
@@ -269,7 +262,7 @@ function createMemoryStore(): AdapterAuthSessionStore & { rows: Map<string, Adap
       if (input.promotionExpiresAt !== undefined) row.promotionExpiresAt = input.promotionExpiresAt;
       if (input.resultClaim !== undefined) row.resultClaim = input.resultClaim;
       if (!isActive(input.status))
-        activeSlots.delete(slotKey(row.companyId, row.startedByUserId, row.adapterType));
+        activeSlots.delete(slotKey(row.startedByUserId, row.adapterType));
     },
     async compareAndSetStatus(input) {
       const row = rows.get(input.sessionId);
@@ -280,27 +273,24 @@ function createMemoryStore(): AdapterAuthSessionStore & { rows: Map<string, Adap
       if (input.promotionExpiresAt !== undefined) row.promotionExpiresAt = input.promotionExpiresAt;
       if (input.resultClaim !== undefined) row.resultClaim = input.resultClaim;
       if (!isActive(input.status))
-        activeSlots.delete(slotKey(row.companyId, row.startedByUserId, row.adapterType));
+        activeSlots.delete(slotKey(row.startedByUserId, row.adapterType));
       return true;
     },
     async get(sessionId) {
       const row = rows.get(sessionId);
       return row ? { ...row } : null;
     },
-    async getByPublicId(publicSessionId, companyId) {
-      // Scope the read to the company and the public session id, so a
-      // foreign-company lookup reads nothing and the internal id never matches.
+    async getByPublicId(publicSessionId) {
       for (const row of rows.values()) {
-        if (row.publicSessionId === publicSessionId && row.companyId === companyId) {
+        if (row.publicSessionId === publicSessionId) {
           return { ...row };
         }
       }
       return null;
     },
-    async getActiveByOwner(companyId, startedByUserId, adapterType) {
+    async getActiveByOwner(startedByUserId, adapterType) {
       for (const row of rows.values()) {
         if (
-          row.companyId === companyId &&
           row.startedByUserId === startedByUserId &&
           row.adapterType === adapterType &&
           isActive(row.status)
@@ -310,7 +300,7 @@ function createMemoryStore(): AdapterAuthSessionStore & { rows: Map<string, Adap
       }
       return null;
     },
-    async withCompanyAdapterPromotionLock(_companyId, _startedByUserId, _adapterType, fn) {
+    async withCompanyAdapterPromotionLock(_startedByUserId, _adapterType, fn) {
       // The route test runs on a single event loop, so it needs no real lock. The
       // pass-through keeps the promotion contract satisfied.
       return fn();
@@ -351,11 +341,10 @@ function createFakeRuntime(promptOutput: string = PROMPT_OUTPUT): LoginSessionRu
 
 let currentActor: Record<string, unknown>;
 
-function boardActor(userId: string, companyIds: string[] = [COMPANY_1, COMPANY_2]): Record<string, unknown> {
+function boardActor(userId: string): Record<string, unknown> {
   return {
     type: "board",
     userId,
-    companyIds,
     source: "local_implicit",
     isInstanceAdmin: false,
   };
@@ -377,8 +366,8 @@ async function createApp() {
   return app;
 }
 
-const loginPath = (companyId: string, type = "codex_local") =>
-  `/api/companies/${companyId}/adapters/${type}/login-sessions`;
+const loginPath = (type = "codex_local") =>
+  `/api/adapters/${type}/login-sessions`;
 
 describe("adapter device-login routes", () => {
   // Real temp directories a test plants as an account home, cleaned up in
@@ -409,7 +398,6 @@ describe("adapter device-login routes", () => {
     });
     mockEnvironmentService.getById.mockImplementation(async (id: string) => ({
       id,
-      companyId: COMPANY_1,
       name: "Sandbox QA",
       driver: "sandbox",
       status: "active",
@@ -440,13 +428,12 @@ describe("adapter device-login routes", () => {
     currentActor = {
       type: "agent",
       agentId: "agent-1",
-      companyId: COMPANY_1,
       source: "agent_key",
     };
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
@@ -457,7 +444,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -469,7 +456,6 @@ describe("adapter device-login routes", () => {
     // A fresh lease is acquired for the owner.
     expect(harness.acquisitions).toHaveLength(1);
     expect(harness.acquisitions[0]).toMatchObject({
-      companyId: COMPANY_1,
       environmentId: SANDBOX_ENV_1,
       adapterType: "codex_local",
       startedByUserId: OWNER_A,
@@ -477,7 +463,7 @@ describe("adapter device-login routes", () => {
     // The row persists the immutable owner from the actor. The response carries
     // the public session id, so read the row by the public id, not the internal id.
     const store = harness.store as ReturnType<typeof createMemoryStore>;
-    const row = await store.getByPublicId(res.body.sessionId, COMPANY_1);
+    const row = await store.getByPublicId(res.body.sessionId);
     expect(row?.startedByUserId).toBe(OWNER_A);
     // The public session id is never the internal row id.
     expect(row?.id).not.toBe(res.body.sessionId);
@@ -492,7 +478,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1, "claude_local"))
+      .post(loginPath("claude_local"))
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(400);
@@ -526,7 +512,7 @@ describe("adapter device-login routes", () => {
     });
     try {
       const res = await request(app)
-        .post(loginPath(COMPANY_1, "gemini_local"))
+        .post(loginPath("gemini_local"))
         .send({ environmentId: SANDBOX_ENV_1 });
 
       expect(res.status, JSON.stringify(res.body)).toBe(400);
@@ -562,7 +548,7 @@ describe("adapter device-login routes", () => {
     });
     try {
       const res = await request(app)
-        .post(loginPath(COMPANY_1, "claude_local"))
+        .post(loginPath("claude_local"))
         .send({ environmentId: SANDBOX_ENV_1 });
 
       expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -588,7 +574,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -604,7 +590,7 @@ describe("adapter device-login routes", () => {
     // accepted an extra field and started a session; the shared spine now fails
     // the request with a fixed 400 before it acquires a lease.
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1, unexpectedField: "x" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(400);
@@ -614,7 +600,6 @@ describe("adapter device-login routes", () => {
   it("rejects a local environment", async () => {
     mockEnvironmentService.getById.mockResolvedValueOnce({
       id: SANDBOX_ENV_1,
-      companyId: COMPANY_1,
       name: "Local",
       driver: "local",
       status: "active",
@@ -624,7 +609,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -634,7 +619,6 @@ describe("adapter device-login routes", () => {
   it("rejects an archived (inactive) sandbox environment", async () => {
     mockEnvironmentService.getById.mockResolvedValueOnce({
       id: SANDBOX_ENV_1,
-      companyId: COMPANY_1,
       name: "Sandbox QA",
       driver: "sandbox",
       status: "archived",
@@ -644,7 +628,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -656,7 +640,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -667,7 +651,7 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
@@ -676,7 +660,7 @@ describe("adapter device-login routes", () => {
     // repeats the live prompt on every read, so it carries the same private
     // no-store policy as the `.../login-sessions/active` route (see the tests
     // below).
-    const first = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+    const first = await request(app).get(`${loginPath()}/${sessionId}`);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.body.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
     expect(first.headers["cache-control"]).toBe("no-store, private");
@@ -684,7 +668,7 @@ describe("adapter device-login routes", () => {
     // A second authorized owner read still carries the prompt while the
     // session is active. The status stays available too, so the owner still
     // tracks the session across a page reload.
-    const second = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+    const second = await request(app).get(`${loginPath()}/${sessionId}`);
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     expect(second.body.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
     expect(second.body.status).toBe(first.body.status);
@@ -692,7 +676,7 @@ describe("adapter device-login routes", () => {
     // Once the login reaches a terminal state, the prompt is gone.
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const afterTerminal = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const afterTerminal = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(["authenticated", "failed"]).toContain(afterTerminal.body.status);
       expect(afterTerminal.body.prompt).toBeNull();
     });
@@ -706,21 +690,21 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1, "grok_local"))
+      .post(loginPath("grok_local"))
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
-    const first = await request(app).get(`${loginPath(COMPANY_1, "grok_local")}/${sessionId}`);
+    const first = await request(app).get(`${loginPath("grok_local")}/${sessionId}`);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.body.prompt).toEqual({ url: GROK_DEVICE_LOGIN_URL, code: GROK_CODE });
 
     // The row belongs to `grok_local`, not `codex_local`. Reading it through the
     // `codex_local` path finds no row for the owner.
-    const wrongAdapterRead = await request(app).get(`${loginPath(COMPANY_1, "codex_local")}/${sessionId}`);
+    const wrongAdapterRead = await request(app).get(`${loginPath("codex_local")}/${sessionId}`);
     expect(wrongAdapterRead.status, JSON.stringify(wrongAdapterRead.body)).toBe(404);
 
-    const cancel = await request(app).post(`${loginPath(COMPANY_1, "grok_local")}/${sessionId}/cancel`);
+    const cancel = await request(app).post(`${loginPath("grok_local")}/${sessionId}/cancel`);
     expect(cancel.status, JSON.stringify(cancel.body)).toBe(200);
     // The cancel resolves the public terminal status at once. Internally the row
     // holds `cleanup_pending`, which encodes the cancelled terminal until the
@@ -728,7 +712,7 @@ describe("adapter device-login routes", () => {
     expect(cancel.body.status).toBe("cancelled");
 
     const store = harness.store as ReturnType<typeof createMemoryStore>;
-    const row = await store.getByPublicId(sessionId, COMPANY_1);
+    const row = await store.getByPublicId(sessionId);
     expect(row?.status).toBe("cleanup_pending");
   });
 
@@ -736,110 +720,90 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
-    // A different board user in the same company is not the owner.
+    // A different board user is not the owner.
     currentActor = boardActor(OWNER_B);
 
-    const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+    const status = await request(app).get(`${loginPath()}/${sessionId}`);
     expect(status.status, JSON.stringify(status.body)).toBe(404);
     expect(status.body.prompt).toBeUndefined();
     expect(status.body.environmentId).toBeUndefined();
 
-    const cancel = await request(app).post(`${loginPath(COMPANY_1)}/${sessionId}/cancel`);
+    const cancel = await request(app).post(`${loginPath()}/${sessionId}/cancel`);
     expect(cancel.status, JSON.stringify(cancel.body)).toBe(404);
-  });
-
-  it("returns 404 for a cross-company status", async () => {
-    const app = await createApp();
-
-    const start = await request(app)
-      .post(loginPath(COMPANY_1))
-      .send({ environmentId: SANDBOX_ENV_1 });
-    expect(start.status, JSON.stringify(start.body)).toBe(201);
-    const sessionId = start.body.sessionId as string;
-
-    // The same owner reads the session under a different company scope.
-    const status = await request(app).get(`${loginPath(COMPANY_2)}/${sessionId}`);
-    expect(status.status, JSON.stringify(status.body)).toBe(404);
-    expect(status.body.prompt).toBeUndefined();
   });
 
   it("returns the caller's active login session with no session id in the URL", async () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
 
-    const active = await request(app).get(`${loginPath(COMPANY_1)}/active`);
+    const active = await request(app).get(`${loginPath()}/active`);
     expect(active.status, JSON.stringify(active.body)).toBe(200);
     expect(active.body.sessionId).toBe(start.body.sessionId);
     expect(active.body.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
     expect(active.headers["cache-control"]).toBe("no-store, private");
   });
 
-  it("returns the identical 404 on the active route for no active session, another owner, another company, and another adapter", async () => {
+  it("returns the identical 404 on the active route for no active session, another owner, and another adapter", async () => {
     const app = await createApp();
 
     // No active session exists yet.
-    const none = await request(app).get(`${loginPath(COMPANY_1)}/active`);
+    const none = await request(app).get(`${loginPath()}/active`);
     expect(none.status, JSON.stringify(none.body)).toBe(404);
     expect(none.body).toEqual({ error: "Adapter login session not found" });
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
 
-    // A different board user in the same company holds no active session.
+    // A different board user holds no active session.
     currentActor = boardActor(OWNER_B);
-    const otherOwner = await request(app).get(`${loginPath(COMPANY_1)}/active`);
+    const otherOwner = await request(app).get(`${loginPath()}/active`);
     expect(otherOwner.status, JSON.stringify(otherOwner.body)).toBe(404);
     expect(otherOwner.body).toEqual(none.body);
     currentActor = boardActor(OWNER_A);
 
-    // The same owner under a different company holds no active session there.
-    const otherCompany = await request(app).get(`${loginPath(COMPANY_2)}/active`);
-    expect(otherCompany.status, JSON.stringify(otherCompany.body)).toBe(404);
-    expect(otherCompany.body).toEqual(none.body);
-
     // The owner's active session belongs to `codex_local`, not `grok_local`.
-    const otherAdapter = await request(app).get(`${loginPath(COMPANY_1, "grok_local")}/active`);
+    const otherAdapter = await request(app).get(`${loginPath("grok_local")}/active`);
     expect(otherAdapter.status, JSON.stringify(otherAdapter.body)).toBe(404);
     expect(otherAdapter.body).toEqual(none.body);
   });
 
-  it("durably cancels a login for the owner and releases the company slot", async () => {
+  it("durably cancels a login for the owner and releases the active slot", async () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
-    const cancel = await request(app).post(`${loginPath(COMPANY_1)}/${sessionId}/cancel`);
+    const cancel = await request(app).post(`${loginPath()}/${sessionId}/cancel`);
     expect(cancel.status, JSON.stringify(cancel.body)).toBe(200);
     expect(cancel.body.sessionId).toBe(sessionId);
     // The cancel resolves the public terminal status at once.
     expect(cancel.body.status).toBe("cancelled");
 
-    // The durable write released the company slot, so a fresh start for the same
-    // company and adapter succeeds without a wait for the in-flight run or the
+    // The durable write released the active slot, so a fresh start for the same
+    // adapter succeeds without a wait for the in-flight run or the
     // reaper. This proves the cancel does not depend on the process-local abort.
     const restart = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(restart.status, JSON.stringify(restart.body)).toBe(201);
     expect(restart.body.sessionId).not.toBe(sessionId);
   });
 
-  it("lets a second owner start an active login in the same company", async () => {
+  it("lets a second owner start an active login for the same adapter", async () => {
     // Both logins bind the default account home, and the login service
     // reconfirms the bound secret's value a second time right before it
     // commits the terminal `authenticated` state.
@@ -849,16 +813,16 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const first = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(first.status, JSON.stringify(first.body)).toBe(201);
 
-    // A different owner starts a second login for the same company and adapter.
-    // The active slot is scoped to the company, the owner, and the adapter, so
+    // A different owner starts a second login for the same adapter.
+    // The active slot is scoped to the owner and the adapter, so
     // the second owner holds an independent slot and the start succeeds.
     currentActor = boardActor(OWNER_B);
     const second = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(second.status, JSON.stringify(second.body)).toBe(201);
     expect(second.body.sessionId).not.toBe(first.body.sessionId);
@@ -872,12 +836,12 @@ describe("adapter device-login routes", () => {
     harness.releaseGate();
     await vi.waitFor(async () => {
       currentActor = boardActor(OWNER_A);
-      const firstStatus = await request(app).get(`${loginPath(COMPANY_1)}/${first.body.sessionId}`);
+      const firstStatus = await request(app).get(`${loginPath()}/${first.body.sessionId}`);
       expect(firstStatus.body.status).toBe("authenticated");
     });
     await vi.waitFor(async () => {
       currentActor = boardActor(OWNER_B);
-      const secondStatus = await request(app).get(`${loginPath(COMPANY_1)}/${second.body.sessionId}`);
+      const secondStatus = await request(app).get(`${loginPath()}/${second.body.sessionId}`);
       expect(secondStatus.body.status).toBe("authenticated");
     });
   });
@@ -892,14 +856,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const first = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(first.status, JSON.stringify(first.body)).toBe(201);
 
     // The same owner starts a second login in a different environment for the
     // same company and adapter.
     const second = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_2 });
     expect(second.status, JSON.stringify(second.body)).toBe(409);
     expect(harness.acquisitions).toHaveLength(1);
@@ -908,7 +872,7 @@ describe("adapter device-login routes", () => {
     // a later test's own mocked promotion result.
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${first.body.sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${first.body.sessionId}`);
       expect(status.body.status).toBe("authenticated");
     });
   });
@@ -923,7 +887,7 @@ describe("adapter device-login routes", () => {
     try {
       vi.stubEnv("PAPERCLIP_HOME", instanceRoot);
       vi.stubEnv("PAPERCLIP_INSTANCE_ID", "default");
-      const companyHome = path.join(instanceRoot, "instances", "default", "companies", COMPANY_1, "codex-home");
+      const companyHome = path.join(instanceRoot, "instances", "default", "organization", "codex-home");
       await mkdir(companyHome, { recursive: true });
       await writeFile(
         path.join(companyHome, "auth.json"),
@@ -935,11 +899,11 @@ describe("adapter device-login routes", () => {
         "/tmp/paperclip-codex-account-home/acct-default",
       );
       const app = await createApp();
-      const started = await request(app).post(loginPath(COMPANY_1)).send({ environmentId: SANDBOX_ENV_1 });
+      const started = await request(app).post(loginPath()).send({ environmentId: SANDBOX_ENV_1 });
       expect(started.status, JSON.stringify(started.body)).toBe(201);
       harness.releaseGate();
       await vi.waitFor(async () => {
-        const status = await request(app).get(`${loginPath(COMPANY_1)}/${started.body.sessionId}`);
+        const status = await request(app).get(`${loginPath()}/${started.body.sessionId}`);
         expect(status.body.status).toBe("authenticated");
         expect(status.body.codexAccountBinding).toEqual({
           secretId: "secret-1",
@@ -952,7 +916,7 @@ describe("adapter device-login routes", () => {
       // silently lose.
       const restarted = await createApp();
       const afterRestart = await request(restarted).get(
-        `${loginPath(COMPANY_1)}/${started.body.sessionId}`,
+        `${loginPath()}/${started.body.sessionId}`,
       );
       expect(afterRestart.body.status).toBe("authenticated");
       expect(afterRestart.body.codexAccountBinding).toEqual({
@@ -965,7 +929,7 @@ describe("adapter device-login routes", () => {
     }
   });
 
-  it("a login for the account the company home already holds reports no identity mismatch", async () => {
+  it("a login for the account the organization home already holds reports no identity mismatch", async () => {
     // Same-account logins take effect through the company-home refresh; the
     // claim still rides along with `companyIdentityDiffers: false`, and the
     // client deliberately binds nothing.
@@ -973,7 +937,7 @@ describe("adapter device-login routes", () => {
     try {
       vi.stubEnv("PAPERCLIP_HOME", instanceRoot);
       vi.stubEnv("PAPERCLIP_INSTANCE_ID", "default");
-      const companyHome = path.join(instanceRoot, "instances", "default", "companies", COMPANY_1, "codex-home");
+      const companyHome = path.join(instanceRoot, "instances", "default", "organization", "codex-home");
       await mkdir(companyHome, { recursive: true });
       await writeFile(
         path.join(companyHome, "auth.json"),
@@ -985,11 +949,11 @@ describe("adapter device-login routes", () => {
         "/tmp/paperclip-codex-account-home/acct-default",
       );
       const app = await createApp();
-      const started = await request(app).post(loginPath(COMPANY_1)).send({ environmentId: SANDBOX_ENV_1 });
+      const started = await request(app).post(loginPath()).send({ environmentId: SANDBOX_ENV_1 });
       expect(started.status, JSON.stringify(started.body)).toBe(201);
       harness.releaseGate();
       await vi.waitFor(async () => {
-        const status = await request(app).get(`${loginPath(COMPANY_1)}/${started.body.sessionId}`);
+        const status = await request(app).get(`${loginPath()}/${started.body.sessionId}`);
         expect(status.body.status).toBe("authenticated");
         expect(status.body.codexAccountBinding).toEqual({
           secretId: "secret-1",
@@ -1013,27 +977,26 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
 
     const row = await (harness.store as ReturnType<typeof createMemoryStore>).getByPublicId(
       sessionId,
-      COMPANY_1,
     );
     expect(row?.status).toBe("failed");
     expect(mockDeviceLoginPromotion).toHaveBeenCalledTimes(1);
   });
 
-  it("a successful Codex login creates the company secret naming the account home", async () => {
+  it("a successful Codex login creates the secret naming the account home", async () => {
     // A second, different account no longer fails behind an occupied company
     // home: each account gets its own home, named by a company secret.
     mockSecretService.resolveSecretValueForDeviceLoginCheck.mockResolvedValue(
@@ -1047,20 +1010,19 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("authenticated");
     });
 
-    expect(mockSecretService.getByName).toHaveBeenCalledWith(COMPANY_1, "CODEX_HOME_acct-second");
+    expect(mockSecretService.getByName).toHaveBeenCalledWith("CODEX_HOME_acct-second");
     expect(mockSecretService.create).toHaveBeenCalledWith(
-      COMPANY_1,
       expect.objectContaining({
         name: "CODEX_HOME_acct-second",
         value: "/tmp/paperclip-codex-account-home/acct-second",
@@ -1084,20 +1046,19 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("authenticated");
     });
 
     expect(mockSecretService.create).not.toHaveBeenCalled();
     expect(mockSecretService.resolveSecretValueForDeviceLoginCheck).toHaveBeenCalledWith(
-      COMPANY_1,
       "existing-secret",
       expect.objectContaining({ configPath: "secrets.CODEX_HOME_acct-default" }),
     );
@@ -1125,14 +1086,14 @@ describe("adapter device-login routes", () => {
     const heldLockGate = new Promise<void>((resolve) => {
       releaseHeldLock = resolve;
     });
-    const lockHolder = withAccountHomeSecretMutationLock(undefined, COMPANY_1, () => heldLockGate);
+    const lockHolder = withAccountHomeSecretMutationLock(undefined, () => heldLockGate);
     // Give the held lock a chance to actually acquire before the login
     // starts racing for the same lock.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     const app = await createApp();
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
@@ -1145,7 +1106,7 @@ describe("adapter device-login routes", () => {
     releaseHeldLock();
     await lockHolder;
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("authenticated");
     });
     expect(mockSecretService.resolveSecretValueForDeviceLoginCheck).toHaveBeenCalled();
@@ -1169,14 +1130,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("authenticated");
     });
 
@@ -1206,14 +1167,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1236,14 +1197,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1267,14 +1228,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1299,14 +1260,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1346,14 +1307,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("authenticated");
     });
 
@@ -1387,14 +1348,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1431,14 +1392,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1469,20 +1430,20 @@ describe("adapter device-login routes", () => {
       { id: "hand-named-secret", name: "MY_CODEX_HOME", provider: "local_encrypted" },
     ]);
     mockSecretService.resolveSecretValueForDeviceLoginCheck.mockImplementation(
-      async (_companyId: string, secretId: string, _context: { configPath: string }) =>
+      async (secretId: string, _context: { configPath: string }) =>
         secretId === "hand-named-secret" ? accountHomeDir : "/some/unrelated/path",
     );
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1512,20 +1473,19 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
 
     expect(mockSecretService.resolveSecretValueForDeviceLoginCheck).toHaveBeenCalledWith(
-      COMPANY_1,
       "aws-secret",
       expect.objectContaining({ configPath: "secrets.MY_CODEX_HOME" }),
     );
@@ -1553,14 +1513,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1589,7 +1549,7 @@ describe("adapter device-login routes", () => {
       { id: "unresolvable-secret", name: "MAYBE_CODEX_HOME", provider: "local_encrypted" },
     ]);
     mockSecretService.resolveSecretValueForDeviceLoginCheck.mockImplementation(
-      async (_companyId: string, secretId: string, _context: { configPath: string }) => {
+      async (secretId: string, _context: { configPath: string }) => {
         if (secretId === "unresolvable-secret") throw new Error("decryption key unavailable");
         return "/some/unrelated/path";
       },
@@ -1597,14 +1557,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1637,20 +1597,20 @@ describe("adapter device-login routes", () => {
         { id: "late-secret", name: "LATE_CODEX_HOME", provider: "local_encrypted" },
       ]);
     mockSecretService.resolveSecretValueForDeviceLoginCheck.mockImplementation(
-      async (_companyId: string, secretId: string, _context: { configPath: string }) =>
+      async (secretId: string, _context: { configPath: string }) =>
         secretId === "late-secret" ? accountHomeDir : "/some/unrelated/path",
     );
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1670,14 +1630,14 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     harness.releaseGate();
     await vi.waitFor(async () => {
-      const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+      const status = await request(app).get(`${loginPath()}/${sessionId}`);
       expect(status.body.status).toBe("failed");
       expect(status.body.failure?.reason).toBe("promotion_failed");
     });
@@ -1689,13 +1649,13 @@ describe("adapter device-login routes", () => {
     const app = await createApp();
 
     const start = await request(app)
-      .post(loginPath(COMPANY_1))
+      .post(loginPath())
       .send({ environmentId: SANDBOX_ENV_1 });
     expect(start.status, JSON.stringify(start.body)).toBe(201);
     const sessionId = start.body.sessionId as string;
 
     // Read the owner status, so the prompt passes through the owner read path.
-    const status = await request(app).get(`${loginPath(COMPANY_1)}/${sessionId}`);
+    const status = await request(app).get(`${loginPath()}/${sessionId}`);
     expect(status.status).toBe(200);
 
     // Serialize every logged argument and assert none carries a secret.

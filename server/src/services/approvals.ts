@@ -23,11 +23,11 @@ export function approvalService(db: Db) {
     };
   }
 
-  async function reconcileApprovedBuiltInAgent(companyId: string, payload: Record<string, unknown>, database: Db) {
+  async function reconcileApprovedBuiltInAgent(payload: Record<string, unknown>, database: Db) {
     const sourceBuiltInAgentKey = typeof payload.sourceBuiltInAgentKey === "string" ? payload.sourceBuiltInAgentKey : null;
     if (!sourceBuiltInAgentKey) return;
     const { builtInAgentService } = await import("./built-in-agents.js");
-    await builtInAgentService(database).ensure(companyId, sourceBuiltInAgentKey);
+    await builtInAgentService(database).ensure(sourceBuiltInAgentKey);
   }
 
   async function getExistingApproval(id: string, database: Db = db) {
@@ -86,8 +86,8 @@ export function approvalService(db: Db) {
   }
 
   return {
-    list: (companyId: string, status?: string) => {
-      const conditions = [eq(approvals.companyId, companyId)];
+    list: (status?: string) => {
+      const conditions = [];
       if (status) conditions.push(eq(approvals.status, status));
       return db.select().from(approvals).where(and(...conditions));
     },
@@ -99,13 +99,12 @@ export function approvalService(db: Db) {
         .where(eq(approvals.id, id))
         .then((rows) => rows[0] ?? null),
 
-    findOpenHireApprovalForAgent: async (companyId: string, agentId: string) => {
+    findOpenHireApprovalForAgent: async (agentId: string) => {
       const rows = await db
         .select()
         .from(approvals)
         .where(
           and(
-            eq(approvals.companyId, companyId),
             eq(approvals.type, "hire_agent"),
             inArray(approvals.status, resolvableStatuses),
             sql`${approvals.payload} ->> 'agentId' = ${agentId}`,
@@ -114,10 +113,10 @@ export function approvalService(db: Db) {
       return rows[0] ?? null;
     },
 
-    create: (companyId: string, data: Omit<typeof approvals.$inferInsert, "companyId">) =>
+    create: (data: Omit<typeof approvals.$inferInsert, "companyId">) =>
       db
         .insert(approvals)
-        .values({ ...data, companyId })
+        .values({ ...data })
         .returning()
         .then((rows) => rows[0]),
 
@@ -160,10 +159,10 @@ export function approvalService(db: Db) {
           const payloadAgentId = typeof payload.agentId === "string" ? payload.agentId : null;
           if (payloadAgentId) {
             await agentsSvc.activatePendingApproval(payloadAgentId, payload);
-            await reconcileApprovedBuiltInAgent(updated.companyId, payload, txDb);
+            await reconcileApprovedBuiltInAgent(payload, txDb);
             hireApprovedAgentId = payloadAgentId;
           } else {
-            const created = await agentsSvc.create(updated.companyId, {
+            const created = await agentsSvc.create({
               name: String(payload.name ?? "New Agent"),
               appearance: payload.appearance == null ? undefined : agentAppearanceSchema.parse(payload.appearance),
               role: String(payload.role ?? "general"),
@@ -193,7 +192,6 @@ export function approvalService(db: Db) {
               typeof payload.budgetMonthlyCents === "number" ? payload.budgetMonthlyCents : 0;
             if (budgetMonthlyCents > 0) {
               await budgets.upsertPolicy(
-                updated.companyId,
                 {
                   scopeType: "agent",
                   scopeId: hireApprovedAgentId,
@@ -211,7 +209,6 @@ export function approvalService(db: Db) {
       });
       if (result.hireApprovedAgentId) {
         void notifyHireApproved(db, {
-          companyId: result.approval.companyId,
           agentId: result.hireApprovedAgentId,
           source: "approval",
           sourceId: id,
@@ -294,10 +291,7 @@ export function approvalService(db: Db) {
         .select()
         .from(approvalComments)
         .where(
-          and(
-            eq(approvalComments.approvalId, approvalId),
-            eq(approvalComments.companyId, existing.companyId),
-          ),
+          eq(approvalComments.approvalId, approvalId),
         )
         .orderBy(asc(approvalComments.createdAt))
         .then((comments) => comments.map((comment) => redactApprovalComment(comment, censorUsernameInLogs)));
@@ -316,7 +310,6 @@ export function approvalService(db: Db) {
       return db
         .insert(approvalComments)
         .values({
-          companyId: existing.companyId,
           approvalId,
           authorAgentId: actor.agentId ?? null,
           authorUserId: actor.userId ?? null,

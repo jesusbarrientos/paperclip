@@ -248,7 +248,6 @@ function attachment(overrides: Partial<IssueAttachment>): IssueAttachment {
   const id = overrides.id ?? "attachment";
   return {
     id,
-    companyId: "company",
     issueId: "issue",
     issueCommentId: "m1",
     assetId: `asset-${id}`,

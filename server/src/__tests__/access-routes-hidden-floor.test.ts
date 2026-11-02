@@ -34,8 +34,7 @@ async function createApp() {
       type: "board",
       userId: "instance-admin-1",
       source: "local_implicit",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", membershipRole: "owner", status: "active" }],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       isInstanceAdmin: true,
     } as Express.Request["actor"];
     next();
@@ -66,12 +65,7 @@ describe("operator-hidden access admin floor", () => {
   const attempts: Array<[string, () => request.Test]> = [
     ["promote", () => request(app).post("/api/admin/users/user-1/promote-instance-admin")],
     ["demote", () => request(app).post("/api/admin/users/user-1/demote-instance-admin")],
-    [
-      "company access write",
-      () => request(app).put("/api/admin/users/user-1/company-access").send({ companyIds: [] }),
-    ],
     ["user listing", () => request(app).get("/api/admin/users")],
-    ["company access read", () => request(app).get("/api/admin/users/user-1/company-access")],
   ];
 
   it.each(attempts)(

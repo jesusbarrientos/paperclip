@@ -53,7 +53,6 @@ async function seedHiringFixture(db: Db) {
   const [hiringAgent] = await db
     .insert(agents)
     .values({
-      companyId: company!.id,
       name: "Chief Of Staff",
       role: "general",
       adapterType: "process",
@@ -65,7 +64,6 @@ async function seedHiringFixture(db: Db) {
   const [run] = await db
     .insert(heartbeatRuns)
     .values({
-      companyId: company!.id,
       agentId: hiringAgent!.id,
       status: "running",
       contextSnapshot: {},
@@ -74,11 +72,10 @@ async function seedHiringFixture(db: Db) {
   return { company: company!, hiringAgent: hiringAgent!, run: run! };
 }
 
-function agentActor(companyId: string, agentId: string, runId: string): Express.Request["actor"] {
+function agentActor(agentId: string, runId: string): Express.Request["actor"] {
   return {
     type: "agent",
     agentId,
-    companyId,
     runId,
     source: "agent_jwt",
   };
@@ -123,16 +120,16 @@ describeEmbeddedPostgres("agent hire idempotency within a run", () => {
 
   it("returns the existing hire when the same run re-posts an identical payload", async () => {
     const { company, hiringAgent, run } = await seedHiringFixture(db);
-    const app = createApp(db, agentActor(company.id, hiringAgent.id, run.id));
+    const app = createApp(db, agentActor(hiringAgent.id, run.id));
     const payload = { name: "Sam", role: "engineer", title: "Store Builder", adapterType: "process" as const };
 
-    const first = await request(app).post(`/api/companies/${company.id}/agent-hires`).send(payload);
+    const first = await request(app).post(`/api/agent-hires`).send(payload);
     expect(first.status, JSON.stringify(first.body)).toBe(201);
     expect(first.body.agent?.name).toBe("Sam");
     const createdId = first.body.agent?.id as string;
 
     // The agent misreads the wrapped 201 body and re-sends the identical payload.
-    const second = await request(app).post(`/api/companies/${company.id}/agent-hires`).send(payload);
+    const second = await request(app).post(`/api/agent-hires`).send(payload);
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     expect(second.body.idempotent).toBe(true);
     expect(second.body.agent?.id).toBe(createdId);
@@ -144,20 +141,20 @@ describeEmbeddedPostgres("agent hire idempotency within a run", () => {
     const samAgents = await db
       .select({ id: agents.id, name: agents.name })
       .from(agents)
-      .where(and(eq(agents.companyId, company.id), eq(agents.role, "engineer")));
+      .where(eq(agents.role, "engineer"));
     expect(samAgents.map((row) => row.name)).toEqual(["Sam"]);
   });
 
   it("creates one agent when two identical retries overlap in the same run", async () => {
     const { company, hiringAgent, run } = await seedHiringFixture(db);
-    const app = createApp(db, agentActor(company.id, hiringAgent.id, run.id));
+    const app = createApp(db, agentActor(hiringAgent.id, run.id));
     const payload = { name: "Sam", role: "engineer", title: "Store Builder", adapterType: "process" as const };
 
     // Both requests are in flight at once, so neither can see the other's
     // activity record unless the route serializes them.
     const [first, second] = await Promise.all([
-      request(app).post(`/api/companies/${company.id}/agent-hires`).send(payload),
-      request(app).post(`/api/companies/${company.id}/agent-hires`).send(payload),
+      request(app).post(`/api/agent-hires`).send(payload),
+      request(app).post(`/api/agent-hires`).send(payload),
     ]);
     const statuses = [first.status, second.status].sort();
     expect(statuses, JSON.stringify([first.body, second.body])).toEqual([200, 201]);
@@ -169,22 +166,22 @@ describeEmbeddedPostgres("agent hire idempotency within a run", () => {
     const samAgents = await db
       .select({ name: agents.name })
       .from(agents)
-      .where(and(eq(agents.companyId, company.id), eq(agents.role, "engineer")));
+      .where(eq(agents.role, "engineer"));
     expect(samAgents.map((row) => row.name)).toEqual(["Sam"]);
   });
 
   it("treats a changed payload in the same run as a new hire, not a retry", async () => {
     const { company, hiringAgent, run } = await seedHiringFixture(db);
-    const app = createApp(db, agentActor(company.id, hiringAgent.id, run.id));
+    const app = createApp(db, agentActor(hiringAgent.id, run.id));
 
     const first = await request(app)
-      .post(`/api/companies/${company.id}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send({ name: "Sam", role: "engineer", adapterType: "process" });
     expect(first.status, JSON.stringify(first.body)).toBe(201);
 
     // Same identity, corrected configuration: the agent meant a different hire.
     const corrected = await request(app)
-      .post(`/api/companies/${company.id}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send({ name: "Sam", role: "engineer", adapterType: "process", budgetMonthlyCents: 5000 });
     expect(corrected.status, JSON.stringify(corrected.body)).toBe(201);
     expect(corrected.body.idempotent).toBeUndefined();
@@ -194,23 +191,22 @@ describeEmbeddedPostgres("agent hire idempotency within a run", () => {
 
   it("still creates a distinct agent for a different hire in the same run", async () => {
     const { company, hiringAgent, run } = await seedHiringFixture(db);
-    const app = createApp(db, agentActor(company.id, hiringAgent.id, run.id));
+    const app = createApp(db, agentActor(hiringAgent.id, run.id));
 
     const sam = await request(app)
-      .post(`/api/companies/${company.id}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send({ name: "Sam", role: "engineer", adapterType: "process" });
     expect(sam.status, JSON.stringify(sam.body)).toBe(201);
 
     const casey = await request(app)
-      .post(`/api/companies/${company.id}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send({ name: "Casey", role: "designer", adapterType: "process" });
     expect(casey.status, JSON.stringify(casey.body)).toBe(201);
     expect(casey.body.agent?.id).not.toBe(sam.body.agent?.id);
 
     const names = await db
       .select({ name: agents.name })
-      .from(agents)
-      .where(eq(agents.companyId, company.id));
+      .from(agents);
     expect(names.map((row) => row.name).sort()).toEqual(["Casey", "Chief Of Staff", "Sam"]);
   });
 
@@ -218,18 +214,18 @@ describeEmbeddedPostgres("agent hire idempotency within a run", () => {
     const { company, hiringAgent, run } = await seedHiringFixture(db);
     const [secondRun] = await db
       .insert(heartbeatRuns)
-      .values({ companyId: company.id, agentId: hiringAgent.id, status: "running", contextSnapshot: {} })
+      .values({ agentId: hiringAgent.id, status: "running", contextSnapshot: {} })
       .returning();
     const payload = { name: "Sam", role: "engineer", adapterType: "process" as const };
 
-    const firstRunApp = createApp(db, agentActor(company.id, hiringAgent.id, run.id));
+    const firstRunApp = createApp(db, agentActor(hiringAgent.id, run.id));
     const firstRunHire = await request(firstRunApp)
-      .post(`/api/companies/${company.id}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send(payload);
     expect(firstRunHire.status, JSON.stringify(firstRunHire.body)).toBe(201);
 
-    const secondRunApp = createApp(db, agentActor(company.id, hiringAgent.id, secondRun!.id));
-    const secondRunHire = await request(secondRunApp).post(`/api/companies/${company.id}/agent-hires`).send(payload);
+    const secondRunApp = createApp(db, agentActor(hiringAgent.id, secondRun!.id));
+    const secondRunHire = await request(secondRunApp).post(`/api/agent-hires`).send(payload);
     // A genuinely separate run is not a retry, so the legacy dedup names it "Sam 2".
     expect(secondRunHire.status, JSON.stringify(secondRunHire.body)).toBe(201);
     expect(secondRunHire.body.idempotent).toBeUndefined();

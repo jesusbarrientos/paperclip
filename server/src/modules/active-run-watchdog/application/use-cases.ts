@@ -28,7 +28,7 @@ export type BuildRunOutputSilenceDeps = {
 
 export type BuildRunOutputSilenceRunInput = Pick<
   RunSnapshot,
-  "id" | "companyId" | "status" | "lastOutputAt" | "lastOutputSeq" | "lastOutputStream" | "processStartedAt" | "startedAt" | "createdAt"
+  "id" | "status" | "lastOutputAt" | "lastOutputSeq" | "lastOutputStream" | "processStartedAt" | "startedAt" | "createdAt"
 >;
 
 export function createBuildRunOutputSilence(deps: BuildRunOutputSilenceDeps) {
@@ -37,8 +37,8 @@ export function createBuildRunOutputSilence(deps: BuildRunOutputSilenceDeps) {
     now: Date,
   ): Promise<RunOutputSilenceSummary> {
     const [decisionState, evaluation] = await Promise.all([
-      deps.reader.findLatestDecision(run.companyId, run.id, now),
-      deps.reader.findOpenStaleRunEvaluation(run.companyId, run.id),
+      deps.reader.findLatestDecision(run.id, now),
+      deps.reader.findOpenStaleRunEvaluation(run.id),
     ]);
     const { dismissedFalsePositive, quietUntilDecision } = decisionState;
     const isRunningRun = run.status === "running";
@@ -96,7 +96,7 @@ export function createFoldSourceResolvedRun(deps: FoldSourceResolvedRunDeps) {
       fallbackProcessGroupId: input.run.processGroupId,
     });
 
-    return deps.writer.foldSourceResolvedRun(input.run.companyId, {
+    return deps.writer.foldSourceResolvedRun({
       run: input.run,
       sourceIssue: input.sourceIssue,
       evidence: input.evidence,
@@ -118,7 +118,6 @@ export type RecordWatchdogDecisionDeps = {
 };
 
 export type RecordWatchdogDecisionUseCaseInput = {
-  companyId: string;
   runId: string;
   actor: WatchdogDecisionActor;
   decision: "snooze" | "continue" | "dismissed_false_positive";
@@ -133,11 +132,11 @@ export function createRecordWatchdogDecision(deps: RecordWatchdogDecisionDeps) {
   return async function recordWatchdogDecision(
     input: RecordWatchdogDecisionUseCaseInput,
   ): Promise<WatchdogDecisionRecord> {
-    const run = await deps.reader.findRunForCompany(input.companyId, input.runId);
+    const run = await deps.reader.findRunForCompany(input.runId);
     if (!run) throw new WatchdogDecisionApplicationError("run_not_found", "Heartbeat run not found");
 
     const evaluationIssue = input.evaluationIssueId
-      ? await deps.reader.findEvaluationIssueById(input.companyId, input.evaluationIssueId)
+      ? await deps.reader.findEvaluationIssueById(input.evaluationIssueId)
       : null;
     if (input.evaluationIssueId && !evaluationIssue) {
       throw new WatchdogDecisionApplicationError("evaluation_issue_not_found", "Evaluation issue not found");
@@ -182,7 +181,7 @@ export function createRecordWatchdogDecision(deps: RecordWatchdogDecisionDeps) {
         ? input.actor.runId ?? input.createdByRunId ?? null
         : null;
     if (createdByRunId) {
-      const creatorRun = await deps.reader.findRunForCompany(input.companyId, createdByRunId);
+      const creatorRun = await deps.reader.findRunForCompany(createdByRunId);
       const sameAgent = input.actor.type !== "agent" || creatorRun?.agentId === input.actor.agentId;
       if (!creatorRun || !sameAgent) {
         throw new WatchdogDecisionApplicationError(
@@ -201,7 +200,7 @@ export function createRecordWatchdogDecision(deps: RecordWatchdogDecisionDeps) {
           : new Date(decisionNow.getTime() + deps.continueRearmMs)
         : null;
 
-    return deps.writer.recordDecision(input.companyId, {
+    return deps.writer.recordDecision({
       runId: run.id,
       actor: input.actor,
       evaluationIssueId: input.evaluationIssueId ?? null,
@@ -223,7 +222,6 @@ export type ScanSilentActiveRunsDeps = {
 
 export type ScanSilentActiveRunsOptions = {
   now?: Date;
-  companyId?: string;
   issueCreatedAtGte?: Date | null;
 };
 
@@ -235,7 +233,7 @@ type InspectOutcome =
 export function createScanSilentActiveRuns(deps: ScanSilentActiveRunsDeps) {
   async function resolveSourceIssue(run: RunSnapshot): Promise<SourceIssueSnapshot | null> {
     if (!run.sourceIssueId) return null;
-    return deps.reader.findSourceIssue(run.companyId, run.sourceIssueId);
+    return deps.reader.findSourceIssue(run.sourceIssueId);
   }
 
   async function inspectSilentActiveRun(input: {
@@ -243,11 +241,11 @@ export function createScanSilentActiveRuns(deps: ScanSilentActiveRunsDeps) {
     now: Date;
     dismissedFalsePositive: boolean;
   }): Promise<InspectOutcome> {
-    const runningAgent = await deps.reader.findRunningAgent(input.run.companyId, input.run.agentId);
-    if (!runningAgent || runningAgent.companyId !== input.run.companyId) return { kind: "skipped" };
+    const runningAgent = await deps.reader.findRunningAgent(input.run.agentId);
+    if (!runningAgent) return { kind: "skipped" };
 
     const sourceIssue = await resolveSourceIssue(input.run);
-    const existing = await deps.reader.findOpenStaleRunEvaluation(input.run.companyId, input.run.id);
+    const existing = await deps.reader.findOpenStaleRunEvaluation(input.run.id);
 
     if (evaluateSuppression({ recoveryOriginSource: sourceIssue?.isRecoveryOriginKind === true }).suppressed) {
       return { kind: "skipped" };
@@ -256,7 +254,7 @@ export function createScanSilentActiveRuns(deps: ScanSilentActiveRunsDeps) {
     const silenceStartedAtValue = silenceStartedAt(input.run);
     if (sourceIssue) {
       const terminalEvidence = isTerminalIssueStatus(sourceIssue.status)
-        ? await deps.reader.findLatestSameRunTerminalEvidence(input.run.companyId, {
+        ? await deps.reader.findLatestSameRunTerminalEvidence({
             runId: input.run.id,
             sourceIssueId: sourceIssue.id,
             sourceIssueStatus: sourceIssue.status,
@@ -300,7 +298,6 @@ export function createScanSilentActiveRuns(deps: ScanSilentActiveRunsDeps) {
     const now = opts?.now ?? new Date();
     const suspicionBefore = new Date(now.getTime() - deps.suspicionThresholdMs);
     const candidates = await deps.reader.findCandidateSilentRuns({
-      companyId: opts?.companyId,
       suspicionBefore,
       issueCreatedAtGte: opts?.issueCreatedAtGte,
     });
@@ -317,7 +314,7 @@ export function createScanSilentActiveRuns(deps: ScanSilentActiveRunsDeps) {
     };
 
     for (const run of candidates) {
-      const decisionState = await deps.reader.findLatestDecision(run.companyId, run.id, now);
+      const decisionState = await deps.reader.findLatestDecision(run.id, now);
       if (evaluateSuppression({ snoozedOrContinued: Boolean(decisionState.quietUntilDecision) }).suppressed) {
         result.snoozed += 1;
         continue;

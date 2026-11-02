@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
-import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
   approvals,
@@ -60,7 +60,12 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
     }, 30000);
 
     beforeEach(async () => {
-      await resetOrganizationState(db);
+      // Connector tables no longer cascade from companies, so a per-test company
+      // no longer isolates fixtures (unique profile/application names collide).
+      await db.execute(sql.raw(`DO $$ DECLARE t text; BEGIN
+        SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') INTO t FROM pg_tables WHERE schemaname = 'public';
+        EXECUTE 'TRUNCATE ' || t || ' CASCADE';
+      END $$`));
     });
     afterAll(async () => {
       await temp?.cleanup();
@@ -191,9 +196,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
           { address: "8.8.8.8", family: 4 },
         ],
       });
-      const connection = await access.connectGalleryApp(
-        company.id,
-        {
+      const connection = await access.connectGalleryApp({
           galleryKey: "browser-use-cloud",
           ...(personal ? { grantKind: "user" as const } : {}),
           connectionMethodKey: "cloud-v4",
@@ -208,16 +211,13 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       const [agent] = await db
         .insert(agents)
         .values({
-          companyId: company.id,
           name: "Browser agent",
           role: "engineer",
           adapterType: "process",
           adapterConfig: {},
         })
         .returning();
-      await access.finishGalleryAppConnection(
-        company.id,
-        connection.connectionId,
+      await access.finishGalleryAppConnection(connection.connectionId,
         {
           enabledCatalogEntryIds: connection.catalog.map((t) => t.id),
           askFirstCatalogEntryIds: [],
@@ -228,7 +228,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       const [issue] = await db
         .insert(issues)
         .values({
-          companyId: company.id,
           title: "Browser task",
           assigneeAgentId: agent.id,
         })
@@ -236,7 +235,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       const [run] = await db
         .insert(heartbeatRuns)
         .values({
-          companyId: company.id,
           agentId: agent.id,
           invocationSource: "on_demand",
           status: "running",
@@ -247,14 +245,12 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       const [profile] = await db
         .insert(toolProfiles)
         .values({
-          companyId: company.id,
           name: "Browser tools",
           profileKey: randomUUID(),
           defaultAction: "allow",
         })
         .returning();
       await db.insert(toolProfileBindings).values({
-        companyId: company.id,
         profileId: profile.id,
         targetType: "agent",
         targetId: agent.id,
@@ -265,13 +261,11 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       });
       registerAssignedMcpGateway(db, gateway);
       const gatewaySession = await gateway.createSession({
-        companyId: company.id,
         agentId: agent.id,
         runId: run.id,
       });
       const service = browserUseService(db, request);
       const binding = {
-        companyId: company.id,
         agentId: agent.id,
         issueId: issue.id,
         runId: run.id,
@@ -279,8 +273,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       const tick = async () => {
         await db
           .update(browserUseSessions)
-          .set({ nextPollAt: new Date(0) })
-          .where(eq(browserUseSessions.companyId, company.id));
+          .set({ nextPollAt: new Date(0) });
         await service.sweep();
       };
       return {
@@ -334,15 +327,13 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
     it("delivers the Cloud skill only with authorized connection tools in a task run", async () => {
       const f = await fixture();
       const [unassignedAgent] = await db.insert(agents).values({
-        companyId: f.company.id,
         name: "Agent without the Cloud connection",
         role: "engineer",
         adapterType: "process",
         adapterConfig: {},
       }).returning();
-      expect(await f.gateway.browserUseResources({ companyId: f.company.id, agentId: f.agent.id })).toEqual([]);
+      expect(await f.gateway.browserUseResources({ agentId: f.agent.id })).toEqual([]);
       expect(await resolveConnectorAssignments(db, { ...f.binding, agentId: unassignedAgent.id })).toEqual([]);
-      expect(await resolveConnectorAssignments(db, { ...f.binding, companyId: randomUUID() })).toEqual([]);
       const assignments = await resolveConnectorAssignments(db, f.binding);
       expect(assignments).toMatchObject([{ key: "browser-use-cloud", skillKey: "paperclipai/paperclip/browser-use-cloud", resources: [{ connectionId: f.connection.connectionId }] }]);
       const config = await applyConnectorSkills({}, [], assignments);
@@ -373,50 +364,9 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       await db.update(toolConnections).set({ enabled: false }).where(eq(toolConnections.id, f.connection.connectionId));
       expect(await resolveConnectorAssignments(db, f.binding)).toEqual([]);
     });
-    it("reapplies the renumbered migration without losing existing browser work", async () => {
-      const f = await fixture();
-      await f.service.execute(f.binding, f.grant, randomUUID(), "browser_start", {
-        task: "Read example.com",
-        maxCostUsd: 0.5,
-      });
-      f.ready(); f.complete(); await f.tick();
-      const previous = await db.select().from(browserUseRuns)
-        .where(eq(browserUseRuns.companyId, f.company.id));
-      expect(previous).toHaveLength(1);
-      const [original] = await db.select().from(toolConnections).where(eq(toolConnections.id, f.connection.connectionId));
-      await db.update(toolConnections).set({
-        config: { ...original.config, sourceTemplateKey: "browser-use" },
-        transportConfig: { ...original.transportConfig, sourceTemplateKey: "browser-use" },
-      }).where(eq(toolConnections.id, original.id));
-      await db.update(toolApplications).set({
-        applicationKey: `app-gallery:browser-use:${original.id}`,
-        metadata: { sourceTemplateKey: "browser-use", galleryKey: "browser-use" },
-      }).where(eq(toolApplications.id, original.applicationId));
-      const legacyCost = { provider: "browser-use", biller: "browser-use", billingCode: `browser-use:${previous[0].id}` };
-      await db.update(costEvents).set(legacyCost).where(eq(costEvents.companyId, f.company.id));
-      await db.update(financeEvents).set(legacyCost).where(eq(financeEvents.companyId, f.company.id));
-      const migration = await readFile(new URL(
-        "../../../packages/db/src/migrations/0290_browser_use_cloud.sql", import.meta.url,
-      ), "utf8");
-      for (let attempt = 0; attempt < 2; attempt++) {
-        for (const statement of migration.split("--> statement-breakpoint")) {
-          if (statement.trim()) await db.execute(sql.raw(statement));
-        }
-      }
-      expect(await db.select().from(browserUseRuns)
-        .where(eq(browserUseRuns.companyId, f.company.id))).toEqual(previous);
-      const [migrated] = await db.select().from(toolConnections).where(eq(toolConnections.id, original.id));
-      expect(migrated).toMatchObject({ config: { sourceTemplateKey: "browser-use-cloud" }, transportConfig: { sourceTemplateKey: "browser-use-cloud" }, credentialSecretRefs: original.credentialSecretRefs });
-      expect(await db.select().from(toolApplications).where(eq(toolApplications.id, original.applicationId))).toMatchObject([{ applicationKey: `app-gallery:browser-use-cloud:${original.id}`, metadata: { sourceTemplateKey: "browser-use-cloud", galleryKey: "browser-use-cloud" } }]);
-      expect(await resolveConnectorAssignments(db, f.binding)).toMatchObject([{ key: "browser-use-cloud" }]);
-      await f.tick();
-      expect(await db.select().from(costEvents).where(eq(costEvents.companyId, f.company.id))).toMatchObject([{ provider: "browser-use-cloud", biller: "browser-use-cloud", billingCode: `browser-use-cloud:${previous[0].id}`, costCents: 15 }]);
-      expect(await db.select().from(financeEvents).where(eq(financeEvents.companyId, f.company.id))).toMatchObject([{ provider: "browser-use-cloud", amountCents: 15 }]);
-    });
     it("delivers Browser Use through the pinned native and CLI runtime gateway", async () => {
       const f = await fixture();
       await db.insert(toolConnectionInstalls).values({
-        companyId: f.company.id,
         connectionId: f.connection.connectionId,
         targetType: "agent",
         targetId: f.agent.id,
@@ -505,22 +455,17 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       expect(
         await db
           .select()
-          .from(browserUseBrowsers)
-          .where(eq(browserUseBrowsers.companyId, f.company.id)),
+          .from(browserUseBrowsers),
       ).toHaveLength(0);
       f.ready();
       await f.tick();
-      const list = await f.service.list(
-        f.company.id,
-        f.issue.id,
+      const list = await f.service.list(f.issue.id,
         actor.actorId,
       );
       expect(list).toHaveLength(1);
       expect(JSON.stringify(list)).not.toContain("canary");
       expect(
-        await f.service.viewer(
-          f.company.id,
-          f.issue.id,
+        await f.service.viewer(f.issue.id,
           list[0].id,
           actor.actorId,
         ),
@@ -530,7 +475,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         viewportState: { preset: "fit" },
       });
       await expect(
-        f.service.viewer(f.company.id, randomUUID(), list[0].id, actor.actorId),
+        f.service.viewer(randomUUID(), list[0].id, actor.actorId),
       ).rejects.toThrow("not found");
       f.complete();
       await f.tick();
@@ -544,17 +489,14 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       expect(
         await db
           .select()
-          .from(costEvents)
-          .where(eq(costEvents.companyId, f.company.id)),
+          .from(costEvents),
       ).toHaveLength(1);
       const ledger = await db
         .select()
-        .from(financeEvents)
-        .where(eq(financeEvents.companyId, f.company.id));
+        .from(financeEvents);
       const [cost] = await db
         .select()
-        .from(costEvents)
-        .where(eq(costEvents.companyId, f.company.id));
+        .from(costEvents);
       expect(ledger).toHaveLength(1);
       expect(ledger[0]).toMatchObject({
         issueId: f.issue.id,
@@ -607,9 +549,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       f.ready();
       f.complete();
       await f.tick();
-      const [browser] = await f.service.list(
-        f.company.id,
-        f.issue.id,
+      const [browser] = await f.service.list(f.issue.id,
         actor.actorId,
       );
       const read = async () =>
@@ -625,18 +565,14 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         .set({ idleDeadline: original })
         .where(eq(browserUseSessions.id, started.sessionId));
       await expect(
-        f.service.presence(
-          f.company.id,
-          randomUUID(),
+        f.service.presence(randomUUID(),
           browser.id,
           actor.actorId,
         ),
       ).rejects.toThrow();
       expect((await read()).idleDeadline?.getTime()).toBe(original.getTime());
       expect(
-        await f.service.presence(
-          f.company.id,
-          f.issue.id,
+        await f.service.presence(f.issue.id,
           browser.id,
           actor.actorId,
         ),
@@ -656,16 +592,14 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         .update(browserUseSessions)
         .set({ idleDeadline: original })
         .where(eq(browserUseSessions.id, started.sessionId));
-      await f.service.presence(
-        f.company.id,
-        f.issue.id,
+      await f.service.presence(f.issue.id,
         browser.id,
         actor.actorId,
       );
       expect((await read()).idleDeadline?.getTime()).toBe(expiry.getTime());
       await f.service.control(await read(), "end");
       await expect(
-        f.service.presence(f.company.id, f.issue.id, browser.id, actor.actorId),
+        f.service.presence(f.issue.id, browser.id, actor.actorId),
       ).rejects.toThrow();
       await f.tick();
       expect((await read()).status).toBe("closed");
@@ -673,7 +607,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
     it("executes an approved start once after the original turn ends and attaches the resumed run", async () => {
       const f = await fixture();
       await db.insert(toolPolicies).values({
-        companyId: f.company.id,
         name: "Review browser writes",
         policyType: "require_approval",
         selectors: { connectionId: f.connection.connectionId },
@@ -692,8 +625,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       ).rejects.toMatchObject({ reasonCode: "approval_required" });
       const [pending] = await db
         .select()
-        .from(toolActionRequests)
-        .where(eq(toolActionRequests.companyId, f.company.id));
+        .from(toolActionRequests);
       await db
         .update(heartbeatRuns)
         .set({ status: "succeeded" })
@@ -708,14 +640,12 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
           })
           .where(eq(approvals.id, pending.approvalId));
       await f.gateway.approveActionRequest({
-        companyId: f.company.id,
         actionRequestId: pending.id,
         actor: { userId: actor.actorId },
       });
       const [record] = await db
         .select()
-        .from(browserUseRuns)
-        .where(eq(browserUseRuns.companyId, f.company.id));
+        .from(browserUseRuns);
       expect(record?.providerRunId).toBeTruthy();
       expect(record.detachedUntil).toBeTruthy();
       f.ready();
@@ -731,7 +661,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       const [resumed] = await db
         .insert(heartbeatRuns)
         .values({
-          companyId: f.company.id,
           agentId: f.agent.id,
           invocationSource: "on_demand",
           status: "running",
@@ -753,7 +682,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       expect(attached.detachedUntil).toBeNull();
       expect(attached.heartbeatRunId).toBe(resumed.id);
       await f.gateway.approveActionRequest({
-        companyId: f.company.id,
         actionRequestId: pending.id,
         actor: { userId: actor.actorId },
       });
@@ -822,7 +750,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         .set({ status: "revoked" })
         .where(eq(connectionGrants.id, f.grant.id));
       expect(
-        await f.service.list(f.company.id, f.issue.id, actor.actorId),
+        await f.service.list(f.issue.id, actor.actorId),
       ).toEqual([]);
       await f.tick();
       expect(
@@ -863,13 +791,13 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       f.ready(); f.complete(); await f.tick();
       f.reject(code);
       await expect(f.service.execute(f.binding, f.grant, randomUUID(), "browser_continue", { task: "Read again", sessionId: start.sessionId })).rejects.toThrow();
-      expect(await f.service.list(f.company.id, f.issue.id, actor.actorId)).toMatchObject([{ status: "idle" }]);
+      expect(await f.service.list(f.issue.id, actor.actorId)).toMatchObject([{ status: "idle" }]);
       const [session] = await db.select().from(browserUseSessions).where(eq(browserUseSessions.id, start.sessionId));
       await f.service.control(session, "end", actor.actorId);
       // The 429 response delays the whole credential's provider requests.
       if (code === 429) await new Promise(resolve => setTimeout(resolve, 1050));
       await f.tick();
-      expect(await f.service.list(f.company.id, f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
+      expect(await f.service.list(f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
     });
     it("rolls back an interrupted rejection and closes the existing browser after restart", async () => {
       const f = await fixture();
@@ -903,12 +831,12 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       f.loseReply(); f.recoveryPages(6);
       await expect(f.service.execute(f.binding, f.grant, randomUUID(), "browser_start", { task: "Read" })).rejects.toThrow("could not be confirmed");
       await f.tick();
-      const [pending] = await db.select().from(browserUseRuns).where(eq(browserUseRuns.companyId, f.company.id));
+      const [pending] = await db.select().from(browserUseRuns);
       expect(pending.recoveryCursor).toBe("5");
-      await db.update(browserUseSessions).set({ nextPollAt: new Date(0) }).where(eq(browserUseSessions.companyId, f.company.id));
+      await db.update(browserUseSessions).set({ nextPollAt: new Date(0) });
       await browserUseService(db, f.request).sweep();
-      expect(await f.service.list(f.company.id, f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
-      expect(await db.select().from(financeEvents).where(eq(financeEvents.companyId, f.company.id))).toMatchObject([{ amountCents: 15 }]);
+      expect(await f.service.list(f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
+      expect(await db.select().from(financeEvents)).toMatchObject([{ amountCents: 15 }]);
       expect(f.request.mock.calls.filter(([url, init]) => url.endsWith("/runs") && init.method === "POST")).toHaveLength(1);
     });
     it("recovers a continuation's lost reply within its existing provider session", async () => {
@@ -918,7 +846,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       f.loseReply();
       await expect(f.service.execute(f.binding, f.grant, randomUUID(), "browser_continue", { task: "Read again", sessionId: start.sessionId })).rejects.toThrow("could not be confirmed");
       await f.tick();
-      expect(await f.service.list(f.company.id, f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
+      expect(await f.service.list(f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
       expect(f.request.mock.calls.some(([url]) => new URL(url).searchParams.has("sessionId"))).toBe(true);
       expect(f.request.mock.calls.filter(([url, init]) => url.endsWith("/runs") && init.method === "POST")).toHaveLength(2);
     });
@@ -929,7 +857,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       await db.update(browserUseRuns).set({ providerRunId: null, status: "creating", createdAt: new Date(Date.now() - 61_000) }).where(eq(browserUseRuns.sessionId, start.sessionId));
       await db.update(browserUseSessions).set({ providerSessionId: null, status: "starting" }).where(eq(browserUseSessions.id, start.sessionId));
       await f.tick();
-      expect(await f.service.list(f.company.id, f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
+      expect(await f.service.list(f.issue.id, actor.actorId)).toMatchObject([{ status: "closed" }]);
       expect(f.request.mock.calls.filter(([url, init]) => url.endsWith("/runs") && init.method === "POST")).toHaveLength(1);
     });
     it("drains bounded event pages after restart before closing and accounting", async () => {
@@ -962,8 +890,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       expect(
         await db
           .select()
-          .from(costEvents)
-          .where(eq(costEvents.companyId, f.company.id)),
+          .from(costEvents),
       ).toHaveLength(0);
       await db
         .update(browserUseSessions)
@@ -987,7 +914,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         )[0],
       ).toMatchObject({ eventCursor: 9, eventsDrained: 1, accountedCents: 15 });
     });
-    it.each(["task", "saved chat"])("protects %s browser routes from agent, other-company and read-only access", async (kind) => {
+    it.each(["task", "saved chat"])("protects %s browser routes from agent, non-member and read-only access", async (kind) => {
       const f = await fixture();
       if (kind === "saved chat") {
         await db.update(issues).set({
@@ -1005,9 +932,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       );
       f.ready();
       await f.tick();
-      const [browser] = await f.service.list(
-        f.company.id,
-        f.issue.id,
+      const [browser] = await f.service.list(f.issue.id,
         actor.actorId,
       );
       let mode = "board";
@@ -1018,7 +943,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
           mode === "agent"
             ? {
                 type: "agent",
-                companyId: f.company.id,
                 agentId: f.agent.id,
                 source: "agent_key",
               }
@@ -1026,7 +950,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
                 type: "board",
                 userId: actor.actorId,
                 source: "session",
-                companyIds: mode === "other-company" ? [] : [f.company.id],
+                memberships: mode === "non-member" ? [] : [{ membershipRole: "admin", status: "active" }],
               };
         next();
       });
@@ -1097,7 +1021,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         (await http(app).post(resizePath).send({ preset: "phone" })).status,
       ).toBe(403);
       expect((await http(app).get(path)).status).toBe(403);
-      mode = "other-company";
+      mode = "non-member";
       const inaccessible = await http(app).get(listPath);
       expect(inaccessible.status).toBe(missing.status);
       expect(inaccessible.body).toEqual(missing.body);
@@ -1140,8 +1064,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       await f.tick();
       const [run] = await db
         .select()
-        .from(browserUseRuns)
-        .where(eq(browserUseRuns.companyId, f.company.id));
+        .from(browserUseRuns);
       const scope = {
         ...f.binding,
         runId: run.heartbeatRunId,
@@ -1151,7 +1074,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       };
       expect(await f.gateway.browserUseSessionAuthorized(scope)).toBe(true);
       await db.insert(toolPolicies).values({
-        companyId: f.company.id,
         name: "Disable browser access",
         policyType: "block",
         selectors: { connectionId: f.connection.connectionId },
@@ -1160,8 +1082,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       expect(await f.gateway.browserUseSessionAuthorized(scope)).toBe(false);
       await db
         .update(browserUseSessions)
-        .set({ nextPollAt: new Date(0) })
-        .where(eq(browserUseSessions.companyId, f.company.id));
+        .set({ nextPollAt: new Date(0) });
       await browserUseService(db, f.request, {}, () =>
         f.gateway.browserUseSessionAuthorized(scope),
       ).sweep();
@@ -1189,15 +1110,11 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       });
       f.ready();
       await f.tick();
-      const [browser] = await f.service.list(
-        f.company.id,
-        f.issue.id,
+      const [browser] = await f.service.list(f.issue.id,
         actor.actorId,
       );
       expect(
-        await f.service.viewer(
-          f.company.id,
-          f.issue.id,
+        await f.service.viewer(f.issue.id,
           browser.id,
           actor.actorId,
         ),
@@ -1209,16 +1126,13 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         status: "active",
       }).onConflictDoUpdate(membershipUpsert);
       await expect(
-        f.service.viewer(
-          f.company.id,
-          f.issue.id,
+        f.service.viewer(f.issue.id,
           browser.id,
           "other-reviewer",
         ),
       ).rejects.toThrow("another credential");
       await f.access.archiveConnection(
         f.connection.connectionId,
-        f.company.id,
         actor,
       );
       expect(
@@ -1226,7 +1140,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
           await db
             .select()
             .from(browserUseSessions)
-            .where(eq(browserUseSessions.companyId, f.company.id))
         )[0].status,
       ).toBe("closed");
     });
@@ -1285,7 +1198,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
     it("caps paid work at the remaining hard budget and enforces reported spend", async () => {
       const f = await fixture();
       await budgetService(db).upsertPolicy(
-        f.company.id,
         {
           scopeType: "agent",
           scopeId: f.agent.id,
@@ -1294,7 +1206,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         },
         actor.actorId,
       );
-      await f.service.saveSettings(f.company.id, f.grant.id, actor.actorId, {
+      await f.service.saveSettings(f.grant.id, actor.actorId, {
         allowedProfileIds: [],
         maxCostUsd: 0.5,
       });
@@ -1324,7 +1236,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
           await db
             .select()
             .from(browserUseSessions)
-            .where(eq(browserUseSessions.companyId, f.company.id))
         )[0].status,
       ).toBe("closed");
       await expect(
@@ -1358,7 +1269,6 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
           await db
             .select()
             .from(browserUseSessions)
-            .where(eq(browserUseSessions.companyId, f.company.id))
         )[0].status,
       ).toBe("idle");
       expect(
@@ -1378,13 +1288,11 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       await f.tick();
       await f.access.archiveConnection(
         f.connection.connectionId,
-        f.company.id,
         actor,
       );
       const [session] = await db
         .select()
-        .from(browserUseSessions)
-        .where(eq(browserUseSessions.companyId, f.company.id));
+        .from(browserUseSessions);
       expect(session.status).toBe("closed");
       const [grant] = await db
         .select()

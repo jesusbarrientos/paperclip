@@ -15,16 +15,14 @@ import { Button } from "@/components/ui/button";
  * on demand; if the original is gone we still link by id with a soft label.
  */
 export function SkillLineageChip({
-  companyId,
   forkedFromSkillId,
 }: {
-  companyId: string;
   forkedFromSkillId: string | null;
 }) {
   const originalQuery = useQuery({
-    queryKey: queryKeys.companySkills.detail(companyId, forkedFromSkillId ?? ""),
-    queryFn: () => companySkillsApi.detail(companyId, forkedFromSkillId!),
-    enabled: Boolean(companyId && forkedFromSkillId),
+    queryKey: queryKeys.companySkills.detail(forkedFromSkillId ?? ""),
+    queryFn: () => companySkillsApi.detail(forkedFromSkillId!),
+    enabled: Boolean(forkedFromSkillId),
     staleTime: 60_000,
   });
 

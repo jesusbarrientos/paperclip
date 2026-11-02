@@ -338,20 +338,18 @@ export function GitHubPolicyEditor({
 
 export function GitHubAccessEditor({
   endpointId,
-  companyId,
   configuration,
   onChange,
 }: {
   endpointId: string;
-  companyId: string;
   configuration: GitHubChatConfiguration;
   onChange: (configuration: GitHubChatConfiguration) => void;
 }) {
   const accountLink = useRef<HTMLAnchorElement>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const members = useQuery({
-    queryKey: ["github-members", companyId],
-    queryFn: () => accessApi.listMembers(companyId),
+    queryKey: ["github-members"],
+    queryFn: () => accessApi.listMembers(),
   });
   const links = useQuery({
     queryKey: ["github-linked-members", endpointId],

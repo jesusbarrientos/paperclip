@@ -1,7 +1,6 @@
 export interface PaperclipMcpConfig {
   apiUrl: string;
   apiKey: string;
-  companyId: string | null;
   agentId: string | null;
   runId: string | null;
 }
@@ -32,7 +31,6 @@ export function readConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Papercl
   return {
     apiUrl: normalizeApiUrl(apiUrl),
     apiKey,
-    companyId: nonEmpty(env.PAPERCLIP_COMPANY_ID),
     agentId: nonEmpty(env.PAPERCLIP_AGENT_ID),
     runId: nonEmpty(env.PAPERCLIP_RUN_ID),
   };

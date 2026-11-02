@@ -19,21 +19,20 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
     const temporary = await startEmbeddedPostgresTestDatabase("paperclip-exhaustion-events-");
     const db = createDb(temporary.connectionString);
     const otherDb = createDb(temporary.connectionString);
-    const companyId = "20000000-0000-4000-8000-000000000001";
     const agentId = "20000000-0000-4000-8000-000000000002";
     const runId = "20000000-0000-4000-8000-000000000003";
     const otherRunId = "20000000-0000-4000-8000-000000000004";
     const exhaustion = { retryReason: "transient_failure", scheduledRetryAttempt: 2, maxAttempts: 2 };
     const event = {
-      companyId, agentId, runId, eventType: "lifecycle",
+      agentId, runId, eventType: "lifecycle",
       message: "Bounded retry exhausted after 2 scheduled attempts; no further automatic retry will be queued",
       payload: exhaustion,
     };
     try {
-      await db.insert(companies).values({ id: companyId, name: "Exhaustion fixture", issuePrefix: "EXH" });
-      await db.insert(agents).values({ id: agentId, companyId, name: "Exhaustion agent" });
+      await db.insert(companies).values({ name: "Exhaustion fixture", issuePrefix: "EXH" });
+      await db.insert(agents).values({ id: agentId, name: "Exhaustion agent" });
       await db.insert(heartbeatRuns).values([runId, otherRunId].map((id) => ({
-        id, companyId, agentId, status: "failed",
+        id, agentId, status: "failed",
       })));
       if (historical) {
         // Old builds wrote ordinary lifecycle rows with no new idempotency field.
@@ -69,7 +68,7 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
         .where(eq(heartbeatRunEvents.runId, runId)).orderBy(heartbeatRunEvents.seq);
       expect(rows.map((row) => row.seq)).toEqual([1, 2, 3, 4]);
       await expect(appendHeartbeatRunEvent(db, {
-        ...event, companyId: "20000000-0000-4000-8000-000000000099", retryExhaustion: exhaustion,
+        ...event, agentId: "20000000-0000-4000-8000-000000000099", retryExhaustion: exhaustion,
       })).rejects.toThrow("heartbeat_run_event_binding_mismatch");
     } finally {
       await temporary.cleanup();
@@ -79,16 +78,14 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
   it("serializes concurrent writers and rejects conflicting replay without cursor drift", async () => {
     const temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-events-");
     const db = createDb(temporary.connectionString);
-    const companyId = "20000000-0000-4000-8000-000000000001";
     const agentId = "20000000-0000-4000-8000-000000000002";
     const runId = "20000000-0000-4000-8000-000000000003";
     try {
-      await db.insert(companies).values({ id: companyId, name: "Allocator fixture", issuePrefix: "SEQ" });
-      await db.insert(agents).values({ id: agentId, companyId, name: "Allocator agent" });
-      await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running" });
+      await db.insert(companies).values({ name: "Allocator fixture", issuePrefix: "SEQ" });
+      await db.insert(agents).values({ id: agentId, name: "Allocator agent" });
+      await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running" });
       const eventTypes = ["heartbeat.started", "run.cancel.requested", "item.completed", "stdout"];
       const writes = Array.from({ length: 32 }, (_, index) => appendHeartbeatRunEvent(db, {
-        companyId,
         runId,
         agentId,
         eventType: eventTypes[index % eventTypes.length]!,
@@ -115,7 +112,6 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
       const legacyWrites = Array.from({ length: 16 }, (_, index) => (async () => {
         const seq = await allocateHeartbeatRunEventSeq(db, runId);
         await db.insert(heartbeatRunEvents).values({
-          companyId,
           runId,
           agentId,
           seq,
@@ -133,7 +129,6 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
 
       const original = rows.find((row) => row.sourceEventId === "source-event-1")!;
       await expect(appendHeartbeatRunEvent(db, {
-        companyId,
         runId,
         agentId,
         eventType: original.eventType,
@@ -148,7 +143,6 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
         },
       })).resolves.toEqual(expect.objectContaining({ disposition: "duplicate" }));
       await expect(appendHeartbeatRunEvent(db, {
-        companyId,
         runId,
         agentId,
         eventType: "item.failed",

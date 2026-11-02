@@ -223,7 +223,6 @@ export interface UseProposalReview {
  * confirm/reject affordances behave identically everywhere.
  */
 export function useProposalReview(
-  companyId: string | null,
   providerConfigs: CompanySecretProviderConfig[] = [],
 ): UseProposalReview {
   const queryClient = useQueryClient();
@@ -235,10 +234,9 @@ export function useProposalReview(
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = useCallback(() => {
-    if (!companyId) return;
-    queryClient.invalidateQueries({ queryKey: ["secret-proposals", companyId] });
-    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(companyId) });
-  }, [companyId, queryClient]);
+    queryClient.invalidateQueries({ queryKey: ["secret-proposals"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
+  }, [queryClient]);
 
   const approveMutation = useMutation({
     mutationFn: (draft: ApproveDraft) => {
@@ -247,7 +245,7 @@ export function useProposalReview(
         const name = draft.folder.trim()
           ? `${draft.folder.trim().replace(/\/+$/, "")}/${draft.leaf.trim()}`
           : draft.leaf.trim();
-        return secretsApi.approveProposal(companyId!, proposal.id, {
+        return secretsApi.approveProposal(proposal.id, {
           overrides: {
             name,
             description: draft.description.trim() || null,
@@ -255,7 +253,7 @@ export function useProposalReview(
           },
         });
       }
-      return secretsApi.approveProposal(companyId!, proposal.id, {
+      return secretsApi.approveProposal(proposal.id, {
         cascade: draft.cascade || undefined,
       });
     },
@@ -277,7 +275,7 @@ export function useProposalReview(
 
   const rejectMutation = useMutation({
     mutationFn: ({ proposal, reason }: { proposal: SecretProposalView; reason: string }) =>
-      secretsApi.rejectProposal(companyId!, proposal.id, { reason: reason.trim() }),
+      secretsApi.rejectProposal(proposal.id, { reason: reason.trim() }),
     onSuccess: (result) => {
       pushToast({
         title: "Proposal rejected",

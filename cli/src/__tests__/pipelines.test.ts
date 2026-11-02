@@ -26,8 +26,6 @@ async function run(args: string[]): Promise<void> {
     "http://localhost:3100",
     "--api-key",
     "board-token",
-    "--company-id",
-    COMPANY_ID,
   ], { from: "user" });
 }
 
@@ -84,7 +82,7 @@ describe("pipeline CLI commands", () => {
     }
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://localhost:3100/api/companies/${COMPANY_ID}/review-cases/bulk`);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://localhost:3100/api/review-cases/bulk`);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       items: [{ caseId: CASE_ID, decision: "request_changes", reason: "Needs edits", expectedVersion: 2 }],
     });

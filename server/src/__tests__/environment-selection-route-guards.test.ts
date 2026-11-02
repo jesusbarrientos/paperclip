@@ -47,7 +47,7 @@ const mockIssueReferenceService = vi.hoisted(() => ({
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeEnvBindingsForPersistence: vi.fn(async (_companyId: string, env: Record<string, unknown>) => env),
+  normalizeEnvBindingsForPersistence: vi.fn(async (env: Record<string, unknown>) => env),
 }));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
@@ -179,6 +179,7 @@ describe("execution environment route guards", () => {
     mockProjectService.createWorkspace.mockReset();
     mockProjectService.remove.mockReset();
     mockProjectService.resolveByReference.mockReset();
+    mockProjectService.resolveByReference.mockResolvedValue({ ambiguous: false, project: null });
     mockProjectService.listWorkspaces.mockReset();
     mockIssueService.create.mockReset();
     mockIssueService.getById.mockReset();
@@ -204,20 +205,18 @@ describe("execution environment route guards", () => {
   it("accepts sandbox environments on project create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockProjectService.create.mockResolvedValue({
       id: "project-1",
-      companyId: "company-1",
       name: "Sandboxed Project",
       status: "backlog",
     });
     const app = createProjectApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/projects")
+      .post("/api/projects")
       .send({
         name: "Sandboxed Project",
         executionWorkspacePolicy: {
@@ -233,20 +232,17 @@ describe("execution environment route guards", () => {
   it("accepts sandbox environments on project update", async () => {
     mockProjectService.getById.mockResolvedValue({
       id: "project-1",
-      companyId: "company-1",
       name: "Sandboxed Project",
       status: "backlog",
       archivedAt: null,
     });
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockProjectService.update.mockResolvedValue({
       id: "project-1",
-      companyId: "company-1",
       name: "Sandboxed Project",
       status: "backlog",
     });
@@ -262,19 +258,17 @@ describe("execution environment route guards", () => {
       });
 
     expect(res.status).not.toBe(422);
-    expect(mockProjectService.update).toHaveBeenCalled();
+    expect(mockProjectService.update, JSON.stringify([res.status, res.body])).toHaveBeenCalled();
   });
 
   it("accepts sandbox environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockIssueService.create.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       title: "Sandboxed Issue",
       status: "todo",
       identifier: "PAPA-999",
@@ -282,7 +276,7 @@ describe("execution environment route guards", () => {
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/issues")
+      .post("/api/issues")
       .send({
         title: "Sandboxed Issue",
         executionWorkspaceSettings: {
@@ -297,14 +291,13 @@ describe("execution environment route guards", () => {
   it("rejects unsupported driver environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "unsupported_driver",
       config: {},
     });
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/issues")
+      .post("/api/issues")
       .send({
         title: "Unsupported Driver Issue",
         executionWorkspaceSettings: {
@@ -320,14 +313,13 @@ describe("execution environment route guards", () => {
   it("rejects built-in fake sandbox environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "sandbox",
       config: { provider: "fake" },
     });
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/issues")
+      .post("/api/issues")
       .send({
         title: "Fake Sandbox Issue",
         executionWorkspaceSettings: {
@@ -343,13 +335,11 @@ describe("execution environment route guards", () => {
   it("accepts plugin-backed sandbox environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockIssueService.create.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       title: "Plugin Sandbox Issue",
       status: "todo",
       identifier: "PAPA-999",
@@ -357,7 +347,7 @@ describe("execution environment route guards", () => {
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/companies/company-1/issues")
+      .post("/api/issues")
       .send({
         title: "Plugin Sandbox Issue",
         executionWorkspaceSettings: {
@@ -372,7 +362,6 @@ describe("execution environment route guards", () => {
   it("accepts sandbox environments on issue update", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       status: "todo",
       assigneeAgentId: null,
       assigneeUserId: null,
@@ -381,13 +370,11 @@ describe("execution environment route guards", () => {
     });
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockIssueService.update.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       status: "todo",
       identifier: "PAPA-999",
     });

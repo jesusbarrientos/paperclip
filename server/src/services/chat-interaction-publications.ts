@@ -250,7 +250,6 @@ export async function enqueueIssueInteractionChatPublications(
       .where(
         and(
           eq(heartbeatRuns.id, interaction.sourceRunId),
-          eq(heartbeatRuns.companyId, interaction.companyId),
           eq(heartbeatRuns.agentId, interaction.createdByAgentId),
         ),
       )
@@ -266,14 +265,12 @@ export async function enqueueIssueInteractionChatPublications(
     .innerJoin(
       chatEndpoints,
       and(
-        eq(chatEndpoints.companyId, chatConversations.companyId),
         eq(chatEndpoints.id, chatConversations.endpointId),
           eq(chatEndpoints.publicationMode, "automatic"),
       ),
     )
     .where(
       and(
-        eq(chatConversations.companyId, interaction.companyId),
         eq(chatConversations.issueId, interaction.issueId),
         inArray(chatConversations.state, ["active", "waiting"]),
         inArray(chatEndpoints.status, ["active", "verifying"]),
@@ -411,7 +408,6 @@ export async function enqueueIssueInteractionChatPublications(
     const rows = await db
       .insert(chatPublications)
       .values({
-        companyId: interaction.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: interaction.issueId,
@@ -424,14 +420,13 @@ export async function enqueueIssueInteractionChatPublications(
     const publication = rows[0];
     if (publication && endpoint.provider === "imessage-photon" && nativePhotonInteraction(interaction)) {
       const reference = randomBytes(9).toString("base64url");
-      await db.insert(chatActions).values({ companyId: interaction.companyId, endpointId: endpoint.id, conversationId: conversation.id,
+      await db.insert(chatActions).values({ endpointId: endpoint.id, conversationId: conversation.id,
         kind: "photon_interaction", providerActionId: `photon:${reference}`,
         payload: { version: 1, reference, interactionId: interaction.id, publicationId: publication.id, sessionGeneration: conversation.sessionGeneration,
           expiresAt: new Date(publication.createdAt.getTime() + CHAT_QUESTION_ACTION_TOKEN_TTL_MS).toISOString() }, status: "issued" });
     } else if (publication && formDraft) {
       await db.insert(chatActions).values(
         chatQuestionFormActionRecords(formDraft, {
-          companyId: interaction.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           publicationId: publication.id,
@@ -443,7 +438,6 @@ export async function enqueueIssueInteractionChatPublications(
       ).toISOString();
       await db.insert(chatActions).values(
         questionActionTokens.map(({ actionId, option }) => ({
-          companyId: interaction.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           kind: "question_answer",
@@ -469,7 +463,6 @@ export async function enqueueIssueInteractionChatPublications(
       ).toISOString();
       await db.insert(chatActions).values(
         confirmationActionTokens.map(({ actionId, decision }) => ({
-          companyId: interaction.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           kind: "confirmation_response",
@@ -512,7 +505,6 @@ export async function enqueueTerminalIssueInteractionChatPublications(
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, interaction.companyId),
           eq(chatPublications.issueId, interaction.issueId),
           eq(
             sql<string>`${chatPublications.payload}->>'interactionId'`,
@@ -536,7 +528,6 @@ export async function enqueueTerminalIssueInteractionChatPublications(
     })
     .where(
       and(
-        eq(chatActions.companyId, interaction.companyId),
         inArray(chatActions.kind, [
           "photon_interaction",
           "question_answer",
@@ -629,10 +620,7 @@ export async function enqueueTerminalIssueInteractionChatPublications(
       })
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, interaction.companyId),
-          eq(issues.id, interaction.issueId),
-        ),
+        eq(issues.id, interaction.issueId),
       )
       .then((rows) => rows[0] ?? null);
     const requestedByActorType = interaction.resolvedByUserId
@@ -657,7 +645,6 @@ export async function enqueueTerminalIssueInteractionChatPublications(
       await db
         .insert(chatActions)
         .values({
-          companyId: interaction.companyId,
           endpointId: wakeBinding.endpointId,
           conversationId: wakeBinding.conversationId,
           kind: "interaction_wakeup",
@@ -710,7 +697,6 @@ export async function enqueueTerminalIssueInteractionChatPublications(
     const rows = await db
       .insert(chatPublications)
       .values({
-        companyId: interaction.companyId,
         endpointId: original.endpointId,
         conversationId: original.conversationId,
         issueId: interaction.issueId,
@@ -742,7 +728,6 @@ export async function enqueueTerminalIssueInteractionChatPublications(
 export async function cancelPendingIssueInteractionChatPublications(
   db: ChatPublicationDb,
   input: {
-    companyId: string;
     issueId: string;
     interactionIds: readonly string[];
   },
@@ -757,7 +742,6 @@ export async function cancelPendingIssueInteractionChatPublications(
     })
     .where(
       and(
-        eq(chatActions.companyId, input.companyId),
         inArray(chatActions.kind, [
           "question_answer",
           "question_form_open",
@@ -781,7 +765,6 @@ export async function cancelPendingIssueInteractionChatPublications(
     })
     .where(
       and(
-        eq(chatPublications.companyId, input.companyId),
         eq(chatPublications.issueId, input.issueId),
         inArray(chatPublications.state, ["pending", "retry"]),
         inArray(sql<string>`${chatPublications.payload}->>'interactionId'`, [

@@ -16,7 +16,6 @@ function queuedEntry(body: string, id: string, position: number): IssueQueuedCom
   return {
     comment: {
       id,
-      companyId: "storybook",
       issueId: "composer-queue-story",
       authorType: "user",
       authorAgentId: null,

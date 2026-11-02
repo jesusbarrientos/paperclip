@@ -55,26 +55,24 @@ describe("Slack avatar download", () => {
   });
 });
 
-function Progress({ company, endpoint }: { company: string; endpoint: string }) {
-  const { progress, save } = useSlackAvatarProgress(company, endpoint);
+function Progress({ endpoint }: { endpoint: string }) {
+  const { progress, save } = useSlackAvatarProgress(endpoint);
   return <button onClick={() => save("skipped")}>{progress ?? "pending"}</button>;
 }
 describe("optional avatar progress", () => {
-  it("keeps progress scoped to the company and endpoint", () => {
-    const { root, node } = render(<Progress company="one" endpoint="a" />);
+  it("keeps progress scoped to the endpoint", () => {
+    const { root, node } = render(<Progress endpoint="a" />);
     flushSync(() => node.querySelector("button")!.click());
     expect(node.textContent).toBe("skipped");
-    flushSync(() => root.render(<Progress company="one" endpoint="b" />));
+    flushSync(() => root.render(<Progress endpoint="b" />));
     expect(node.textContent).toBe("pending");
-    flushSync(() => root.render(<Progress company="two" endpoint="a" />));
-    expect(node.textContent).toBe("pending");
-    flushSync(() => root.render(<Progress company="one" endpoint="a" />));
+    flushSync(() => root.render(<Progress endpoint="a" />));
     expect(node.textContent).toBe("skipped");
   });
   it("allows skipping even if browser storage is unavailable", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("Unavailable"); });
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("Unavailable"); });
-    const { node } = render(<Progress company="one" endpoint="a" />);
+    const { node } = render(<Progress endpoint="a" />);
     flushSync(() => node.querySelector("button")!.click());
     expect(node.textContent).toBe("skipped");
   });

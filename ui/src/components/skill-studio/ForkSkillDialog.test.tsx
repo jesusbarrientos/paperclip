@@ -103,7 +103,6 @@ function makeAgent(over: Partial<CompanySkillUsageAgent> = {}): CompanySkillUsag
 function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
   return {
     id: "skill-1",
-    companyId: "company-1",
     key: "github/anthropics/skills",
     slug: "deep-research",
     name: "Deep Research",
@@ -124,7 +123,6 @@ function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
     sharingScope: "company",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,
@@ -174,7 +172,6 @@ function makeForkSummary(over: Partial<CompanySkillForkSummary> = {}): CompanySk
     sourceRef: null,
     key: "company/deep-research-fork",
     forkedFromSkillId: "skill-1",
-    forkedFromCompanyId: "company-1",
     currentVersionId: "v1",
     createdByCurrentActor: true,
     diverged: false,
@@ -218,7 +215,6 @@ describe("ForkSkillDialog", () => {
 
     await renderNode(
       <ForkSkillDialog
-        companyId="company-1"
         skill={makeSkill({ usedByAgents: agents, attachedAgentCount: 2 })}
         open
         onOpenChange={() => {}}
@@ -232,7 +228,7 @@ describe("ForkSkillDialog", () => {
     const confirm = findButton((t) => t.startsWith("Create copy & switch 2 agents"));
     await click(confirm);
 
-    expect(mockCompanySkillsApi.fork).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockCompanySkillsApi.fork).toHaveBeenCalledWith("skill-1", {
       reassignAgentIds: ["a1", "a2"],
     });
     expect(mockNavigate).toHaveBeenCalledWith("/skills/studio/fork-new");
@@ -249,7 +245,6 @@ describe("ForkSkillDialog", () => {
 
     await renderNode(
       <ForkSkillDialog
-        companyId="company-1"
         skill={makeSkill({ usedByAgents: agents, attachedAgentCount: 1 })}
         open
         onOpenChange={() => {}}
@@ -266,7 +261,7 @@ describe("ForkSkillDialog", () => {
 
     await click(findButton((t) => t === "Create copy"));
 
-    expect(mockCompanySkillsApi.fork).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockCompanySkillsApi.fork).toHaveBeenCalledWith("skill-1", {
       reassignAgentIds: [],
     });
   });
@@ -278,7 +273,6 @@ describe("ForkSkillDialog", () => {
 
     await renderNode(
       <ForkSkillDialog
-        companyId="company-1"
         skill={makeSkill({ existingForks: [makeForkSummary({ id: "fork-existing" })] })}
         open
         onOpenChange={() => {}}
@@ -293,7 +287,7 @@ describe("ForkSkillDialog", () => {
 
   it("hides the toggle and reports zero usage when no agents use the skill", async () => {
     await renderNode(
-      <ForkSkillDialog companyId="company-1" skill={makeSkill()} open onOpenChange={() => {}} />,
+      <ForkSkillDialog skill={makeSkill()} open onOpenChange={() => {}} />,
     );
 
     expect(document.body.textContent).toContain("No agents currently use this skill");

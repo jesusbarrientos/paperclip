@@ -123,7 +123,6 @@ test("testEnvironment does not warn about missing API keys when Hermes config pr
     "  api_key: test-secret",
   ], async () => {
     const result = await testEnvironment({
-      companyId: "company-test",
       adapterType: "hermes_local",
       config: {
         hermesCommand: "python3",
@@ -146,7 +145,6 @@ test("testEnvironment describes provider-omitted runtime config without inventin
     "  api_key: test-secret",
   ], async () => {
     const result = await testEnvironment({
-      companyId: "company-test",
       adapterType: "hermes_local",
       config: {
         hermesCommand: "python3",
@@ -170,7 +168,6 @@ test("testEnvironment does not warn about missing API keys when Hermes config pr
     "  api_key: test-secret",
   ], async () => {
     const result = await testEnvironment({
-      companyId: "company-test",
       adapterType: "hermes_local",
       config: {
         hermesCommand: "python3",

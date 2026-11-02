@@ -21,7 +21,6 @@ import {
 export async function commitToolActionReview(
   db: Db,
   input: {
-    companyId: string;
     actionRequestId: string;
     issueId?: string;
     interactionId?: string;
@@ -37,10 +36,7 @@ export async function commitToolActionReview(
     .select()
     .from(toolActionRequests)
     .where(
-      and(
-        eq(toolActionRequests.id, input.actionRequestId),
-        eq(toolActionRequests.companyId, input.companyId),
-      ),
+      eq(toolActionRequests.id, input.actionRequestId),
     )
     .limit(1);
   if (!source) throw notFound("Tool action request not found");
@@ -54,10 +50,7 @@ export async function commitToolActionReview(
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.id, source.issueId),
-              eq(issues.companyId, input.companyId),
-            ),
+            eq(issues.id, source.issueId),
           )
           .for("update")
       : [];
@@ -66,10 +59,7 @@ export async function commitToolActionReview(
           .select()
           .from(issueThreadInteractions)
           .where(
-            and(
-              eq(issueThreadInteractions.id, source.interactionId),
-              eq(issueThreadInteractions.companyId, input.companyId),
-            ),
+            eq(issueThreadInteractions.id, source.interactionId),
           )
           .for("update")
       : [];
@@ -77,10 +67,7 @@ export async function commitToolActionReview(
       .select()
       .from(toolActionRequests)
       .where(
-        and(
-          eq(toolActionRequests.id, source.id),
-          eq(toolActionRequests.companyId, input.companyId),
-        ),
+        eq(toolActionRequests.id, source.id),
       )
       .for("update");
     if (!current) throw notFound("Tool action request not found");
@@ -104,10 +91,7 @@ export async function commitToolActionReview(
       .select()
       .from(toolInvocations)
       .where(
-        and(
-          eq(toolInvocations.id, current.invocationId),
-          eq(toolInvocations.companyId, input.companyId),
-        ),
+        eq(toolInvocations.id, current.invocationId),
       )
       .limit(1);
     if (
@@ -157,7 +141,6 @@ export async function commitToolActionReview(
       await toolAccessPolicyService(
         tx as unknown as Db,
       ).createTrustRuleFromActionRequest({
-        companyId: input.companyId,
         actionRequestId: current.id,
         body: { approvalThreshold: 1, priority: 40, argumentMode: "action" },
         actor: { userId: input.actor.userId ?? "board" },
@@ -178,10 +161,7 @@ export async function commitToolActionReview(
         updatedAt: now,
       })
       .where(
-        and(
-          eq(toolInvocations.id, current.invocationId),
-          eq(toolInvocations.companyId, input.companyId),
-        ),
+        eq(toolInvocations.id, current.invocationId),
       );
     if (interaction && issue) {
       await tx
@@ -209,7 +189,6 @@ export async function commitToolActionReview(
       await tx
         .insert(toolActionDeliveries)
         .values({
-          companyId: input.companyId,
           actionRequestId: current.id,
           issueId: issue.id,
           interactionId: interaction.id,
@@ -218,7 +197,6 @@ export async function commitToolActionReview(
       await logActivity(
         tx as unknown as Db,
         {
-          companyId: input.companyId,
           actorType: "user",
           actorId: input.actor.userId ?? "board",
           action:

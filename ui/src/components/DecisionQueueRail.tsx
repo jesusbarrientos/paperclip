@@ -12,7 +12,6 @@ export function decisionsHref(queueKey?: string | null): string {
 }
 
 interface DecisionQueueRailProps {
-  companyId: string;
   /** The active queue key, or null when the desk (All) is active. */
   activeQueueKey?: string | null;
 }
@@ -24,11 +23,10 @@ interface DecisionQueueRailProps {
  * the only fixed chip. A dot marks a queue with recent activity; the count is
  * the queue's pending items.
  */
-export function DecisionQueueRail({ companyId, activeQueueKey = null }: DecisionQueueRailProps) {
+export function DecisionQueueRail({ activeQueueKey = null }: DecisionQueueRailProps) {
   const { data: queues } = useQuery({
-    queryKey: queryKeys.decisionQueues.list(companyId),
-    queryFn: () => decisionQueuesApi.list(companyId),
-    enabled: !!companyId,
+    queryKey: queryKeys.decisionQueues.list(),
+    queryFn: () => decisionQueuesApi.list(),
   });
 
   // Nothing to show until at least one queue exists — the desk still works

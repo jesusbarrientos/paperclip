@@ -11,7 +11,7 @@ import { PublicMcpDisabledError, type McpPrincipal, type PublicMcpOAuth } from "
 import { boundedJson, callbackUrl, eventFetch, McpEventError, postEvent, signingKey, verifyCallback, type EventFetch } from "./event-webhooks.js";
 
 const names = ["paperclip.task.status_changed", "paperclip.task.comment_created", "paperclip.task.document_updated"] as const;
-const filters = z.object({ companyId: z.uuid(), taskId: z.uuid(), statuses: z.array(z.enum(ISSUE_STATUSES)).min(1).max(ISSUE_STATUSES.length).optional() }).strict();
+const filters = z.object({ taskId: z.uuid(), statuses: z.array(z.enum(ISSUE_STATUSES)).min(1).max(ISSUE_STATUSES.length).optional() }).strict();
 const common = { name: z.enum(names), arguments: filters, delivery: z.object({ mode: z.literal("webhook"), url: z.string().max(2048), secret: z.string().max(100).optional() }).strict(), _meta: z.record(z.string(), z.unknown()).optional() };
 const subscribeSchema = z.object({ ...common, ttlMs: z.number().int().positive().nullable().optional(), cursor: z.null().optional() }).strict();
 const unsubscribeSchema = z.object(common).strict();
@@ -33,7 +33,7 @@ export const publicMcpEventDefinitions = names.map((name, index) => ({
   delivery: ["webhook"],
   inputSchema: z.toJSONSchema(index === 0 ? filters : filters.omit({ statuses: true })),
   payloadSchema: z.toJSONSchema(z.object({
-    companyId: z.uuid(), taskId: z.uuid(), url: z.url(),
+    taskId: z.uuid(), url: z.url(),
     ...(index === 0 ? { status: z.enum(ISSUE_STATUSES) } : index === 1 ? { commentId: z.uuid() } : { documentKey: z.string(), revisionNumber: z.number().int() }),
   }).strict()),
 }));
@@ -47,7 +47,7 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
   const decrypt = async (s: Subscription): Promise<Destination> => JSON.parse(await localEncryptedProvider.resolveVersion({ material: s.deliveryMaterial, externalRef: null, providerVersionRef: null }));
 
   async function authorize(principal: McpPrincipal, args: z.infer<typeof filters>) {
-    if (args.companyId !== principal.grant.companyId || !principal.grant.scopes.includes("paperclip:read")) throw new McpEventError(-32602, "This task is outside the authorized company.");
+    if (!principal.grant.scopes.includes("paperclip:read")) throw new McpEventError(-32602, "Read permission is required.");
     await api(principal, "GET", `/issues/${args.taskId}`);
   }
   async function authorizeCloud(principal: McpPrincipal, authority?: CloudEventAuthority) {
@@ -60,13 +60,14 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
     });
     if (!response.ok) { await response.body?.cancel(); throw new McpEventError(-32602, "Hosted connection access is unavailable."); }
     const body = await boundedJson(response);
-    const result = body.result as { isError?: boolean; structuredContent?: { user?: { id?: string }; companyId?: string; connectionId?: string } } | undefined;
-    if (result?.isError || result?.structuredContent?.user?.id !== principal.grant.userId || result?.structuredContent?.companyId !== principal.grant.companyId || result?.structuredContent?.connectionId !== principal.grant.id) {
+    const result = body.result as { isError?: boolean; structuredContent?: { user?: { id?: string };
+ connectionId?: string } } | undefined;
+    if (result?.isError || result?.structuredContent?.user?.id !== principal.grant.userId || result?.structuredContent?.connectionId !== principal.grant.id) {
       throw new McpEventError(-32602, "Hosted connection authority does not match.");
     }
   }
   function identity(principal: McpPrincipal, input: z.infer<typeof unsubscribeSchema>) {
-    // Grant includes the authenticated company, person and registered client.
+    // Grant includes the authenticated person and registered client.
     return "sub_" + createHash("sha256").update(canonical([principal.grant.id, callbackUrl(input.delivery.url), input.name, input.arguments])).digest("hex");
   }
   function validate(input: z.infer<typeof unsubscribeSchema>) {
@@ -99,23 +100,21 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
       const verify = !existing || existing.verifiedAt.getTime() + rotationMs <= now() || previous?.secret !== secret;
       if (!existing) {
         const [total] = await tx.select({ n: count() }).from(subscriptions);
-        const [company] = await tx.select({ n: count() }).from(subscriptions).where(eq(subscriptions.companyId, principal.grant.companyId));
         const [grant] = await tx.select({ n: count() }).from(subscriptions).where(eq(subscriptions.grantId, principal.grant.id));
         const reserved = await tx.select().from(admissions).where(and(isNull(admissions.finishedAt), eq(admissions.reservesSubscription, true)));
-        if (total!.n + reserved.length >= 1000 || company!.n + reserved.filter(r => r.companyId === principal.grant.companyId).length >= 100 || grant!.n + reserved.filter(r => r.grantId === principal.grant.id).length >= 20) {
+        if (total!.n + reserved.length >= 100 || grant!.n + reserved.filter(r => r.grantId === principal.grant.id).length >= 20) {
           throw new McpEventError(-32602, "Subscription limit reached. Stop an existing monitor first.");
         }
       }
       if (!verify && !cloudOrigin) return { existing, previous, verify, lease: null };
       const attempts = await tx.select().from(admissions);
-      const companyAttempts = attempts.filter(r => r.companyId === principal.grant.companyId);
-      const grantAttempts = companyAttempts.filter(r => r.grantId === principal.grant.id);
+      const grantAttempts = attempts.filter(r => r.grantId === principal.grant.id);
       const pendingCount = (rows: typeof attempts) => rows.filter(r => !r.finishedAt).length;
-      if (attempts.length >= 1000 || companyAttempts.length >= 200 || grantAttempts.length >= 30
-        || pendingCount(attempts) >= 32 || pendingCount(companyAttempts) >= 8 || pendingCount(grantAttempts) >= 2) {
+      if (attempts.length >= 200 || grantAttempts.length >= 30
+        || pendingCount(attempts) >= 8 || pendingCount(grantAttempts) >= 2) {
         throw new McpEventError(-32602, "Subscription verification capacity reached. Retry later.");
       }
-      const [lease] = await tx.insert(admissions).values({ subscriptionId: id, companyId: principal.grant.companyId, grantId: principal.grant.id,
+      const [lease] = await tx.insert(admissions).values({ subscriptionId: id, grantId: principal.grant.id,
         reservesSubscription: !existing, createdAt: new Date(now()), expiresAt: new Date(now() + 60_000) }).returning();
       return { existing, previous, verify, lease: lease! };
     });
@@ -153,11 +152,11 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
         // not revoke a lifetime already promised to another caller. Hosted
         // authority still caps the lifetime to its current proof.
         const expiresAt = new Date(Math.min(Math.max(retainedExpiry, now() + Math.min(Math.max(input.ttlMs ?? lifetime, 30_000), lifetime)), cloudOrigin ? Math.min(now() + rotationMs, cloud!.expiresAt) : Infinity));
-        const value = { companyId: principal.grant.companyId, grantId: principal.grant.id, name: input.name, taskId: input.arguments.taskId,
+        const value = { grantId: principal.grant.id, name: input.name, taskId: input.arguments.taskId,
           arguments: input.arguments, deliveryMaterial: material, expiresAt, stoppedAt: null,
           verifiedAt: verify ? new Date(now()) : existing!.verifiedAt, startsAt: existing?.startsAt ?? requestedAt, scannedAt: new Date(now()) };
         await tx.insert(subscriptions).values({ id, ...value }).onConflictDoUpdate({ target: subscriptions.id, set: value });
-        await logActivity(tx as unknown as Db, { companyId: principal.grant.companyId, actorType: "user", actorId: principal.grant.userId,
+        await logActivity(tx as unknown as Db, { actorType: "user", actorId: principal.grant.userId,
           action: "mcp.event_subscribed", entityType: "mcp_subscription", entityId: id, details: { name: input.name, taskId: input.arguments.taskId, expiresAt: expiresAt.toISOString() } });
         return { id, refreshBefore: expiresAt.toISOString(), cursor: null, truncated: false };
       });
@@ -172,20 +171,20 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${id}, 0))`);
       await tx.update(admissions).set({ finishedAt: new Date(now()) }).where(and(eq(admissions.subscriptionId, id), isNull(admissions.finishedAt)));
       await tx.delete(subscriptions).where(and(eq(subscriptions.id, id), eq(subscriptions.grantId, principal.grant.id)));
-      await logActivity(tx as unknown as Db, { companyId: principal.grant.companyId, actorType: "user", actorId: principal.grant.userId,
+      await logActivity(tx as unknown as Db, { actorType: "user", actorId: principal.grant.userId,
         action: "mcp.event_unsubscribed", entityType: "mcp_subscription", entityId: id, details: { name: input.name, taskId: input.arguments.taskId } });
     });
     return {};
   }
 
   async function enqueue(s: Subscription) {
-    const [company] = await db.select({ prefix: companies.issuePrefix }).from(companies).where(eq(companies.id, s.companyId));
+    const [company] = await db.select({ prefix: companies.issuePrefix }).from(companies).limit(1);
     if (!company) return;
     // No moving timestamp cursor: an activity transaction committing late cannot
     // fall behind a high-water mark. The unique receipt is the durable scan marker.
     const rows = await db.select({ activity: activityLog }).from(activityLog)
       .leftJoin(deliveries, and(eq(deliveries.subscriptionId, s.id), eq(deliveries.activityId, activityLog.id)))
-      .where(and(eq(activityLog.companyId, s.companyId), eq(activityLog.entityType, "issue"), eq(activityLog.entityId, s.taskId),
+      .where(and(eq(activityLog.entityType, "issue"), eq(activityLog.entityId, s.taskId),
         gte(activityLog.createdAt, s.startsAt), lt(activityLog.createdAt, s.expiresAt), isNull(deliveries.id)))
       .orderBy(asc(activityLog.createdAt), asc(activityLog.id)).limit(100);
     for (const { activity } of rows) {
@@ -196,7 +195,7 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
       const wanted = s.name === names[0] ? ["issue.updated", "issue.checked_out", "issue.released"].includes(activity.action) && changedStatus && ISSUE_STATUSES.includes(details.status as typeof ISSUE_STATUSES[number]) && (!Array.isArray(s.arguments.statuses) || s.arguments.statuses.includes(details.status))
         : s.name === names[1] ? activity.action === "issue.comment_added" && z.uuid().safeParse(details.commentId).success
         : ["issue.document_created", "issue.document_updated"].includes(activity.action) && typeof details.key === "string" && typeof details.revisionNumber === "number";
-      const data = { companyId: s.companyId, taskId: s.taskId, url: oauth.config.origin + "/" + encodeURIComponent(company.prefix) + "/issues/" + s.taskId,
+      const data = { taskId: s.taskId, url: oauth.config.origin + "/" + encodeURIComponent(company.prefix) + "/issues/" + s.taskId,
         ...(s.name === names[0] ? { status: details.status } : s.name === names[1] ? { commentId: details.commentId } : { documentKey: details.key, revisionNumber: details.revisionNumber }) };
       // Nonmatching activity also gets a receipt, so it cannot starve later matches.
       await db.insert(deliveries).values({ subscriptionId: s.id, activityId: activity.id,

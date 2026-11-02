@@ -88,12 +88,12 @@ describe("unclaimed Cloud background work", () => {
       req.end();
     });
     try {
-      for (const path of ["/api/companies/company/events/ws?token=anything", "/api/health", "/prp", "/"]) {
+      for (const path of ["/api/events/ws?token=anything", "/api/health", "/prp", "/"]) {
         expect(await upgrade(path)).toBe(503);
       }
       expect(authenticate).not.toHaveBeenCalled();
       standby = false;
-      expect(await upgrade("/api/companies/company/events/ws?token=anything")).toBe(101);
+      expect(await upgrade("/api/events/ws?token=anything")).toBe(101);
       expect(authenticate).toHaveBeenCalledOnce();
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

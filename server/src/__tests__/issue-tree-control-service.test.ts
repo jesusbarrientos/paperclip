@@ -58,7 +58,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
 
   it("previews a subtree without changing issue statuses", async () => {
     const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const rootIssueId = randomUUID();
@@ -66,24 +65,15 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const doneChildId = randomUUID();
     const cancelledChildId = randomUUID();
 
-    await db.insert(companies).values([
-      {
-        id: companyId,
-        name: "Paperclip",
-        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-        requireBoardApprovalForNewAgents: false,
-      },
-      {
-        id: otherCompanyId,
-        name: "OtherCo",
-        issuePrefix: `T${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-        requireBoardApprovalForNewAgents: false,
-      },
-    ]);
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -95,7 +85,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "running",
@@ -105,7 +94,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "Root",
         status: "todo",
         priority: "medium",
@@ -113,7 +101,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: runningChildId,
-        companyId,
         parentId: rootIssueId,
         title: "Running child",
         status: "in_progress",
@@ -124,7 +111,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: doneChildId,
-        companyId,
         parentId: rootIssueId,
         title: "Done child",
         status: "done",
@@ -133,7 +119,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: cancelledChildId,
-        companyId,
         parentId: rootIssueId,
         title: "Cancelled child",
         status: "cancelled",
@@ -142,7 +127,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
     ]);
     const svc = issueTreeControlService(db);
-    const preview = await svc.preview(companyId, rootIssueId, { mode: "pause" });
+    const preview = await svc.preview(rootIssueId, { mode: "pause" });
 
     expect(preview.issues.map((issue) => [issue.id, issue.depth, issue.skipped, issue.skipReason])).toEqual([
       [rootIssueId, 0, false, null],
@@ -169,10 +154,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       .from(issues)
       .where(eq(issues.id, runningChildId));
     expect(runningChildAfterPreview.status).toBe("in_progress");
-
-    await expect(svc.preview(otherCompanyId, rootIssueId, { mode: "pause" })).rejects.toMatchObject({
-      status: 404,
-    });
   });
 
   it("previews a human-owned handoff as static work with no affected agent execution", async () => {
@@ -187,7 +168,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     });
     await db.insert(issues).values({
       id: rootIssueId,
-      companyId,
       title: "Human validation handoff",
       status: "in_progress",
       priority: "medium",
@@ -197,7 +177,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     });
 
     const svc = issueTreeControlService(db);
-    const preview = await svc.preview(companyId, rootIssueId, { mode: "pause" });
+    const preview = await svc.preview(rootIssueId, { mode: "pause" });
 
     expect(preview.issues).toEqual([
       expect.objectContaining({
@@ -236,14 +216,13 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     });
     await db.insert(issues).values({
       id: rootIssueId,
-      companyId,
       title: "Root",
       status: "todo",
       priority: "medium",
     });
 
     const svc = issueTreeControlService(db);
-    const created = await svc.createHold(companyId, rootIssueId, {
+    const created = await svc.createHold(rootIssueId, {
       mode: "pause",
       reason: "operator requested pause",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
@@ -257,7 +236,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       skipped: false,
     });
 
-    const released = await svc.releaseHold(companyId, rootIssueId, created.hold.id, {
+    const released = await svc.releaseHold(rootIssueId, created.hold.id, {
       reason: "operator resumed",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
     });
@@ -283,7 +262,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "Root",
         status: "done",
         priority: "medium",
@@ -291,7 +269,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: runningChildId,
-        companyId,
         parentId: rootIssueId,
         title: "Running child",
         status: "in_progress",
@@ -300,7 +277,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: todoChildId,
-        companyId,
         parentId: rootIssueId,
         title: "Todo child",
         status: "todo",
@@ -309,7 +285,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: doneChildId,
-        companyId,
         parentId: rootIssueId,
         title: "Done child",
         status: "done",
@@ -318,7 +293,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
     ]);
     const [pendingInteraction] = await db.insert(issueThreadInteractions).values({
-      companyId,
       issueId: runningChildId,
       kind: "request_confirmation",
       status: "pending",
@@ -327,7 +301,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     }).returning();
 
     const svc = issueTreeControlService(db);
-    const cancel = await svc.createHold(companyId, rootIssueId, {
+    const cancel = await svc.createHold(rootIssueId, {
       mode: "cancel",
       reason: "bad plan",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
@@ -339,7 +313,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       [doneChildId, true, "terminal_status"],
     ]);
 
-    const cancelled = await svc.cancelIssueStatusesForHold(companyId, rootIssueId, cancel.hold.id);
+    const cancelled = await svc.cancelIssueStatusesForHold(rootIssueId, cancel.hold.id);
     expect(cancelled.updatedIssueIds.sort()).toEqual([runningChildId, todoChildId].sort());
 
     const afterCancel = await db
@@ -362,7 +336,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       .set({ status: "blocked", cancelledAt: null, updatedAt: new Date() })
       .where(eq(issues.id, todoChildId));
 
-    const restorePreview = await svc.preview(companyId, rootIssueId, { mode: "restore" });
+    const restorePreview = await svc.preview(rootIssueId, { mode: "restore" });
     expect(restorePreview.issues.map((issue) => [issue.id, issue.skipped, issue.skipReason])).toEqual([
       [rootIssueId, true, "not_cancelled"],
       [runningChildId, false, null],
@@ -371,12 +345,12 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     ]);
     expect(restorePreview.warnings.map((warning) => warning.code)).toContain("restore_conflicts_present");
 
-    const restore = await svc.createHold(companyId, rootIssueId, {
+    const restore = await svc.createHold(rootIssueId, {
       mode: "restore",
       reason: "resume useful work",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
     });
-    const restored = await svc.restoreIssueStatusesForHold(companyId, rootIssueId, restore.hold.id, {
+    const restored = await svc.restoreIssueStatusesForHold(rootIssueId, restore.hold.id, {
       reason: "resume useful work",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
     });
@@ -425,7 +399,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "SecurityEngineer",
       role: "engineer",
       status: "active",
@@ -437,7 +410,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(issues).values(
       issuePath.map((issueId, index) => ({
         id: issueId,
-        companyId,
         parentId: index > 0 ? issuePath[index - 1] : null,
         title: `Issue ${index}`,
         status: "todo",
@@ -448,14 +420,12 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(issueComments).values([
       {
         id: rootCommentId,
-        companyId,
         issueId: rootIssueId,
         authorUserId: "board-user",
         body: "Please answer this root issue question.",
       },
       {
         id: deepDescendantCommentId,
-        companyId,
         issueId: deepDescendantIssueId,
         authorUserId: "board-user",
         body: "Please answer this deep descendant issue question.",
@@ -464,7 +434,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(agentWakeupRequests).values([
       {
         id: rootWakeupRequestId,
-        companyId,
         agentId,
         source: "automation",
         triggerDetail: "system",
@@ -477,7 +446,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: forgedWakeupRequestId,
-        companyId,
         agentId,
         source: "on_demand",
         triggerDetail: "manual",
@@ -490,7 +458,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: deepDescendantWakeupRequestId,
-        companyId,
         agentId,
         source: "automation",
         triggerDetail: "system",
@@ -505,7 +472,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: rootRunId,
-        companyId,
         agentId,
         invocationSource: "automation",
         triggerDetail: "system",
@@ -521,7 +487,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: forgedRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         triggerDetail: "manual",
@@ -536,7 +501,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: deepDescendantRunId,
-        companyId,
         agentId,
         invocationSource: "automation",
         triggerDetail: "system",
@@ -553,12 +517,12 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     ]);
 
     const treeSvc = issueTreeControlService(db);
-    await treeSvc.createHold(companyId, rootIssueId, {
+    await treeSvc.createHold(rootIssueId, {
       mode: "pause",
       reason: "operator requested pause",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
     });
-    const deepDescendantGate = await treeSvc.getActivePauseHoldGate(companyId, deepDescendantIssueId);
+    const deepDescendantGate = await treeSvc.getActivePauseHoldGate(deepDescendantIssueId);
     expect(deepDescendantGate).toMatchObject({
       holdId: expect.any(String),
       rootIssueId,
@@ -611,7 +575,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       releaseReason: "switch to full pause",
       updatedAt: new Date(),
     }).where(eq(issueTreeHolds.rootIssueId, rootIssueId));
-    await treeSvc.createHold(companyId, rootIssueId, {
+    await treeSvc.createHold(rootIssueId, {
       mode: "pause",
       reason: "full pause",
       releasePolicy: { strategy: "manual", note: "full_pause" },
@@ -638,14 +602,12 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "Root",
         status: "todo",
         priority: "medium",
       },
       {
         id: childIssueId,
-        companyId,
         parentId: rootIssueId,
         title: "Child",
         status: "todo",
@@ -653,7 +615,6 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
       },
       {
         id: nonSubtreeIssueId,
-        companyId,
         title: "Unrelated",
         status: "todo",
         priority: "medium",
@@ -661,18 +622,18 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     ]);
 
     const treeSvc = issueTreeControlService(db);
-    const subtreePause = await treeSvc.createHold(companyId, childIssueId, {
+    const subtreePause = await treeSvc.createHold(childIssueId, {
       mode: "pause",
       reason: "pause child only",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
     });
-    const nonSubtreePause = await treeSvc.createHold(companyId, nonSubtreeIssueId, {
+    const nonSubtreePause = await treeSvc.createHold(nonSubtreeIssueId, {
       mode: "pause",
       reason: "pause unrelated issue",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
     });
 
-    const resumed = await treeSvc.createHold(companyId, rootIssueId, {
+    const resumed = await treeSvc.createHold(rootIssueId, {
       mode: "resume",
       reason: "resume subtree",
       actor: { actorType: "user", actorId: "board-user", userId: "board-user" },
@@ -684,8 +645,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
 
     const rows = await db
       .select({ id: issueTreeHolds.id, status: issueTreeHolds.status, releaseMetadata: issueTreeHolds.releaseMetadata })
-      .from(issueTreeHolds)
-      .where(eq(issueTreeHolds.companyId, companyId));
+      .from(issueTreeHolds);
     const byId = new Map(rows.map((row) => [row.id, row] as const));
     expect(byId.get(subtreePause.hold.id)?.status).toBe("released");
     expect(byId.get(nonSubtreePause.hold.id)?.status).toBe("active");

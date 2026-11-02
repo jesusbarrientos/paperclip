@@ -66,30 +66,30 @@ function Section({
 
 function hydrateStorybookQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.setQueryData(queryKeys.auth.session, storybookAuthSession);
-  queryClient.setQueryData(queryKeys.companies.all, { companies: storybookCompanies, unauthorized: false });
-  queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), storybookAgents);
-  queryClient.setQueryData(queryKeys.projects.list(COMPANY_ID), storybookProjects);
+  queryClient.setQueryData(queryKeys.organization, storybookCompanies[0]);
+  queryClient.setQueryData(queryKeys.agents.list(), storybookAgents);
+  queryClient.setQueryData(queryKeys.projects.list(), storybookProjects);
   queryClient.setQueryData(queryKeys.projects.detail(boardProject.id), boardProject);
   queryClient.setQueryData(queryKeys.projects.detail(boardProject.urlKey), boardProject);
   queryClient.setQueryData(queryKeys.projects.detail(archivedProject.id), archivedProject);
-  queryClient.setQueryData(queryKeys.goals.list(COMPANY_ID), storybookGoals);
+  queryClient.setQueryData(queryKeys.goals.list(), storybookGoals);
   for (const goal of storybookGoals) {
     queryClient.setQueryData(queryKeys.goals.detail(goal.id), goal);
   }
-  queryClient.setQueryData(queryKeys.issues.list(COMPANY_ID), storybookIssues);
-  queryClient.setQueryData(queryKeys.issues.listByProject(COMPANY_ID, boardProject.id), storybookIssues);
-  queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), []);
+  queryClient.setQueryData(queryKeys.issues.list(), storybookIssues);
+  queryClient.setQueryData(queryKeys.issues.listByProject(boardProject.id), storybookIssues);
+  queryClient.setQueryData(queryKeys.secrets.list(), []);
   queryClient.setQueryData(queryKeys.instance.experimentalSettings, {
     enableIsolatedWorkspaces: true,
     enableRoutineTriggers: true,
   });
-  queryClient.setQueryData(queryKeys.executionWorkspaces.list(COMPANY_ID), storybookExecutionWorkspaces);
+  queryClient.setQueryData(queryKeys.executionWorkspaces.list(), storybookExecutionWorkspaces);
   queryClient.setQueryData(
-    queryKeys.executionWorkspaces.list(COMPANY_ID, { projectId: boardProject.id }),
+    queryKeys.executionWorkspaces.list({ projectId: boardProject.id }),
     storybookExecutionWorkspaces,
   );
   queryClient.setQueryData(
-    queryKeys.executionWorkspaces.summaryList(COMPANY_ID),
+    queryKeys.executionWorkspaces.summaryList(),
     storybookExecutionWorkspaces.map((workspace) => ({
       id: workspace.id,
       name: workspace.name,
@@ -193,7 +193,6 @@ function WorkspacesMatrix() {
   return (
     <div className="space-y-5">
       <ProjectWorkspacesContent
-        companyId={COMPANY_ID}
         projectId={boardProject.id}
         projectRef={boardProject.urlKey}
         summaries={summaries}
@@ -213,7 +212,6 @@ function WorkspacesMatrix() {
       </div>
       <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
         <ProjectWorkspacesContent
-          companyId={COMPANY_ID}
           projectId={archivedProject.id}
           projectRef={archivedProject.urlKey}
           summaries={[]}

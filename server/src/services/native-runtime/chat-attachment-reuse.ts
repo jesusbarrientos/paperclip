@@ -91,7 +91,6 @@ export const REUSE_CHAT_ATTACHMENT_TOOL_DEFINITION = Object.freeze({
 });
 
 export type ChatReuseBinding = {
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -329,11 +328,11 @@ async function principalAuthorized(
 ): Promise<boolean> {
   if (lockMode === "blocking") {
     await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${endpoint.companyId}:${principalId}`}, 0))`,
+      sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principalId}`}, 0))`,
     );
   } else if (lockMode === "nonblocking") {
     const [lock] = (await tx.execute(
-      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${endpoint.companyId}:${principalId}`}, 0)) as acquired`,
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${`chat-identity:${principalId}`}, 0)) as acquired`,
     )) as unknown as Array<{ acquired: boolean }>;
     if (!lock?.acquired) {
       throw new ExternalChatWaitAuthorizationContentionError();
@@ -345,7 +344,6 @@ async function principalAuthorized(
     .where(
       and(
         eq(chatExternalPrincipals.id, principalId),
-        eq(chatExternalPrincipals.companyId, endpoint.companyId),
         eq(chatExternalPrincipals.provider, endpoint.provider),
         eq(
           chatExternalPrincipals.providerAccountId,
@@ -367,7 +365,6 @@ async function principalAuthorized(
     .from(chatIdentityLinks)
     .where(
       and(
-        eq(chatIdentityLinks.companyId, endpoint.companyId),
         eq(chatIdentityLinks.endpointId, endpoint.id),
         eq(chatIdentityLinks.principalId, principalId),
       ),
@@ -443,7 +440,6 @@ export async function authorizeChatConversationForBoundRun(
       chatDeliveries,
       and(
         eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-        eq(chatDeliveries.companyId, chatMessageLinks.companyId),
         eq(chatDeliveries.endpointId, chatMessageLinks.endpointId),
         eq(chatDeliveries.conversationId, chatMessageLinks.conversationId),
       ),
@@ -452,20 +448,15 @@ export async function authorizeChatConversationForBoundRun(
       chatConversations,
       and(
         eq(chatConversations.id, chatMessageLinks.conversationId),
-        eq(chatConversations.companyId, chatMessageLinks.companyId),
         eq(chatConversations.endpointId, chatMessageLinks.endpointId),
       ),
     )
     .innerJoin(
       chatEndpoints,
-      and(
-        eq(chatEndpoints.id, chatConversations.endpointId),
-        eq(chatEndpoints.companyId, chatConversations.companyId),
-      ),
+      eq(chatEndpoints.id, chatConversations.endpointId),
     )
     .where(
       and(
-        eq(chatMessageLinks.companyId, binding.companyId),
         eq(chatMessageLinks.direction, "inbound"),
         inArray(chatMessageLinks.commentId, commentIds),
         eq(chatDeliveries.state, "processed"),
@@ -509,7 +500,6 @@ export async function authorizeChatConversationForBoundRun(
           .where(
             and(
               eq(chatEndpointResources.id, conversation.resourceId!),
-              eq(chatEndpointResources.companyId, binding.companyId),
               eq(chatEndpointResources.endpointId, endpoint.id),
             ),
           );
@@ -589,10 +579,7 @@ export async function resolveExternalChatResponseWaitAuthorizationInTransaction(
     })
     .from(issues)
     .where(
-      and(
-        eq(issues.id, binding.issueId),
-        eq(issues.companyId, binding.companyId),
-      ),
+      eq(issues.id, binding.issueId),
     );
   const [issue] = await (lockMode === "read"
     ? issueQuery.limit(1)
@@ -606,7 +593,6 @@ export async function resolveExternalChatResponseWaitAuthorizationInTransaction(
     .where(
       and(
         eq(heartbeatRuns.id, binding.runId),
-        eq(heartbeatRuns.companyId, binding.companyId),
         eq(heartbeatRuns.agentId, binding.agentId),
         eq(heartbeatRuns.nativeIssueId, binding.issueId),
         eq(heartbeatRuns.runtimeMode, "native"),
@@ -645,10 +631,7 @@ export async function resolveExternalChatResponseWaitAuthorizationInTransaction(
     .select({ status: agents.status })
     .from(agents)
     .where(
-      and(
-        eq(agents.id, binding.agentId),
-        eq(agents.companyId, binding.companyId),
-      ),
+      eq(agents.id, binding.agentId),
     );
   const [actor] = await (lockMode === "read"
     ? actorQuery.limit(1)
@@ -680,7 +663,6 @@ export async function resolveExternalChatResponseWaitAuthorizationInTransaction(
       chatDeliveries,
       and(
         eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-        eq(chatDeliveries.companyId, chatMessageLinks.companyId),
         eq(chatDeliveries.endpointId, chatMessageLinks.endpointId),
         eq(chatDeliveries.conversationId, chatMessageLinks.conversationId),
       ),
@@ -689,20 +671,15 @@ export async function resolveExternalChatResponseWaitAuthorizationInTransaction(
       chatConversations,
       and(
         eq(chatConversations.id, chatMessageLinks.conversationId),
-        eq(chatConversations.companyId, chatMessageLinks.companyId),
         eq(chatConversations.endpointId, chatMessageLinks.endpointId),
       ),
     )
     .innerJoin(
       chatEndpoints,
-      and(
-        eq(chatEndpoints.id, chatConversations.endpointId),
-        eq(chatEndpoints.companyId, chatConversations.companyId),
-      ),
+      eq(chatEndpoints.id, chatConversations.endpointId),
     )
     .where(
       and(
-        eq(chatMessageLinks.companyId, binding.companyId),
         eq(chatMessageLinks.direction, "inbound"),
         inArray(chatMessageLinks.commentId, candidate.commentIds),
         eq(chatDeliveries.state, "processed"),
@@ -778,14 +755,12 @@ async function sourceLineageExists(
       chatDeliveries,
       and(
         eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-        eq(chatDeliveries.companyId, chatMessageLinks.companyId),
         eq(chatDeliveries.endpointId, chatMessageLinks.endpointId),
         eq(chatDeliveries.conversationId, chatMessageLinks.conversationId),
       ),
     )
     .where(
       and(
-        eq(chatMessageLinks.companyId, binding.companyId),
         eq(chatMessageLinks.endpointId, conversation.endpointId),
         eq(chatMessageLinks.conversationId, conversation.conversationId),
         eq(chatMessageLinks.direction, "inbound"),
@@ -800,7 +775,6 @@ async function sourceLineageExists(
       .from(chatDeliveries)
       .where(
         and(
-          eq(chatDeliveries.companyId, binding.companyId),
           eq(chatDeliveries.endpointId, conversation.endpointId),
           eq(chatDeliveries.conversationId, conversation.conversationId),
           inArray(chatDeliveries.eventKind, [
@@ -824,7 +798,6 @@ async function sourceLineageExists(
     .from(chatPublications)
     .where(
       and(
-        eq(chatPublications.companyId, binding.companyId),
         eq(chatPublications.endpointId, conversation.endpointId),
         eq(chatPublications.conversationId, conversation.conversationId),
         eq(chatPublications.issueId, binding.issueId),
@@ -845,7 +818,6 @@ async function sourceLineageExists(
       .from(chatDeliveries)
       .where(
         and(
-          eq(chatDeliveries.companyId, binding.companyId),
           eq(chatDeliveries.endpointId, conversation.endpointId),
           eq(chatDeliveries.conversationId, conversation.conversationId),
           inArray(chatDeliveries.eventKind, [
@@ -905,7 +877,6 @@ async function loadSource(
     .where(
       and(
         eq(issueComments.id, sourceCommentId),
-        eq(issueComments.companyId, binding.companyId),
         eq(issueComments.issueId, binding.issueId),
         isNull(issueComments.deletedAt),
       ),
@@ -929,16 +900,12 @@ async function loadSource(
     .from(issueAttachments)
     .innerJoin(
       assets,
-      and(
-        eq(assets.id, issueAttachments.assetId),
-        eq(assets.companyId, binding.companyId),
-      ),
+      eq(assets.id, issueAttachments.assetId),
     )
     .innerJoin(
       issueComments,
       and(
         eq(issueComments.id, issueAttachments.issueCommentId),
-        eq(issueComments.companyId, binding.companyId),
         eq(issueComments.issueId, binding.issueId),
         isNull(issueComments.deletedAt),
       ),
@@ -946,7 +913,6 @@ async function loadSource(
     .where(
       and(
         eq(issueAttachments.id, attachmentId),
-        eq(issueAttachments.companyId, binding.companyId),
         eq(issueAttachments.issueId, binding.issueId),
       ),
     )
@@ -999,22 +965,15 @@ export async function listAuthorizedChatAttachments(input: {
       .from(heartbeatRuns)
       .innerJoin(
         issues,
-        and(
-          eq(issues.id, input.binding.issueId),
-          eq(issues.companyId, heartbeatRuns.companyId),
-        ),
+        eq(issues.id, input.binding.issueId),
       )
       .innerJoin(
         agents,
-        and(
-          eq(agents.id, input.binding.agentId),
-          eq(agents.companyId, heartbeatRuns.companyId),
-        ),
+        eq(agents.id, input.binding.agentId),
       )
       .where(
         and(
           eq(heartbeatRuns.id, input.binding.runId),
-          eq(heartbeatRuns.companyId, input.binding.companyId),
           eq(heartbeatRuns.agentId, input.binding.agentId),
           eq(heartbeatRuns.nativeIssueId, input.binding.issueId),
           eq(heartbeatRuns.runtimeMode, "native"),
@@ -1057,29 +1016,24 @@ export async function listAuthorizedChatAttachments(input: {
         from issue_attachments attachment
         join issue_comments parent_comment
           on parent_comment.id = attachment.issue_comment_id
-          and parent_comment.company_id = ${input.binding.companyId}::uuid
           and parent_comment.issue_id = ${input.binding.issueId}::uuid
           and parent_comment.deleted_at is null
         join chat_message_links link
-          on link.company_id = ${input.binding.companyId}::uuid
-          and link.endpoint_id = ${conversation.endpointId}::uuid
+          on link.endpoint_id = ${conversation.endpointId}::uuid
           and link.conversation_id = ${conversation.conversationId}::uuid
           and link.direction = 'inbound'
           and link.comment_id = attachment.issue_comment_id
         join chat_deliveries delivery
           on delivery.id = link.delivery_id
-          and delivery.company_id = link.company_id
           and delivery.endpoint_id = link.endpoint_id
           and delivery.conversation_id = link.conversation_id
           and delivery.state = 'processed'
-        where attachment.company_id = ${input.binding.companyId}::uuid
-          and attachment.issue_id = ${input.binding.issueId}::uuid
+        where attachment.issue_id = ${input.binding.issueId}::uuid
           and (${sourceFilter}::uuid is null or link.comment_id = ${sourceFilter}::uuid)
           and not exists (
             select 1
             from chat_deliveries lifecycle
-            where lifecycle.company_id = ${input.binding.companyId}::uuid
-              and lifecycle.endpoint_id = ${conversation.endpointId}::uuid
+            where lifecycle.endpoint_id = ${conversation.endpointId}::uuid
               and lifecycle.conversation_id = ${conversation.conversationId}::uuid
               and lifecycle.state = 'processed'
               and lifecycle.event_kind in ('message_updated', 'message_deleted', 'message_restored')
@@ -1095,12 +1049,10 @@ export async function listAuthorizedChatAttachments(input: {
         from issue_attachments attachment
         join issue_comments parent_comment
           on parent_comment.id = attachment.issue_comment_id
-          and parent_comment.company_id = ${input.binding.companyId}::uuid
           and parent_comment.issue_id = ${input.binding.issueId}::uuid
           and parent_comment.deleted_at is null
         join chat_publications publication
-          on publication.company_id = ${input.binding.companyId}::uuid
-          and publication.endpoint_id = ${conversation.endpointId}::uuid
+          on publication.endpoint_id = ${conversation.endpointId}::uuid
           and publication.conversation_id = ${conversation.conversationId}::uuid
           and publication.issue_id = ${input.binding.issueId}::uuid
           and publication.state = 'published'
@@ -1110,17 +1062,14 @@ export async function listAuthorizedChatAttachments(input: {
           and publication.payload->'attachmentIds' ? attachment.id::text
         join issue_comments source_comment
           on source_comment.id = publication.comment_id
-          and source_comment.company_id = publication.company_id
           and source_comment.issue_id = publication.issue_id
           and source_comment.deleted_at is null
-        where attachment.company_id = ${input.binding.companyId}::uuid
-          and attachment.issue_id = ${input.binding.issueId}::uuid
+        where attachment.issue_id = ${input.binding.issueId}::uuid
           and (${sourceFilter}::uuid is null or publication.comment_id = ${sourceFilter}::uuid)
           and not exists (
             select 1
             from chat_deliveries lifecycle
-            where lifecycle.company_id = ${input.binding.companyId}::uuid
-              and lifecycle.endpoint_id = ${conversation.endpointId}::uuid
+            where lifecycle.endpoint_id = ${conversation.endpointId}::uuid
               and lifecycle.conversation_id = ${conversation.conversationId}::uuid
               and lifecycle.state = 'processed'
               and lifecycle.event_kind in ('message_updated', 'message_deleted', 'message_restored')
@@ -1237,7 +1186,6 @@ export async function authorizeChatAttachmentReuse(input: {
 
 async function readSourceBytes(
   storage: StorageService,
-  companyId: string,
   source: ChatAttachmentReuseSource,
   timeoutMs: number,
 ): Promise<Buffer> {
@@ -1254,7 +1202,7 @@ async function readSourceBytes(
   }, timeoutMs);
   acquisitionTimer.unref?.();
   const objectPromise = storage
-    .getObject(companyId, source.objectKey)
+    .getObject(source.objectKey)
     .then((object) => {
       if (acquisitionTimedOut) object.stream.destroy();
       return object;
@@ -1308,12 +1256,11 @@ const DEFAULT_STORAGE_TIMEOUT_MS = 10_000;
 
 async function deleteStorageObjectWithin(
   storage: StorageService,
-  companyId: string,
   objectKey: string,
   timeoutMs: number,
 ): Promise<void> {
   const deletion = storage
-    .deleteObject(companyId, objectKey)
+    .deleteObject(objectKey)
     .catch(() => undefined);
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -1350,7 +1297,6 @@ async function putStorageObjectWithin(
     if (timedOut) {
       void deleteStorageObjectWithin(
         storage,
-        input.companyId,
         stored.objectKey,
         timeoutMs,
       );
@@ -1379,14 +1325,12 @@ export async function prepareReusedChatAttachment(input: {
       heartbeatRuns,
       and(
         eq(heartbeatRuns.id, input.binding.runId),
-        eq(heartbeatRuns.companyId, issues.companyId),
         eq(heartbeatRuns.nativeIssueId, issues.id),
       ),
     )
     .where(
       and(
         eq(issues.id, input.binding.issueId),
-        eq(issues.companyId, input.binding.companyId),
         eq(issues.assigneeAgentId, input.binding.agentId),
         eq(issues.executionRunId, input.binding.runId),
         eq(heartbeatRuns.agentId, input.binding.agentId),
@@ -1406,14 +1350,12 @@ export async function prepareReusedChatAttachment(input: {
       : DEFAULT_STORAGE_TIMEOUT_MS;
   const body = await readSourceBytes(
     storage,
-    input.binding.companyId,
     input.source,
     storageTimeoutMs,
   );
   const stored = await putStorageObjectWithin(
     storage,
     {
-      companyId: input.binding.companyId,
       namespace: `issues/${input.binding.issueId}`,
       originalFilename: input.source.filename,
       contentType: input.source.contentType,
@@ -1452,7 +1394,6 @@ export async function prepareReusedChatAttachment(input: {
       .where(
         and(
           eq(issueWorkProducts.id, attachment.artifactWorkProductId),
-          eq(issueWorkProducts.companyId, input.binding.companyId),
           eq(issueWorkProducts.issueId, input.binding.issueId),
           eq(issueWorkProducts.createdByRunId, input.binding.runId),
         ),
@@ -1477,7 +1418,6 @@ export async function prepareReusedChatAttachment(input: {
       .where(
         and(
           eq(issueWorkProducts.id, attachment.artifactWorkProductId),
-          eq(issueWorkProducts.companyId, input.binding.companyId),
           eq(issueWorkProducts.issueId, input.binding.issueId),
           eq(issueWorkProducts.createdByRunId, input.binding.runId),
         ),
@@ -1520,7 +1460,6 @@ export async function prepareReusedChatAttachment(input: {
       rollbackDefinitePreCommitFailure: async () => {
         await deleteStorageObjectWithin(
           storage,
-          input.binding.companyId,
           stored.objectKey,
           storageTimeoutMs,
         );
@@ -1529,7 +1468,6 @@ export async function prepareReusedChatAttachment(input: {
   } catch (error) {
     await deleteStorageObjectWithin(
       storage,
-      input.binding.companyId,
       stored.objectKey,
       storageTimeoutMs,
     );

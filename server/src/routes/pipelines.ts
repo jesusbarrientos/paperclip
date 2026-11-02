@@ -85,7 +85,7 @@ import {
 import { accessService } from "../services/access.js";
 import { authorizationService } from "../services/authorization.js";
 import { issueService } from "../services/issues.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertOrgAccess } from "./authz.js";
 import {
   computePipelineHealth,
   deriveCaseType,
@@ -247,9 +247,9 @@ function codedConflictForUnique(error: unknown): never {
   throw error;
 }
 
-function assertPipelineCompanyAccess(req: Request, companyId: string) {
+function assertPipelineCompanyAccess(req: Request) {
   try {
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
   } catch (error) {
     if (
       error instanceof HttpError &&
@@ -322,47 +322,43 @@ function parseCaseEventsQuery(query: Request["query"]) {
   };
 }
 
-async function resolvePipelineCompanyId(db: Db, pipelineId: string) {
+async function assertPipelineExists(db: Db, pipelineId: string) {
   const row = await db
-    .select({ companyId: pipelines.companyId })
+    .select({ id: pipelines.id })
     .from(pipelines)
     .where(eq(pipelines.id, pipelineId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Pipeline not found");
-  return row.companyId;
 }
 
-async function resolveCaseCompanyId(db: Db, caseId: string) {
+async function assertPipelineCaseExists(db: Db, caseId: string) {
   const row = await db
-    .select({ companyId: pipelineCases.companyId })
+    .select({ id: pipelineCases.id })
     .from(pipelineCases)
     .where(eq(pipelineCases.id, caseId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Pipeline case not found");
-  return row.companyId;
 }
 
 async function assertPipelineAccess(db: Db, req: Request, pipelineId: string) {
-  const companyId = await resolvePipelineCompanyId(db, pipelineId);
-  assertPipelineCompanyAccess(req, companyId);
-  return companyId;
+  await assertPipelineExists(db, pipelineId);
+  assertOrgAccess(req);
 }
 
 async function assertPipelineWriteAccess(
   req: Request,
   input: {
     access: ReturnType<typeof accessService>;
-    companyId: string;
     pipelineId: string;
   },
 ) {
-  assertPipelineCompanyAccess(req, input.companyId);
+  assertPipelineCompanyAccess(req);
   const decision = await input.access.decide({
     actor: req.actor,
     action: "pipelines:write",
-    resource: { type: "company", companyId: input.companyId },
+    resource: { type: "company" },
     scope: { pipelineId: input.pipelineId },
   });
   if (!decision.allowed) {
@@ -376,7 +372,6 @@ async function assertPipelineWriteAccess(
 
 function mapPipelineDocumentRevision(row: {
   id: string;
-  companyId: string;
   documentId: string;
   pipelineId: string;
   key: string;
@@ -392,14 +387,13 @@ function mapPipelineDocumentRevision(row: {
   return row;
 }
 
-async function getPipelineDocumentRow(db: Db, input: { companyId: string; pipelineId: string; key: string }) {
+async function getPipelineDocumentRow(db: Db, input: { pipelineId: string; key: string }) {
   return db
     .select({ link: pipelineDocuments, document: documents, revision: documentRevisions })
     .from(pipelineDocuments)
     .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
     .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
     .where(and(
-      eq(pipelineDocuments.companyId, input.companyId),
       eq(pipelineDocuments.pipelineId, input.pipelineId),
       eq(pipelineDocuments.key, input.key),
     ))
@@ -407,11 +401,10 @@ async function getPipelineDocumentRow(db: Db, input: { companyId: string; pipeli
     .then((rows) => rows[0] ?? null);
 }
 
-async function listPipelineDocumentRevisions(db: Db, input: { companyId: string; pipelineId: string; key: string }) {
+async function listPipelineDocumentRevisions(db: Db, input: { pipelineId: string; key: string }) {
   return db
     .select({
       id: documentRevisions.id,
-      companyId: documentRevisions.companyId,
       documentId: documentRevisions.documentId,
       pipelineId: pipelineDocuments.pipelineId,
       key: pipelineDocuments.key,
@@ -428,7 +421,6 @@ async function listPipelineDocumentRevisions(db: Db, input: { companyId: string;
     .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
     .innerJoin(documentRevisions, eq(documentRevisions.documentId, documents.id))
     .where(and(
-      eq(pipelineDocuments.companyId, input.companyId),
       eq(pipelineDocuments.pipelineId, input.pipelineId),
       eq(pipelineDocuments.key, input.key),
     ))
@@ -446,7 +438,6 @@ function parseDocumentKey(rawKey: unknown) {
 
 function mapPipelineCaseDocumentRevision(row: {
   id: string;
-  companyId: string;
   documentId: string;
   caseId: string;
   key: string;
@@ -462,14 +453,13 @@ function mapPipelineCaseDocumentRevision(row: {
   return row;
 }
 
-async function getPipelineCaseDocumentRow(db: PipelineRouteDb, input: { companyId: string; caseId: string; key: string }) {
+async function getPipelineCaseDocumentRow(db: PipelineRouteDb, input: { caseId: string; key: string }) {
   return db
     .select({ link: pipelineCaseDocuments, document: documents, revision: documentRevisions })
     .from(pipelineCaseDocuments)
     .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
     .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
     .where(and(
-      eq(pipelineCaseDocuments.companyId, input.companyId),
       eq(pipelineCaseDocuments.caseId, input.caseId),
       eq(pipelineCaseDocuments.key, input.key),
     ))
@@ -477,11 +467,10 @@ async function getPipelineCaseDocumentRow(db: PipelineRouteDb, input: { companyI
     .then((rows: Array<{ link: typeof pipelineCaseDocuments.$inferSelect; document: typeof documents.$inferSelect; revision: typeof documentRevisions.$inferSelect | null }>) => rows[0] ?? null);
 }
 
-async function listPipelineCaseDocumentRevisions(db: Db, input: { companyId: string; caseId: string; key: string }) {
+async function listPipelineCaseDocumentRevisions(db: Db, input: { caseId: string; key: string }) {
   return db
     .select({
       id: documentRevisions.id,
-      companyId: documentRevisions.companyId,
       documentId: documentRevisions.documentId,
       caseId: pipelineCaseDocuments.caseId,
       key: pipelineCaseDocuments.key,
@@ -498,7 +487,6 @@ async function listPipelineCaseDocumentRevisions(db: Db, input: { companyId: str
     .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
     .innerJoin(documentRevisions, eq(documentRevisions.documentId, documents.id))
     .where(and(
-      eq(pipelineCaseDocuments.companyId, input.companyId),
       eq(pipelineCaseDocuments.caseId, input.caseId),
       eq(pipelineCaseDocuments.key, input.key),
     ))
@@ -506,11 +494,11 @@ async function listPipelineCaseDocumentRevisions(db: Db, input: { companyId: str
     .then((rows) => rows.map(mapPipelineCaseDocumentRevision));
 }
 
-async function resolveCasePipelineId(db: Db, input: { companyId: string; caseId: string }) {
+async function resolveCasePipelineId(db: Db, input: { caseId: string }) {
   const row = await db
     .select({ pipelineId: pipelineCases.pipelineId })
     .from(pipelineCases)
-    .where(and(eq(pipelineCases.companyId, input.companyId), eq(pipelineCases.id, input.caseId)))
+    .where(eq(pipelineCases.id, input.caseId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Pipeline case not found");
@@ -537,14 +525,13 @@ function issueIdFromPipelineRouteRunContext(contextSnapshot: unknown) {
 async function sourceTrustForPipelineCaseDocumentWrite(
   dbOrTx: Db | any,
   input: {
-    companyId: string;
     caseId: string;
     actor: PipelineActor;
   },
 ) {
   if (input.actor.type !== "agent") return null;
 
-  const conversationSource = await resolvePipelineCaseConversationSource(dbOrTx, input.companyId, input.caseId);
+  const conversationSource = await resolvePipelineCaseConversationSource(dbOrTx, input.caseId);
   let issue = conversationSource?.isActive ? conversationSource.issue : null;
 
   if (!issue) {
@@ -552,7 +539,6 @@ async function sourceTrustForPipelineCaseDocumentWrite(
       .select({ contextSnapshot: heartbeatRuns.contextSnapshot })
       .from(heartbeatRuns)
       .where(and(
-        eq(heartbeatRuns.companyId, input.companyId),
         eq(heartbeatRuns.id, input.actor.runId),
         eq(heartbeatRuns.agentId, input.actor.agentId),
       ))
@@ -565,7 +551,7 @@ async function sourceTrustForPipelineCaseDocumentWrite(
       ? await dbOrTx
           .select()
           .from(issueRows)
-          .where(and(eq(issueRows.companyId, input.companyId), eq(issueRows.id, runIssueId)))
+          .where(and(eq(issueRows.id, runIssueId)))
           .limit(1)
           .then((rows: Array<typeof issueRows.$inferSelect>) => rows[0] ?? null)
       : null;
@@ -577,7 +563,6 @@ async function sourceTrustForPipelineCaseDocumentWrite(
     db: dbOrTx as Db,
     issue: {
       id: issue.id,
-      companyId: issue.companyId,
       projectId: issue.projectId,
       executionPolicy: issue.executionPolicy,
     },
@@ -591,9 +576,8 @@ async function sourceTrustForPipelineCaseDocumentWrite(
 }
 
 async function assertCaseAccess(db: Db, req: Request, caseId: string) {
-  const companyId = await resolveCaseCompanyId(db, caseId);
-  assertPipelineCompanyAccess(req, companyId);
-  return companyId;
+  await assertPipelineCaseExists(db, caseId);
+  assertOrgAccess(req);
 }
 
 async function getStagesByKey(db: Db, pipelineId: string) {
@@ -604,7 +588,6 @@ async function getStagesByKey(db: Db, pipelineId: string) {
 async function writeRouteEvent(
   db: Pick<Db, "insert">,
   input: {
-    companyId: string;
     caseId: string;
     type: string;
     actor: PipelineActor;
@@ -617,7 +600,6 @@ async function writeRouteEvent(
       ? { actorType: "user", actorUserId: input.actor.userId }
       : { actorType: "system" };
   const [event] = await db.insert(pipelineCaseEvents).values({
-    companyId: input.companyId,
     caseId: input.caseId,
     type: input.type,
     ...actorPatch,
@@ -626,11 +608,10 @@ async function writeRouteEvent(
   return event!;
 }
 
-async function getIssueMutationTarget(db: Db, input: { companyId: string; issueId: string }) {
+async function getIssueMutationTarget(db: Db, input: { issueId: string }) {
   return db
     .select({
       id: issueRows.id,
-      companyId: issueRows.companyId,
       projectId: issueRows.projectId,
       parentId: issueRows.parentId,
       assigneeAgentId: issueRows.assigneeAgentId,
@@ -638,7 +619,7 @@ async function getIssueMutationTarget(db: Db, input: { companyId: string; issueI
       status: issueRows.status,
     })
     .from(issueRows)
-    .where(and(eq(issueRows.id, input.issueId), eq(issueRows.companyId, input.companyId)))
+    .where(and(eq(issueRows.id, input.issueId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
 }
@@ -656,7 +637,6 @@ async function assertIssueLinkMutationAllowed(
     action: "issue:mutate",
     resource: {
       type: "issue",
-      companyId: input.issue.companyId,
       issueId: input.issue.id,
       projectId: input.issue.projectId,
       parentIssueId: input.issue.parentId,
@@ -703,9 +683,8 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   const issuesSvc = issueService(db);
   const documentAnnotationsSvc = documentAnnotationService(db);
 
-  router.get("/companies/:companyId/pipelines", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertPipelineCompanyAccess(req, companyId);
+  router.get("/pipelines", async (req, res) => {
+    assertPipelineCompanyAccess(req);
     const rows = await db
       .select({
         pipeline: pipelines,
@@ -718,13 +697,12 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       .from(pipelines)
       .leftJoin(pipelineStages, eq(pipelineStages.pipelineId, pipelines.id))
       .leftJoin(pipelineCases, eq(pipelineCases.pipelineId, pipelines.id))
-      .where(eq(pipelines.companyId, companyId))
       .groupBy(pipelines.id)
       .orderBy(asc(pipelines.createdAt));
     const pipelineIds = rows.map((row) => row.pipeline.id);
     const [connections, descendantActiveWorkCounts, stageRows] = await Promise.all([
-      loadPipelineConnections(db, companyId),
-      loadPipelineDescendantActiveWorkCounts(db, companyId, pipelineIds),
+      loadPipelineConnections(db),
+      loadPipelineDescendantActiveWorkCounts(db, pipelineIds),
       pipelineIds.length > 0
         ? db
         .select()
@@ -752,35 +730,32 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     })));
   });
 
-  router.get("/companies/:companyId/pipelines-attention", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertPipelineCompanyAccess(req, companyId);
+  router.get("/pipelines-attention", async (req, res) => {
+    assertPipelineCompanyAccess(req);
     const caller = attentionCallerFor(req);
     const requestedLimit = parseOptionalNonNegativeInteger(req.query.limit, "limit");
     if (requestedLimit === 0) throw badRequest("limit must be a positive integer");
     const limit = Math.min(requestedLimit ?? PIPELINE_ATTENTION_DEFAULT_LIMIT, PIPELINE_ATTENTION_MAX_LIMIT);
-    res.json(await listPipelineAttention(db, { companyId, caller, limit }));
+    res.json(await listPipelineAttention(db, { caller, limit }));
   });
 
-  router.get("/companies/:companyId/case-events", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertPipelineCompanyAccess(req, companyId);
+  router.get("/case-events", async (req, res) => {
+    assertPipelineCompanyAccess(req);
     const types = parseEventTypesQuery(req.query.types);
     const requestedLimit = parseOptionalNonNegativeInteger(req.query.limit, "limit");
     if (requestedLimit === 0) throw badRequest("limit must be a positive integer");
     const limit = Math.min(requestedLimit ?? COMPANY_CASE_EVENTS_DEFAULT_LIMIT, COMPANY_CASE_EVENTS_MAX_LIMIT);
     const offset = parseOptionalNonNegativeInteger(req.query.offset, "offset") ?? 0;
-    res.json(await listCompanyCaseEvents(db, { companyId, types, limit, offset }));
+    res.json(await listCompanyCaseEvents(db, { types, limit, offset }));
   });
 
-  router.post("/companies/:companyId/pipelines", validate(createPipelineSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertPipelineCompanyAccess(req, companyId);
+  router.post("/pipelines", validate(createPipelineSchema), async (req, res) => {
+    assertPipelineCompanyAccess(req);
     const actor = actorForMutation(req);
     const decision = await access.decide({
       actor: req.actor,
       action: "pipelines:write",
-      resource: { type: "company", companyId },
+      resource: { type: "company" },
       scope: null,
     });
     if (!decision.allowed) {
@@ -791,7 +766,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }
     try {
       const created = await svc.createPipeline({
-        companyId,
         key: req.body.key,
         name: req.body.name,
         description: req.body.description,
@@ -816,22 +790,20 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }
   });
 
-  router.get("/companies/:companyId/review-cases", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertPipelineCompanyAccess(req, companyId);
+  router.get("/review-cases", async (req, res) => {
+    assertPipelineCompanyAccess(req);
     const pipelineId = typeof req.query.pipelineId === "string" ? req.query.pipelineId : undefined;
     const parentCaseId = typeof req.query.parentCaseId === "string" ? req.query.parentCaseId : undefined;
-    res.json(await svc.listReviewCases({ companyId, pipelineId, parentCaseId }));
+    res.json(await svc.listReviewCases({ pipelineId, parentCaseId }));
   });
 
-  router.post("/companies/:companyId/review-cases/bulk", validate(bulkReviewSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertPipelineCompanyAccess(req, companyId);
+  router.post("/review-cases/bulk", validate(bulkReviewSchema), async (req, res) => {
+    assertPipelineCompanyAccess(req);
     const actor = actorForMutation(req);
     const results = [];
     for (const item of req.body.items) {
       try {
-        results.push({ caseId: item.caseId, ok: true, result: await svc.reviewCase({ companyId, ...item, actor }) });
+        results.push({ caseId: item.caseId, ok: true, result: await svc.reviewCase({ ...item, actor }) });
       } catch (error) {
         const httpError = error as { status?: number; message?: string; details?: unknown };
         const details = httpError.details && typeof httpError.details === "object" && !Array.isArray(httpError.details)
@@ -856,12 +828,12 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
     const [pipeline, stages, transitions, documentKeys] = await Promise.all([
-      db.select().from(pipelines).where(and(eq(pipelines.id, pipelineId), eq(pipelines.companyId, companyId))).then((rows) => rows[0] ?? null),
+      db.select().from(pipelines).where(eq(pipelines.id, pipelineId)).then((rows) => rows[0] ?? null),
       db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, pipelineId)).orderBy(asc(pipelineStages.position)),
       db.select().from(pipelineTransitions).where(eq(pipelineTransitions.pipelineId, pipelineId)),
       db.select({ key: pipelineDocuments.key, documentId: pipelineDocuments.documentId })
         .from(pipelineDocuments)
-        .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId))),
+        .where(eq(pipelineDocuments.pipelineId, pipelineId)),
     ]);
     if (!pipeline) throw notFound("Pipeline not found");
     const automationRoutineIds = stages.flatMap((stage) => {
@@ -880,7 +852,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
             latestRevisionNumber: routines.latestRevisionNumber,
           })
           .from(routines)
-          .where(and(eq(routines.companyId, companyId), inArray(routines.id, automationRoutineIds)))
+          .where(inArray(routines.id, automationRoutineIds))
       : [];
     const routineById = new Map(routineRows.map((row) => [
       row.id,
@@ -905,7 +877,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertPipelineAccess(db, req, pipelineId);
     const [pipeline, stages, instructionDocs, companyAgents, companyPipelines, companyStages, failedAutomationRows] = await Promise.all([
       db.select().from(pipelines)
-        .where(and(eq(pipelines.id, pipelineId), eq(pipelines.companyId, companyId)))
+        .where(eq(pipelines.id, pipelineId))
         .then((rows) => rows[0] ?? null),
       db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, pipelineId)).orderBy(asc(pipelineStages.position)),
       db.select({ key: pipelineDocuments.key, body: documentRevisions.body })
@@ -913,16 +885,13 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(pipelineDocuments.companyId, companyId),
           eq(pipelineDocuments.pipelineId, pipelineId),
           ilike(pipelineDocuments.key, `${STAGE_INSTRUCTIONS_PREFIX}%`),
         )),
       db.select({ id: agents.id, name: agents.name, status: agents.status })
-        .from(agents)
-        .where(eq(agents.companyId, companyId)),
+        .from(agents),
       db.select({ id: pipelines.id, name: pipelines.name })
-        .from(pipelines)
-        .where(eq(pipelines.companyId, companyId)),
+        .from(pipelines),
       db.select({
         pipelineId: pipelineStages.pipelineId,
         key: pipelineStages.key,
@@ -932,7 +901,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       })
         .from(pipelineStages)
         .innerJoin(pipelines, eq(pipelineStages.pipelineId, pipelines.id))
-        .where(eq(pipelines.companyId, companyId))
         .orderBy(asc(pipelineStages.position), asc(pipelineStages.createdAt)),
       db.select({
         caseId: pipelineCases.id,
@@ -946,7 +914,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .innerJoin(pipelineCases, eq(pipelineAutomationExecutions.caseId, pipelineCases.id))
         .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
         .where(and(
-          eq(pipelineAutomationExecutions.companyId, companyId),
           eq(pipelineCases.pipelineId, pipelineId),
           eq(pipelineAutomationExecutions.status, "failed"),
           isNull(pipelineCases.terminalKind),
@@ -972,7 +939,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
             latestRevisionNumber: routines.latestRevisionNumber,
           })
           .from(routines)
-          .where(and(eq(routines.companyId, companyId), inArray(routines.id, automationRoutineIds)))
+          .where(inArray(routines.id, automationRoutineIds))
       : [];
     const routineById = new Map(routineRows.map((row) => [
       row.id,
@@ -1056,7 +1023,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   router.patch("/pipelines/:pipelineId", validate(updatePipelineSchema), async (req, res) => {
     const pipelineId = req.params.pipelineId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     actorForMutation(req);
     const patch: Partial<typeof pipelines.$inferInsert> = { updatedAt: new Date() };
     if (req.body.name !== undefined) patch.name = req.body.name;
@@ -1066,7 +1033,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const [updated] = await db
       .update(pipelines)
       .set(patch)
-      .where(and(eq(pipelines.id, pipelineId), eq(pipelines.companyId, companyId)))
+      .where(eq(pipelines.id, pipelineId))
       .returning();
     res.json(updated);
   });
@@ -1074,11 +1041,10 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   router.post("/pipelines/:pipelineId/stages", validate(createStageSchema), async (req, res) => {
     const pipelineId = req.params.pipelineId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
     try {
       const stage = await svc.createStage({
-        companyId,
         pipelineId,
         key: req.body.key,
         name: req.body.name,
@@ -1097,10 +1063,10 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const stageId = req.params.stageId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
     try {
-      res.json(await svc.updateStage({ companyId, pipelineId, stageId, patch: req.body, actor }));
+      res.json(await svc.updateStage({ pipelineId, stageId, patch: req.body, actor }));
     } catch (error) {
       codedConflictForUnique(error);
     }
@@ -1110,10 +1076,9 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const stageId = req.params.stageId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
     res.json(await svc.updateStageAutomationEnv({
-      companyId,
       pipelineId,
       stageId,
       env: req.body.env,
@@ -1126,10 +1091,9 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const stageId = req.params.stageId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
     const result = await svc.deleteStage({
-      companyId,
       pipelineId,
       stageId,
       moveCasesToStageId: typeof req.query.moveCasesToStageId === "string" ? req.query.moveCasesToStageId : null,
@@ -1141,7 +1105,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   router.put("/pipelines/:pipelineId/transitions", validate(replaceTransitionsSchema), async (req, res) => {
     const pipelineId = req.params.pipelineId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     actorForMutation(req);
     const byKey = await getStagesByKey(db, pipelineId);
     const transitions = req.body.transitions.map((edge: z.infer<typeof replaceTransitionsSchema>["transitions"][number]) => {
@@ -1154,7 +1118,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       await tx.delete(pipelineTransitions).where(eq(pipelineTransitions.pipelineId, pipelineId));
       if (req.body.enforceTransitions !== undefined) {
         await tx.update(pipelines).set({ enforceTransitions: req.body.enforceTransitions, updatedAt: new Date() })
-          .where(and(eq(pipelines.id, pipelineId), eq(pipelines.companyId, companyId)));
+          .where(eq(pipelines.id, pipelineId));
       }
       return transitions.length ? tx.insert(pipelineTransitions).values(transitions).returning() : [];
     });
@@ -1165,7 +1129,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const key = req.params.key as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    const row = await getPipelineDocumentRow(db, { companyId, pipelineId, key });
+    const row = await getPipelineDocumentRow(db, { pipelineId, key });
     if (!row) throw notFound("Pipeline document not found");
     res.json(row);
   });
@@ -1174,7 +1138,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const key = req.params.key as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
     const result = await db.transaction(async (tx) => {
       const existing = await tx
@@ -1182,7 +1146,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .from(pipelineDocuments)
         .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
-        .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId), eq(pipelineDocuments.key, key)))
+        .where(and(eq(pipelineDocuments.pipelineId, pipelineId), eq(pipelineDocuments.key, key)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
 
@@ -1222,7 +1186,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           updatedByUserId: actor.type === "user" ? actor.userId : null,
         }).where(eq(documents.id, existing.document.id)).returning()
         : await tx.insert(documents).values({
-          companyId,
           title: req.body.title ?? key,
           latestBody: req.body.body,
           latestRevisionNumber: 1,
@@ -1232,7 +1195,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           updatedByUserId: actor.type === "user" ? actor.userId : null,
         }).returning();
       const [revision] = await tx.insert(documentRevisions).values({
-        companyId,
         documentId: document!.id,
         revisionNumber: existing ? existing.document.latestRevisionNumber + 1 : 1,
         title: req.body.title ?? document!.title,
@@ -1251,7 +1213,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         updatedByUserId: actor.type === "user" ? actor.userId : null,
       }).where(eq(documents.id, document!.id));
       if (!existing) {
-        await tx.insert(pipelineDocuments).values({ companyId, pipelineId, documentId: document!.id, key, createdAt: now, updatedAt: now });
+        await tx.insert(pipelineDocuments).values({ pipelineId, documentId: document!.id, key, createdAt: now, updatedAt: now });
       } else {
         await tx.update(pipelineDocuments).set({ updatedAt: now }).where(eq(pipelineDocuments.documentId, document!.id));
       }
@@ -1275,7 +1237,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const pipelineId = req.params.pipelineId as string;
     const key = req.params.key as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    const revisions = await listPipelineDocumentRevisions(db, { companyId, pipelineId, key });
+    const revisions = await listPipelineDocumentRevisions(db, { pipelineId, key });
     res.json(revisions);
   });
 
@@ -1284,7 +1246,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const key = req.params.key as string;
     const revisionId = req.params.revisionId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
 
     const result = await db.transaction(async (tx) => {
@@ -1293,7 +1255,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .from(pipelineDocuments)
         .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
-        .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId), eq(pipelineDocuments.key, key)))
+        .where(and(eq(pipelineDocuments.pipelineId, pipelineId), eq(pipelineDocuments.key, key)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!existing) throw notFound("Pipeline document not found");
@@ -1315,7 +1277,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const now = new Date();
       const nextRevisionNumber = existing.document.latestRevisionNumber + 1;
       const [restoredRevision] = await tx.insert(documentRevisions).values({
-        companyId,
         documentId: existing.document.id,
         revisionNumber: nextRevisionNumber,
         title: sourceRevision.title ?? null,
@@ -1355,27 +1316,27 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   router.post("/pipelines/:pipelineId/cases", validate(ingestCaseSchema), async (req, res) => {
     const pipelineId = req.params.pipelineId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
-    const result = await svc.ingestCase({ companyId, pipelineId, ...req.body, actor });
+    const result = await svc.ingestCase({ pipelineId, ...req.body, actor });
     res.status(result.created ? 201 : 200).json(result);
   });
 
   router.post("/pipelines/:pipelineId/cases/batch", validate(batchIngestSchema), async (req, res) => {
     const pipelineId = req.params.pipelineId as string;
     const companyId = await assertPipelineAccess(db, req, pipelineId);
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
-    res.json(await svc.ingestCases({ companyId, pipelineId, items: req.body.items, actor }));
+    res.json(await svc.ingestCases({ pipelineId, items: req.body.items, actor }));
   });
 
   router.post("/cases/:caseId/breakdown", validate(breakdownCaseSchema), async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    const target = await svc.resolveBreakdownTarget({ companyId, caseId });
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId: target.targetPipeline.id });
+    const target = await svc.resolveBreakdownTarget({ caseId });
+    await assertPipelineWriteAccess(req, { access, pipelineId: target.targetPipeline.id });
     const actor = actorForMutation(req);
-    res.json(await svc.breakdownCase({ companyId, caseId, items: req.body.items, actor }));
+    res.json(await svc.breakdownCase({ caseId, items: req.body.items, actor }));
   });
 
   router.get("/pipelines/:pipelineId/cases", async (req, res) => {
@@ -1407,15 +1368,12 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       .from(pipelineCases)
       .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
       .leftJoin(parentCase, and(
-        eq(parentCase.companyId, companyId),
         eq(parentCase.id, pipelineCases.parentCaseId),
       ))
       .leftJoin(parentPipeline, and(
-        eq(parentPipeline.companyId, companyId),
         eq(parentPipeline.id, parentCase.pipelineId),
       ))
       .where(and(
-        eq(pipelineCases.companyId, companyId),
         eq(pipelineCases.pipelineId, pipelineId),
         stageKey ? eq(pipelineStages.key, stageKey) : undefined,
         parentCaseId ? eq(pipelineCases.parentCaseId, parentCaseId) : undefined,
@@ -1426,8 +1384,8 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       .orderBy(asc(pipelineCases.createdAt));
     const caseIds = rows.map((row) => row.case.id);
     const [activeWork, descendantActiveWorkCounts] = await Promise.all([
-      loadActiveWorkForCases(db, companyId, caseIds),
-      loadDescendantActiveWorkCountsForCases(db, companyId, caseIds),
+      loadActiveWorkForCases(db, caseIds),
+      loadDescendantActiveWorkCountsForCases(db, caseIds),
     ]);
     res.json(rows.map((row) => ({
       case: row.case,
@@ -1446,7 +1404,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   router.get("/cases/:caseId", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    const detail = await getCaseDetail(db, companyId, caseId);
+    const detail = await getCaseDetail(db, caseId);
     res.json(detail);
   });
 
@@ -1455,22 +1413,21 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const key = parseDocumentKey(req.params.key);
     const companyId = await assertCaseAccess(db, req, caseId);
     const row = await db.transaction(async (tx) => {
-      const existing = await getPipelineCaseDocumentRow(tx, { companyId, caseId, key });
+      const existing = await getPipelineCaseDocumentRow(tx, { caseId, key });
       if (existing || key !== "body") return existing;
       const caseRow = await tx
         .select({ summary: pipelineCases.summary })
         .from(pipelineCases)
-        .where(and(eq(pipelineCases.companyId, companyId), eq(pipelineCases.id, caseId)))
+        .where(eq(pipelineCases.id, caseId))
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!caseRow?.summary?.trim()) return null;
       await ensurePipelineCaseBodyDocumentFromSummary(tx, {
-        companyId,
         caseId,
         summary: caseRow.summary,
         actor: { type: "system" },
       });
-      return getPipelineCaseDocumentRow(tx, { companyId, caseId, key });
+      return getPipelineCaseDocumentRow(tx, { caseId, key });
     });
     if (!row) throw notFound("Pipeline case document not found");
     res.json(row);
@@ -1480,10 +1437,10 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const key = parseDocumentKey(req.params.key);
     const companyId = await assertCaseAccess(db, req, caseId);
-    const pipelineId = await resolveCasePipelineId(db, { companyId, caseId });
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    const pipelineId = await resolveCasePipelineId(db, { caseId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
-    const sourceTrust = await sourceTrustForPipelineCaseDocumentWrite(db, { companyId, caseId, actor });
+    const sourceTrust = await sourceTrustForPipelineCaseDocumentWrite(db, { caseId, actor });
 
     const result = await db.transaction(async (tx) => {
       const existing = await tx
@@ -1492,7 +1449,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(pipelineCaseDocuments.companyId, companyId),
           eq(pipelineCaseDocuments.caseId, caseId),
           eq(pipelineCaseDocuments.key, key),
         ))
@@ -1543,7 +1499,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           sourceTrust,
         }).where(eq(documents.id, existing.document.id)).returning()
         : await tx.insert(documents).values({
-          companyId,
           title: req.body.title ?? key,
           format: req.body.format,
           latestBody: req.body.body,
@@ -1558,7 +1513,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         }).returning();
       const nextRevisionNumber = existing ? existing.document.latestRevisionNumber + 1 : 1;
       const [revision] = await tx.insert(documentRevisions).values({
-        companyId,
         documentId: document!.id,
         revisionNumber: nextRevisionNumber,
         title: req.body.title ?? document!.title,
@@ -1582,23 +1536,22 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         sourceTrust,
       }).where(eq(documents.id, document!.id));
       if (!existing) {
-        await tx.insert(pipelineCaseDocuments).values({ companyId, caseId, documentId: document!.id, key, createdAt: now, updatedAt: now });
+        await tx.insert(pipelineCaseDocuments).values({ caseId, documentId: document!.id, key, createdAt: now, updatedAt: now });
       } else {
         await tx.update(pipelineCaseDocuments).set({ updatedAt: now }).where(eq(pipelineCaseDocuments.documentId, document!.id));
       }
 
       if (key === "body") {
-        const conversationSource = await resolvePipelineCaseConversationSource(tx, companyId, caseId);
+        const conversationSource = await resolvePipelineCaseConversationSource(tx, caseId);
         if (conversationSource?.isActive) {
           await tx.insert(issueDocuments).values({
-            companyId,
             issueId: conversationSource.issue.id,
             documentId: document!.id,
             key: PIPELINE_CASE_BODY_DOCUMENT_KEY,
             createdAt: now,
             updatedAt: now,
           }).onConflictDoUpdate({
-            target: [issueDocuments.companyId, issueDocuments.issueId, issueDocuments.key],
+            target: [issueDocuments.issueId, issueDocuments.key],
             set: { documentId: document!.id, updatedAt: now },
           });
         }
@@ -1607,7 +1560,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const linkedIssueDocuments = await tx
         .select({ issueId: issueDocuments.issueId, key: issueDocuments.key })
         .from(issueDocuments)
-        .where(and(eq(issueDocuments.companyId, companyId), eq(issueDocuments.documentId, document!.id)));
+        .where(eq(issueDocuments.documentId, document!.id));
 
       return {
         created: !existing,
@@ -1641,7 +1594,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       ));
     }
     await logActivity(db, {
-      companyId,
       ...activityActorForPipelineRoute(actor),
       action: result.created ? "pipeline.case_document_created" : "pipeline.case_document_updated",
       entityType: "pipeline_case",
@@ -1661,7 +1613,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const key = parseDocumentKey(req.params.key);
     const companyId = await assertCaseAccess(db, req, caseId);
-    const revisions = await listPipelineCaseDocumentRevisions(db, { companyId, caseId, key });
+    const revisions = await listPipelineCaseDocumentRevisions(db, { caseId, key });
     res.json(revisions);
   });
 
@@ -1670,8 +1622,8 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const key = parseDocumentKey(req.params.key);
     const revisionId = req.params.revisionId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    const pipelineId = await resolveCasePipelineId(db, { companyId, caseId });
-    await assertPipelineWriteAccess(req, { access, companyId, pipelineId });
+    const pipelineId = await resolveCasePipelineId(db, { caseId });
+    await assertPipelineWriteAccess(req, { access, pipelineId });
     const actor = actorForMutation(req);
 
     const result = await db.transaction(async (tx) => {
@@ -1681,7 +1633,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(pipelineCaseDocuments.companyId, companyId),
           eq(pipelineCaseDocuments.caseId, caseId),
           eq(pipelineCaseDocuments.key, key),
         ))
@@ -1705,7 +1656,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const now = new Date();
       const nextRevisionNumber = existing.document.latestRevisionNumber + 1;
       const [restoredRevision] = await tx.insert(documentRevisions).values({
-        companyId,
         documentId: existing.document.id,
         revisionNumber: nextRevisionNumber,
         title: sourceRevision.title ?? null,
@@ -1732,7 +1682,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const linkedIssueDocuments = await tx
         .select({ issueId: issueDocuments.issueId, key: issueDocuments.key })
         .from(issueDocuments)
-        .where(and(eq(issueDocuments.companyId, companyId), eq(issueDocuments.documentId, existing.document.id)));
+        .where(eq(issueDocuments.documentId, existing.document.id));
 
       return {
         document: document!,
@@ -1754,7 +1704,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       })
     ));
     await logActivity(db, {
-      companyId,
       ...activityActorForPipelineRoute(actor),
       action: "pipeline.case_document_restored",
       entityType: "pipeline_case",
@@ -1784,15 +1733,14 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       .from(pipelineCases)
       .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
       .where(and(
-        eq(pipelineCases.companyId, companyId),
         eq(pipelineCases.parentCaseId, caseId),
         isNull(pipelineCases.hiddenFromBoardAt),
       ))
       .orderBy(asc(pipelineCases.createdAt));
     const caseIds = rows.map((row) => row.case.id);
     const [activeWork, descendantActiveWorkCounts] = await Promise.all([
-      loadActiveWorkForCases(db, companyId, caseIds),
-      loadDescendantActiveWorkCountsForCases(db, companyId, caseIds),
+      loadActiveWorkForCases(db, caseIds),
+      loadDescendantActiveWorkCountsForCases(db, caseIds),
     ]);
     res.json(rows.map((row) => ({
       ...row,
@@ -1805,7 +1753,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
-    const updated = await svc.patchCaseContent({ companyId, caseId, ...req.body, actor });
+    const updated = await svc.patchCaseContent({ caseId, ...req.body, actor });
     res.json(updated);
   });
 
@@ -1814,7 +1762,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
     if (actor.type === "system") throw forbidden();
-    const claimed = await svc.claimCase({ companyId, caseId, actor, leaseMs: req.body.leaseSeconds ? req.body.leaseSeconds * 1000 : undefined });
+    const claimed = await svc.claimCase({ caseId, actor, leaseMs: req.body.leaseSeconds ? req.body.leaseSeconds * 1000 : undefined });
     res.json({ case: claimed, leaseToken: claimed.leaseToken, leaseExpiresAt: claimed.leaseExpiresAt });
   });
 
@@ -1823,7 +1771,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
     if (req.body.force && actor.type === "agent") throw new HttpError(403, "Agents cannot force-release pipeline leases", { code: "forbidden" });
-    res.json(await svc.releaseCase({ companyId, caseId, actor, leaseToken: req.body.leaseToken, force: req.body.force }));
+    res.json(await svc.releaseCase({ caseId, actor, leaseToken: req.body.leaseToken, force: req.body.force }));
   });
 
   router.post("/cases/:caseId/transition", validate(transitionCaseSchema), async (req, res) => {
@@ -1831,7 +1779,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
     res.json(await svc.transitionCase({
-      companyId,
       caseId,
       toStageKey: req.body.toStageKey,
       expectedVersion: req.body.expectedVersion,
@@ -1847,7 +1794,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
-    res.json(await svc.suggestTransition({ companyId, caseId, ...req.body, actor }));
+    res.json(await svc.suggestTransition({ caseId, ...req.body, actor }));
   });
 
   router.post("/cases/:caseId/resolve-suggestion", validate(resolveSuggestionSchema), async (req, res) => {
@@ -1855,7 +1802,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
     res.json(await svc.resolveSuggestion({
-      companyId,
       caseId,
       suggestionId: req.body.suggestionId,
       decision: req.body.resolution,
@@ -1871,7 +1817,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
     res.json(await svc.acknowledgeDrift({
-      companyId,
       caseId,
       expectedVersion: req.body.expectedVersion,
       actor,
@@ -1882,37 +1827,36 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
-    res.json(await svc.reviewCase({ companyId, caseId, ...req.body, actor }));
+    res.json(await svc.reviewCase({ caseId, ...req.body, actor }));
   });
 
   router.put("/cases/:caseId/blockers", validate(blockersSchema), async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
-    res.json(await svc.replaceBlockers({ companyId, caseId, blockedByCaseIds: req.body.blockedByCaseIds, actor }));
+    res.json(await svc.replaceBlockers({ caseId, blockedByCaseIds: req.body.blockedByCaseIds, actor }));
   });
 
   router.post("/cases/:caseId/open-conversation", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
-    const conversationSource = await resolvePipelineCaseConversationSource(db, companyId, caseId);
+    const conversationSource = await resolvePipelineCaseConversationSource(db, caseId);
     if (conversationSource?.isActive) {
       res.json({ issue: conversationSource.issue, created: false });
       return;
     }
-    const detail = await getCaseDetail(db, companyId, caseId);
+    const detail = await getCaseDetail(db, caseId);
     const [bodyDocumentContext, outputSummaries] = await Promise.all([
-      loadPipelineConversationBodyDocumentContext(db, { companyId, caseId }),
-      outputsSvc.listCaseOutputs(companyId, caseId).then((outputs) => summarizePipelineCaseOutputsForContext(outputs)),
+      loadPipelineConversationBodyDocumentContext(db, { caseId }),
+      outputsSvc.listCaseOutputs(caseId).then((outputs) => summarizePipelineCaseOutputsForContext(outputs)),
     ]);
     const result = await db.transaction(async (tx) => {
-      const existingConversationSource = await resolvePipelineCaseConversationSource(tx, companyId, caseId);
+      const existingConversationSource = await resolvePipelineCaseConversationSource(tx, caseId);
       if (existingConversationSource?.isActive) {
         return { issue: existingConversationSource.issue, created: false };
       }
       const [issue] = await tx.insert(issueRows).values({
-        companyId,
         title: `Discuss: ${detail.case.title}`,
         description: buildCaseContextMarkdown(detail, bodyDocumentContext, outputSummaries),
         status: "todo",
@@ -1924,7 +1868,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         createdByUserId: actor.type === "user" ? actor.userId : null,
       }).returning();
       await tx.insert(pipelineCaseIssueLinks).values({
-        companyId,
         caseId,
         issueId: issue!.id,
         role: "conversation",
@@ -1932,7 +1875,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       });
       if (bodyDocumentContext.bodyDocument) {
         await tx.insert(issueDocuments).values({
-          companyId,
           issueId: issue!.id,
           documentId: bodyDocumentContext.bodyDocument.id,
           key: PIPELINE_CASE_BODY_DOCUMENT_KEY,
@@ -1941,7 +1883,6 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         }).onConflictDoNothing();
       }
       await writeRouteEvent(tx, {
-        companyId,
         caseId,
         type: "conversation_opened",
         actor,
@@ -1960,9 +1901,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       .from(pipelineCaseIssueLinks)
       .innerJoin(issueRows, eq(pipelineCaseIssueLinks.issueId, issueRows.id))
       .where(and(
-        eq(pipelineCaseIssueLinks.companyId, companyId),
         eq(pipelineCaseIssueLinks.caseId, caseId),
-        eq(issueRows.companyId, companyId),
       ))
       .orderBy(asc(pipelineCaseIssueLinks.createdAt));
     res.json(links);
@@ -1971,27 +1910,25 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
   router.get("/cases/:caseId/outputs", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    res.json(await outputsSvc.listCaseOutputs(companyId, caseId));
+    res.json(await outputsSvc.listCaseOutputs(caseId));
   });
 
   router.post("/cases/:caseId/issue-links", validate(createIssueLinkSchema), async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
-    const targetIssue = await getIssueMutationTarget(db, { companyId, issueId: req.body.issueId });
+    const targetIssue = await getIssueMutationTarget(db, { issueId: req.body.issueId });
     if (!targetIssue) throw notFound("Issue not found");
     await assertIssueLinkMutationAllowed(req, { access, issuesSvc, issue: targetIssue });
     try {
       const link = await db.transaction(async (tx) => {
         const [created] = await tx.insert(pipelineCaseIssueLinks).values({
-          companyId,
           caseId,
           issueId: req.body.issueId,
           role: req.body.role,
           createdByRunId: actor.type === "agent" ? actor.runId : null,
         }).returning();
         await writeRouteEvent(tx, {
-          companyId,
           caseId,
           type: "issue_linked",
           actor,
@@ -2015,13 +1952,12 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       .from(pipelineCaseIssueLinks)
       .where(and(
         eq(pipelineCaseIssueLinks.id, linkId),
-        eq(pipelineCaseIssueLinks.companyId, companyId),
         eq(pipelineCaseIssueLinks.caseId, caseId),
       ))
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!existingLink) throw notFound("Pipeline case issue link not found");
-    const targetIssue = await getIssueMutationTarget(db, { companyId, issueId: existingLink.issueId });
+    const targetIssue = await getIssueMutationTarget(db, { issueId: existingLink.issueId });
     if (!targetIssue) throw notFound("Issue not found");
     await assertIssueLinkMutationAllowed(req, { access, issuesSvc, issue: targetIssue });
     const deleted = await db.transaction(async (tx) => {
@@ -2029,13 +1965,11 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .delete(pipelineCaseIssueLinks)
         .where(and(
           eq(pipelineCaseIssueLinks.id, linkId),
-          eq(pipelineCaseIssueLinks.companyId, companyId),
           eq(pipelineCaseIssueLinks.caseId, caseId),
         ))
         .returning();
       if (!removed) return null;
       await writeRouteEvent(tx, {
-        companyId,
         caseId,
         type: "issue_unlinked",
         actor,
@@ -2050,32 +1984,32 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
     const pagination = parseCaseEventsQuery(req.query);
-    res.json(await svc.listCaseEventsPage(companyId, caseId, pagination));
+    res.json(await svc.listCaseEventsPage(caseId, pagination));
   });
 
   router.get("/cases/:caseId/children/tree", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    res.json(await getCaseChildrenTree(db, companyId, caseId));
+    res.json(await getCaseChildrenTree(db, caseId));
   });
 
   router.get("/cases/:caseId/rollup", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    res.json(await svc.getCaseRollup(companyId, caseId));
+    res.json(await svc.getCaseRollup(caseId));
   });
 
   router.get("/cases/:caseId/context-pack", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    const detail = await getCaseDetail(db, companyId, caseId);
+    const detail = await getCaseDetail(db, caseId);
     const [events, outputs, childOutcomes] = await Promise.all([
-      svc.listCaseEventsPage(companyId, caseId, {
+      svc.listCaseEventsPage(caseId, {
         limit: PIPELINE_CONTEXT_PACK_EVENT_LIMIT,
         order: "desc",
       }),
-      outputsSvc.listCaseOutputs(companyId, caseId),
-      getChildOutcomeSummaries(db, companyId, caseId),
+      outputsSvc.listCaseOutputs(caseId),
+      getChildOutcomeSummaries(db, caseId),
     ]);
     const outputSummaries = summarizePipelineCaseOutputsForContext(outputs);
     res.json({
@@ -2104,13 +2038,12 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const query = retryAutomationQuerySchema.parse(req.query);
     const companyId = await assertCaseAccess(db, req, caseId);
     const plan = await svc.getAutomationRetryPlan({
-      companyId,
       caseId,
       scope: query.scope,
       targetStageId: query.targetStageId,
     });
     if (plan.targetStage) {
-      await assertStageAutomationTargetWriteAccess(db, req, { access, companyId, stage: plan.targetStage });
+      await assertStageAutomationTargetWriteAccess(db, req, { access, stage: plan.targetStage });
     }
     res.json(plan);
   });
@@ -2120,16 +2053,14 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const companyId = await assertCaseAccess(db, req, caseId);
     const actor = actorForMutation(req);
     const plan = await svc.getAutomationRetryPlan({
-      companyId,
       caseId,
       scope: req.body.scope,
       targetStageId: req.body.targetStageId,
     });
     if (plan.targetStage) {
-      await assertStageAutomationTargetWriteAccess(db, req, { access, companyId, stage: plan.targetStage });
+      await assertStageAutomationTargetWriteAccess(db, req, { access, stage: plan.targetStage });
     }
     res.json(await svc.retryStageAutomation({
-      companyId,
       caseId,
       scope: req.body.scope,
       targetStageId: req.body.targetStageId,
@@ -2143,29 +2074,29 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const caseId = req.params.caseId as string;
     const automationId = req.params.automationId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, companyId, caseId, automationId });
+    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, caseId, automationId });
     const actor = actorForMutation(req);
-    res.json(await svc.retryAutomation({ companyId, caseId, automationId, actor }));
+    res.json(await svc.retryAutomation({ caseId, automationId, actor }));
   });
 
   router.post("/cases/:caseId/automation/current-stage/rerun", async (req, res) => {
     const caseId = req.params.caseId as string;
     const companyId = await assertCaseAccess(db, req, caseId);
-    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, companyId, caseId });
+    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, caseId });
     const actor = actorForMutation(req);
-    res.json(await svc.rerunCurrentStageAutomation({ companyId, caseId, actor }));
+    res.json(await svc.rerunCurrentStageAutomation({ caseId, actor }));
   });
 
   return router;
 }
 
-async function getCaseDetail(db: Db, companyId: string, caseId: string) {
+async function getCaseDetail(db: Db, caseId: string) {
   const row = await db
     .select({ case: pipelineCases, stage: pipelineStages, pipeline: pipelines })
     .from(pipelineCases)
     .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
     .innerJoin(pipelines, eq(pipelineCases.pipelineId, pipelines.id))
-    .where(and(eq(pipelineCases.companyId, companyId), eq(pipelineCases.id, caseId)))
+    .where(eq(pipelineCases.id, caseId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Pipeline case not found");
@@ -2175,11 +2106,7 @@ async function getCaseDetail(db: Db, companyId: string, caseId: string) {
       .from(pipelineCases)
       .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
       .innerJoin(pipelines, eq(pipelineCases.pipelineId, pipelines.id))
-      .where(and(
-        eq(pipelineCases.companyId, companyId),
-        eq(pipelineCases.id, row.case.parentCaseId),
-        eq(pipelines.companyId, companyId),
-      ))
+      .where(eq(pipelineCases.id, row.case.parentCaseId))
       .limit(1)
       .then((rows) => rows[0] ?? null)
     : Promise.resolve(null);
@@ -2197,16 +2124,16 @@ async function getCaseDetail(db: Db, companyId: string, caseId: string) {
     builtFromAutomation,
   ] = await Promise.all([
     db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, row.case.pipelineId)).orderBy(asc(pipelineStages.position)),
-    db.select().from(pipelineCaseIssueLinks).where(and(eq(pipelineCaseIssueLinks.companyId, companyId), eq(pipelineCaseIssueLinks.caseId, caseId))),
-    db.select().from(pipelineCaseBlockers).where(and(eq(pipelineCaseBlockers.companyId, companyId), eq(pipelineCaseBlockers.caseId, caseId))),
-    db.select().from(pipelineCaseBlockers).where(and(eq(pipelineCaseBlockers.companyId, companyId), eq(pipelineCaseBlockers.blockedByCaseId, caseId))),
-    getDirectChildrenSummary(db, companyId, caseId),
-    loadActiveWorkForCases(db, companyId, [caseId]),
-    loadDescendantActiveWorkCountsForCases(db, companyId, [caseId]),
+    db.select().from(pipelineCaseIssueLinks).where(eq(pipelineCaseIssueLinks.caseId, caseId)),
+    db.select().from(pipelineCaseBlockers).where(eq(pipelineCaseBlockers.caseId, caseId)),
+    db.select().from(pipelineCaseBlockers).where(eq(pipelineCaseBlockers.blockedByCaseId, caseId)),
+    getDirectChildrenSummary(db, caseId),
+    loadActiveWorkForCases(db, [caseId]),
+    loadDescendantActiveWorkCountsForCases(db, [caseId]),
     parentCasePromise,
-    resolvePipelineCaseConversationSource(db, companyId, caseId),
-    derivePipelineCaseLiveness(db, companyId, row),
-    loadBuiltFromAutomation(db, companyId, row.case),
+    resolvePipelineCaseConversationSource(db, caseId),
+    derivePipelineCaseLiveness(db, row),
+    loadBuiltFromAutomation(db, row.case),
   ]);
   return {
     ...row,
@@ -2244,7 +2171,6 @@ function stageAutomationId(stage: typeof pipelineStages.$inferSelect) {
 
 async function loadBuiltFromAutomation(
   db: Db,
-  companyId: string,
   caseRow: typeof pipelineCases.$inferSelect,
 ) {
   if (!caseRow.automationAttemptId) return null;
@@ -2256,22 +2182,10 @@ async function loadBuiltFromAutomation(
       routine: routines,
     })
     .from(pipelineAutomationExecutions)
-    .innerJoin(pipelineCases, and(
-      eq(pipelineCases.companyId, companyId),
-      eq(pipelineCases.id, pipelineAutomationExecutions.caseId),
-    ))
-    .innerJoin(pipelines, and(
-      eq(pipelines.companyId, companyId),
-      eq(pipelines.id, pipelineCases.pipelineId),
-    ))
-    .innerJoin(routines, and(
-      eq(routines.companyId, companyId),
-      eq(routines.id, pipelineAutomationExecutions.routineId),
-    ))
-    .where(and(
-      eq(pipelineAutomationExecutions.companyId, companyId),
-      eq(pipelineAutomationExecutions.id, caseRow.automationAttemptId),
-    ))
+    .innerJoin(pipelineCases, eq(pipelineCases.id, pipelineAutomationExecutions.caseId))
+    .innerJoin(pipelines, eq(pipelines.id, pipelineCases.pipelineId))
+    .innerJoin(routines, eq(routines.id, pipelineAutomationExecutions.routineId))
+    .where(eq(pipelineAutomationExecutions.id, caseRow.automationAttemptId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) return null;
@@ -2375,7 +2289,6 @@ async function assertStageAutomationTargetWriteAccess(
   req: Request,
   input: {
     access: ReturnType<typeof accessService>;
-    companyId: string;
     stage: { id: string };
   },
 ) {
@@ -2390,7 +2303,6 @@ async function assertStageAutomationTargetWriteAccess(
   if (!targetPipelineId) return;
   await assertPipelineWriteAccess(req, {
     access: input.access,
-    companyId: input.companyId,
     pipelineId: targetPipelineId,
   });
 }
@@ -2400,7 +2312,6 @@ async function assertCurrentStageAutomationTargetWriteAccess(
   req: Request,
   input: {
     access: ReturnType<typeof accessService>;
-    companyId: string;
     caseId: string;
     automationId?: string;
   },
@@ -2409,7 +2320,7 @@ async function assertCurrentStageAutomationTargetWriteAccess(
     .select({ stage: pipelineStages })
     .from(pipelineCases)
     .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
-    .where(and(eq(pipelineCases.companyId, input.companyId), eq(pipelineCases.id, input.caseId)))
+    .where(eq(pipelineCases.id, input.caseId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Pipeline case not found");
@@ -2422,7 +2333,6 @@ async function assertCurrentStageAutomationTargetWriteAccess(
 
   await assertPipelineWriteAccess(req, {
     access: input.access,
-    companyId: input.companyId,
     pipelineId: targetPipelineId,
   });
 }
@@ -2441,12 +2351,11 @@ function parsePermissionPreflightFingerprint(fingerprint: string | null) {
   return { caseId, stageId, automationId, targetPipelineId, principalId, permissionKey };
 }
 
-async function latestBreakdownCreatedEvent(db: Db, companyId: string, caseId: string) {
+async function latestBreakdownCreatedEvent(db: Db, caseId: string) {
   return db
     .select()
     .from(pipelineCaseEvents)
     .where(and(
-      eq(pipelineCaseEvents.companyId, companyId),
       eq(pipelineCaseEvents.caseId, caseId),
       eq(pipelineCaseEvents.type, "updated"),
       sql`${pipelineCaseEvents.payload}->>'kind' = 'breakdown_created'`,
@@ -2458,7 +2367,6 @@ async function latestBreakdownCreatedEvent(db: Db, companyId: string, caseId: st
 
 async function derivePipelineCaseLiveness(
   db: Db,
-  companyId: string,
   row: { case: typeof pipelineCases.$inferSelect; stage: typeof pipelineStages.$inferSelect },
 ): Promise<PipelineCaseLiveness> {
   if (row.case.terminalKind) {
@@ -2486,7 +2394,6 @@ async function derivePipelineCaseLiveness(
     .from(pipelineCaseBlockers)
     .innerJoin(pipelineCases, eq(pipelineCaseBlockers.blockedByCaseId, pipelineCases.id))
     .where(and(
-      eq(pipelineCaseBlockers.companyId, companyId),
       eq(pipelineCaseBlockers.caseId, row.case.id),
       or(isNull(pipelineCases.terminalKind), ne(pipelineCases.terminalKind, "done")),
     ))
@@ -2511,10 +2418,8 @@ async function derivePipelineCaseLiveness(
     .from(pipelineCaseIssueLinks)
     .innerJoin(issueRows, eq(pipelineCaseIssueLinks.issueId, issueRows.id))
     .where(and(
-      eq(pipelineCaseIssueLinks.companyId, companyId),
       eq(pipelineCaseIssueLinks.caseId, row.case.id),
       inArray(pipelineCaseIssueLinks.role, ["automation", "work"]),
-      eq(issueRows.companyId, companyId),
       isNull(issueRows.hiddenAt),
     ))
     .orderBy(desc(issueRows.updatedAt), desc(pipelineCaseIssueLinks.createdAt));
@@ -2530,7 +2435,6 @@ async function derivePipelineCaseLiveness(
       .from(issueRelations)
       .innerJoin(issueRows, eq(issueRelations.issueId, issueRows.id))
       .where(and(
-        eq(issueRelations.companyId, companyId),
         eq(issueRelations.type, "blocks"),
         eq(issueRelations.relatedIssueId, blockedIssue.issue.id),
       ))
@@ -2569,10 +2473,7 @@ async function derivePipelineCaseLiveness(
   const latestAutomation = await db
     .select()
     .from(pipelineAutomationExecutions)
-    .where(and(
-      eq(pipelineAutomationExecutions.companyId, companyId),
-      eq(pipelineAutomationExecutions.caseId, row.case.id),
-    ))
+    .where(eq(pipelineAutomationExecutions.caseId, row.case.id))
     .orderBy(desc(pipelineAutomationExecutions.updatedAt), desc(pipelineAutomationExecutions.createdAt))
     .limit(1)
     .then((rows) => rows[0] ?? null);
@@ -2586,11 +2487,10 @@ async function derivePipelineCaseLiveness(
         actor: {
           type: "agent",
           agentId: parsedFingerprint.principalId,
-          companyId,
           source: "agent_key",
         },
         action: "pipelines:write",
-        resource: { type: "company", companyId },
+        resource: { type: "company" },
         scope: { pipelineId: parsedFingerprint.targetPipelineId },
       });
       if (decision.allowed) {
@@ -2626,7 +2526,7 @@ async function derivePipelineCaseLiveness(
 
   const breakdownConfig = readStageBreakdownConfig(row.stage.config);
   if (breakdownConfig) {
-    const breakdownEvent = await latestBreakdownCreatedEvent(db, companyId, row.case.id);
+    const breakdownEvent = await latestBreakdownCreatedEvent(db, row.case.id);
     if (!breakdownEvent) {
       return {
         state: "attention",
@@ -2640,7 +2540,6 @@ async function derivePipelineCaseLiveness(
         .select({ requestKey: pipelineCases.requestKey })
         .from(pipelineCases)
         .where(and(
-          eq(pipelineCases.companyId, companyId),
           eq(pipelineCases.parentCaseId, row.case.id),
           inArray(pipelineCases.requestKey, expectedRequestKeys),
           isNull(pipelineCases.hiddenFromBoardAt),
@@ -2749,13 +2648,13 @@ function buildCaseContextMarkdown(
   ].filter((line) => line !== null).join("\n");
 }
 
-async function getChildOutcomeSummaries(db: Db, companyId: string, caseId: string) {
+async function getChildOutcomeSummaries(db: Db, caseId: string) {
   const children = await db
     .select({ case: pipelineCases, stage: pipelineStages, pipeline: pipelines })
     .from(pipelineCases)
     .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
     .innerJoin(pipelines, eq(pipelineCases.pipelineId, pipelines.id))
-    .where(and(eq(pipelineCases.companyId, companyId), eq(pipelineCases.parentCaseId, caseId)))
+    .where(eq(pipelineCases.parentCaseId, caseId))
     .orderBy(asc(pipelineCases.createdAt));
   if (children.length === 0) return [];
 
@@ -2764,7 +2663,6 @@ async function getChildOutcomeSummaries(db: Db, companyId: string, caseId: strin
     .select()
     .from(pipelineCaseEvents)
     .where(and(
-      eq(pipelineCaseEvents.companyId, companyId),
       inArray(pipelineCaseEvents.caseId, childIds),
       eq(pipelineCaseEvents.type, "review_decided"),
     ))

@@ -501,7 +501,6 @@ describe("GitHub exact-comment private image resolution", () => {
       });
       request.mockResolvedValue(Response.json(canonical));
       const runtime = createChatSdkEndpointRuntime({
-        companyId: "company-test",
         endpointId: "endpoint-test",
         logger: "silent",
         callbacks: { onMessage() {} },
@@ -602,7 +601,6 @@ describe("GitHub exact-comment private image resolution", () => {
       vi.stubGlobal("fetch", providerFetch);
       const createRuntime = () =>
         createChatSdkEndpointRuntime({
-          companyId: "company-test",
           endpointId: "endpoint-test",
           logger: "silent",
           callbacks: { onMessage() {} },

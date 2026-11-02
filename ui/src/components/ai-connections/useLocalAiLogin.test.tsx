@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 afterEach(() => { flushSync(() => root.unmount()); host.remove(); });
 function Harness({ name = "Account", provider = "openai", enabled = true }: { name?: string; provider?: "anthropic" | "openai"; enabled?: boolean }) {
-  const login = useLocalAiLogin("company", { provider, method: "subscription", name, ownership: "personal", agentIds: [], allAgents: true }, enabled, { allowHostClaude: true });
+  const login = useLocalAiLogin({ provider, method: "subscription", name, ownership: "personal", agentIds: [], allAgents: true }, enabled, { allowHostClaude: true });
   return <><LocalProviderLoginInstructions adapterType={provider === "anthropic" ? "claude_local" : "codex_local"} login={login} /><button onClick={() => void login.connect()}>Connect</button></>;
 }
 it("checks once under StrictMode, preserves renaming and navigation, and cancels only on explicit retry", async () => {
@@ -36,7 +36,7 @@ it("checks once under StrictMode, preserves renaming and navigation, and cancels
   await vi.waitFor(() => expect(host.textContent).toContain("isolated codex login"));
   expect(api.cancelLocalLogin).not.toHaveBeenCalled();
   flushSync(() => Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Connect')!.click());
-  await vi.waitFor(() => expect(api.connectLocal).toHaveBeenCalledWith("company", expect.objectContaining({ name: "Renamed", localSessionId: "attempt-1" })));
+  await vi.waitFor(() => expect(api.connectLocal).toHaveBeenCalledWith(expect.objectContaining({ name: "Renamed", localSessionId: "attempt-1" })));
   flushSync(() => Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Start sign-in again')!.click());
   await vi.waitFor(() => expect(api.startLocalLogin).toHaveBeenCalledTimes(2));
   expect(api.cancelLocalLogin).toHaveBeenCalledTimes(1);
@@ -77,5 +77,5 @@ it("explicit retry can replace an attempt opened in another authentication host"
   await vi.waitFor(() => expect(host.textContent).toContain("Another sign-in"));
   flushSync(() => Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Start sign-in again')!.click());
   await vi.waitFor(() => expect(host.textContent).toContain("isolated codex login"));
-  expect(api.startLocalLogin).toHaveBeenLastCalledWith("company", expect.objectContaining({ restart: true }));
+  expect(api.startLocalLogin).toHaveBeenLastCalledWith(expect.objectContaining({ restart: true }));
 });

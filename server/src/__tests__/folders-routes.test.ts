@@ -30,7 +30,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "user-1",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     };
@@ -56,7 +56,7 @@ describe("folder routes", () => {
 
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/folders/items/move")
+      .post("/api/folders/items/move")
       .send({
         kind: "routine",
         itemId: "11111111-1111-4111-8111-111111111111",
@@ -64,7 +64,7 @@ describe("folder routes", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(mockFolderService.moveItem).toHaveBeenCalledWith("company-1", {
+    expect(mockFolderService.moveItem).toHaveBeenCalledWith({
       kind: "routine",
       itemId: "11111111-1111-4111-8111-111111111111",
       folderId: "22222222-2222-4222-8222-222222222222",

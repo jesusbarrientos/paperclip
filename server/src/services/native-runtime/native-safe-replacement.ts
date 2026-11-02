@@ -84,10 +84,7 @@ export async function reconcileSafeNativeReplacements(
         .select()
         .from(environmentLeases)
         .where(
-          and(
-            eq(environmentLeases.companyId, run.companyId),
-            eq(environmentLeases.heartbeatRunId, run.id),
-          ),
+          eq(environmentLeases.heartbeatRunId, run.id),
         );
       // Teardown is still in progress. The next sweep rechecks its durable outcome.
       if (leases.some((lease) => lease.releasedAt === null)) continue;
@@ -100,10 +97,7 @@ export async function reconcileSafeNativeReplacements(
         .select()
         .from(toolInvocations)
         .where(
-          and(
-            eq(toolInvocations.companyId, run.companyId),
-            eq(toolInvocations.runId, run.id),
-          ),
+          eq(toolInvocations.runId, run.id),
         );
       const events = await db
         .select({
@@ -113,7 +107,6 @@ export async function reconcileSafeNativeReplacements(
         .from(heartbeatRunEvents)
         .where(
           and(
-            eq(heartbeatRunEvents.companyId, run.companyId),
             eq(heartbeatRunEvents.runId, run.id),
             inArray(heartbeatRunEvents.eventType, [
               "harness.diagnostic",
@@ -188,7 +181,6 @@ export async function reconcileSafeNativeReplacements(
       try {
         const continuation = await buildExecutionContinuation({
           db,
-          companyId: run.companyId,
           issueId: coordinator.issueId,
           agentId: run.agentId,
           context: record(run.contextSnapshot),
@@ -242,10 +234,7 @@ export async function reconcileSafeNativeReplacements(
             .select()
             .from(issues)
             .where(
-              and(
-                eq(issues.id, coordinator.issueId),
-                eq(issues.companyId, run.companyId),
-              ),
+              eq(issues.id, coordinator.issueId),
             )
             .for("update");
           const [current] = await tx
@@ -280,7 +269,6 @@ export async function reconcileSafeNativeReplacements(
           await issueRecoveryActionService(
             tx as unknown as Db,
           ).upsertSourceScoped({
-            companyId: run.companyId,
             sourceIssueId: coordinator.issueId,
             kind: "active_run_watchdog",
             ownerType: "board",
@@ -305,10 +293,7 @@ export async function reconcileSafeNativeReplacements(
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.id, coordinator.issueId),
-              eq(issues.companyId, run.companyId),
-            ),
+            eq(issues.id, coordinator.issueId),
           )
           .for("update");
         const [current] = await tx
@@ -332,7 +317,6 @@ export async function reconcileSafeNativeReplacements(
           return false;
         if (task.status === "blocked") {
           const failureHolds = await tx.select().from(issueRecoveryActions).where(and(
-            eq(issueRecoveryActions.companyId, run.companyId),
             eq(issueRecoveryActions.sourceIssueId, task.id),
             eq(issueRecoveryActions.kind, "active_run_watchdog"),
             eq(issueRecoveryActions.cause, current.failureCode!),
@@ -345,9 +329,7 @@ export async function reconcileSafeNativeReplacements(
           if (!ownsBlock) return false;
         }
         if (stoppedSession) {
-          const [currentRun] = await tx.select().from(heartbeatRuns).where(and(
-            eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.companyId, run.companyId),
-          )).for("update");
+          const [currentRun] = await tx.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, run.id)).for("update");
           if (!currentRun || currentRun.status !== "failed" || currentRun.runnerInstanceId !== run.runnerInstanceId ||
               currentRun.nativeSessionId !== run.nativeSessionId || currentRun.processPid || currentRun.processGroupId) return false;
         }
@@ -360,7 +342,7 @@ export async function reconcileSafeNativeReplacements(
           // If the last ownership proof changes, roll back the status restoration.
           if (!stoppedSession.retire()) throw new Error("native_replacement_stopped_session_changed");
           await appendHeartbeatRunEvent(tx as unknown as Db, {
-            companyId: run.companyId, runId: run.id, agentId: run.agentId,
+            runId: run.id, agentId: run.agentId,
             eventType: "native.stopped_text_turn_verified", stream: "system", level: "info",
             message: "The previous runner and provider stopped. The interrupted turn had no external actions; any completion bookkeeping has a verified receipt.",
             payload: stoppedSession.evidence,
@@ -390,7 +372,6 @@ export async function reconcileSafeNativeReplacements(
         const [wake] = await tx
           .insert(agentWakeupRequests)
           .values({
-            companyId: run.companyId,
             agentId: run.agentId,
             source: "automation",
             triggerDetail: "system",
@@ -403,7 +384,6 @@ export async function reconcileSafeNativeReplacements(
           .returning();
         await tx.insert(heartbeatRuns).values({
           id: successorRunId,
-          companyId: run.companyId,
           agentId: run.agentId,
           invocationSource: "automation",
           triggerDetail: "system",
@@ -439,7 +419,6 @@ export async function reconcileSafeNativeReplacements(
         await issueRecoveryActionService(
           tx as unknown as Db,
         ).resolveActiveForIssue({
-          companyId: run.companyId,
           sourceIssueId: task.id,
           kind: "active_run_watchdog",
           fingerprint: createHash("sha256")
@@ -453,7 +432,6 @@ export async function reconcileSafeNativeReplacements(
         // an effective no-replay hold. Retire only this exact failure's hold in
         // the same transaction as its verified successor; unrelated holds remain.
         const holds = await tx.select().from(issueRecoveryActions).where(and(
-          eq(issueRecoveryActions.companyId, run.companyId),
           eq(issueRecoveryActions.sourceIssueId, task.id),
           eq(issueRecoveryActions.kind, "active_run_watchdog"),
           eq(issueRecoveryActions.cause, current.failureCode!),

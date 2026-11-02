@@ -28,7 +28,7 @@ Tokens are either:
 ## Request Format
 
 - All request bodies are JSON with `Content-Type: application/json`
-- Company-scoped endpoints require `:companyId` in the path
+- Endpoints carry no company id: each instance serves exactly one organization (`/api/issues`, `/api/organization`)
 - Run audit trail: include `X-Paperclip-Run-Id` header on all mutating requests during heartbeats
 
 ## Response Format

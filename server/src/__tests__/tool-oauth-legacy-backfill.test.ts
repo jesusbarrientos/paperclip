@@ -61,14 +61,12 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
   it("moves legacy raw OAuth tokens into secret refs and removes JSONB token keys idempotently", async () => {
     const company = await createCompany(db);
     const [application] = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `legacy-oauth-${randomUUID()}`,
       name: `Legacy OAuth ${randomUUID()}`,
       type: "mcp_http",
       status: "active",
     }).returning();
     const [connection] = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application!.id,
       name: `Legacy OAuth Connection ${randomUUID()}`,
       uid: `test/${randomUUID()}`,
@@ -120,7 +118,7 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
     expect(updated!.credentialRefs).toEqual([
       expect.objectContaining({ name: "oauth.access_token", key: "Authorization", prefix: "Bearer " }),
     ]);
-    const secretRows = await db.select().from(companySecrets).where(eq(companySecrets.companyId, company.id));
+    const secretRows = await db.select().from(companySecrets);
     expect(secretRows.map((secret) => secret.key).sort()).toEqual([
       `tool-connection/${connection!.id}/oauth/access-token`,
       `tool-connection/${connection!.id}/oauth/refresh-token`,
@@ -130,13 +128,13 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
     const secrets = secretService(db);
     const accessRef = updated!.credentialSecretRefs.find((ref) => ref.configPath === "oauth.access_token")!;
     const refreshRef = updated!.credentialSecretRefs.find((ref) => ref.configPath === "oauth.refresh_token")!;
-    await expect(secrets.resolveSecretValue(company.id, accessRef.secretId, "latest", {
+    await expect(secrets.resolveSecretValue(accessRef.secretId, "latest", {
       consumerType: "tool_connection",
       consumerId: connection!.id,
       configPath: "oauth.access_token",
       actorType: "system",
     })).resolves.toBe("legacy-access-token");
-    await expect(secrets.resolveSecretValue(company.id, refreshRef.secretId, "latest", {
+    await expect(secrets.resolveSecretValue(refreshRef.secretId, "latest", {
       consumerType: "tool_connection",
       consumerId: connection!.id,
       configPath: "oauth.refresh_token",
@@ -172,14 +170,12 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
   it("preserves an existing deterministic OAuth secret provider when rotating legacy material", async () => {
     const company = await createCompany(db);
     const [application] = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `legacy-oauth-aws-${randomUUID()}`,
       name: `Legacy OAuth AWS ${randomUUID()}`,
       type: "mcp_http",
       status: "active",
     }).returning();
     const [connection] = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application!.id,
       name: `Legacy OAuth AWS Connection ${randomUUID()}`,
       uid: `test/${randomUUID()}`,
@@ -213,7 +209,7 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
       providerVersionRef: "aws-version-2",
     });
     const secrets = secretService(db);
-    const awsVault = await secrets.createProviderConfig(company.id, {
+    const awsVault = await secrets.createProviderConfig({
       provider: "aws_secrets_manager",
       displayName: "AWS OAuth vault",
       config: { region: "us-east-1", namespace: "oauth-test", secretNamePrefix: "paperclip" },
@@ -232,7 +228,6 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
     });
     const deterministicKey = `tool-connection/${connection!.id}/oauth/access-token`;
     const [existingSecret] = await db.insert(companySecrets).values({
-      companyId: company.id,
       key: deterministicKey,
       name: `Existing OAuth access ${randomUUID()}`,
       provider: "aws_secrets_manager",
@@ -274,7 +269,6 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
     expect(createVersionSpy).toHaveBeenCalledWith(expect.objectContaining({
       providerConfig: expect.objectContaining({ id: awsVault.id, provider: "aws_secrets_manager" }),
       context: expect.objectContaining({
-        companyId: company.id,
         secretKey: deterministicKey,
         version: 2,
       }),
@@ -316,7 +310,7 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
       }),
     ]));
 
-    await expect(secrets.resolveSecretValue(company.id, accessRef.secretId, "latest", {
+    await expect(secrets.resolveSecretValue(accessRef.secretId, "latest", {
       consumerType: "tool_connection",
       consumerId: connection!.id,
       configPath: "oauth.access_token",

@@ -52,14 +52,14 @@ function availableList(input: { mode?: "all" | "recent" | "changed" | null } = {
   };
 }
 
-function createLoadApp(db: Db, companyId: string, service: WorkspaceFileResourceService) {
+function createLoadApp(db: Db, service: WorkspaceFileResourceService) {
   const app = express();
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
   app.use((req, _res, next) => {
     req.actor = {
       type: "board",
       userId: String(req.headers["x-test-actor"] ?? "board-user"),
-      companyIds: [companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     };
@@ -79,7 +79,6 @@ function createLoadApp(db: Db, companyId: string, service: WorkspaceFileResource
 
 describe("workspace Git scan route load regression", () => {
   const db = {} as Db;
-  const companyId = "11111111-1111-4111-8111-111111111111";
   let tempRoot: string;
 
   beforeAll(async () => {
@@ -118,7 +117,7 @@ describe("workspace Git scan route load regression", () => {
     });
     const roots = [path.join(tempRoot, "repository-a"), path.join(tempRoot, "repository-b")];
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId })),
+      getIssue: vi.fn(async () => ({ })),
       list: vi.fn(async (issueId, input, opts) => {
         const numericId = Number(issueId.slice("issue-".length));
         await scheduler.run({
@@ -133,7 +132,7 @@ describe("workspace Git scan route load regression", () => {
       }),
       ...unavailableMethods(),
     };
-    const app = createLoadApp(db, companyId, service);
+    const app = createLoadApp(db, service);
     const pendingResponses = Array.from({ length: 500 }, (_, index) => request(app)
       .get(`/api/issues/issue-${index}/file-resources/list`)
       .set("x-test-actor", `actor-${index % 73}`)
@@ -185,13 +184,13 @@ describe("workspace Git scan route load regression", () => {
     [WORKSPACE_GIT_SCAN_ERROR_CODES.timeout, 504],
   ] as const)("returns stable retryable %s responses", async (code, status) => {
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId })),
+      getIssue: vi.fn(async () => ({ })),
       list: vi.fn(async () => {
         throw new WorkspaceGitScanError(code, "Changed files temporarily unavailable");
       }),
       ...unavailableMethods(),
     };
-    const app = createLoadApp(db, companyId, service);
+    const app = createLoadApp(db, service);
 
     const response = await request(app)
       .get(`/api/issues/${code}/file-resources/list`)
@@ -220,7 +219,7 @@ describe("workspace Git scan route load regression", () => {
       }),
     });
     const service: WorkspaceFileResourceService = {
-      getIssue: vi.fn(async () => ({ companyId })),
+      getIssue: vi.fn(async () => ({ })),
       list: vi.fn(async (_issueId, input, opts) => {
         await scheduler.run({
           workspacePath: path.join(tempRoot, "repository-a"),
@@ -233,7 +232,7 @@ describe("workspace Git scan route load regression", () => {
       }),
       ...unavailableMethods(),
     };
-    const app = createLoadApp(db, companyId, service);
+    const app = createLoadApp(db, service);
     const pending = request(app)
       .get("/api/issues/disconnected/file-resources/list")
       .query({ mode: "changed" });

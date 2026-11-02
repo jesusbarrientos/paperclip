@@ -8,7 +8,7 @@ import type { Db } from "@paperclipai/db";
  */
 export async function hasOwnerChatInstructionAuthority(
   db: Pick<Db, "execute">,
-  input: { companyId: string; agentId: string; runId?: string | null; userId?: string | null },
+  input: { agentId: string; runId?: string | null; userId?: string | null },
 ): Promise<boolean> {
   if (!input.runId || !input.userId) return false;
   const [authorized] = await db.execute<{ id: string }>(sql`
@@ -18,10 +18,10 @@ export async function hasOwnerChatInstructionAuthority(
         r.id AS run_id, identity.id AS identity_id
       FROM heartbeat_runs r
       JOIN issues i ON i.id::text = coalesce(r.context_snapshot->>'issueId', r.context_snapshot->>'taskId')
-        AND i.company_id = r.company_id AND i.assignee_agent_id = r.agent_id
+        AND i.assignee_agent_id = r.agent_id
       JOIN run_identity_contexts identity ON identity.id = r.active_identity_context_id
-        AND identity.run_id = r.id AND identity.company_id = r.company_id AND identity.status = 'accepted'
-      WHERE r.id = ${input.runId}::uuid AND r.company_id = ${input.companyId}::uuid
+        AND identity.run_id = r.id AND identity.status = 'accepted'
+      WHERE r.id = ${input.runId}::uuid
         AND r.agent_id = ${input.agentId}::uuid
         -- Completed executions still collect their registered private edits.
         -- Cancellation and a chat reset revoke this exception.
@@ -36,7 +36,7 @@ export async function hasOwnerChatInstructionAuthority(
       SELECT parent.id, parent.retry_of_run_id
       FROM heartbeat_runs parent JOIN task_runs child ON parent.id = child.retry_of_run_id
       JOIN current_chat c ON c.id::text = coalesce(parent.context_snapshot->>'issueId', parent.context_snapshot->>'taskId')
-      WHERE parent.company_id = ${input.companyId}::uuid AND parent.agent_id = ${input.agentId}::uuid
+      WHERE parent.agent_id = ${input.agentId}::uuid
         AND parent.status IN ('running', 'succeeded', 'failed', 'timed_out')
         AND coalesce(parent.context_snapshot->>'conversationSessionGeneration', '0') = c.generation::text
     ), instruction_identity AS (
@@ -46,27 +46,27 @@ export async function hasOwnerChatInstructionAuthority(
       SELECT parent.id, parent.parent_context_id, parent.message_id
       FROM run_identity_contexts parent JOIN instruction_identity child ON parent.id = child.parent_context_id
       WHERE child.message_id IS NULL AND parent.run_id IN (SELECT id FROM task_runs)
-        AND parent.company_id = ${input.companyId}::uuid AND parent.status = 'accepted'
+        AND parent.status = 'accepted'
         AND parent.responsible_user_id = ${input.userId}
     )
     SELECT c.id FROM current_chat c
     WHERE EXISTS (
       SELECT 1 FROM agent_wakeup_requests w
-      JOIN issue_comments message ON message.company_id = w.company_id AND message.issue_id = c.id
+      JOIN issue_comments message ON message.issue_id = c.id
         AND message.author_user_id = ${input.userId} AND message.author_agent_id IS NULL
         AND message.deleted_at IS NULL AND message.client_request_id IS NOT NULL
         -- Ordinary messages have no generation; /new records the boundary.
         AND (message.conversation_session_generation IS NULL OR message.conversation_session_generation = c.generation)
         AND (c.boundary_comment_id IS NULL OR EXISTS (
           SELECT 1 FROM issue_comments boundary WHERE boundary.id = c.boundary_comment_id
-            AND boundary.company_id = w.company_id AND boundary.issue_id = c.id
+            AND boundary.issue_id = c.id
             AND (message.created_at, message.id) >= (boundary.created_at, boundary.id)
         ))
         AND (message.id::text = coalesce(w.payload->>'commentId', w.payload->'_paperclipWakeContext'->>'wakeCommentId')
           OR (jsonb_typeof(w.payload #> '{_paperclipWakeContext,wakeCommentIds}') = 'array'
             AND (w.payload #> '{_paperclipWakeContext,wakeCommentIds}') ? message.id::text))
       WHERE w.run_id IN (SELECT id FROM task_runs)
-        AND w.company_id = ${input.companyId}::uuid AND w.agent_id = ${input.agentId}::uuid
+        AND w.agent_id = ${input.agentId}::uuid
         AND w.requested_by_actor_type = 'user' AND w.requested_by_actor_id = ${input.userId}
         AND w.status NOT IN ('skipped', 'cancelled')
         AND w.payload->'_paperclipWakeContext'->>'source' = 'issue.comment'

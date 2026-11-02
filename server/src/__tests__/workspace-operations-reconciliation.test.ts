@@ -117,13 +117,11 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Runtime reconciliation",
       status: "in_progress",
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       mode: "isolated_workspace",
       strategyType: "git_worktree",
@@ -133,13 +131,11 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     });
 
     const logHandle = await getWorkspaceOperationLogStore().begin({
-      companyId,
       operationId: staleOperationId,
     });
     await db.insert(workspaceOperations).values([
       {
         id: staleOperationId,
-        companyId,
         executionWorkspaceId,
         phase: "workspace_provision",
         command: "workspace command start",
@@ -151,7 +147,6 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
       },
       {
         id: unrelatedOperationId,
-        companyId,
         executionWorkspaceId,
         phase: "workspace_provision",
         command: "bash ./scripts/provision-worktree.sh",
@@ -217,13 +212,11 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Repair diagnostics",
       status: "in_progress",
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       mode: "isolated_workspace",
       strategyType: "git_worktree",
@@ -233,7 +226,7 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     });
 
     const operation = await workspaceOperationService(db)
-      .createRecorder({ companyId, executionWorkspaceId })
+      .createRecorder({ executionWorkspaceId })
       .recordOperation({
         phase: "workspace_repair",
         command: "workspace command repair",

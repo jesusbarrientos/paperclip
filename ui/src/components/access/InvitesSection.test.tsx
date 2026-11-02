@@ -17,17 +17,16 @@ const clipboardWriteTextMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/access", () => ({
   accessApi: {
-    listInvites: (companyId: string, options?: unknown) => listInvitesMock(companyId, options),
-    createCompanyInvite: (companyId: string, input: unknown) =>
-      createCompanyInviteMock(companyId, input),
+    listInvites: (options?: unknown) => listInvitesMock(options),
+    createCompanyInvite: (input: unknown) =>
+      createCompanyInviteMock(input),
     revokeInvite: (inviteId: string) => revokeInviteMock(inviteId),
   },
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 
@@ -56,7 +55,6 @@ describe("InvitesSection", () => {
     const isActive = inviteNumber === 25;
     return {
       id: `invite-${inviteNumber}`,
-      companyId: "company-1",
       inviteType: "company_join",
       tokenHash: `hash-${inviteNumber}`,
       allowedJoinTypes: "human",
@@ -85,7 +83,7 @@ describe("InvitesSection", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
 
-    listInvitesMock.mockImplementation((_companyId: string, options?: { limit?: number; offset?: number }) => {
+    listInvitesMock.mockImplementation((options?: { limit?: number; offset?: number }) => {
       const limit = options?.limit ?? 20;
       const offset = options?.offset ?? 0;
       const invites = inviteHistory.slice(offset, offset + limit);
@@ -158,7 +156,7 @@ describe("InvitesSection", () => {
     expect(container.textContent).toContain("Can create agents, invite users, assign tasks, and approve join requests.");
     expect(container.textContent).toContain("Everything in Admin, plus managing members.");
     expect(container.textContent).not.toContain("permission grants");
-    expect(listInvitesMock).toHaveBeenCalledWith("company-1", { limit: 5, offset: 0 });
+    expect(listInvitesMock).toHaveBeenCalledWith({ limit: 5, offset: 0 });
 
     const viewMoreButton = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "View more",
@@ -170,7 +168,7 @@ describe("InvitesSection", () => {
     await flushReact();
     await flushReact();
 
-    expect(listInvitesMock).toHaveBeenCalledWith("company-1", { limit: 5, offset: 5 });
+    expect(listInvitesMock).toHaveBeenCalledWith({ limit: 5, offset: 5 });
     expect(container.textContent).toContain("Board User 20");
     expect(container.textContent).toContain("Board User 16");
     expect(container.textContent).toContain("View more");
@@ -194,7 +192,7 @@ describe("InvitesSection", () => {
     await flushReact();
     await flushReact();
 
-    expect(createCompanyInviteMock).toHaveBeenCalledWith("company-1", {
+    expect(createCompanyInviteMock).toHaveBeenCalledWith({
       allowedJoinTypes: "human",
       humanRole: "viewer",
       agentMessage: null,
@@ -316,8 +314,8 @@ describe("InvitesSection", () => {
 
     expect(container.textContent).toContain("Board User 25");
     expect(container.textContent).not.toContain("Board User 20");
-    expect(listInvitesMock).toHaveBeenCalledWith("company-1", { limit: 5, offset: 0 });
-    expect(queryClient.getQueryData(queryKeys.access.invites("company-1", "all", 5))).toMatchObject({
+    expect(listInvitesMock).toHaveBeenCalledWith({ limit: 5, offset: 0 });
+    expect(queryClient.getQueryData(queryKeys.access.invites("all", 5))).toMatchObject({
       pages: [
         {
           invites: expect.any(Array),

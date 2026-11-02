@@ -366,10 +366,9 @@ export function agentService(db: Db) {
     });
   }
 
-  function toEligibilityAgent(row: Pick<typeof agents.$inferSelect, "id" | "companyId" | "name" | "status" | "reportsTo">): AgentEligibilityAgent {
+  function toEligibilityAgent(row: Pick<typeof agents.$inferSelect, "id" | "name" | "status" | "reportsTo">): AgentEligibilityAgent {
     return {
       id: row.id,
-      companyId: row.companyId,
       name: row.name,
       status: row.status,
       reportsTo: row.reportsTo,
@@ -397,11 +396,11 @@ export function agentService(db: Db) {
     return normalizeAgentRows([row], allCompanyRows)[0]!;
   }
 
-  async function listCompanyAgentRows(companyId: string) {
-    return db.select().from(agents).where(eq(agents.companyId, companyId));
+  async function listCompanyAgentRows() {
+    return db.select().from(agents);
   }
 
-  async function getMonthlySpendByAgentIds(companyId: string, agentIds: string[]) {
+  async function getMonthlySpendByAgentIds(agentIds: string[]) {
     if (agentIds.length === 0) return new Map<string, number>();
     const { start, end } = currentUtcMonthWindow();
     const rows = await db
@@ -412,7 +411,6 @@ export function agentService(db: Db) {
       .from(costEvents)
       .where(
         and(
-          eq(costEvents.companyId, companyId),
           inArray(costEvents.agentId, agentIds),
           gte(costEvents.occurredAt, start),
           lt(costEvents.occurredAt, end),
@@ -422,11 +420,10 @@ export function agentService(db: Db) {
     return new Map(rows.map((row) => [row.agentId, Number(row.spentMonthlyCents ?? 0)]));
   }
 
-  async function hydrateAgentSpend<T extends { id: string; companyId: string; spentMonthlyCents: number }>(rows: T[]) {
+  async function hydrateAgentSpend<T extends { id: string; spentMonthlyCents: number }>(rows: T[]) {
     const agentIds = rows.map((row) => row.id);
-    const companyId = rows[0]?.companyId;
-    if (!companyId || agentIds.length === 0) return rows;
-    const spendByAgentId = await getMonthlySpendByAgentIds(companyId, agentIds);
+    if (agentIds.length === 0) return rows;
+    const spendByAgentId = await getMonthlySpendByAgentIds(agentIds);
     return rows.map((row) => ({
       ...row,
       spentMonthlyCents: spendByAgentId.get(row.id) ?? 0,
@@ -441,7 +438,7 @@ export function agentService(db: Db) {
       .then((rows) => rows[0] ?? null);
     if (!row) return null;
     const [companyRows, hydrated] = await Promise.all([
-      listCompanyAgentRows(row.companyId),
+      listCompanyAgentRows(),
       hydrateAgentSpend([row]).then((rows) => rows[0]!),
     ]);
     return normalizeAgentRow(hydrated, companyRows);
@@ -453,12 +450,9 @@ export function agentService(db: Db) {
     return agent;
   }
 
-  async function ensureManager(companyId: string, managerId: string) {
+  async function ensureManager(managerId: string) {
     const manager = await getById(managerId);
     if (!manager) throw notFound("Manager not found");
-    if (manager.companyId !== companyId) {
-      throw unprocessable("Manager must belong to same company");
-    }
     return manager;
   }
 
@@ -475,7 +469,6 @@ export function agentService(db: Db) {
   }
 
   async function assertCompanyShortnameAvailable(
-    companyId: string,
     candidateName: string,
     options?: AgentShortnameCollisionOptions,
   ) {
@@ -488,8 +481,7 @@ export function agentService(db: Db) {
         name: agents.name,
         status: agents.status,
       })
-      .from(agents)
-      .where(eq(agents.companyId, companyId));
+      .from(agents);
 
     const hasCollision = hasAgentShortnameCollision(candidateName, existingAgents, options);
     if (hasCollision) {
@@ -500,7 +492,8 @@ export function agentService(db: Db) {
   }
 
   async function syncAgentSecretBindings(
-    agent: { id: string; companyId: string; adapterConfig: unknown },
+    agent: { id: string;
+ adapterConfig: unknown },
     dbClient: Db = db,
     previousAdapterConfig: unknown = null,
     actor: RevisionMetadata = {},
@@ -508,7 +501,6 @@ export function agentService(db: Db) {
     const scopedSecretsSvc = dbClient === db ? secretsSvc : secretService(dbClient);
     await syncAgentAdapterEnvBindings({
       secretsSvc: scopedSecretsSvc,
-      companyId: agent.companyId,
       agentId: agent.id,
       adapterConfig: agent.adapterConfig,
     });
@@ -536,7 +528,6 @@ export function agentService(db: Db) {
     const actorId = actor.createdByUserId ?? actor.createdByAgentId ?? "system";
     for (const ref of createdRefs) {
       await logActivity(dbClient, {
-        companyId: agent.companyId,
         actorType,
         actorId,
         agentId: actor.createdByAgentId ?? null,
@@ -603,7 +594,6 @@ export function agentService(db: Db) {
   async function enforceClaudeOAuthBindingClaim(
     txDb: Db,
     input: {
-      companyId: string;
       decision: ClaudeOAuthBindingInvariantDecision;
       consume: boolean;
       environmentId: string | null;
@@ -627,7 +617,6 @@ export function agentService(db: Db) {
           throw claudeOAuthClaimRejectedError();
         }
         const stored = await secretService(txDb).readClaudeOAuthUserSecretStatus(
-          input.companyId,
           ownerUserId,
         );
         if (!stored) {
@@ -643,7 +632,6 @@ export function agentService(db: Db) {
         const parentId = input.claudeLogin.inheritedFromAgentId;
         const parent = await txDb
           .select({
-            companyId: agents.companyId,
             adapterType: agents.adapterType,
             adapterConfig: agents.adapterConfig,
           })
@@ -655,7 +643,6 @@ export function agentService(db: Db) {
         const childBinding = readClaudeOAuthBinding(input.childAdapterConfig ?? null);
         if (
           !parent ||
-          parent.companyId !== input.companyId ||
           parent.adapterType !== CLAUDE_LOCAL_ADAPTER_TYPE ||
           !claudeOAuthBindingsMatchExactly(parentBinding, childBinding)
         ) {
@@ -666,7 +653,6 @@ export function agentService(db: Db) {
       } else {
         const consumed = await createDbSetupTokenCleanupStore(txDb).consumeStoredClaim({
           sessionId: input.claudeLogin?.storedSessionId ?? "",
-          companyId: input.companyId,
           ownerUserId: ownerUserId ?? "",
           adapterType: CLAUDE_LOCAL_ADAPTER_TYPE,
         });
@@ -677,7 +663,7 @@ export function agentService(db: Db) {
     }
     if (input.decision.introducesBinding || input.decision.keepsBinding) {
       // Create the fixed definition before declaration synchronization.
-      await secretService(txDb).ensureClaudeOAuthUserSecretDefinition(input.companyId, {
+      await secretService(txDb).ensureClaudeOAuthUserSecretDefinition({
         userId: ownerUserId,
       });
     }
@@ -730,7 +716,7 @@ export function agentService(db: Db) {
 
     if (data.reportsTo !== undefined) {
       if (data.reportsTo) {
-        await ensureManager(existing.companyId, data.reportsTo);
+        await ensureManager(data.reportsTo);
       }
       await assertNoCycle(id, data.reportsTo);
     }
@@ -739,7 +725,7 @@ export function agentService(db: Db) {
       const previousShortname = normalizeAgentUrlKey(existing.name);
       const nextShortname = normalizeAgentUrlKey(data.name);
       if (previousShortname !== nextShortname) {
-        await assertCompanyShortnameAvailable(existing.companyId, data.name, { excludeAgentId: id });
+        await assertCompanyShortnameAvailable(data.name, { excludeAgentId: id });
       }
     }
 
@@ -756,7 +742,6 @@ export function agentService(db: Db) {
       isPlainRecord(normalizedPatch.adapterConfig)
     ) {
       const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
-        existing.companyId,
         normalizedPatch.adapterConfig,
         { adapterType: (normalizedPatch.adapterType ?? existing.adapterType) as string },
       );
@@ -808,7 +793,7 @@ export function agentService(db: Db) {
         .then((rows) => rows[0] ?? null);
       if (!updated) return null;
       if (data.status !== undefined) {
-        await recordAgentStatusEvent(txDb, updated.companyId, id, current.status, updated.status);
+        await recordAgentStatusEvent(txDb, id, current.status, updated.status);
       }
 
       const priorAdapterConfig = isPlainRecord(existing.adapterConfig) ? existing.adapterConfig : {};
@@ -818,15 +803,14 @@ export function agentService(db: Db) {
           (key) => priorAdapterConfig[key] !== afterConfig[key],
         ));
       if (changedExecution) {
-        await txDb.delete(agentTaskSessions).where(and(eq(agentTaskSessions.companyId, existing.companyId), eq(agentTaskSessions.agentId, id)));
+        await txDb.delete(agentTaskSessions).where(eq(agentTaskSessions.agentId, id));
         await txDb.update(agentRuntimeState).set({ adapterType: updated.adapterType, sessionId: null, stateJson: {}, updatedAt: new Date() })
-          .where(and(eq(agentRuntimeState.companyId, existing.companyId), eq(agentRuntimeState.agentId, id)));
+          .where(eq(agentRuntimeState.agentId, id));
       }
 
       if (Object.prototype.hasOwnProperty.call(normalizedPatch, "adapterConfig")) {
         if (bindingDecision) {
           await enforceClaudeOAuthBindingClaim(txDb, {
-            companyId: existing.companyId,
             decision: bindingDecision,
             consume: false,
             environmentId: null,
@@ -851,7 +835,6 @@ export function agentService(db: Db) {
         const changedKeys = diffConfigSnapshot(beforeConfig, afterConfig);
         if (changedKeys.length > 0) {
           await txDb.insert(agentConfigRevisions).values({
-            companyId: normalizedUpdated.companyId,
             agentId: normalizedUpdated.id,
             createdByAgentId: options?.recordRevision?.createdByAgentId ?? null,
             createdByUserId: options?.recordRevision?.createdByUserId ?? null,
@@ -875,14 +858,14 @@ export function agentService(db: Db) {
   }
 
   return {
-    list: async (companyId: string, options?: { includeTerminated?: boolean }) => {
-      const conditions = [eq(agents.companyId, companyId)];
+    list: async (options?: { includeTerminated?: boolean }) => {
+      const conditions = [];
       if (!options?.includeTerminated) {
         conditions.push(ne(agents.status, "terminated"));
       }
       const [rows, allCompanyRows] = await Promise.all([
         db.select().from(agents).where(and(...conditions)),
-        listCompanyAgentRows(companyId),
+        listCompanyAgentRows(),
       ]);
       const hydrated = await hydrateAgentSpend(rows);
       return normalizeAgentRows(hydrated, allCompanyRows);
@@ -890,16 +873,15 @@ export function agentService(db: Db) {
 
     getById,
 
-    create: async (companyId: string, data: Omit<typeof agents.$inferInsert, "companyId">, options?: CreateAgentOptions) => {
+    create: async (data: typeof agents.$inferInsert, options?: CreateAgentOptions) => {
       assertBuiltInAgentMetadataMutationAllowed(null, data.metadata, options);
       if (data.reportsTo) {
-        await ensureManager(companyId, data.reportsTo);
+        await ensureManager(data.reportsTo);
       }
 
       const existingAgents = await db
         .select({ id: agents.id, name: agents.name, status: agents.status })
-        .from(agents)
-        .where(eq(agents.companyId, companyId));
+        .from(agents);
       const uniqueName = deduplicateAgentName(data.name, existingAgents);
 
       const role = data.role ?? "general";
@@ -907,7 +889,7 @@ export function agentService(db: Db) {
       const runtimeConfig = normalizeRuntimeConfigForNewAgent(data.runtimeConfig);
       const adapterType = data.adapterType ?? "process";
       const rawAdapterConfig = isPlainRecord(data.adapterConfig)
-        ? await secretsSvc.normalizeAdapterConfigForPersistence(companyId, data.adapterConfig, { adapterType })
+        ? await secretsSvc.normalizeAdapterConfigForPersistence(data.adapterConfig, { adapterType })
         : {};
       const adapterConfig = normalizePaperclipRunnerAdapterConfig(adapterType, rawAdapterConfig);
       // Run the server-enforced binding invariant after generic normalization
@@ -923,7 +905,6 @@ export function agentService(db: Db) {
         // the same transaction that inserts the binding. A rejected claim rolls
         // back the whole transaction and inserts no binding.
         await enforceClaudeOAuthBindingClaim(txDb, {
-          companyId,
           decision: bindingDecision,
           consume: true,
           environmentId: (data.defaultEnvironmentId as string | null | undefined) ?? null,
@@ -936,7 +917,6 @@ export function agentService(db: Db) {
             ...data,
             name: uniqueName,
             appearance: data.appearance == null ? randomAgentAppearance() : agentAppearanceSchema.parse(data.appearance),
-            companyId,
             role,
             adapterType,
             adapterConfig,
@@ -962,14 +942,14 @@ export function agentService(db: Db) {
           const install = options.aiConnectionInstall;
           const connectionIds = [...new Set([install.connectionId, ...(install.memberConnectionIds ?? [])])];
           await tx.insert(toolConnectionInstalls).values(connectionIds.map(connectionId => ({
-            companyId, connectionId,
+            connectionId,
             targetType: "agent" as const, targetId: created.id,
             createdByUserId: install.createdByUserId,
           }))).onConflictDoNothing();
         }
         await syncAgentSecretBindings(created, txDb);
         if (created.status !== "pending_approval" && created.status !== "terminated") {
-          await recordResourceCreationEvent(txDb, companyId, "agent", created.id);
+          await recordResourceCreationEvent(txDb, "agent", created.id);
         }
         const normalizedCreated = await agentService(txDb).getById(created.id);
         if (!normalizedCreated) {
@@ -1078,7 +1058,7 @@ export function agentService(db: Db) {
           .where(eq(agents.id, id))
           .for("update");
         await issueThreadInteractionService(tx as unknown as Db)
-          .cancelPendingForDeletedAddressee(existing.companyId, id);
+          .cancelPendingForDeletedAddressee(id);
         await tx.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, id));
         await tx
           .update(issues)
@@ -1124,7 +1104,6 @@ export function agentService(db: Db) {
           isPlainRecord(patch.adapterConfig)
         ) {
           const normalizedAdapterConfig = await secretService(txDb).normalizeAdapterConfigForPersistence(
-            existing.companyId,
             patch.adapterConfig,
             { adapterType: (patch.adapterType ?? existing.adapterType) as string },
           );
@@ -1162,7 +1141,6 @@ export function agentService(db: Db) {
         if (!updated) return null;
         if (approvalBindingDecision) {
           await enforceClaudeOAuthBindingClaim(txDb, {
-            companyId: existing.companyId,
             decision: approvalBindingDecision,
             consume: false,
             environmentId: null,
@@ -1179,7 +1157,7 @@ export function agentService(db: Db) {
             })),
           ).onConflictDoNothing();
         }
-        await recordResourceCreationEvent(txDb, existing.companyId, "agent", updated.id);
+        await recordResourceCreationEvent(txDb, "agent", updated.id);
         const agent = await agentService(txDb).getById(updated.id);
         if (!agent) {
           throw notFound("Agent not found");
@@ -1351,8 +1329,8 @@ export function agentService(db: Db) {
       return rows[0] ?? null;
     },
 
-    orgForCompany: async (companyId: string) => {
-      const allCompanyRows = await listCompanyAgentRows(companyId);
+    orgForCompany: async () => {
+      const allCompanyRows = await listCompanyAgentRows();
       const rows = allCompanyRows.filter((row) => row.status !== "terminated");
       const normalizedRows = normalizeAgentRows(rows, allCompanyRows);
       const byManager = new Map<string | null, typeof normalizedRows>();
@@ -1395,7 +1373,7 @@ export function agentService(db: Db) {
         .from(heartbeatRuns)
         .where(and(eq(heartbeatRuns.agentId, agentId), inArray(heartbeatRuns.status, ["queued", "running"]))),
 
-    resolveByReference: async (companyId: string, reference: string) => {
+    resolveByReference: async (reference: string) => {
       const raw = reference.trim();
       if (raw.length === 0) {
         return { agent: null, ambiguous: false } as const;
@@ -1403,7 +1381,7 @@ export function agentService(db: Db) {
 
       if (isUuidLike(raw)) {
         const byId = await getById(raw);
-        if (!byId || byId.companyId !== companyId) {
+        if (!byId) {
           return { agent: null, ambiguous: false } as const;
         }
         return { agent: byId, ambiguous: false } as const;
@@ -1414,7 +1392,7 @@ export function agentService(db: Db) {
         return { agent: null, ambiguous: false } as const;
       }
 
-      const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+      const rows = await db.select().from(agents);
       const matches = normalizeAgentRows(rows, rows)
         .filter((agent) => agent.urlKey === urlKey && agent.status !== "terminated");
       if (matches.length === 1) {

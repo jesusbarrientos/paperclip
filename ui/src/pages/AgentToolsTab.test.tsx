@@ -22,8 +22,11 @@ const mockToolsApi = vi.hoisted(() => ({
 }));
 
 vi.mock("../api/tools", () => ({ toolsApi: mockToolsApi }));
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
+}));
 
-// Render the company-aware Link as a plain anchor so we don't need a Router.
+// Render Link as a plain anchor so we don't need a Router.
 vi.mock("@/lib/router", () => ({
   Link: ({ to, children, ...rest }: { to: string; children: unknown }) =>
     createElement("a", { href: to, ...rest }, children as never),
@@ -52,7 +55,6 @@ async function flushReact(cycles = 4) {
 function makeCatalogEntry(overrides: Partial<ToolCatalogEntry>): ToolCatalogEntry {
   return {
     id: "cat-1",
-    companyId: "company-1",
     applicationId: "app-1",
     connectionId: "conn-1",
     entryKind: "tool",
@@ -84,7 +86,6 @@ function makeCatalogEntry(overrides: Partial<ToolCatalogEntry>): ToolCatalogEntr
 function makePolicy(overrides: Partial<ToolPolicy>): ToolPolicy {
   return {
     id: "pol-1",
-    companyId: "company-1",
     name: "Require approval for writes",
     description: "All write tools need board approval",
     policyType: "require_approval",
@@ -142,7 +143,7 @@ describe("AgentToolsTab", () => {
         createElement(
           QueryClientProvider,
           { client },
-          createElement(AgentToolsTab, { agent, companyId: "company-1" }),
+          createElement(AgentToolsTab, { agent }),
         ),
       );
     });
@@ -180,7 +181,6 @@ describe("AgentToolsTab", () => {
       profiles: [
         {
           id: "prof-1",
-          companyId: "company-1",
           profileKey: "github-safe",
           name: "GitHub safe",
           description: null,
@@ -208,7 +208,6 @@ describe("AgentToolsTab", () => {
       bindings: [
         {
           id: "bind-1",
-          companyId: "company-1",
           profileId: "prof-1",
           targetType: "agent",
           targetId: "agent-1",
@@ -295,7 +294,6 @@ describe("AgentToolsTab", () => {
     mockToolsApi.listConnections.mockResolvedValue({
       connections: [{
         id: "conn-github",
-        companyId: "company-1",
         name: "Agent GitHub",
         enabled: true,
         status: "active",
@@ -353,7 +351,6 @@ describe("AgentToolsTab", () => {
     mockToolsApi.listConnections.mockResolvedValue({
       connections: [{
         id: "conn-github",
-        companyId: "company-1",
         name: "Disabled GitHub",
         enabled: false,
         status: "active",
@@ -386,7 +383,6 @@ describe("AgentToolsTab", () => {
     mockToolsApi.listConnections.mockResolvedValue({
       connections: [{
         id: "conn-github",
-        companyId: "company-1",
         name: "Agent GitHub",
         enabled: true,
         status: "active",
@@ -420,7 +416,7 @@ describe("AgentToolsTab", () => {
       installedConnections: [],
     } satisfies ToolProfileEffectiveSummary);
     mockToolsApi.listConnections.mockResolvedValue({
-      connections: [{ id: "conn-1", companyId: "company-1", name: "Production GitHub", installs: [] }],
+      connections: [{ id: "conn-1", name: "Production GitHub", installs: [] }],
     });
     mockToolsApi.listPolicies.mockResolvedValue({ policies: [] });
     mockToolsApi.listCatalog.mockResolvedValue({ catalog: [allowed] });

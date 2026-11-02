@@ -82,7 +82,6 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
       issuePrefix: `AT${randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);
     const [actorAgent, targetAgent] = await db.insert(agents).values(["Actor", "Target"].map((name) => ({
-      companyId: company.id,
       name,
       role: "engineer",
       status: "active" as const,
@@ -119,7 +118,6 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
     }).onConflictDoUpdate(membershipUpsert);
     const [sourceIssue, issue] = await db.insert(issues).values([
       {
-        companyId: company.id,
         identifier: `${company.issuePrefix}-1`,
         title: "Source issue",
         status: "in_progress" as const,
@@ -127,7 +125,6 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
         assigneeAgentId: actorAgent.id,
       },
       {
-        companyId: company.id,
         identifier: `${company.issuePrefix}-2`,
         title: "Foreign issue",
         status: "done" as const,
@@ -136,7 +133,6 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
       },
     ]).returning();
     const run = await db.insert(heartbeatRuns).values({
-      companyId: company.id,
       agentId: actorAgent.id,
       status: "running",
       responsibleUserId,
@@ -150,11 +146,9 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
     return {
       type: "agent",
       agentId: input.actorAgent.id,
-      companyId: input.company.id,
       runId: input.run.id,
       onBehalfOfUserId: input.responsibleUserId,
       onBehalfOfMemberships: [{
-        companyId: input.company.id,
         membershipRole: "member",
         status: "active",
       }],

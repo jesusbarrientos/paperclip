@@ -37,7 +37,6 @@ export function aiProviderForAdapter(
   )[adapterType];
 }
 export function AiConnectionField({
-  companyId,
   agentId,
   agentName,
   adapterType,
@@ -49,7 +48,6 @@ export function AiConnectionField({
   readOnly = false,
   routerAdapterType,
 }: {
-  companyId: string;
   agentId?: string;
   agentName: string;
   adapterType: string;
@@ -76,8 +74,8 @@ export function AiConnectionField({
   };
   const client = useQueryClient();
   const accounts = useQuery({
-    queryKey: ["ai-connections", companyId, agentId],
-    queryFn: () => aiConnectionsApi.list(companyId, agentId),
+    queryKey: ["ai-connections", agentId],
+    queryFn: () => aiConnectionsApi.list(agentId),
     enabled: Boolean(provider),
   });
   const personalDefault = accounts.data?.connections.find((account) => account.provider === provider && account.isDefault && account.ownership === "personal" && account.ownerUserId === accounts.data.currentUserId);
@@ -85,11 +83,11 @@ export function AiConnectionField({
     mutationFn: async (result: NonNullable<typeof savedAccount>) => {
       // Reconnect retains the existing default and its access. A new account
       // must be selected explicitly before a responsible-user binding uses it.
-      if (!reconnecting) await aiConnectionsApi.setDefault(companyId, result.grantId);
+      if (!reconnecting) await aiConnectionsApi.setDefault(result.grantId);
       return result;
     },
     onSuccess: async (result) => {
-      await client.invalidateQueries({ queryKey: ["ai-connections", companyId] });
+      await client.invalidateQueries({ queryKey: ["ai-connections"] });
       changeBinding({ provider: provider!, method: result.method, mode: "responsible_user" });
       setConnecting(false);
     },
@@ -135,7 +133,7 @@ export function AiConnectionField({
         {value?.mode === "router" && <span className="text-muted-foreground">New tasks rotate. Existing tasks keep their account.</span>}
       </label>}
       {value?.mode !== "router" && <AiConnectionPicker
-        requirement={{ companyId, provider }}
+        requirement={{ provider }}
         connections={accounts.data?.connections ?? []}
         value={value}
         currentUserId={accounts.data?.currentUserId ?? ""}
@@ -212,7 +210,6 @@ export function AiConnectionField({
             </> : <p role="status" className="text-sm text-muted-foreground">Selecting your default account…</p>}
           </div> :
           <AiConnectionCredentialStep
-            companyId={companyId}
             provider={provider}
             initialMethod={reconnecting?.method ?? method}
             fixedMethod={Boolean(reconnecting)}

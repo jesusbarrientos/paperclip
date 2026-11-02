@@ -100,7 +100,7 @@ describe("shouldSilenceHttpSuccessLog", () => {
     expect(
       shouldSilenceHttpSuccessLog(
         "GET",
-        "/api/companies/5cbe79ee-acb3-4597-896e-7662742593cd/heartbeat-runs",
+        "/api/heartbeat-runs",
         200,
       ),
     ).toBe(true);
@@ -114,28 +114,28 @@ describe("shouldSilenceHttpSuccessLog", () => {
     expect(
       shouldSilenceHttpSuccessLog(
         "GET",
-        "/api/companies/5cbe79ee-acb3-4597-896e-7662742593cd/live-runs?minCount=3",
+        "/api/live-runs?minCount=3",
         200,
       ),
     ).toBe(true);
     expect(
       shouldSilenceHttpSuccessLog(
         "HEAD",
-        "/api/companies/5cbe79ee-acb3-4597-896e-7662742593cd/sidebar-badges",
+        "/api/sidebar-badges",
         200,
       ),
     ).toBe(true);
     expect(
       shouldSilenceHttpSuccessLog(
         "GET",
-        "/api/companies/5cbe79ee-acb3-4597-896e-7662742593cd/issues?includeRoutineExecutions=true",
+        "/api/issues?includeRoutineExecutions=true",
         200,
       ),
     ).toBe(true);
     expect(
       shouldSilenceHttpSuccessLog(
         "GET",
-        "/api/companies/5cbe79ee-acb3-4597-896e-7662742593cd/activity",
+        "/api/activity",
         200,
       ),
     ).toBe(true);

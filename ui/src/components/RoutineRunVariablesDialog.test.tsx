@@ -72,7 +72,6 @@ async function flushUi(callback: () => void) {
 function createProject(): Project {
   return {
     id: "project-1",
-    companyId: "company-1",
     urlKey: "workspace-project",
     goalId: null,
     goalIds: [],
@@ -114,7 +113,6 @@ function createProject(): Project {
 function createAgent(): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "Routine Agent",
     role: "engineer",
     title: null,
@@ -141,7 +139,6 @@ function createAgent(): Agent {
 function createExecutionWorkspace(): ExecutionWorkspace {
   return {
     id: "workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: "project-workspace-1",
     sourceIssueId: null,
@@ -202,7 +199,6 @@ async function renderRoutineRunDialog(container: HTMLDivElement, props: {
         <RoutineRunVariablesDialog
           open
           onOpenChange={() => {}}
-          companyId="company-1"
           projects={[]}
           agents={[createAgent()]}
           defaultAssigneeAgentId="agent-1"
@@ -260,7 +256,6 @@ describe("RoutineRunVariablesDialog", () => {
           <RoutineRunVariablesDialog
             open
             onOpenChange={() => {}}
-            companyId="company-1"
             projects={[createProject()]}
             agents={[createAgent()]}
             defaultProjectId="project-1"
@@ -290,7 +285,7 @@ describe("RoutineRunVariablesDialog", () => {
     const workspace = createExecutionWorkspace();
     await flushUi(() => root.render(
       <QueryClientProvider client={queryClient}>
-        <RoutineRunVariablesDialog open onOpenChange={() => {}} companyId="company-1"
+        <RoutineRunVariablesDialog open onOpenChange={() => {}}
           projects={[createProject()]} agents={[createAgent()]} defaultProjectId="project-1"
           defaultAssigneeAgentId="agent-1" defaultExecutionWorkspace={workspace}
           variables={[{ name: "workspaceBranch", required: true } as RoutineVariable]}
@@ -320,7 +315,6 @@ describe("RoutineRunVariablesDialog", () => {
           <RoutineRunVariablesDialog
             open
             onOpenChange={() => {}}
-            companyId="company-1"
             projects={[createProject()]}
             agents={[createAgent()]}
             defaultProjectId="project-1"
@@ -352,7 +346,6 @@ describe("RoutineRunVariablesDialog", () => {
           <RoutineRunVariablesDialog
             open
             onOpenChange={() => {}}
-            companyId="company-1"
             projects={[createProject()]}
             agents={[createAgent()]}
             defaultProjectId="project-1"
@@ -418,7 +411,6 @@ describe("RoutineRunVariablesDialog", () => {
           <RoutineRunVariablesDialog
             open
             onOpenChange={() => {}}
-            companyId="company-1"
             projects={[createProject()]}
             agents={[createAgent()]}
             defaultProjectId="project-1"
@@ -499,7 +491,6 @@ describe("RoutineRunVariablesDialog", () => {
           <RoutineRunVariablesDialog
             open
             onOpenChange={() => {}}
-            companyId="company-1"
             projects={[createProject()]}
             agents={[createAgent()]}
             defaultProjectId="project-1"

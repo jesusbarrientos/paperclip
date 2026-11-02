@@ -11,7 +11,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
 import { issues } from "./issues.js";
 import { projects } from "./projects.js";
@@ -24,7 +23,6 @@ export const routines = pgTable(
   "routines",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
     folderId: uuid("folder_id").references(() => folders.id, { onDelete: "set null" }),
     goalId: uuid("goal_id").references(() => goals.id, { onDelete: "set null" }),
@@ -55,12 +53,12 @@ export const routines = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyStatusIdx: index("routines_company_status_idx").on(table.companyId, table.status),
-    companyAssigneeIdx: index("routines_company_assignee_idx").on(table.companyId, table.assigneeAgentId),
-    companyProjectIdx: index("routines_company_project_idx").on(table.companyId, table.projectId),
-    companyFolderIdx: index("routines_company_folder_idx").on(table.companyId, table.folderId),
-    companyResponsibleUserIdx: index("routines_company_responsible_user_idx").on(table.companyId, table.responsibleUserId),
-    companyOriginIdx: index("routines_company_origin_idx").on(table.companyId, table.originKind, table.originId),
+    companyStatusIdx: index("routines_company_status_idx").on(table.status),
+    companyAssigneeIdx: index("routines_company_assignee_idx").on(table.assigneeAgentId),
+    companyProjectIdx: index("routines_company_project_idx").on(table.projectId),
+    companyFolderIdx: index("routines_company_folder_idx").on(table.folderId),
+    companyResponsibleUserIdx: index("routines_company_responsible_user_idx").on(table.responsibleUserId),
+    companyOriginIdx: index("routines_company_origin_idx").on(table.originKind, table.originId),
   }),
 );
 
@@ -68,7 +66,6 @@ export const routineRevisions = pgTable(
   "routine_revisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     routineId: uuid("routine_id").notNull().references(() => routines.id, { onDelete: "cascade" }),
     revisionNumber: integer("revision_number").notNull(),
     title: text("title").notNull(),
@@ -91,12 +88,10 @@ export const routineRevisions = pgTable(
       table.revisionNumber,
     ),
     companyRoutineCreatedIdx: index("routine_revisions_company_routine_created_idx").on(
-      table.companyId,
       table.routineId,
       table.createdAt,
     ),
     companyResponsibleUserIdx: index("routine_revisions_company_responsible_user_idx").on(
-      table.companyId,
       table.responsibleUserId,
       table.createdAt,
     ),
@@ -107,7 +102,6 @@ export const routineTriggers = pgTable(
   "routine_triggers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     routineId: uuid("routine_id").notNull().references(() => routines.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     label: text("label"),
@@ -133,8 +127,8 @@ export const routineTriggers = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyRoutineIdx: index("routine_triggers_company_routine_idx").on(table.companyId, table.routineId),
-    companyKindIdx: index("routine_triggers_company_kind_idx").on(table.companyId, table.kind),
+    companyRoutineIdx: index("routine_triggers_company_routine_idx").on(table.routineId),
+    companyKindIdx: index("routine_triggers_company_kind_idx").on(table.kind),
     nextRunIdx: index("routine_triggers_next_run_idx").on(table.nextRunAt),
     publicIdIdx: index("routine_triggers_public_id_idx").on(table.publicId),
     publicIdUq: uniqueIndex("routine_triggers_public_id_uq").on(table.publicId),
@@ -145,7 +139,6 @@ export const routineRuns = pgTable(
   "routine_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     routineId: uuid("routine_id").notNull().references(() => routines.id, { onDelete: "cascade" }),
     triggerId: uuid("trigger_id").references(() => routineTriggers.id, { onDelete: "set null" }),
     source: text("source").notNull(),
@@ -164,10 +157,9 @@ export const routineRuns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyRoutineIdx: index("routine_runs_company_routine_idx").on(table.companyId, table.routineId, table.createdAt),
+    companyRoutineIdx: index("routine_runs_company_routine_idx").on(table.routineId, table.createdAt),
     routineRevisionIdx: index("routine_runs_revision_idx").on(table.routineRevisionId),
     companyResponsibleUserIdx: index("routine_runs_company_responsible_user_idx").on(
-      table.companyId,
       table.responsibleUserId,
       table.createdAt,
     ),
@@ -181,7 +173,6 @@ export const routineRuns = pgTable(
 // Content-free receipts prevent sender retries of setup tests from starting work after activation.
 export const routineWebhookTestReceipts = pgTable("routine_webhook_test_receipts", {
   id: uuid("id").primaryKey().defaultRandom(),
-  companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   triggerId: uuid("trigger_id").notNull().references(() => routineTriggers.id, { onDelete: "cascade" }),
   deliveryKeyHash: text("delivery_key_hash").notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),

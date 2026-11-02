@@ -12,7 +12,6 @@ import { captureRunIdentity } from "../run-identity.js";
 import { forbidden } from "../../errors.js";
 
 export interface SlackTaskBinding {
-  companyId: string;
   agentId: string;
   runId: string;
   issueId: string;
@@ -71,14 +70,10 @@ export async function slackRunOrigin(db: Db, binding: SlackTaskBinding) {
       .from(toolInvocations)
       .innerJoin(
         toolActionRequests,
-        and(
-          eq(toolActionRequests.invocationId, toolInvocations.id),
-          eq(toolActionRequests.companyId, binding.companyId),
-        ),
+        eq(toolActionRequests.invocationId, toolInvocations.id),
       )
       .where(
         and(
-          eq(toolInvocations.companyId, binding.companyId),
           eq(toolInvocations.id, binding.approvedInvocationId),
           eq(toolInvocations.runId, binding.runId),
           eq(toolInvocations.issueId, binding.issueId),
@@ -97,7 +92,6 @@ export async function slackRunOrigin(db: Db, binding: SlackTaskBinding) {
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, binding.companyId),
           eq(heartbeatRuns.id, binding.runId),
           eq(heartbeatRuns.agentId, binding.agentId),
         ),
@@ -107,7 +101,6 @@ export async function slackRunOrigin(db: Db, binding: SlackTaskBinding) {
       .from(runIdentityContexts)
       .where(
         and(
-          eq(runIdentityContexts.companyId, binding.companyId),
           eq(runIdentityContexts.id, binding.identityContextId),
           eq(runIdentityContexts.runId, binding.runId),
           eq(runIdentityContexts.status, "accepted"),
@@ -153,7 +146,6 @@ export async function slackRunOrigin(db: Db, binding: SlackTaskBinding) {
       .where(
         and(
           eq(runIdentityContexts.id, origin.parentContextId),
-          eq(runIdentityContexts.companyId, binding.companyId),
           eq(runIdentityContexts.status, "accepted"),
         ),
       );
@@ -166,7 +158,6 @@ export async function slackRunOrigin(db: Db, binding: SlackTaskBinding) {
       .where(
         and(
           eq(heartbeatRuns.id, parent.runId),
-          eq(heartbeatRuns.companyId, binding.companyId),
           eq(heartbeatRuns.agentId, binding.agentId),
         ),
       );
@@ -184,14 +175,13 @@ export async function slackRunOrigin(db: Db, binding: SlackTaskBinding) {
 /** Enumerate only this agent's connections; each still needs live run/user authority. */
 export async function slackEndpointCandidates(
   db: Db,
-  binding: Pick<SlackTaskBinding, "companyId" | "agentId" | "endpointId">,
+  binding: Pick<SlackTaskBinding, "agentId" | "endpointId">,
 ) {
   return db
     .select({ id: chatEndpoints.id })
     .from(chatEndpoints)
     .where(
       and(
-        eq(chatEndpoints.companyId, binding.companyId),
         eq(chatEndpoints.assignedAgentId, binding.agentId),
         eq(chatEndpoints.provider, "slack"),
         inArray(chatEndpoints.status, ["active", "verifying"]),

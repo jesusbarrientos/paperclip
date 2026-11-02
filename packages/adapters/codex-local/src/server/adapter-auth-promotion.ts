@@ -13,16 +13,16 @@ import { assertUsableSubscriptionShape } from "./device-login-export.js";
 // The device-login credential promotion. It runs after a successful device
 // login, on the exact credential the login sandbox produced. It runs an
 // independent readiness check first, then validates the credential with the
-// export rules, then writes the credential into the company scope only.
+// export rules, then writes the credential into the managed tree only.
 //
-// The helper never writes the instance-global host (`CODEX_HOME` or `~/.codex`),
-// because that source has no `companyId`. It writes two company-scoped targets:
+// The helper never writes the host login (`CODEX_HOME` or `~/.codex`). It
+// writes two managed targets:
 // this account's own home, and — only as a fallback for an agent with no bound
-// secret — the company default home.
+// secret — the default managed home.
 //
 // This account's own home is the durable result of a login: the write is fail
-// loud, and the caller names it with a company secret so any agent can bind to
-// it. The company default home write is best-effort — a failure there never
+// loud, and the caller names it with a secret so any agent can bind to
+// it. The default managed home write is best-effort — a failure there never
 // fails the login — and is scoped by the shared decision predicate: it seeds an
 // absent or unusable slot, refreshes a same-identity slot only with a
 // strictly-newer credential, and keeps a slot a different account holds.
@@ -31,10 +31,10 @@ import { assertUsableSubscriptionShape } from "./device-login-export.js";
 //   - Decision C: only a user-initiated login seeds a home. An automatic
 //     background path never seeds one.
 //   - Decision H: the helper writes only while the session still holds the sole
-//     active claim on `(company_id, adapter_type)`. This is defense in depth over
+//     active claim on the adapter type. This is defense in depth over
 //     the partial unique index, so a second session cannot race the same slot.
 //
-// The helper preserves company scope, private modes, atomic rename, the
+// The helper preserves private modes, atomic rename, the
 // directory lock, and redacted logs. It never logs token bytes or a raw
 // `account_id`.
 
@@ -74,7 +74,7 @@ const READINESS_AUTH_FILE_MODE = 0o600;
  *
  * A ready result means a run launched now with this exact credential would
  * authenticate. A non-ready result rejects the promotion, and the caller writes
- * nothing. The function reads and writes no company scope and logs no bytes.
+ * nothing. The function reads and writes no managed home and logs no bytes.
  */
 export async function checkStagedCredentialReadiness(
   authBytes: Buffer,
@@ -100,7 +100,7 @@ export async function checkStagedCredentialReadiness(
  *
  * - `promoted`: the helper wrote this account's own home (a seed for a first
  *   login of this account, or a strictly-newer update for a repeat login). The
- *   helper also best-effort writes the company default home: a seed when the
+ *   helper also best-effort writes the default managed home: a seed when the
  *   slot is absent or unusable, a refresh when this same account's login is
  *   strictly newer than what the slot holds.
  * - `kept`: the login carried a credential that is not newer than what this
@@ -125,8 +125,8 @@ export type PromoteDeviceLoginCredentialOutcome = "promoted" | "kept" | "not_sol
  * directory the first call already made. A caller that must undo a later
  * failure (for example, a failed secret write) should remove the directory
  * only when `accountHomeCreated` is true, and should still re-check that no
- * company secret now names this account's home before it deletes: the
- * absence of a company secret at the time this call started is not proof
+ * secret now names this account's home before it deletes: the
+ * absence of a secret at the time this call started is not proof
  * that this login is the only login that used the directory. A user can also
  * delete the secret and keep the account home, so a repeat login then reads
  * no secret. `accountHomeCreated` is false for every outcome that does not
@@ -142,11 +142,9 @@ export interface PromoteDeviceLoginCredentialResult {
 export interface PromoteDeviceLoginCredentialInput {
   /** The exact staged credential bytes the login sandbox produced. */
   authBytes: Buffer;
-  /** The company that owns this login. It must be a single safe path segment. */
-  companyId: string;
   /**
    * True when a user started this login. Decision C: only a user-initiated login
-   * seeds the company slot. An automatic background path never seeds it.
+   * seeds the managed slot. An automatic background path never seeds it.
    */
   userInitiated: boolean;
   /**
@@ -160,7 +158,7 @@ export interface PromoteDeviceLoginCredentialInput {
   ) => Promise<CredentialReadinessResult> | CredentialReadinessResult;
   /**
    * Decision H: resolves true only while this session still holds the sole active
-   * claim on `(company_id, adapter_type)` (the internal `promoting` state). The
+   * claim on the adapter type (the internal `promoting` state). The
    * helper writes only when it resolves true.
    */
   isSoleActiveOwner: () => Promise<boolean> | boolean;
@@ -169,25 +167,8 @@ export interface PromoteDeviceLoginCredentialInput {
   env?: NodeJS.ProcessEnv;
 }
 
-/** Rejects an empty or unsafe `companyId`, so a promotion can never resolve the
- *  instance-global home (`resolveManagedCodexHomeDir` with no `companyId`) or
- *  escape the company tree. */
-function requireSafeCompanyId(companyId: string): string {
-  const trimmed = typeof companyId === "string" ? companyId.trim() : "";
-  if (trimmed.length === 0) {
-    throw new Error("device-login promotion: companyId is empty");
-  }
-  if (trimmed === "." || trimmed === "..") {
-    throw new Error("device-login promotion: companyId is a relative path segment");
-  }
-  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
-    throw new Error("device-login promotion: companyId contains a path separator");
-  }
-  return trimmed;
-}
-
 /**
- * Promotes a device-login credential into the company scope. The order is fixed:
+ * Promotes a device-login credential into the managed tree. The order is fixed:
  * readiness check, credential validation, account-handle validation, Decision C,
  * Decision H, then the writes. The readiness check and the writes run while the
  * caller still holds the active claim, so a second session cannot race the same
@@ -198,7 +179,6 @@ export async function promoteDeviceLoginCredential(
 ): Promise<PromoteDeviceLoginCredentialResult> {
   const { authBytes, userInitiated, checkReadiness, isSoleActiveOwner, log } = input;
   const env = input.env ?? process.env;
-  const companyId = requireSafeCompanyId(input.companyId);
 
   // 1. Independent readiness check on the exact staged credential. A non-ready
   //    result rejects the promotion before any validation or write.
@@ -219,7 +199,7 @@ export async function promoteDeviceLoginCredential(
   }
 
   // 2b. Convert the identity into a safe account handle. The handle names both
-  //     this account's own home directory and its company secret, so a login
+  //     this account's own home directory and its secret, so a login
   //     whose identity cannot form one must fail before any write.
   const accountHandle = toAccountHandle(accountId);
   if (!accountHandle) {
@@ -242,7 +222,7 @@ export async function promoteDeviceLoginCredential(
   // 5a. This account's own home is the durable result of a login: each account
   //     handle addresses exactly one home, so this write can never collide with
   //     a different identity, and a write failure here fails the whole
-  //     promotion (fail loud, unlike the company default home fallback below).
+  //     promotion (fail loud, unlike the default managed home fallback below).
   //     Two different logins can promote the same account at the same time
   //     (each login owns its own promotion slot), so the absence check and the
   //     directory creation run inside one lock: only the caller that truly
@@ -251,7 +231,7 @@ export async function promoteDeviceLoginCredential(
   //     the same account both see the directory as absent and both believe
   //     they created it.
   const { entryPath: accountHomeAuthPath, created: accountHomeCreated } =
-    await ensureCodexAuthCacheEntryDirExclusive(env, accountHandle, companyId);
+    await ensureCodexAuthCacheEntryDirExclusive(env, accountHandle);
   const accountHomeDir = path.dirname(accountHomeAuthPath);
   const accountHomeOutcome = await writeCredentialSeedOrNewer({
     sourceBytes: authBytes,
@@ -265,14 +245,14 @@ export async function promoteDeviceLoginCredential(
     env,
   });
 
-  // 5b. Company default home, for an agent with no bound secret. The write runs
+  // 5b. Default managed home, for an agent with no bound secret. The write runs
   //     unconditionally; the shared decision predicate inside the writer scopes
   //     it. It seeds an absent or unusable slot, refreshes a same-identity slot
   //     only with a strictly-newer credential, and keeps a slot a different
   //     account (or an API-key file) holds — so a login for a second account
-  //     still never steals the company slot once some account has claimed it.
+  //     still never steals the managed slot once some account has claimed it.
   //
-  //     Unconditional matters: a company home can hold a shape-usable credential
+  //     Unconditional matters: a managed home can hold a shape-usable credential
   //     that no longer authenticates (for example a symlink to a stale host
   //     login). A shape gate here would skip the write, and every environment
   //     test after this login would keep staging the failing credential and keep
@@ -284,25 +264,25 @@ export async function promoteDeviceLoginCredential(
   //     This write is best-effort: this account's own home above is already
   //     durable, so a failure here (a permission error, a full disk, a lock
   //     timeout) must not fail the promotion.
-  const companyHome = resolveManagedCodexHomeDir(env, companyId);
+  const defaultHome = resolveManagedCodexHomeDir(env);
   try {
-    await mkdir(companyHome, { recursive: true, mode: PRIVATE_DIR_MODE });
-    const companyHomeAuthPath = path.join(companyHome, AUTH_FILE_NAME);
+    await mkdir(defaultHome, { recursive: true, mode: PRIVATE_DIR_MODE });
+    const defaultHomeAuthPath = path.join(defaultHome, AUTH_FILE_NAME);
     await writeCredentialSeedOrNewer({
       sourceBytes: authBytes,
-      destinationPath: companyHomeAuthPath,
+      destinationPath: defaultHomeAuthPath,
       seedIfDestAbsent: true,
       log,
       writtenLine:
-        "[paperclip] Codex device-login promotion: wrote the company default home (seed or strictly-newer refresh).",
-      keptLine: "[paperclip] Codex device-login promotion: kept the company default home.",
+        "[paperclip] Codex device-login promotion: wrote the default managed home (seed or strictly-newer refresh).",
+      keptLine: "[paperclip] Codex device-login promotion: kept the default managed home.",
       tempPrefix: "auth.json.promotion-home",
       errorLabel: "codex device-login promotion",
       env,
     });
   } catch {
     await log(
-      "[paperclip] Codex device-login promotion: seeding the company default home failed; this account's own home is durable, so the login stays successful.",
+      "[paperclip] Codex device-login promotion: seeding the default managed home failed; this account's own home is durable, so the login stays successful.",
     );
   }
 

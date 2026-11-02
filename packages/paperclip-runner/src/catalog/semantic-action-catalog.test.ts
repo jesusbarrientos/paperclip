@@ -140,7 +140,7 @@ describe("semantic action catalog", () => {
 
     const validateContext = ajv.compile(taskContext!.inputSchema);
     expect(validateContext({})).toBe(true);
-    expect(validateContext({ companyId: "forged-company" })).toBe(false);
+    expect(validateContext({ unexpectedField: "forged" })).toBe(false);
   });
 
   it("matches the checked-in generated inventory byte for byte", async () => {

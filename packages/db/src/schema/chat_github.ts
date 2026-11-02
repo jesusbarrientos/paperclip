@@ -28,7 +28,6 @@ export const chatGitHubConfigurations = pgTable(
   "chat_github_configurations",
   {
     endpointId: uuid("endpoint_id").primaryKey(),
-    companyId: uuid("company_id").notNull(),
     revision: integer("revision").notNull().default(1),
     configuration: jsonb("configuration")
       .$type<GitHubChatConfiguration>()
@@ -43,8 +42,8 @@ export const chatGitHubConfigurations = pgTable(
   },
   (t) => [
     foreignKey({
-      columns: [t.companyId, t.endpointId],
-      foreignColumns: [chatEndpoints.companyId, chatEndpoints.id],
+      columns: [t.endpointId],
+      foreignColumns: [chatEndpoints.id],
     }).onDelete("cascade"),
     check("chat_github_config_revision_check", sql`${t.revision} > 0`),
   ],
@@ -55,7 +54,6 @@ export const chatGitHubRegistrations = pgTable(
   "chat_github_registrations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull(),
     endpointId: uuid("endpoint_id").notNull(),
     userId: text("user_id").notNull(),
     stateHash: text("state_hash").notNull(),
@@ -72,8 +70,8 @@ export const chatGitHubRegistrations = pgTable(
   },
   (t) => [
     foreignKey({
-      columns: [t.companyId, t.endpointId],
-      foreignColumns: [chatEndpoints.companyId, chatEndpoints.id],
+      columns: [t.endpointId],
+      foreignColumns: [chatEndpoints.id],
     }).onDelete("cascade"),
     uniqueIndex("chat_github_registration_state_uq").on(t.stateHash),
     index("chat_github_registration_endpoint_idx").on(
@@ -92,7 +90,6 @@ export const chatGitHubReviews = pgTable(
   "chat_github_reviews",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull(),
     endpointId: uuid("endpoint_id").notNull(),
     issueId: uuid("issue_id").notNull(),
     runId: uuid("run_id").references(() => heartbeatRuns.id, {
@@ -131,14 +128,13 @@ export const chatGitHubReviews = pgTable(
       .defaultNow(),
   },
   (t) => [
-    unique("chat_github_reviews_company_id_uq").on(t.companyId, t.id),
     foreignKey({
-      columns: [t.companyId, t.endpointId],
-      foreignColumns: [chatEndpoints.companyId, chatEndpoints.id],
+      columns: [t.endpointId],
+      foreignColumns: [chatEndpoints.id],
     }).onDelete("cascade"),
     foreignKey({
-      columns: [t.companyId, t.issueId],
-      foreignColumns: [issues.companyId, issues.id],
+      columns: [t.issueId],
+      foreignColumns: [issues.id],
     }).onDelete("restrict"),
     uniqueIndex("chat_github_reviews_delivery_uq").on(
       t.endpointId,
@@ -150,7 +146,7 @@ export const chatGitHubReviews = pgTable(
       t.pullNumber,
       t.createdAt,
     ),
-    index("chat_github_reviews_task_idx").on(t.companyId, t.issueId, t.runId),
+    index("chat_github_reviews_task_idx").on(t.issueId, t.runId),
     check("chat_github_review_pull_number_check", sql`${t.pullNumber} > 0`),
     check(
       "chat_github_review_state_check",

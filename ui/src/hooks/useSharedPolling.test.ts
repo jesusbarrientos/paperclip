@@ -8,12 +8,12 @@ import { applySharedPollingResult } from "./useSharedPolling";
 
 describe("applySharedPollingResult", () => {
   afterEach(() => {
-    clearLocalInboxArchive("company-1", "issue-archived");
+    clearLocalInboxArchive("issue-archived");
   });
 
   it("drops result messages that are older than local query state", () => {
     const queryClient = new QueryClient();
-    const queryKey = ["live-runs", "company-1"];
+    const queryKey = ["live-runs"];
     queryClient.setQueryData(queryKey, [{ id: "run-1", lastEventAt: "newer" }], { updatedAt: 2_000 });
 
     const applied = applySharedPollingResult(queryClient, queryKey, {
@@ -32,7 +32,7 @@ describe("applySharedPollingResult", () => {
 
   it("applies newer result messages with the producer dataUpdatedAt", () => {
     const queryClient = new QueryClient();
-    const queryKey = ["live-runs", "company-1"];
+    const queryKey = ["live-runs"];
     queryClient.setQueryData(queryKey, [{ id: "run-1", lastEventAt: "older" }], { updatedAt: 1_000 });
 
     const applied = applySharedPollingResult(queryClient, queryKey, {
@@ -51,8 +51,8 @@ describe("applySharedPollingResult", () => {
 
   it("filters locally archived issues from newer inbox broadcasts", () => {
     const queryClient = new QueryClient();
-    const queryKey = ["issues", "company-1", "mine-by-me"];
-    beginLocalInboxArchive("company-1", "issue-archived");
+    const queryKey = ["issues", "list", "mine-by-me"];
+    beginLocalInboxArchive("issue-archived");
 
     const applied = applySharedPollingResult(queryClient, queryKey, {
       type: "result",
@@ -71,13 +71,13 @@ describe("applySharedPollingResult", () => {
     const queryClient = new QueryClient();
     const queryKey = [
       "issues",
-      "company-1",
+      "list",
       "compact",
       "with-routine-executions",
       "live-descendant-summary",
       250,
     ];
-    beginLocalInboxArchive("company-1", "issue-archived");
+    beginLocalInboxArchive("issue-archived");
 
     const applied = applySharedPollingResult(queryClient, queryKey, {
       type: "result",

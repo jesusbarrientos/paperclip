@@ -5,8 +5,6 @@ import {
   buildRunLivenessContinuationIdempotencyKey,
   decideRunLivenessContinuation,
 } from "../services/run-continuations.ts";
-
-const companyId = "company-1";
 const agentId = "agent-1";
 const issueId = "issue-1";
 const runId = "run-1";
@@ -14,7 +12,6 @@ const runId = "run-1";
 function run(overrides: Record<string, unknown> = {}) {
   return {
     id: runId,
-    companyId,
     agentId,
     continuationAttempt: 0,
     ...overrides,
@@ -24,7 +21,6 @@ function run(overrides: Record<string, unknown> = {}) {
 function issue(overrides: Record<string, unknown> = {}) {
   return {
     id: issueId,
-    companyId,
     identifier: "PAP-1577",
     title: "Add bounded liveness continuation wakes",
     status: "in_progress",
@@ -38,7 +34,6 @@ function issue(overrides: Record<string, unknown> = {}) {
 function agent(overrides: Record<string, unknown> = {}) {
   return {
     id: agentId,
-    companyId,
     status: "idle",
     ...overrides,
   } as never;

@@ -70,7 +70,7 @@ vi.mock("../services/index.js", () => ({
   }),
   agentService: () => ({
     getById: vi.fn(async () => null),
-    resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
+    resolveByReference: vi.fn(async (raw: string) => ({
       ambiguous: false,
       agent: { id: raw },
     })),
@@ -141,7 +141,7 @@ function registerModuleMocks() {
     }),
     agentService: () => ({
       getById: vi.fn(async () => null),
-      resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
+      resolveByReference: vi.fn(async (raw: string) => ({
         ambiguous: false,
         agent: { id: raw },
       })),
@@ -230,7 +230,6 @@ async function createApp(transaction: (callback: (tx: Record<string, never>) => 
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    companyId: "company-1",
     status: "todo",
     priority: "medium",
     projectId: null,
@@ -280,7 +279,7 @@ describe("issue update comment wakeups", () => {
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("Task is paused. Resume it before sending a message.");
     expect(res.body.details.rootIssueId).toBe("parent-1");
-    expect(mockPauseGate).toHaveBeenCalledWith(existing.companyId, existing.id);
+    expect(mockPauseGate).toHaveBeenCalledWith(existing.id);
     expect(mockIssueService.addComment).not.toHaveBeenCalled();
     expect(mockIssueService.update).not.toHaveBeenCalled();
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
@@ -338,7 +337,6 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "write the whole thing",
     });
 
@@ -432,19 +430,16 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-interrupt-agent",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "stop and hand this to CodexCoder",
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-1",
-      companyId: existing.companyId,
       agentId: PREVIOUS_AGENT_ID,
       status: "running",
       contextSnapshot: { issueId: existing.id },
     });
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "run-1",
-      companyId: existing.companyId,
       agentId: PREVIOUS_AGENT_ID,
       status: "cancelled",
     });
@@ -518,19 +513,16 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-interrupt-user",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "stop here, I will take it",
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-2",
-      companyId: existing.companyId,
       agentId: PREVIOUS_AGENT_ID,
       status: "running",
       contextSnapshot: { issueId: existing.id },
     });
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "run-2",
-      companyId: existing.companyId,
       agentId: PREVIOUS_AGENT_ID,
       status: "cancelled",
     });
@@ -597,7 +589,6 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-2",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "please revise this",
     });
 
@@ -642,7 +633,6 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-3",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "please handle this top-level thread comment",
     });
 
@@ -686,7 +676,7 @@ describe("issue update comment wakeups", () => {
     const updated = makeIssue({ status: "todo", assigneeAgentId: ASSIGNEE_AGENT_ID });
     mockIssueService.getById.mockResolvedValue(existing);
     mockIssueService.update.mockResolvedValue(updated);
-    mockIssueService.addComment.mockResolvedValue({ id: "comment-reopen-slack", issueId: existing.id, companyId: existing.companyId, body: "Continue from Paperclip" });
+    mockIssueService.addComment.mockResolvedValue({ id: "comment-reopen-slack", issueId: existing.id, body: "Continue from Paperclip" });
     const res = await request(await createApp()).post(`/api/issues/${existing.id}/comments`).send({ body: "Continue from Paperclip", reopen: true });
     expect(res.status).toBe(201);
     await vi.waitFor(() => expect(mockHeartbeatService.wakeup).toHaveBeenCalledTimes(1));
@@ -705,13 +695,11 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-self-top-level",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "Plan ready for review.",
       createdByRunId: SOURCE_RUN_ID,
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: SOURCE_RUN_ID,
-      companyId: existing.companyId,
       agentId: ASSIGNEE_AGENT_ID,
       status: "running",
     });
@@ -746,7 +734,7 @@ describe("issue update comment wakeups", () => {
       ? `[@QA](agent://${MENTIONED_AGENT_ID}) is relevant; see [${child.identifier}](/PAP/issues/${child.identifier}).`
       : `Finished the task. [@QA](agent://${MENTIONED_AGENT_ID}) has relevant context.`;
     const originalComment = {
-      id: "context-note", issueId: existing.id, companyId: existing.companyId, body,
+      id: "context-note", issueId: existing.id, body,
       createdByRunId: selfComment ? SOURCE_RUN_ID : null,
     };
     mockIssueService.getById.mockImplementation(async (id) => id === child.id ? child : existing);
@@ -756,7 +744,7 @@ describe("issue update comment wakeups", () => {
     mockIssueService.findMentionedAgents.mockResolvedValue([MENTIONED_AGENT_ID]);
     mockIssueService.getRelationSummaries.mockResolvedValue({ blockedBy: [child], blocks: [] });
     mockHeartbeatService.getRun.mockImplementation(async (id) => ({
-      id, companyId: existing.companyId, status: "running",
+      id, status: "running",
       agentId: id === SOURCE_RUN_ID ? ASSIGNEE_AGENT_ID : MENTIONED_AGENT_ID,
       contextSnapshot: { issueId: id === SOURCE_RUN_ID ? existing.id : child.id },
     }));
@@ -791,13 +779,11 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-self-resume",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "Resume intentionally.",
       createdByRunId: SOURCE_RUN_ID,
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: SOURCE_RUN_ID,
-      companyId: existing.companyId,
       agentId: ASSIGNEE_AGENT_ID,
       status: "succeeded",
     });
@@ -830,7 +816,6 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-path",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "one more review note",
     });
     mockIssueThreadInteractionService.expireRequestConfirmationsSupersededByComment.mockResolvedValue([{
@@ -875,7 +860,6 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-plain-agent-name",
       issueId: existing.id,
-      companyId: existing.companyId,
       body: "QA please take the screenshot",
     });
     mockIssueService.findMentionedAgents.mockResolvedValue([]);

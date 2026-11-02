@@ -103,7 +103,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
         <QueryClientProvider client={queryClient}>
           <ExternallyConnectedTaskBanner
             attachments={attachments}
-            companyId="company-1"
             issueId="issue-1"
             issueCacheRefs={issueCacheRefs}
           />
@@ -188,7 +187,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     });
     const attachment = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "company-1",
       issueId: "issue-1",
       issueCommentId: null,
       assetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -277,7 +275,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     });
     await flushReact();
     expect(uploadAttachmentMock).toHaveBeenCalledWith(
-      "company-1",
       "issue-1",
       file,
     );
@@ -289,7 +286,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     expect(mockChatEndpointsApi.publishBoardMessage).not.toHaveBeenCalled();
     finishUpload({
       id: "uploaded-image",
-      companyId: "company-1",
       issueId: "issue-1",
       issueCommentId: null,
       originalFilename: "cat.png",
@@ -317,7 +313,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     expect(
       readBoardSendDraft(
         boardSendDraftKey(
-          "company-1",
           "issue-1",
           "endpoint-1",
           "conversation-1",
@@ -378,7 +373,7 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
       input!.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await flushReact();
-    queryClient.setQueryData(["issue-chat-binding", "company-1", "issue-1"], {
+    queryClient.setQueryData(["issue-chat-binding", "issue-1"], {
       endpointId: "endpoint-2",
       conversationId: "conversation-2",
       provider: "slack",
@@ -389,7 +384,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     await act(() => findButton(container, "Send to channel").click());
     finishUpload({
       id: "old-upload",
-      companyId: "company-1",
       issueId: "issue-1",
       issueCommentId: null,
       originalFilename: "old.txt",
@@ -408,7 +402,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     async (finalState) => {
       const attachment = {
         id: "file-selected",
-        companyId: "company-1",
         issueId: "issue-1",
         issueCommentId: null,
         assetId: "asset-selected",
@@ -606,7 +599,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
       });
       const attachment = {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        companyId: "company-1",
         issueId: "issue-1",
         issueCommentId: null,
         assetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -725,7 +717,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
   it("keeps a request-scoped durable rejection through reload and allows an explicit corrected send", async () => {
     const file = {
       id: "bound-file",
-      companyId: "company-1",
       issueId: "issue-1",
       issueCommentId: null,
       originalFilename: "report.txt",
@@ -1063,7 +1054,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
         expect(
           readBoardSendDraft(
             boardSendDraftKey(
-              "company-1",
               "issue-1",
               "endpoint-1",
               "conversation-1",
@@ -1189,7 +1179,7 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
       "Delivery result not confirmed",
     );
     const originalCall = mockChatEndpointsApi.publishBoardMessage.mock.calls[0];
-    queryClient.setQueryData(["issue-chat-binding", "company-1", "issue-1"], {
+    queryClient.setQueryData(["issue-chat-binding", "issue-1"], {
       endpointId: "endpoint-2",
       conversationId: "conversation-2",
       provider: "slack",
@@ -1212,7 +1202,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     expect(
       readBoardSendDraft(
         boardSendDraftKey(
-          "company-1",
           "issue-1",
           "endpoint-1",
           "conversation-1",
@@ -1226,7 +1215,6 @@ describe("ExternallyConnectedTaskBanner publication truth", () => {
     expect(
       readBoardSendDraft(
         boardSendDraftKey(
-          "company-1",
           "issue-1",
           "endpoint-2",
           "conversation-2",

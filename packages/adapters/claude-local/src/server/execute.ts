@@ -544,7 +544,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     );
   }
   const promptBundle = await prepareClaudePromptBundle({
-    companyId: agent.companyId,
     skills: mountableSkillEntries,
     instructionsContents: combinedInstructionsContents,
     onLog,
@@ -555,7 +554,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   );
   const claudeRuntimeStateDir = resolveManagedClaudeRuntimeStateDir(
     process.env,
-    agent.companyId,
     agent.id,
   );
   const localMcpConfigPath = await writePaperclipClaudeMcpConfig({
@@ -604,7 +602,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     adapterExecutionTargetUsesManagedHome(executionTarget) &&
     (!hasExplicitClaudeConfigDir || Boolean(config.managedAiConnection));
   const claudeConfigSeedDir = useManagedRemoteClaudeConfig
-    ? config.managedAiConnection ? sharedClaudeConfigDir : await prepareClaudeConfigSeed(process.env, onLog, agent.companyId)
+    ? config.managedAiConnection ? sharedClaudeConfigDir : await prepareClaudeConfigSeed(process.env, onLog)
     : null;
   const preparedExecutionTargetRuntime = executionTargetIsRemote
     ? await (async () => {
@@ -834,9 +832,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const bootstrapPromptTemplate = asString(config.bootstrapPromptTemplate, "");
   const templateData = {
     agentId: agent.id,
-    companyId: agent.companyId,
     runId,
-    company: { id: agent.companyId },
     agent,
     run: { id: runId, source: "on_demand" },
     context,

@@ -138,19 +138,16 @@ function ProposalRow({
 }
 
 export function ProposalsTab({
-  companyId,
   providerConfigs,
 }: {
-  companyId: string;
   providerConfigs: CompanySecretProviderConfig[];
 }) {
   const proposalsQuery = useQuery({
-    queryKey: queryKeys.secrets.proposals(companyId, "pending"),
-    queryFn: () => secretsApi.listProposals(companyId, "pending"),
-    enabled: Boolean(companyId),
+    queryKey: queryKeys.secrets.proposals("pending"),
+    queryFn: () => secretsApi.listProposals("pending"),
   });
 
-  const review = useProposalReview(companyId, providerConfigs);
+  const review = useProposalReview(providerConfigs);
   const proposals = proposalsQuery.data ?? EMPTY_PROPOSALS;
 
   // Secret proposals first, then bindings — an approver usually lands the

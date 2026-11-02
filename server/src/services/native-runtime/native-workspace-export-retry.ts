@@ -17,17 +17,18 @@ const changed = () => conflict("The recorded export repair is no longer current.
 
 /** Explicit board admission reopens only the accepted result's finalization suffix. */
 export async function retryNativeWorkspaceExport(input: {
-  db: Db; companyId: string; issueId: string; actionId: string; runId: string;
+  db: Db;
+ issueId: string; actionId: string; runId: string;
   actorId: string; repairNote: string; environmentRuntime: EnvironmentRuntimeService;
 }) {
   async function inspect(db: Db, lock = false, resumeRequestId?: string) {
     const one = async <T>(query: PromiseLike<T[]> & { for(mode: "update"): PromiseLike<T[]> }): Promise<T | null> =>
       (await (lock ? query.for("update") : query))[0] ?? null;
     // Keep the same issue -> coordinator -> run order as status commitment.
-    const issue = await one(db.select().from(issues).where(and(eq(issues.companyId, input.companyId), eq(issues.id, input.issueId))).limit(1));
-    const coordinator = await one(db.select().from(nativeRunFinalizations).where(and(eq(nativeRunFinalizations.companyId, input.companyId), eq(nativeRunFinalizations.runId, input.runId), eq(nativeRunFinalizations.issueId, input.issueId))).limit(1));
-    const run = await one(db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, input.companyId), eq(heartbeatRuns.id, input.runId), eq(heartbeatRuns.nativeIssueId, input.issueId))).limit(1));
-    const action = await one(db.select().from(issueRecoveryActions).where(and(eq(issueRecoveryActions.companyId, input.companyId), eq(issueRecoveryActions.sourceIssueId, input.issueId), eq(issueRecoveryActions.id, input.actionId))).limit(1));
+    const issue = await one(db.select().from(issues).where(eq(issues.id, input.issueId)).limit(1));
+    const coordinator = await one(db.select().from(nativeRunFinalizations).where(and(eq(nativeRunFinalizations.runId, input.runId), eq(nativeRunFinalizations.issueId, input.issueId))).limit(1));
+    const run = await one(db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.id, input.runId), eq(heartbeatRuns.nativeIssueId, input.issueId))).limit(1));
+    const action = await one(db.select().from(issueRecoveryActions).where(and(eq(issueRecoveryActions.sourceIssueId, input.issueId), eq(issueRecoveryActions.id, input.actionId))).limit(1));
     if (!issue || !run || !coordinator || !action || action.evidence?.runId !== run.id
       || action.kind !== "active_run_watchdog" || !isNativeWorkspaceExportRepairCause(action.cause) || action.ownerType !== "board"
       || !["active", "escalated"].includes(action.status) || run.runtimeMode !== "native"
@@ -36,7 +37,7 @@ export async function retryNativeWorkspaceExport(input: {
       || (issue.checkoutRunId && issue.checkoutRunId !== run.id) || coordinator.leaseOwner) throw changed();
     const reference = readNativeWorkspaceSyncReference(record(run.runnerProfileJson).nativeWorkspaceSync);
     if (!reference || reference.state !== "prepared") throw changed();
-    const lease = await one(db.select().from(environmentLeases).where(and(eq(environmentLeases.companyId, input.companyId), eq(environmentLeases.id, reference.leaseId))).limit(1));
+    const lease = await one(db.select().from(environmentLeases).where(eq(environmentLeases.id, reference.leaseId)).limit(1));
     if (!lease || lease.heartbeatRunId !== run.id || lease.issueId !== issue.id
       || lease.providerLeaseId !== reference.providerLeaseId || !lease.environmentId
       || typeof lease.metadata?.pluginId !== "string" || !lease.metadata.pluginId) throw changed();
@@ -44,10 +45,10 @@ export async function retryNativeWorkspaceExport(input: {
       ne(environmentLeases.id, lease.id), eq(environmentLeases.provider, lease.provider!), eq(environmentLeases.providerLeaseId, lease.providerLeaseId!), inArray(environmentLeases.status, ["active", "retained", "pending_cleanup"]),
     )).limit(1);
     if (otherLease) throw changed();
-    const [result] = await db.select().from(nativeRunResults).where(and(eq(nativeRunResults.companyId, input.companyId), eq(nativeRunResults.issueId, issue.id), eq(nativeRunResults.runId, run.id), eq(nativeRunResults.id, coordinator.resultId ?? "00000000-0000-0000-0000-000000000000"))).limit(1);
+    const [result] = await db.select().from(nativeRunResults).where(and(eq(nativeRunResults.issueId, issue.id), eq(nativeRunResults.runId, run.id), eq(nativeRunResults.id, coordinator.resultId ?? "00000000-0000-0000-0000-000000000000"))).limit(1);
     if (!result || result.schemaStatus !== "accepted" || result.completionContractId !== run.completionContractId) throw changed();
     const [newer] = await db.select({ id: heartbeatRuns.id }).from(heartbeatRuns).where(and(
-      eq(heartbeatRuns.companyId, input.companyId), ne(heartbeatRuns.id, run.id),
+      ne(heartbeatRuns.id, run.id),
       or(eq(heartbeatRuns.nativeIssueId, issue.id), sql`${heartbeatRuns.contextSnapshot}->>'issueId' = ${issue.id}`),
       or(gt(heartbeatRuns.createdAt, run.createdAt), inArray(heartbeatRuns.status, ["queued", "running"])),
     )).limit(1);
@@ -77,7 +78,7 @@ export async function retryNativeWorkspaceExport(input: {
       if (!initial.alreadyQueued) {
         // The operator resumes and repairs the exact retained sandbox through its
         // provider console. Never acquire a replacement or seed over saved work.
-        const target = await resolveEnvironmentExecutionTarget({ db: input.db, companyId: input.companyId,
+        const target = await resolveEnvironmentExecutionTarget({ db: input.db,
           adapterType: "paperclip_runner", environment: initial.environment, leaseId: initial.lease.id,
           leaseMetadata: initial.lease.metadata, lease: initial.lease as EnvironmentLease, environmentRuntime: input.environmentRuntime });
         if (target?.kind !== "remote" || target.transport !== "sandbox" || !target.runner
@@ -95,8 +96,7 @@ export async function retryNativeWorkspaceExport(input: {
           const [lease] = await tx.update(environmentLeases).set({ status: "pending_cleanup", cleanupStatus: "failed",
             releasedAt: now, failureReason: "workspace_export_resume_pending", updatedAt: now,
             metadata: { ...current.lease.metadata, remoteExecutionTermination: undefined,
-            [NATIVE_WORKSPACE_EXPORT_RESUME_KEY]: { schema: "paperclip.workspace-export-resume.v2", requestId,
-              companyId: input.companyId, runId: input.runId, leaseId: current.lease.id,
+            [NATIVE_WORKSPACE_EXPORT_RESUME_KEY]: { schema: "paperclip.workspace-export-resume.v2", requestId, runId: input.runId, leaseId: current.lease.id,
               pluginId: current.lease.metadata?.pluginId,
                 provider: current.lease.provider, providerLeaseId: current.lease.providerLeaseId, resultId: current.result.id },
               pendingCleanupAttemptId: requestId, pendingCleanupInFlight: true,
@@ -149,7 +149,7 @@ export async function retryNativeWorkspaceExport(input: {
         await tx.update(issueRecoveryActions).set({ evidence: { ...current.action.evidence, workspaceExportRetry: retry },
           nextAction: "Workspace export is queued for the accepted result. No provider turn will run.",
           wakePolicy: { kind: "resume_native_run", runId: current.run.id }, updatedAt: now }).where(eq(issueRecoveryActions.id, current.action.id));
-        const publication = await persistActivity(tx as unknown as Db, { companyId: input.companyId, actorType: "user", actorId: input.actorId,
+        const publication = await persistActivity(tx as unknown as Db, { actorType: "user", actorId: input.actorId,
           action: "issue.workspace_export_retry_requested", entityType: "issue", entityId: input.issueId, runId: input.runId,
           details: { recoveryActionId: input.actionId, resultId: current.result.id, leaseId: current.lease.id, repairNote: input.repairNote } });
         return { receipt, publication };
@@ -161,8 +161,7 @@ export async function retryNativeWorkspaceExport(input: {
         // Admission may have committed before a connection failed. Stop only
         // while our durable intent is still present; never stop a later owner.
         try {
-          const [lease] = await input.db.select().from(environmentLeases).where(and(eq(environmentLeases.id, initial.lease.id),
-            eq(environmentLeases.companyId, input.companyId), eq(environmentLeases.heartbeatRunId, input.runId),
+          const [lease] = await input.db.select().from(environmentLeases).where(and(eq(environmentLeases.id, initial.lease.id), eq(environmentLeases.heartbeatRunId, input.runId),
             eq(environmentLeases.status, "pending_cleanup"),
             sql`${environmentLeases.metadata}->>'pendingCleanupAttemptId' = ${resumeRequestId}`)).limit(1);
           const [otherOwner] = await input.db.select({ id: environmentLeases.id }).from(environmentLeases).where(and(

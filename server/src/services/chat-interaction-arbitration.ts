@@ -19,14 +19,13 @@ type ChatInteractionArbitrationDb = Pick<Db, "select">;
  */
 export async function hasChatRunOwnedProviderInteraction(
   db: ChatInteractionArbitrationDb,
-  input: { companyId: string; issueId: string; runId: string },
+  input: { issueId: string; runId: string },
 ): Promise<boolean> {
   const promptPublication = db
     .select({ id: chatPublications.id })
     .from(chatPublications)
     .where(
       and(
-        eq(chatPublications.companyId, issueThreadInteractions.companyId),
         eq(chatPublications.issueId, issueThreadInteractions.issueId),
         sql`${chatPublications.payload} ->> 'interactionId' = ${issueThreadInteractions.id}::text`,
         sql`${chatPublications.idempotencyKey} = 'interaction:' || ${issueThreadInteractions.id}::text || ':' || ${chatPublications.endpointId}::text`,
@@ -44,7 +43,6 @@ export async function hasChatRunOwnedProviderInteraction(
     .from(issueThreadInteractions)
     .where(
       and(
-        eq(issueThreadInteractions.companyId, input.companyId),
         eq(issueThreadInteractions.issueId, input.issueId),
         eq(issueThreadInteractions.sourceRunId, input.runId),
         inArray(issueThreadInteractions.kind, [
@@ -61,7 +59,6 @@ export async function hasChatRunOwnedProviderInteraction(
                 .where(
                   and(
                     eq(heartbeatRuns.id, input.runId),
-                    eq(heartbeatRuns.companyId, input.companyId),
                     eq(
                       heartbeatRuns.agentId,
                       issueThreadInteractions.createdByAgentId,

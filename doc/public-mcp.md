@@ -1,7 +1,7 @@
 # Public Paperclip MCP connection
 
 The first-release implementation connects an external assistant **as a person**
-to one explicitly selected company. It exposes first-party task operations and
+to the instance's organization (one per instance). It exposes first-party task operations and
 keeps normal Paperclip authorization, scheduling, attribution, budgets and
 approvals. The existing named agent gateways and native runner checks remain
 separate. The accepted roadmap is in
@@ -154,7 +154,7 @@ The device endpoint is `/mcp/oauth/device_authorization`, browser verification i
 `/mcp-device`, and the token endpoint accepts the RFC 8628 device grant. Pending
 requests have separately hashed codes, ten-minute expiry, five-second initial
 polling, persistent backoff and atomic redemption. Shared database quotas bound
-new requests. Consent uses the same company, role, scope, grant, audit and
+new requests. Consent uses the same organization membership, role, scope, grant, audit and
 revocation checks as browser OAuth. This is human authorization, not client
 credentials or agent impersonation. Both flows require the experimental setting.
 
@@ -316,9 +316,9 @@ initialize-based clients keep the ten-tool connection.
 
 | Event | Required filters | Payload |
 | --- | --- | --- |
-| `paperclip.task.status_changed` | `companyId`, `taskId`; optional `statuses` | Task ID, status, company ID and task link |
-| `paperclip.task.comment_created` | `companyId`, `taskId` | Task/company IDs, comment ID and task link |
-| `paperclip.task.document_updated` | `companyId`, `taskId` | Task/company IDs, document key, revision and task link |
+| `paperclip.task.status_changed` | `taskId`; optional `statuses` | Task ID, status and task link |
+| `paperclip.task.comment_created` | `taskId` | Task ID, comment ID and task link |
+| `paperclip.task.document_updated` | `taskId` | Task ID, document key, revision and task link |
 
 In an Events-capable ChatGPT Work Cloud chat or dot, ask, for example:
 “Watch this task. When it finishes, read its report and tell me the result.”
@@ -419,16 +419,11 @@ story so the presentation itself never advances automatically.
 
 ### One organization from Cloud through consent
 
-Cloud selects an organization once and sends its registry company ID as the
-optional OAuth `company_id` parameter. Paperclip persists it as
-`mcp_oauth_requests.requested_company_id`, filters the consent response to that
-company, and rejects approval for any other company even if the user belongs to
-both. It is a scope restriction, never a substitute for active membership or
-explicit read/write consent. A deleted, archived, or inaccessible company cannot
-fall back to another one. The UI shows the fixed organization and permissions,
-with cancel/reconnect guidance if it is unavailable.
-
-Direct instance requests without `company_id` retain their organization picker.
+A Paperclip instance serves exactly one organization, so the consent screen
+always shows that organization; there is no organization picker and no
+`company_id` OAuth parameter to narrow it. Consent never substitutes for active
+membership or explicit read/write consent. The UI shows the organization and
+permissions, with cancel/reconnect guidance if it is unavailable.
 There is no separate “team” entity in this flow. Cloud’s organization maps to its
 stack’s primary Paperclip company; the stack is hosting infrastructure. The hosted
 walkthrough uses **Consent → Hosted organization**; direct selection, read-only,

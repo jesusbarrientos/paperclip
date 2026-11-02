@@ -39,7 +39,7 @@ export const candidates: SkillSourceCandidate[] = [
 
 export function sourceFixture(): SkillSource {
   return {
-    id: SOURCE_ID, companyId: COMPANY_ID, repositoryId: "123456",
+    id: SOURCE_ID, repositoryId: "123456",
     repositoryUrl: "https://github.com/acme/team-skills", fullName: "acme/team-skills",
     trackingRef: "main", connectionId: "github-storybook", excludedFolders: ["experimental"],
     enabled: true, revision: 1, lastAttemptAt: new Date(), lastSuccessAt: new Date(),
@@ -55,13 +55,13 @@ export function sourceFixture(): SkillSource {
 
 export function importedSkill(source: SkillSource, entry: SkillSourceEntry): CompanySkill {
   return {
-    id: entry.skillId!, companyId: COMPANY_ID, key: `github/${source.id}/${entry.path}`,
+    id: entry.skillId!, key: `github/${source.id}/${entry.path}`,
     slug: entry.name.toLowerCase().replaceAll(" ", "-"), name: entry.name, description: entry.description,
     markdown: `---\nname: ${entry.name}\ndescription: ${entry.description}\n---\n\n# ${entry.name}\n\n${entry.description}\n\n## Workflow\n\n1. Read the task and the relevant project context.\n2. Follow the checklist in references/checklist.md.\n3. Report findings with evidence and clear next steps.\n`, sourceType: "github", sourceLocator: source.repositoryUrl, sourceRef: COMMIT,
     trustLevel: "assets", compatibility: "compatible", fileInventory: [{ path: "SKILL.md", kind: "skill" }, { path: "references/checklist.md", kind: "reference" }],
     iconUrl: null, color: null, tagline: null, authorName: null, homepageUrl: null,
     categories: [], sharingScope: "company", publicShareToken: null, forkedFromSkillId: null,
-    forkedFromCompanyId: null, starCount: 0, installCount: 0, forkCount: 0,
+    starCount: 0, installCount: 0, forkCount: 0,
     currentVersionId: `version-${entry.id}`, metadata: { skillSourceId: source.id, skillSourcePath: entry.path, skillSourceState: "synced" }, createdAt: new Date(), updatedAt: new Date(),
   };
 }
@@ -109,18 +109,18 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
       sourcePath: String(skill.metadata?.skillSourcePath), currentVersion: version(skill), starredByCurrentActor: false };
   }
   function version(skill: CompanySkill): CompanySkillVersion {
-    return { id: skill.currentVersionId!, companyId: COMPANY_ID, companySkillId: skill.id, revisionNumber: 1,
+    return { id: skill.currentVersionId!, companySkillId: skill.id, revisionNumber: 1,
       label: null, releaseId: null, releaseName: null, releasedAt: null, authorAgentId: null, authorUserId: 'user-board', createdAt: skill.createdAt,
       fileInventory: [{ path: 'SKILL.md', kind: 'skill', content: skill.markdown }, { path: 'references/checklist.md', kind: 'reference', content: '# Checklist\n\n- Check company boundaries.\n- Verify failure handling.\n- Include evidence in the review.' }],
     };
   }
   if (options.journey) {
     companySkillsApi.list = async () => sourceSkills().map(skill => ({ ...detail(skill.id), catalogKind: null, originHash: null, packageName: null, packageVersion: null } satisfies CompanySkillListItem));
-    companySkillsApi.detail = async (_companyId, id) => detail(id);
+    companySkillsApi.detail = async (id) => detail(id);
     companySkillsApi.categories = async () => [];
     companySkillsApi.catalogList = async () => [];
-    companySkillsApi.versions = async (_companyId, id) => [version(detail(id))];
-    companySkillsApi.file = async (_companyId, id, path) => ({ skillId: id, path, kind: path === 'SKILL.md' ? 'skill' : 'reference',
+    companySkillsApi.versions = async (id) => [version(detail(id))];
+    companySkillsApi.file = async (id, path) => ({ skillId: id, path, kind: path === 'SKILL.md' ? 'skill' : 'reference',
       content: version(detail(id)).fileInventory.find(file => file.path === path)?.content ?? '', language: 'markdown', markdown: true, editable: false });
     companySkillsApi.updateStatus = async () => ({ supported: true, reason: null, trackingRef: 'main', currentRef: COMMIT, latestRef: COMMIT,
       hasUpdate: false, installedHash: null, originHash: null, userModifiedAt: null, updateHoldReason: null, auditVerdict: null, auditCodes: [] });
@@ -128,7 +128,7 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
     companySkillsApi.testInputs = async () => [];
     companySkillsApi.testRuns = async () => [];
     companySkillsApi.testRunTemplates = async () => [];
-    companySkillsApi.forkPrecheck = async (_companyId, id) => {
+    companySkillsApi.forkPrecheck = async (id) => {
       const skill = detail(id);
       return { skillId: id, original: { id, name: skill.name, slug: skill.slug, sourceType: skill.sourceType, sourceLocator: skill.sourceLocator, sourceRef: skill.sourceRef }, agentUsageCount: skill.attachedAgentCount, usedByAgents: skill.usedByAgents, existingForks: [] };
     };
@@ -183,7 +183,7 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
       ] : [repo('123456', 'acme/team-skills', true)],
     };
   };
-  skillSourcesApi.discover = async (_companyId, input) => {
+  skillSourcesApi.discover = async (input) => {
     const parsed = parseGitHubSkillRepositoryUrl(input.repositoryUrl);
     if (!parsed) throw new Error('Enter an HTTPS GitHub repository or branch URL.');
     return {
@@ -191,9 +191,9 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
       trackingRef: input.trackingRef || parsed.trackingRef || 'main', commitSha: COMMIT, candidates: discoveryCandidates, warnings: [],
     };
   };
-  skillSourcesApi.discoverStream = async (companyId, input, onProgress, signal) => {
+  skillSourcesApi.discoverStream = async (input, onProgress, signal) => {
     const active = signal ? AbortSignal.any([signal, fixtureController.signal]) : fixtureController.signal;
-    const result = await skillSourcesApi.discover(companyId, input);
+    const result = await skillSourcesApi.discover(input);
     const progress = { type: 'progress' as const, phase: 'connecting' as 'connecting' | 'downloading' | 'listing' | 'checking', totalSkills: null as number | null, checkedSkills: 0, currentPath: null as string | null, checkedFiles: 0, totalFiles: null as number | null };
     onProgress({ ...progress });
     await wait(options.scan ? 900 : 100, active);
@@ -230,12 +230,12 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
     }
     return result;
   };
-  skillSourcesApi.preview = async (_companyId, input) => {
+  skillSourcesApi.preview = async (input) => {
     const file = inspection(input.skillPath).files.find(file => file.path === input.filePath);
     if (!file) throw new Error('File is not included in this package.');
     return { file, content: packageContents[input.skillPath]![input.filePath]!, truncated: false, commitSha: input.commitSha };
   };
-  skillSourcesApi.create = async (_companyId, input) => {
+  skillSourcesApi.create = async (input) => {
     if (options.saving) await wait(3600000);
     const source = sourceFixture();
     Object.assign(source, { id: `source-${sources.length + 1}`, repositoryUrl: input.repositoryUrl, fullName: input.repositoryUrl.replace("https://github.com/", ""), trackingRef: input.trackingRef || "main", connectionId: input.connectionId ?? null });
@@ -243,12 +243,12 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
     sources.push(source);
     return save(source, input.selectedPaths, input.excludedFolders ?? []);
   };
-  skillSourcesApi.select = async (_companyId, id, input) => {
+  skillSourcesApi.select = async (id, input) => {
     const source = sources.find(item => item.id === id)!;
     source.connectionId = input.connectionId ?? null;
     return save(source, input.selectedPaths, input.excludedFolders);
   };
-  skillSourcesApi.refresh = async (_companyId, id) => {
+  skillSourcesApi.refresh = async (id) => {
     const source = sources.find(item => item.id === id)!;
     if (needsConnection) throw new Error(source.lastError ?? "Reconnect GitHub to refresh this source.");
     if (options.journey && !source.entries.some(entry => entry.path.includes('/security/'))) {
@@ -259,7 +259,7 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
     source.lastSuccessAt = new Date();
     return structuredClone({ source, imported: [], updated: [], unchanged: source.entries.filter(entry => entry.selection === "selected").length, warnings: [] });
   };
-  skillSourcesApi.disconnect = async (_companyId, id) => {
+  skillSourcesApi.disconnect = async (id) => {
     const source = sources.find(item => item.id === id)!;
     source.enabled = false;
     return structuredClone(source);

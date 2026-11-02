@@ -28,6 +28,6 @@ function query(params: WorkTimelineParams): string {
 }
 
 export const workTimelineApi = {
-  get: (companyId: string, params: WorkTimelineParams = {}, options?: RequestOptions) =>
-    api.get<WorkTimelineResult>(`/companies/${companyId}/timeline${query(params)}`, options),
+  get: (params: WorkTimelineParams = {}, options?: RequestOptions) =>
+    api.get<WorkTimelineResult>(`/organization/timeline${query(params)}`, options),
 };

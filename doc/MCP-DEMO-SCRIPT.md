@@ -15,7 +15,7 @@ Before you start the recording:
 - The KV demo server package built (`pnpm --filter @paperclipai/kv-demo-mcp-server build`).
 - Board API key (`$BOARD_API_KEY`) exported. Company ID (`$COMPANY_ID`) exported. Agent ID (`$AGENT_ID`) for the caller exported.
 - Paperclip URL (`$PAPERCLIP_URL`) exported.
-- The Tools & Access UI open at `/<prefix>/companies/<companyId>/tools`.
+- The Tools & Access UI open at `/tools`.
 - A browser tab open on the **Values UI** at `http://127.0.0.1:8848/` (you will open this in Step 1).
 
 All API requests use `Authorization: Bearer $BOARD_API_KEY` for board calls. Gateway calls use a dedicated session token via the `X-Paperclip-Tool-Gateway-Token` header — they do not use `Authorization`. See Step 5 for how the token is minted.
@@ -64,7 +64,7 @@ API equivalent for the recording (the wizard hits these two routes back-to-back)
 CONNECT=$(curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/apps/connect" \
+  "$PAPERCLIP_URL/api/tools/apps/connect" \
   -d '{
     "link": "http://127.0.0.1:8848/mcp",
     "name": "KV demo"
@@ -91,7 +91,7 @@ Finish the wizard (allow reads, ask-first on `kv_set`, leave `kv_delete` quarant
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/apps/$CONNECTION_ID/finish" \
+  "$PAPERCLIP_URL/api/tools/apps/$CONNECTION_ID/finish" \
   -d '{
     "enabledCatalogEntryIds": '"$READ_ENTRY_IDS"',
     "askFirstCatalogEntryIds": ["'"$WRITE_ENTRY_ID"'"],
@@ -105,7 +105,7 @@ curl -fsS -X POST \
 
 export PROFILE_ID=$(curl -fsS \
   -H "Authorization: Bearer $BOARD_API_KEY" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/profiles/effective/agents/$AGENT_ID" \
+  "$PAPERCLIP_URL/api/tools/profiles/effective/agents/$AGENT_ID" \
   | jq -r '.profileIds[0]')
 ```
 
@@ -116,7 +116,7 @@ Expected: `connectionStatus: "active"`, one profile bound to the company, one `r
 ```sh
 curl -fsS \
   -H "Authorization: Bearer $BOARD_API_KEY" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/profiles/effective/agents/$AGENT_ID" \
+  "$PAPERCLIP_URL/api/tools/profiles/effective/agents/$AGENT_ID" \
   | jq '{profileIds, allowedToolNames}'
 ```
 
@@ -131,7 +131,7 @@ Grab the most recent active run for the demo agent:
 ```sh
 export RUN_ID=$(curl -fsS \
   -H "Authorization: Bearer $BOARD_API_KEY" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/heartbeat-runs?agentId=$AGENT_ID&limit=20" \
+  "$PAPERCLIP_URL/api/heartbeat-runs?agentId=$AGENT_ID&limit=20" \
   | jq -r '[.[] | select(.status == "running")] | first | .id')
 
 test -n "$RUN_ID" || { echo "No active run for agent — start one before recording"; exit 1; }
@@ -282,7 +282,7 @@ Skip this on a 5-minute recording. Include it for the 10-minute version because 
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/action-requests/$ACTION_REQUEST_ID/trust-rule" \
+  "$PAPERCLIP_URL/api/tools/action-requests/$ACTION_REQUEST_ID/trust-rule" \
   -d '{
     "name": "Trust kv_set demo/launch from the demo agent",
     "approvalThreshold": 2,
@@ -350,7 +350,7 @@ Run these if you want the connection and application out of the way as well. Ski
 ```sh
 # Revoke the trust rule (if you created one in Step 11)
 curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/trust-rules/$TRUST_RULE_POLICY_ID/revoke" \
+  "$PAPERCLIP_URL/api/tools/trust-rules/$TRUST_RULE_POLICY_ID/revoke" \
   -d '{ "reason": "Demo cleanup." }' | jq '{id, enabled}'
 
 # Disable the connection

@@ -36,7 +36,6 @@ import {
 const identity = {
   runId: "run-recovery",
   sessionId: "session-recovery",
-  companyId: "company-recovery",
   issueId: "issue-recovery",
   agentId: "agent-recovery",
 };
@@ -98,7 +97,6 @@ const yieldedResult: PrpStructuredRunResult = {
 const input: NativeExecutionInputV1 = {
   schema: "paperclip.native-execution-input.v1",
   binding: {
-    companyId: identity.companyId,
     runId: identity.runId,
     issueId: identity.issueId,
     agentId: identity.agentId,
@@ -1657,10 +1655,7 @@ describe("executeNativeSession recovery", () => {
       let executionCloseCount = 0;
       let admissionAttempt = 0;
       let scheduledAttempt = 0;
-      const lifetimeIdentity = {
-        ...identity,
-        companyId: "company-cleanup-lifetime",
-      };
+      const lifetimeIdentity = { ...identity };
       const close = vi.fn(({ reason }: { reason: string }) => {
         if (reason === "native session execution complete") {
           executionCloseCount += 1;
@@ -1729,7 +1724,7 @@ describe("executeNativeSession recovery", () => {
         async descriptor() {
           return {
             kind: "mock",
-            name: "recovery-backend",
+            name: "cleanup-lifetime-backend",
             version: "1",
             capabilities: {
               resume: true,
@@ -1761,10 +1756,7 @@ describe("executeNativeSession recovery", () => {
         executeNativeSession({
           input: {
             ...input,
-            binding: {
-              ...input.binding,
-              companyId: lifetimeIdentity.companyId,
-            },
+            binding: { ...input.binding },
           },
           backend,
           controlPlane: port,
@@ -1895,20 +1887,18 @@ describe("executeNativeSession recovery", () => {
 
       const isolatedSession: NativeSession = {
         ...session,
-        identity: () => ({ ...identity, companyId: "company-isolated" }),
+        identity: () => ({ ...identity }),
         close: vi.fn(async () => undefined),
       };
       const isolatedOpenSession = vi.fn(async () => isolatedSession);
       await expect(
         executeNativeSession({
-          input: {
-            ...input,
-            binding: {
-              ...input.binding,
-              companyId: "company-isolated",
-            },
+          input,
+          backend: {
+            ...backend,
+            descriptor: async () => ({ ...(await backend.descriptor()), name: "isolated-backend" }),
+            openSession: isolatedOpenSession,
           },
-          backend: { ...backend, openSession: isolatedOpenSession },
           controlPlane: port,
           runnerInstanceId: "runner-recovery",
           controlPlaneInstanceId: "control-recovery",
@@ -4081,7 +4071,7 @@ describe("executeNativeSession recovery", () => {
   );
 
   it("collects a failed run's private instructions only after its owned provider close joins", async () => {
-    const scopedIdentity = { ...identity, companyId: "instruction-close-company", runId: "instruction-close-run" };
+    const scopedIdentity = { ...identity, runId: "instruction-close-run" };
     let finishClose!: () => void;
     const closed = new Promise<void>((resolve) => { finishClose = resolve; });
     const order: string[] = [];
@@ -4106,7 +4096,7 @@ describe("executeNativeSession recovery", () => {
       replayEvents: async () => ({ events: [], highestContiguousSourceSeq: 0 }), completeRun: async () => {},
     };
     const options = {
-      input: { ...input, binding: { ...input.binding, companyId: scopedIdentity.companyId, runId: scopedIdentity.runId } },
+      input: { ...input, binding: { ...input.binding, runId: scopedIdentity.runId } },
       backend, controlPlane, runnerInstanceId: "instruction-runner", controlPlaneInstanceId: "control",
       requireSessionCloseBeforeReturn: true,
       onSessionClosed: async () => { order.push("collected"); },
@@ -4120,9 +4110,9 @@ describe("executeNativeSession recovery", () => {
   });
 
   it("retires only the terminated remote resource, including two sandboxes for one run", async () => {
-    const scopedIdentity = { ...identity, companyId: "remote-stop-company", runId: "remote-stop-run" };
+    const scopedIdentity = { ...identity, runId: "remote-stop-run" };
     const binding = { ...scopedIdentity, remoteCleanupScope: "first-sandbox" };
-    const scopedInput = { ...input, binding: { ...input.binding, companyId: scopedIdentity.companyId, runId: scopedIdentity.runId } };
+    const scopedInput = { ...input, binding: { ...input.binding, runId: scopedIdentity.runId } };
     const failure = new NativeSessionCloseUnrecoverableError();
     const capabilities = { resume: true, typedEvents: true, steering: false, interruption: false, structuredResult: true };
     const session: NativeSession = {
@@ -4150,7 +4140,6 @@ describe("executeNativeSession recovery", () => {
       remoteCleanupScope: binding.remoteCleanupScope };
     await expect(executeNativeSession(options)).rejects.toMatchObject({ message: "cancelled remote transport", cleanupError: failure });
     expect(completeTerminatedRemoteNativeSessionCleanup({ ...binding, runId: "other-run" })).toBe(true);
-    expect(completeTerminatedRemoteNativeSessionCleanup({ ...binding, companyId: "other-company" })).toBe(true);
     await expect(executeNativeSession(options)).rejects.toBeInstanceOf(NativeSessionCleanupQuarantinedError);
     expect(backend.openSession).toHaveBeenCalledOnce();
     // A separate sandbox can start without inheriting this process quarantine.
@@ -4162,7 +4151,7 @@ describe("executeNativeSession recovery", () => {
       backend: independentBackend })).rejects.toMatchObject({ message: "cancelled remote transport", cleanupError: failure });
     expect(independentBackend.openSession).toHaveBeenCalledOnce();
     expect(completeTerminatedRemoteNativeSessionCleanup(binding)).toBe(true);
-    // Same company/run, different sandbox: its quarantine must remain intact.
+    // Same run, different sandbox: its quarantine must remain intact.
     await expect(executeNativeSession({ ...options, remoteCleanupScope: "other-sandbox",
       backend: independentBackend })).rejects.toBeInstanceOf(NativeSessionCleanupQuarantinedError);
     expect(independentBackend.openSession).toHaveBeenCalledOnce();
@@ -4175,9 +4164,9 @@ describe("executeNativeSession recovery", () => {
   });
 
   it("retires local quarantine only for the stopped run and runner instance", async () => {
-    const scopedIdentity = { ...identity, companyId: "local-stop-company", runId: "local-stop-run" };
+    const scopedIdentity = { ...identity, runId: "local-stop-run" };
     const binding = { ...scopedIdentity, runnerInstanceId: "local-runner" };
-    const scopedInput = { ...input, binding: { ...input.binding, companyId: scopedIdentity.companyId, runId: scopedIdentity.runId } };
+    const scopedInput = { ...input, binding: { ...input.binding, runId: scopedIdentity.runId } };
     const failure = new NativeSessionCloseUnrecoverableError();
     const capabilities = { resume: true, typedEvents: true, steering: false, interruption: false, structuredResult: true };
     const session: NativeSession = {
@@ -4200,7 +4189,6 @@ describe("executeNativeSession recovery", () => {
     const options = { input: scopedInput, backend, controlPlane, runnerInstanceId: binding.runnerInstanceId,
       controlPlaneInstanceId: "control", requireSessionCloseBeforeReturn: true };
     await expect(executeNativeSession(options)).rejects.toMatchObject({ message: "local transport stopped", cleanupError: failure });
-    completeTerminatedLocalNativeSessionCleanup({ ...binding, companyId: "other-company" });
     completeTerminatedLocalNativeSessionCleanup({ ...binding, runId: "other-run" });
     expect(completeTerminatedLocalNativeSessionCleanup({ ...binding, runnerInstanceId: "other-runner" })).toBe(false);
     await expect(executeNativeSession(options)).rejects.toBeInstanceOf(NativeSessionCleanupQuarantinedError);
@@ -4891,7 +4879,7 @@ describe("executeNativeSession recovery", () => {
         return {
           backendKind: "mock",
           sessionId: "driver-recovery",
-          identity: { ...identity, companyId: "other-company" },
+          identity: { ...identity, issueId: "other-issue" },
         };
       },
       checkpointSession,
@@ -4922,7 +4910,7 @@ describe("executeNativeSession recovery", () => {
     const openRun = vi.fn(async () => undefined);
     const attachRun = vi.fn(async () => undefined);
     const existingSession: NativeSession = {
-      identity: () => ({ ...identity, companyId: "other-company" }),
+      identity: () => ({ ...identity, issueId: "other-issue" }),
       async capabilities() {
         return {
           resume: true,

@@ -160,7 +160,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Native restart runner",
       role: "engineer",
       status: "active",
@@ -192,7 +191,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
     const runId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: `NRR-${label}`,
       title: `Recover ${label}`,
       status: "in_progress",
@@ -204,7 +202,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
       .insert(heartbeatRuns)
       .values({
         id: runId,
-        companyId,
         agentId,
         status: "running",
         runtimeMode: "native",
@@ -232,7 +229,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
     });
     await db.insert(nativeRunFinalizations).values({
       runId,
-      companyId,
       issueId,
       phase: "observed",
     });
@@ -264,7 +260,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
       },
       controlPlaneRegistration: (authority: Parameters<typeof registerRunnerPrpAuthority>[0]["authority"]) =>
         registerRunnerPrpAuthority({
-          companyId,
           runId: fixture.runId,
           authority,
         }),
@@ -294,7 +289,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
           sessionCheckpoint: {
             sessionId: input.fixture.native.normalizedSessionId,
             identity: {
-              companyId,
               issueId: input.fixture.issueId,
               runId: input.fixture.runId,
               agentId,
@@ -377,7 +371,7 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
           remoteCwd: "/workspace",
         },
         sessionCheckpoint: {
-          identity: { companyId, agentId, issueId: fixture.issueId, runId: fixture.runId,
+          identity: { agentId, issueId: fixture.issueId, runId: fixture.runId,
             sessionId: fixture.native.normalizedSessionId },
           providerSessionId: "provider-session",
           process: { providerPid: process.pid },
@@ -550,10 +544,7 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
           .select({ id: heartbeatRuns.id })
           .from(heartbeatRuns)
           .where(
-            and(
-              eq(heartbeatRuns.retryOfRunId, fixture.runId),
-              eq(heartbeatRuns.companyId, companyId),
-            ),
+            eq(heartbeatRuns.retryOfRunId, fixture.runId),
           ),
       ).toHaveLength(0);
     } finally {
@@ -622,7 +613,7 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
       if (!claim || claim.kind !== "resume_dead_runner") {
         throw new Error("Expected dead-runner recovery claim");
       }
-      expect(await hasNativeLocalProcessStop(fixture.db, companyId, fixture.runId)).toBe(true);
+      expect(await hasNativeLocalProcessStop(fixture.db, fixture.runId)).toBe(true);
       const [stoppedRun] = await fixture.db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, fixture.runId));
       expect(stoppedRun.processPid).toBeNull();
       expect(stoppedRun.processGroupId).toBeNull();
@@ -790,7 +781,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
     const resultId = randomUUID();
     await fixture.db.insert(nativeRunResults).values({
       id: resultId,
-      companyId,
       issueId: fixture.issueId,
       runId: fixture.runId,
       turnId: fixture.native.turnId,
@@ -955,7 +945,6 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
           sessionCheckpoint: {
             sessionId: fixture.native.normalizedSessionId,
             identity: {
-              companyId,
               issueId: fixture.issueId,
               runId: fixture.runId,
               agentId,
@@ -1023,7 +1012,7 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
     await fixture.db.update(heartbeatRuns).set({ runnerProfileJson: { sessionCheckpoint: {
       driverKind: "codex_app_server",
       sessionId: fixture.native.normalizedSessionId,
-      identity: { companyId, issueId: fixture.issueId, runId: fixture.runId, agentId, sessionId: fixture.native.normalizedSessionId },
+      identity: { issueId: fixture.issueId, runId: fixture.runId, agentId, sessionId: fixture.native.normalizedSessionId },
       providerSessionId: "interrupted-provider",
       activeTurnId: null,
       semanticResult: null,

@@ -43,7 +43,7 @@ const manifest: PaperclipPluginManifestV1 = {
             type: "string",
             format: "secret-ref",
             description:
-              "Modal token ID. Paste a token or an existing Paperclip secret reference; saved environments store pasted values as company secrets. Required.",
+              "Modal token ID. Paste a token or an existing Paperclip secret reference; saved environments store pasted values as Paperclip secrets. Required.",
           },
           tokenSecret: {
             type: "string",

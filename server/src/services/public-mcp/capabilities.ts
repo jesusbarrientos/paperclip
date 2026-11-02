@@ -50,14 +50,13 @@ export function createMcpApiDispatch(api: Router): ApiDispatch {
   };
 }
 
-const company = { companyId: z.uuid().describe("The company explicitly authorized by this connection. Copy the exact companyId from paperclip_connection and wait for that result before dependent tool calls. Never guess an ID or use a placeholder.") };
-const task = { ...company, taskId: z.uuid().describe("The exact task UUID returned by paperclip_search_tasks or paperclip_create_task. Search by title or human-readable identifier first; never derive a UUID from a title or identifier.") };
+const task = { taskId: z.uuid().describe("The exact task UUID returned by paperclip_search_tasks or paperclip_create_task. Search by title or human-readable identifier first; never derive a UUID from a title or identifier.") };
 const requestId = z.uuid().describe("A new UUID for this intended action. Reuse this UUID and identical arguments on retries; never invent a second ID after an uncertain result.");
 const boundedLimit = z.number().int().min(1).max(100).default(30);
 const object = (v: unknown): Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const pick = (v: unknown, keys: string[]) => Object.fromEntries(keys.filter((k) => k in object(v)).map((k) => [k, object(v)[k]]));
 const rows = (v: unknown) => Array.isArray(v) ? v : [];
-const taskFields = ["id", "companyId", "identifier", "title", "description", "status", "priority", "assigneeAgentId", "assigneeUserId", "projectId", "parentId", "createdAt", "updatedAt", "completedAt"];
+const taskFields = ["id", "identifier", "title", "description", "status", "priority", "assigneeAgentId", "assigneeUserId", "projectId", "parentId", "createdAt", "updatedAt", "completedAt"];
 const commentFields = ["id", "issueId", "body", "authorUserId", "authorAgentId", "createdAt"];
 const documentFields = ["id", "issueId", "key", "title", "format", "body", "latestRevisionNumber", "updatedAt"];
 const pathId = (id: unknown) => encodeURIComponent(String(id));
@@ -75,33 +74,33 @@ type Capability = {
 
 export const publicMcpCapabilities: Capability[] = [
   {
-    name: "paperclip_connection", description: "Identify the connected person, explicitly authorized company and permissions. This connection acts as the person; assigning a task never impersonates its agent.",
+    name: "paperclip_connection", description: "Identify the connected person, organization and permissions. This connection acts as the person; assigning a task never impersonates its agent.",
     schema: z.object({}).strict(),
     run: async (p, _a, _api, origin) => ({
-      user: { id: p.actor.userId, name: p.actor.userName }, companyId: p.grant.companyId, company: p.company,
+      user: { id: p.actor.userId, name: p.actor.userName }, company: p.company,
       scopes: p.grant.scopes, connectionId: p.grant.id, manageUrl: origin + "/assistant-connections",
       execution: "Tasks run through Paperclip scheduling, budgets and approvals. The assistant subscription does not provide agent execution capacity.",
     }),
   },
   {
-    name: "paperclip_list_agents", description: "List the authorized company's agents and availability before delegating. Paused or unavailable agents may not start work.",
-    schema: z.object(company).strict(),
-    run: async (p, a, api) => ({ agents: rows(await api(p, "GET", `/companies/${a.companyId}/agents`)).map((v) => pick(v, ["id", "name", "role", "title", "status", "capabilities"])) }),
+    name: "paperclip_list_agents", description: "List the organization's agents and availability before delegating. Paused or unavailable agents may not start work.",
+    schema: z.object({}).strict(),
+    run: async (p, a, api) => ({ agents: rows(await api(p, "GET", `/agents`)).map((v) => pick(v, ["id", "name", "role", "title", "status", "capabilities"])) }),
   },
   {
-    name: "paperclip_list_projects", description: "List projects in the authorized company.",
-    schema: z.object(company).strict(),
-    run: async (p, a, api) => ({ projects: rows(await api(p, "GET", `/companies/${a.companyId}/projects`)).map((v) => pick(v, ["id", "name", "description", "status"])) }),
+    name: "paperclip_list_projects", description: "List projects in the organization.",
+    schema: z.object({}).strict(),
+    run: async (p, a, api) => ({ projects: rows(await api(p, "GET", `/projects`)).map((v) => pick(v, ["id", "name", "description", "status"])) }),
   },
   {
     name: "paperclip_search_tasks", description: "Find durable tasks by title or human-readable identifier and read their current status, including work delegated in earlier conversations. Use each returned task's id as taskId in subsequent tools. Search here when the user names a task; do not guess a UUID or ask the user for one before searching.",
-    schema: z.object({ ...company, query: z.string().max(300).optional(), status: z.enum(ISSUE_STATUSES).optional(), assigneeAgentId: z.uuid().optional(), limit: boundedLimit, offset: z.number().int().min(0).default(0) }).strict(),
+    schema: z.object({ query: z.string().max(300).optional(), status: z.enum(ISSUE_STATUSES).optional(), assigneeAgentId: z.uuid().optional(), limit: boundedLimit, offset: z.number().int().min(0).default(0) }).strict(),
     run: async (p, a, api) => {
       const query = new URLSearchParams({ limit: String(a.limit), offset: String(a.offset) });
       if (a.query) query.set("q", String(a.query));
       if (a.status) query.set("status", String(a.status));
       if (a.assigneeAgentId) query.set("assigneeAgentId", String(a.assigneeAgentId));
-      return { tasks: rows(await api(p, "GET", `/companies/${a.companyId}/issues?${query}`)).map((v) => pick(v, taskFields)), limit: a.limit, offset: a.offset };
+      return { tasks: rows(await api(p, "GET", `/issues?${query}`)).map((v) => pick(v, taskFields)), limit: a.limit, offset: a.offset };
     },
   },
   {
@@ -119,13 +118,13 @@ export const publicMcpCapabilities: Capability[] = [
   },
   {
     name: "paperclip_create_task", write: true,
-    description: "Delegate work by creating one durable task assigned to a Paperclip agent. This may schedule autonomous execution and consume the company's configured model budget. Normal permissions, approval gates and agent availability apply. Returns immediately; retrieve progress later. Never retry with a new requestId after an uncertain result.",
-    schema: z.object({ ...company, requestId, title: z.string().trim().min(1).max(200), description: z.string().max(50000), assigneeAgentId: z.uuid(), projectId: z.uuid().optional() }).strict(),
+    description: "Delegate work by creating one durable task assigned to a Paperclip agent. This may schedule autonomous execution and consume the organization's configured model budget. Normal permissions, approval gates and agent availability apply. Returns immediately; retrieve progress later. Never retry with a new requestId after an uncertain result.",
+    schema: z.object({ requestId, title: z.string().trim().min(1).max(200), description: z.string().max(50000), assigneeAgentId: z.uuid(), projectId: z.uuid().optional() }).strict(),
     run: async (p, a, api, origin) => {
-      const result = await api(p, "POST", `/companies/${a.companyId}/issues`, {
+      const result = await api(p, "POST", `/issues`, {
         title: a.title, description: a.description, assigneeAgentId: a.assigneeAgentId,
         ...(a.projectId ? { projectId: a.projectId } : {}), status: "todo",
-        idempotencyKey: `mcp:${hashMcpSecret(p.grant.companyId + ":" + p.grant.userId)}:${a.requestId}`,
+        idempotencyKey: `mcp:${hashMcpSecret(p.grant.userId)}:${a.requestId}`,
       });
       return { task: pick(result, taskFields), url: origin + "/" + pathId(p.company.issuePrefix) + "/issues/" + pathId(object(result).identifier ?? object(result).id),
         scheduling: "Submitted to normal Paperclip scheduling. Creation does not guarantee execution has started." };
@@ -153,8 +152,8 @@ export const publicMcpCapabilities: Capability[] = [
   },
   {
     name: "paperclip_pending_approvals", description: "List pending approvals and link to Paperclip's decision interface. Approval decisions must be made there; this connection cannot approve them.",
-    schema: z.object(company).strict(),
-    run: async (p, a, api, origin) => ({ approvals: rows(await api(p, "GET", `/companies/${a.companyId}/approvals?status=pending`)).map((v) => ({
+    schema: z.object({}).strict(),
+    run: async (p, a, api, origin) => ({ approvals: rows(await api(p, "GET", `/approvals?status=pending`)).map((v) => ({
       ...pick(v, ["id", "type", "status", "requestedByAgentId", "requestedByUserId", "createdAt"]),
       url: origin + "/" + pathId(p.company.issuePrefix) + "/approvals/" + pathId(object(v).id),
     })) }),
@@ -168,22 +167,21 @@ export function createPublicMcpExecutor(db: Db, oauth: PublicMcpOAuth, api: ApiD
     const capability = publicMcpCapabilities.find((c) => c.name === name);
     if (!capability) throw new McpCapabilityError("Unknown Paperclip operation.");
     const args = capability.schema.parse(input);
-    if (args.companyId !== undefined && args.companyId !== principal.grant.companyId) throw new McpCapabilityError("Company does not match the authorized connection.");
     if (!principal.grant.scopes.includes("paperclip:read")) throw new McpCapabilityError("Read permission is required.");
     if (!capability.write) return capability.run(principal, args, api, oauth.config.origin);
     if (!principal.grant.scopes.includes("paperclip:write") || principal.actor.memberships?.[0]?.membershipRole === "viewer") throw new McpCapabilityError("Write permission is required.");
 
     const key = { grantId: principal.grant.id, userId: principal.grant.userId, operation: name, requestId: String(args.requestId) };
     const argumentsHash = hashMcpSecret(stable(args));
-    const [receipt] = await db.insert(mcpMutationReceipts).values({ ...key, companyId: principal.grant.companyId, argumentsHash }).onConflictDoNothing().returning();
+    const [receipt] = await db.insert(mcpMutationReceipts).values({ ...key, argumentsHash }).onConflictDoNothing().returning();
     if (!receipt) {
-      const [existing] = await db.select().from(mcpMutationReceipts).where(and(eq(mcpMutationReceipts.companyId, principal.grant.companyId), eq(mcpMutationReceipts.userId, principal.grant.userId), eq(mcpMutationReceipts.operation, name), eq(mcpMutationReceipts.requestId, key.requestId)));
+      const [existing] = await db.select().from(mcpMutationReceipts).where(and(eq(mcpMutationReceipts.userId, principal.grant.userId), eq(mcpMutationReceipts.operation, name), eq(mcpMutationReceipts.requestId, key.requestId)));
       if (!existing || existing.argumentsHash !== argumentsHash) throw new McpCapabilityError("requestId was already used with different arguments.");
       if (existing.status === "completed" && existing.result) return existing.result;
       return { outcome: "unknown", requestId: key.requestId, message: "This action is in progress or its outcome is unknown. Inspect tasks/comments in Paperclip before taking another action. Do not retry with a new requestId." };
     }
     try {
-      await logActivity(db, { companyId: principal.grant.companyId, actorType: "user", actorId: principal.grant.userId,
+      await logActivity(db, { actorType: "user", actorId: principal.grant.userId,
         action: "mcp.tool_called", entityType: "mcp_connection", entityId: principal.grant.id, details: { clientId: principal.grant.clientId, operation: name, requestId: key.requestId } });
       const result = await capability.run(principal, args, api, oauth.config.origin);
       await db.update(mcpMutationReceipts).set({ status: "completed", result }).where(eq(mcpMutationReceipts.id, receipt.id));

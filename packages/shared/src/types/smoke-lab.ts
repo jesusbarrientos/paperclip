@@ -12,7 +12,6 @@ export type SmokeRunStepStatus = (typeof SMOKE_RUN_STEP_STATUSES)[number];
 
 export interface SmokeRun {
   id: string;
-  companyId: string;
   trigger: SmokeRunTrigger;
   status: SmokeRunStatus;
   startedAt: Date | string;
@@ -24,7 +23,6 @@ export interface SmokeRun {
 
 export interface SmokeRunStep {
   id: string;
-  companyId: string;
   runId: string;
   path: SmokeRunStepPath;
   scenarioStep: string;

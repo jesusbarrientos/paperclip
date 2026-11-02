@@ -25,14 +25,12 @@ import { UserSecretChip } from "./user-secret-presentation";
  * place with identical behavior.
  */
 export function SetMyUserSecretDialog({
-  companyId,
   definition,
   existingSecret,
   open,
   onOpenChange,
   onSaved,
 }: {
-  companyId: string;
   definition: UserSecretDefinition | null;
   existingSecret?: CompanySecret | null;
   open: boolean;
@@ -63,17 +61,17 @@ export function SetMyUserSecretDialog({
         : { value: value.trim() };
       if (existingSecret) {
         // A stored value already exists → rotate it in place.
-        return secretsApi.rotateMyUserSecret(companyId, existingSecret.id, payload);
+        return secretsApi.rotateMyUserSecret(existingSecret.id, payload);
       }
-      return secretsApi.createMyUserSecret(companyId, {
+      return secretsApi.createMyUserSecret({
         definitionId: definition.id,
         definitionKey: definition.key,
         ...payload,
       });
     },
     onSuccess: (secret) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.myUserSecrets(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.myUserSecrets() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions() });
       pushToast({
         title: existingSecret ? "Value updated" : "Value saved",
         body: definition?.name,

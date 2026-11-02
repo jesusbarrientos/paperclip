@@ -4,26 +4,22 @@ import { Shield, ShieldCheck } from "lucide-react";
 import { accessApi } from "@/api/access";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { Card } from "@/components/ui/card";
-import { companyDirectoryQueryOptions, useAccountIdentity } from "@/api/companies-query";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function InstanceAccess() {
-  const { userId: accountUserId, settled: accountSettled } = useAccountIdentity();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Settings", href: "/company/settings" },
-      { label: "Instance settings", href: "/company/settings/instance/general" },
+      { label: "Settings", href: "/organization/settings" },
+      { label: "Instance settings", href: "/organization/settings/instance/general" },
       { label: "Access" },
     ]);
   }, [setBreadcrumbs]);
@@ -33,49 +29,16 @@ export function InstanceAccess() {
     queryFn: () => accessApi.searchAdminUsers(search),
   });
 
-  const companiesQuery = useQuery({
-    ...companyDirectoryQueryOptions(accountUserId),
-    enabled: accountSettled && usersQuery.isSuccess,
-  });
-  const companies = companiesQuery.data ?? [];
-
   const selectedUser = useMemo(
     () => usersQuery.data?.find((user) => user.id === selectedUserId) ?? null,
     [selectedUserId, usersQuery.data],
   );
-
-  const userAccessQuery = useQuery({
-    queryKey: queryKeys.access.userCompanyAccess(selectedUserId ?? ""),
-    queryFn: () => accessApi.getUserCompanyAccess(selectedUserId!),
-    enabled: !!selectedUserId,
-  });
 
   useEffect(() => {
     if (!selectedUserId && usersQuery.data?.[0]) {
       setSelectedUserId(usersQuery.data[0].id);
     }
   }, [selectedUserId, usersQuery.data]);
-
-  useEffect(() => {
-    if (!userAccessQuery.data) return;
-    setSelectedCompanyIds(
-      new Set(
-        userAccessQuery.data.companyAccess
-          .filter((membership) => membership.status === "active")
-          .map((membership) => membership.companyId),
-      ),
-    );
-  }, [userAccessQuery.data]);
-
-  const updateCompanyAccessMutation = useMutation({
-    mutationFn: () => accessApi.setUserCompanyAccess(selectedUserId!, [...selectedCompanyIds]),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.access.userCompanyAccess(selectedUserId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.access.adminUsers(search) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-      pushToast({ title: "Organization access updated", tone: "success" });
-    },
-  });
 
   const setAdminMutation = useMutation({
     mutationFn: async (makeAdmin: boolean) => {
@@ -85,14 +48,11 @@ export function InstanceAccess() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.access.adminUsers(search) });
-      if (selectedUserId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.access.userCompanyAccess(selectedUserId) });
-      }
       pushToast({ title: "Instance role updated", tone: "success" });
     },
   });
 
-  if (usersQuery.isLoading || !accountSettled || (usersQuery.isSuccess && companiesQuery.isPending)) {
+  if (usersQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading instance access…</div>;
   }
 
@@ -106,15 +66,6 @@ export function InstanceAccess() {
     return <div className="text-sm text-destructive">{message}</div>;
   }
 
-  if (companiesQuery.error) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive">Failed to load organizations. Try again before changing access.</p>
-        <Button onClick={() => void companiesQuery.refetch()}>Try again</Button>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl space-y-6">
       <div className="space-y-3">
@@ -123,7 +74,7 @@ export function InstanceAccess() {
           <h1 className="text-lg font-semibold">Instance Access</h1>
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Search users, manage instance-admin status, and control which organizations they can access.
+          Search users and manage instance-admin status. Organization membership is managed from the organization access settings.
         </p>
       </div>
 
@@ -160,7 +111,7 @@ export function InstanceAccess() {
                   ) : null}
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  {user.activeCompanyMembershipCount} active organization memberships
+                  {user.activeCompanyMembershipCount > 0 ? "Organization member" : "Not an organization member"}
                 </div>
               </button>
             ))}
@@ -170,12 +121,6 @@ export function InstanceAccess() {
         <Card className="block space-y-4 p-5">
           {!selectedUserId ? (
             <div className="text-sm text-muted-foreground">Select a user to inspect instance access.</div>
-          ) : userAccessQuery.isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading user access…</div>
-          ) : userAccessQuery.error ? (
-            <div className="text-sm text-destructive">
-              {userAccessQuery.error instanceof Error ? userAccessQuery.error.message : "Failed to load user access."}
-            </div>
           ) : (
             <>
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -194,69 +139,6 @@ export function InstanceAccess() {
                 >
                   {selectedUser?.isInstanceAdmin ? "Remove instance admin" : "Promote to instance admin"}
                 </Button>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <h2 className="text-sm font-semibold">Organization access</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Toggle organization membership for this user. New access defaults to an active operator membership.
-                  </p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {companies.map((company) => (
-                    <label
-                      key={company.id}
-                      className="flex items-start gap-3 rounded-lg border border-border px-3 py-3"
-                    >
-                      <Checkbox
-                        checked={selectedCompanyIds.has(company.id)}
-                        onCheckedChange={(checked) => {
-                          setSelectedCompanyIds((current) => {
-                            const next = new Set(current);
-                            if (checked) next.add(company.id);
-                            else next.delete(company.id);
-                            return next;
-                          });
-                        }}
-                      />
-                      <span className="space-y-1">
-                        <span className="block text-sm font-medium">{company.name}</span>
-                        <span className="block text-xs text-muted-foreground">{company.issuePrefix}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => updateCompanyAccessMutation.mutate()}
-                    disabled={updateCompanyAccessMutation.isPending}
-                  >
-                    {updateCompanyAccessMutation.isPending ? "Saving…" : "Save organization access"}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h2 className="text-sm font-semibold">Current memberships</h2>
-                <div className="space-y-2">
-                  {(userAccessQuery.data?.companyAccess ?? []).map((membership) => (
-                    <div
-                      key={membership.id}
-                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                    >
-                      <div>
-                        <div className="font-medium">{membership.companyName || membership.companyId}</div>
-                        <div className="text-muted-foreground">
-                          {membership.membershipRole || "unset"} • {membership.status}
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(membership.updatedAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             </>
           )}

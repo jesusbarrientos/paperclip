@@ -75,10 +75,7 @@ flowchart TD
 
 ```mermaid
 stateDiagram-v2
-  [*] --> CompanySelection
-
-  CompanySelection --> NoCompany: no company selected
-  CompanySelection --> LoadingHistory: selectedCompanyId present
+  [*] --> LoadingHistory
   LoadingHistory --> HistoryError: listInvites failed
   LoadingHistory --> Ready: listInvites succeeded
 
@@ -115,11 +112,11 @@ stateDiagram-v2
   TokenGate --> InvalidToken: token missing
   TokenGate --> Loading: token present
   Loading --> InviteUnavailable: invite fetch failed or invite not returned
-  Loading --> CheckingAccess: signed-in session and invite.companyId
+  Loading --> CheckingAccess: signed-in session
   Loading --> InviteResolved: invite loaded without membership check
   Loading --> AcceptedInviteSummary: invite already consumed<br/>but linked join request still exists
 
-  CheckingAccess --> RedirectToBoard: current user already belongs to company
+  CheckingAccess --> RedirectToBoard: current user already belongs to the organization
   CheckingAccess --> InviteResolved: membership check finished and no join-request summary state is active
   CheckingAccess --> AcceptedInviteSummary: membership check finished and invite has joinRequestStatus
 
@@ -131,7 +128,7 @@ stateDiagram-v2
 
     InlineAuth --> InlineAuth: toggle sign-up/sign-in
     InlineAuth --> InlineAuth: auth validation or auth error message
-    InlineAuth --> RedirectToBoard: auth succeeded and company membership already exists
+    InlineAuth --> RedirectToBoard: auth succeeded and organization membership already exists
     InlineAuth --> AcceptPending: auth succeeded and invite still needs acceptance
 
     AgentForm --> AcceptPending: submit request
@@ -179,7 +176,7 @@ sequenceDiagram
   participant Membership as company_memberships + grants
 
   Board->>Settings: Choose role and click Create invite
-  Settings->>API: POST /api/companies/:companyId/invites
+  Settings->>API: POST /api/invites
   API->>Invites: Insert active invite
   API-->>Settings: inviteUrl + metadata
 
@@ -254,7 +251,7 @@ sequenceDiagram
   participant Keys as agent_api_keys table
 
   Board->>AddAgent: Generate agent onboarding prompt
-  AddAgent->>API: POST /api/companies/:companyId/invites (allowedJoinTypes=agent)
+  AddAgent->>API: POST /api/invites (allowedJoinTypes=agent)
   API->>Invites: Insert active agent invite
   API-->>AddAgent: Prompt text + invite token
 
@@ -263,7 +260,7 @@ sequenceDiagram
   API->>Join: Insert pending_approval join request + claimSecretHash
   API-->>Gateway: requestId + claimSecret + claimApiKeyPath
 
-  Approver->>API: POST /companies/:companyId/join-requests/:requestId/approve
+  Approver->>API: POST /join-requests/:requestId/approve
   API->>Agents: Create agent + membership + grants
   API->>Join: Mark request approved and store createdAgentId
 
@@ -283,7 +280,7 @@ sequenceDiagram
 ## Notes
 
 - `GET /api/invites/:token` treats `revoked` and `expired` invites as unavailable. Accepted invites remain resolvable when they already have a linked join request, and the summary now includes `joinRequestStatus` plus `joinRequestType`.
-- Human acceptance consumes the invite, creates or reuses the matching human join request, immediately marks it `approved`, and ensures an active company membership with the invite's selected role/grants.
+- Human acceptance consumes the invite, creates or reuses the matching human join request, immediately marks it `approved`, and ensures an active organization membership (one per principal) with the invite's selected role/grants.
 - The landing page has two layers of post-accept UI:
   - immediate mutation-result UI from `POST /api/invites/:token/accept`
   - reload-time summary UI from `GET /api/invites/:token` once the invite has already been consumed

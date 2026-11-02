@@ -9,7 +9,6 @@ import {
 } from "./common.js";
 
 interface CompanyOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface JsonPayloadOptions extends CompanyOptions {
@@ -67,20 +66,18 @@ export function registerCostCommands(program: Command): void {
 
   addCommonClientOptions(
     budget
-      .command("company:update")
-      .description("Update company budget")
-      .option("-C, --company-id <id>", "Company ID")
+      .command("update")
+      .description("Update the organization budget")
       .requiredOption("--payload-json <json>", "UpdateBudget JSON payload")
       .action(async (opts: JsonPayloadOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await ctx.api.patch(apiPath`/api/companies/${ctx.companyId}/budgets`, parseJson(opts.payloadJson));
+          const ctx = resolveCommandContext(opts);
+          const result = await ctx.api.patch(apiPath`/api/budgets`, parseJson(opts.payloadJson));
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -105,21 +102,19 @@ export function registerCostCommands(program: Command): void {
       .command("incident:resolve")
       .description("Resolve a budget incident")
       .argument("<incidentId>", "Budget incident ID")
-      .option("-C, --company-id <id>", "Company ID")
       .option("--payload-json <json>", "ResolveBudgetIncident JSON payload", "{}")
       .action(async (incidentId: string, opts: IncidentOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const result = await ctx.api.post(
-            apiPath`/api/companies/${ctx.companyId}/budget-incidents/${incidentId}/resolve`,
+            apiPath`/api/budget-incidents/${incidentId}/resolve`,
             parseJson(opts.payloadJson ?? "{}"),
           );
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -128,17 +123,15 @@ function addCompanyGet(parent: Command, name: string, description: string, path:
     parent
       .command(name)
       .description(description)
-      .option("-C, --company-id <id>", "Company ID")
       .action(async (opts: CompanyOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await ctx.api.get(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`);
+          const ctx = resolveCommandContext(opts);
+          const result = await ctx.api.get(`/api/${path}`);
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -147,18 +140,16 @@ function addCompanyPostJson(parent: Command, name: string, description: string, 
     parent
       .command(name)
       .description(description)
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "JSON payload")
       .action(async (opts: JsonPayloadOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const result = await ctx.api.post(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`, parseJson(opts.payloadJson));
+          const ctx = resolveCommandContext(opts);
+          const result = await ctx.api.post(`/api/${path}`, parseJson(opts.payloadJson));
           printOutput(result, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

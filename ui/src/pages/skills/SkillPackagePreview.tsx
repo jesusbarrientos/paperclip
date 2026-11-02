@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Link } from '@/lib/router';
 import type { SkillTreeCandidate } from './SkillSourceTree';
 
-export function SkillPackagePreview({ companyId, repository, commitSha, skill, initialFile, onClose }: {
-  companyId: string; repository: SkillSourceDiscoveryRequest; commitSha: string | null;
+export function SkillPackagePreview({ repository, commitSha, skill, initialFile, onClose }: {
+  repository: SkillSourceDiscoveryRequest; commitSha: string | null;
   skill: SkillTreeCandidate; initialFile?: string; onClose: () => void;
 }) {
   const inspection = skill.inspection;
@@ -21,8 +21,8 @@ export function SkillPackagePreview({ companyId, repository, commitSha, skill, i
   const expanded = new Set([...collectAllPaths(nodes, 'dir')].filter(path => !collapsed.has(path)));
   const file = inspection?.files.find(file => file.path === filePath);
   const preview = useQuery({
-    queryKey: queryKeys.skillSources.preview(companyId, repository.repositoryUrl, repository.connectionId ?? null, commitSha, skill.path, filePath),
-    queryFn: () => skillSourcesApi.preview(companyId, { ...repository, commitSha: commitSha!, skillPath: skill.path, filePath }),
+    queryKey: queryKeys.skillSources.preview(repository.repositoryUrl, repository.connectionId ?? null, commitSha, skill.path, filePath),
+    queryFn: () => skillSourcesApi.preview({ ...repository, commitSha: commitSha!, skillPath: skill.path, filePath }),
     enabled: Boolean(commitSha && file && !skill.error), retry: false, staleTime: 5 * 60_000, refetchOnWindowFocus: false,
   });
   const root = skill.path.includes('/') ? skill.path.slice(0, skill.path.lastIndexOf('/')) : '';

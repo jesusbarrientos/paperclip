@@ -5,7 +5,6 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVisibilityRefetchInterval } from "@/lib/polling";
 import { accessApi } from "../api/access";
 import { useDialogActions } from "../context/DialogContext";
-import { useCompany } from "../context/CompanyContext";
 import { Link, useNavigate } from "@/lib/router";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { issuesApi } from "../api/issues";
@@ -461,7 +460,7 @@ type CreatorOption = {
 };
 
 type ProjectOption = Pick<Project, "id" | "name"> & Partial<Pick<Project, "color" | "workspaces" | "executionWorkspacePolicy" | "primaryWorkspace">>;
-type IssueListRequestFilters = NonNullable<Parameters<typeof issuesApi.list>[1]>;
+type IssueListRequestFilters = NonNullable<Parameters<typeof issuesApi.list>[0]>;
 
 interface IssuesListProps {
   issues: Issue[];
@@ -736,16 +735,14 @@ export function IssuesList({
     // null, so continuous hovering triggers no re-render.
     setSelectedNavKey((prev) => (prev === null ? prev : null));
   }, []);
-  const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialogActions();
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
@@ -757,19 +754,17 @@ export function IssuesList({
   const isolatedWorkspacesEnabled = experimentalSettings?.enableIsolatedWorkspaces === true;
   const externalObjectsEnabled = experimentalSettings?.enableExternalObjects === true;
 
-  // Scope the storage key per company so folding/view state is independent across companies.
-  const scopedKey = selectedCompanyId ? `${viewStateKey}:${selectedCompanyId}` : viewStateKey;
   const initialAssigneesKey = initialAssignees?.join("|") ?? "";
   const initialWorkspacesKey = initialWorkspaces?.join("|") ?? "";
 
   const [viewState, setViewState] = useState<IssueViewState>(() =>
-    getInitialWorkspaceViewState(scopedKey, initialAssignees, initialWorkspaces, defaultSortField),
+    getInitialWorkspaceViewState(viewStateKey, initialAssignees, initialWorkspaces, defaultSortField),
   );
   const [assigneePickerIssueId, setAssigneePickerIssueId] = useState<string | null>(null);
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [issueSearch, setIssueSearch] = useState(initialSearch ?? "");
   const [renderedIssueRowLimit, setRenderedIssueRowLimit] = useState(INITIAL_ISSUE_ROW_RENDER_LIMIT);
-  const [visibleIssueColumns, setVisibleIssueColumns] = useState<InboxIssueColumn[]>(() => loadIssueColumns(scopedKey));
+  const [visibleIssueColumns, setVisibleIssueColumns] = useState<InboxIssueColumn[]>(() => loadIssueColumns(viewStateKey));
   const renderedIssueIdsRef = useRef("");
   const initialServerFillRequestedRef = useRef(false);
   const deferredIssueSearch = useDeferredValue(issueSearch);
@@ -780,30 +775,30 @@ export function IssuesList({
   }, [initialSearch]);
 
   // Reload view state whenever the persisted context changes.
-  const prevViewStateContextKey = useRef(`${scopedKey}::${initialAssigneesKey}::${initialWorkspacesKey}`);
+  const prevViewStateContextKey = useRef(`${viewStateKey}::${initialAssigneesKey}::${initialWorkspacesKey}`);
   useEffect(() => {
-    const nextContextKey = `${scopedKey}::${initialAssigneesKey}::${initialWorkspacesKey}`;
+    const nextContextKey = `${viewStateKey}::${initialAssigneesKey}::${initialWorkspacesKey}`;
     if (prevViewStateContextKey.current !== nextContextKey) {
       prevViewStateContextKey.current = nextContextKey;
-      setViewState(getInitialWorkspaceViewState(scopedKey, initialAssignees, initialWorkspaces, defaultSortField));
+      setViewState(getInitialWorkspaceViewState(viewStateKey, initialAssignees, initialWorkspaces, defaultSortField));
     }
-  }, [scopedKey, initialAssignees, initialAssigneesKey, initialWorkspaces, initialWorkspacesKey, defaultSortField]);
+  }, [viewStateKey, initialAssignees, initialAssigneesKey, initialWorkspaces, initialWorkspacesKey, defaultSortField]);
 
-  const prevColumnsScopedKey = useRef(scopedKey);
+  const prevColumnsScopedKey = useRef(viewStateKey);
   useEffect(() => {
-    if (prevColumnsScopedKey.current !== scopedKey) {
-      prevColumnsScopedKey.current = scopedKey;
-      setVisibleIssueColumns(loadIssueColumns(scopedKey));
+    if (prevColumnsScopedKey.current !== viewStateKey) {
+      prevColumnsScopedKey.current = viewStateKey;
+      setVisibleIssueColumns(loadIssueColumns(viewStateKey));
     }
-  }, [scopedKey]);
+  }, [viewStateKey]);
 
   const updateView = useCallback((patch: Partial<IssueViewState>) => {
     setViewState((prev) => {
       const next = { ...prev, ...patch };
-      saveViewState(scopedKey, next);
+      saveViewState(viewStateKey, next);
       return next;
     });
-  }, [scopedKey]);
+  }, [viewStateKey]);
 
   useEffect(() => {
     if (!experimentalSettingsLoaded || externalObjectsEnabled || viewState.externalObjectStatuses.length === 0) return;
@@ -824,27 +819,27 @@ export function IssuesList({
 
   const { data: searchedIssues = [] } = useQuery({
     queryKey: [
-      ...queryKeys.issues.search(selectedCompanyId!, normalizedIssueSearch, projectId),
+      ...queryKeys.issues.search(normalizedIssueSearch, projectId),
       searchFilters ?? {},
       "compact",
       ISSUE_SEARCH_RESULT_LIMIT,
       enableRoutineVisibilityFilter ? "with-routine-executions" : "without-routine-executions",
     ],
     queryFn: ({ signal }) =>
-      issuesApi.listCompact(selectedCompanyId!, {
+      issuesApi.listCompact({
         q: normalizedIssueSearch,
         projectId,
         limit: ISSUE_SEARCH_RESULT_LIMIT,
         ...searchFilters,
         ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
       }, { signal }).then((rows) => rows as Issue[]),
-    enabled: !!selectedCompanyId && normalizedIssueSearch.length > 0 && !searchWithinLoadedIssues,
+    enabled: normalizedIssueSearch.length > 0 && !searchWithinLoadedIssues,
     placeholderData: (previousData) => previousData,
   });
   const boardIssueQueries = useQueries({
     queries: boardIssueStatuses.map((status) => ({
       queryKey: [
-        ...queryKeys.issues.list(selectedCompanyId ?? "__no-company__"),
+        ...queryKeys.issues.list(),
         "board-column",
         status,
         normalizedIssueSearch,
@@ -855,7 +850,7 @@ export function IssuesList({
         enableRoutineVisibilityFilter ? "with-routine-executions" : "without-routine-executions",
       ],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        issuesApi.listCompact(selectedCompanyId!, {
+        issuesApi.listCompact({
           ...searchFilters,
           ...(normalizedIssueSearch.length > 0 ? { q: normalizedIssueSearch } : {}),
           projectId,
@@ -863,16 +858,14 @@ export function IssuesList({
           limit: ISSUE_BOARD_COLUMN_RESULT_LIMIT,
           ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
         }, { signal }).then((rows) => rows as Issue[]),
-      enabled: !!selectedCompanyId && viewState.viewMode === "board" && !searchWithinLoadedIssues,
+      enabled: viewState.viewMode === "board" && !searchWithinLoadedIssues,
       placeholderData: (previousData: Issue[] | undefined) => previousData,
     })),
   });
   const { data: executionWorkspaces = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.executionWorkspaces.summaryList(selectedCompanyId)
-      : ["execution-workspaces", "__disabled__"],
-    queryFn: () => executionWorkspacesApi.listSummaries(selectedCompanyId!),
-    enabled: !!selectedCompanyId && isolatedWorkspacesEnabled,
+    queryKey: queryKeys.executionWorkspaces.summaryList(),
+    queryFn: () => executionWorkspacesApi.listSummaries(),
+    enabled: isolatedWorkspacesEnabled,
   });
 
   const agentName = useCallback((id: string | null) => {
@@ -1110,7 +1103,6 @@ export function IssuesList({
     isLoading: externalObjectSummariesLoading,
     isReady: externalObjectSummariesReady,
   } = useIssueExternalObjectSummaries(
-    selectedCompanyId,
     issueIdsForExternalObjectSummaries,
   );
   const issueFilterContext = useMemo(() => ({
@@ -1189,9 +1181,8 @@ export function IssuesList({
   }, [checklistAffordanceEnabled, filtered, issueById, viewState.nestingEnabled]);
 
   const { data: labels } = useQuery({
-    queryKey: queryKeys.issues.labels(selectedCompanyId!),
-    queryFn: () => issuesApi.listLabels(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
   });
 
   const activeFilterCount = countActiveIssueFilters(viewState, enableRoutineVisibilityFilter);
@@ -1633,8 +1624,8 @@ export function IssuesList({
   const setIssueColumns = useCallback((next: InboxIssueColumn[]) => {
     const normalized = normalizeInboxIssueColumns(next);
     setVisibleIssueColumns(normalized);
-    saveIssueColumns(scopedKey, normalized);
-  }, [scopedKey]);
+    saveIssueColumns(viewStateKey, normalized);
+  }, [viewStateKey]);
 
   const toggleIssueColumn = useCallback((column: InboxIssueColumn, enabled: boolean) => {
     if (enabled) {

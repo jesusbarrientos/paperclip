@@ -92,7 +92,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
     await db.insert(agents).values([
       {
         id: coderAgentId,
-        companyId,
         name: "Coder",
         role: "engineer",
         status: "idle",
@@ -103,7 +102,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
       },
       {
         id: reviewerAgentId,
-        companyId,
         name: "Reviewer",
         role: "engineer",
         status: "idle",
@@ -116,7 +114,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
       agentId: coderAgentId,
       source: "assignment",
       status: "queued",
@@ -124,7 +121,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
 
     await db.insert(heartbeatRuns).values({
       id: holderRunId,
-      companyId,
       agentId: coderAgentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -135,7 +131,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Cross-agent reassignment race",
       status: "in_review",
       priority: "medium",
@@ -148,7 +143,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
     });
 
     return {
-      companyId,
       coderAgentId,
       reviewerAgentId,
       issueId,
@@ -296,7 +290,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
   });
 
   it("cancels a queued holder's run on reassignment and emits agent.task_run for it", async () => {
-    const { companyId, coderAgentId, reviewerAgentId, issueId, holderRunId } =
+    const { coderAgentId, reviewerAgentId, issueId, holderRunId } =
       await seedCrossAgentScenario({ holderStatus: "queued" });
 
     // Keep the reviewer's queue from auto-claiming/executing the new run
@@ -311,7 +305,6 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
       .where(eq(agents.id, reviewerAgentId));
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
       agentId: reviewerAgentId,
       invocationSource: "automation",
       triggerDetail: "system",

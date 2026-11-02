@@ -6,7 +6,6 @@ function makeClient() {
   return new PaperclipApiClient({
     apiUrl: "http://localhost:3100/api",
     apiKey: "token-123",
-    companyId: "11111111-1111-1111-1111-111111111111",
     agentId: "22222222-2222-2222-2222-222222222222",
     runId: "33333333-3333-3333-3333-333333333333",
   });
@@ -52,7 +51,7 @@ describe("paperclip MCP tools", () => {
     );
   });
 
-  it("lists the company skill library with the default company id", async () => {
+  it("lists the skill library", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse([{ key: "paperclipai/bundled/product/wireframe", name: "wireframe" }]),
     );
@@ -64,12 +63,12 @@ describe("paperclip MCP tools", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(String(url)).toBe(
-      "http://localhost:3100/api/companies/11111111-1111-1111-1111-111111111111/skills",
+      "http://localhost:3100/api/skills",
     );
     expect(response.content[0]?.text).toContain("wireframe");
   });
 
-  it("uses default company id for company-scoped list tools", async () => {
+  it("lists issues from the top-level route", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse([{ id: "issue-1" }]),
     );
@@ -81,7 +80,7 @@ describe("paperclip MCP tools", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(String(url)).toBe(
-      "http://localhost:3100/api/companies/11111111-1111-1111-1111-111111111111/issues",
+      "http://localhost:3100/api/issues",
     );
     expect(response.content[0]?.text).toContain("issue-1");
   });
@@ -118,7 +117,7 @@ describe("paperclip MCP tools", () => {
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(url)).toBe(
-      "http://localhost:3100/api/companies/11111111-1111-1111-1111-111111111111/issues",
+      "http://localhost:3100/api/issues",
     );
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
@@ -365,7 +364,7 @@ describe("paperclip MCP tools", () => {
     });
   });
 
-  it("creates approvals with the expected company-scoped payload", async () => {
+  it("creates approvals with the expected payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({ id: "approval-1" }),
     );
@@ -381,7 +380,7 @@ describe("paperclip MCP tools", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(url)).toBe(
-      "http://localhost:3100/api/companies/11111111-1111-1111-1111-111111111111/approvals",
+      "http://localhost:3100/api/approvals",
     );
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({

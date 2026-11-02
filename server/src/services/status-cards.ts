@@ -72,7 +72,6 @@ function compilePayload(card: StatusCardRow, generationIssueId: string | null, h
   return {
     operation: "compile",
     statusCardId: card.id,
-    companyId: card.companyId,
     generationIssueId,
     promptHash: hash,
   };
@@ -100,7 +99,6 @@ function updateDescription(input: {
   const payload = {
     operation: "update",
     statusCardId: input.card.id,
-    companyId: input.card.companyId,
     generationIssueId: input.generationIssueId,
     fingerprint: input.fingerprint,
     fingerprintHash: statusCardFingerprintHash(input.fingerprint),
@@ -160,7 +158,7 @@ export function statusCardService(
       return (await executeQueries(card)).length;
     } catch (err) {
       logger.warn(
-        { err, cardId: card.id, companyId: card.companyId },
+        { err, cardId: card.id },
         "status card watched-issue count hydration failed",
       );
       return undefined;
@@ -174,7 +172,7 @@ export function statusCardService(
       card.documentId
         ? db.select({ latestBody: documents.latestBody })
           .from(documents)
-          .where(and(eq(documents.id, card.documentId), eq(documents.companyId, card.companyId)))
+          .where(eq(documents.id, card.documentId))
           .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
       db.select({
@@ -196,11 +194,11 @@ export function statusCardService(
     };
   }
 
-  async function list(companyId: string, archived: boolean) {
+  async function list(archived: boolean) {
     const cards = await db
       .select()
       .from(statusCards)
-      .where(and(eq(statusCards.companyId, companyId), archived ? isNotNull(statusCards.archivedAt) : isNull(statusCards.archivedAt)))
+      .where(archived ? isNotNull(statusCards.archivedAt) : isNull(statusCards.archivedAt))
       .orderBy(desc(statusCards.updatedAt));
     return Promise.all(cards.map(hydrate));
   }
@@ -209,17 +207,16 @@ export function statusCardService(
     return db.select().from(statusCards).where(eq(statusCards.id, id)).then((rows) => rows[0] ?? null);
   }
 
-  async function create(companyId: string, input: CreateStatusCard, actor: StatusCardActor) {
+  async function create(input: CreateStatusCard, actor: StatusCardActor) {
     if (input.agentId) {
       const summarizer = await db
         .select({ id: agents.id })
         .from(agents)
-        .where(and(eq(agents.id, input.agentId), eq(agents.companyId, companyId)))
+        .where(eq(agents.id, input.agentId))
         .then((rows) => rows[0] ?? null);
       if (!summarizer) throw unprocessable("Summarizer agent must belong to this company");
     }
     const values = {
-      companyId,
       createdByAgentId: actor.agentId,
       createdByUserId: actor.userId,
       title: input.title ?? null,
@@ -238,7 +235,7 @@ export function statusCardService(
       const author = await tx
         .select({ id: agents.id })
         .from(agents)
-        .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
+        .where(eq(agents.id, agentId))
         .for("update")
         .then((rows) => rows[0] ?? null);
       if (!author) throw forbidden("Agent cannot author status cards for this company");
@@ -246,7 +243,7 @@ export function statusCardService(
       const authoredCount = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(statusCards)
-        .where(and(eq(statusCards.companyId, companyId), eq(statusCards.createdByAgentId, agentId)))
+        .where(eq(statusCards.createdByAgentId, agentId))
         .then((rows) => rows[0]?.count ?? 0);
       if (authoredCount >= STATUS_CARD_AGENT_MAX_CARDS) {
         throw unprocessable(`Agents can author at most ${STATUS_CARD_AGENT_MAX_CARDS} status cards`);
@@ -262,7 +259,7 @@ export function statusCardService(
       const summarizer = await db
         .select({ id: agents.id })
         .from(agents)
-        .where(and(eq(agents.id, input.agentId), eq(agents.companyId, card.companyId)))
+        .where(eq(agents.id, input.agentId))
         .then((rows) => rows[0] ?? null);
       if (!summarizer) throw unprocessable("Summarizer agent must belong to this company");
     }
@@ -321,7 +318,7 @@ export function statusCardService(
     return db.select().from(statusCardUpdates).where(eq(statusCardUpdates.cardId, cardId)).orderBy(desc(statusCardUpdates.startedAt));
   }
 
-  async function listSummaryRevisions(card: Pick<StatusCardRow, "companyId" | "documentId">) {
+  async function listSummaryRevisions(card: Pick<StatusCardRow, "documentId">) {
     if (!card.documentId) return [];
     return db
       .select({
@@ -333,7 +330,7 @@ export function statusCardService(
         createdAt: documentRevisions.createdAt,
       })
       .from(documentRevisions)
-      .where(and(eq(documentRevisions.documentId, card.documentId), eq(documentRevisions.companyId, card.companyId)))
+      .where(eq(documentRevisions.documentId, card.documentId))
       .orderBy(desc(documentRevisions.revisionNumber));
   }
 
@@ -347,11 +344,11 @@ export function statusCardService(
       const override = await db
         .select({ id: agents.id })
         .from(agents)
-        .where(and(eq(agents.id, card.agentId), eq(agents.companyId, card.companyId)))
+        .where(eq(agents.id, card.agentId))
         .then((rows) => rows[0] ?? null);
       if (override) return override.id;
     }
-    const builtIn = await builtIns.get(card.companyId, SUMMARIZER_BUILT_IN_KEY);
+    const builtIn = await builtIns.get(SUMMARIZER_BUILT_IN_KEY);
     if (builtIn.status !== "ready" || !builtIn.agentId) {
       throw unprocessable("Summarizer built-in agent is not configured", {
         code: "summarizer_not_configured",
@@ -382,7 +379,7 @@ export function statusCardService(
 
     let deduplicated = false;
     const createdAt = new Date();
-    const created = await issuesSvc.create(card.companyId, {
+    const created = await issuesSvc.create({
       title: `Compile status card: ${card.title ?? card.interestPrompt.slice(0, 80)}`,
       description: compileDescription(card, null, hash),
       status: "todo",
@@ -427,21 +424,21 @@ export function statusCardService(
     // may write. Both stay eligible so a generation task created before an
     // agent switch can still land its result.
     const isCardAgent = Boolean(card.agentId && agent?.id === card.agentId);
-    if (!agent || agent.companyId !== card.companyId || (!isCardAgent && readBuiltInAgentMarker(agent.metadata)?.key !== SUMMARIZER_BUILT_IN_KEY)) {
+    if (!agent || (!isCardAgent && readBuiltInAgentMarker(agent.metadata)?.key !== SUMMARIZER_BUILT_IN_KEY)) {
       throw forbidden("Only the card's summarizer agent may write status cards");
     }
     if (!card.generatingIssueId || card.generatingIssueId !== generationIssueId) {
       throw forbidden("Status-card write does not match the active generation task");
     }
     const issue = await db.select().from(issues).where(eq(issues.id, generationIssueId)).then((rows) => rows[0] ?? null);
-    if (!issue || issue.companyId !== card.companyId || issue.assigneeAgentId !== actor.agentId) {
+    if (!issue || issue.assigneeAgentId !== actor.agentId) {
       throw forbidden("Generation task is not assigned to this agent");
     }
     if (TERMINAL_ISSUE_STATUSES.has(issue.status)) {
       throw forbidden("Generation task is no longer active");
     }
     const payload = parseGenerationPayload(issue.description);
-    if (payload?.statusCardId !== card.id || payload?.companyId !== card.companyId || payload?.generationIssueId !== generationIssueId) {
+    if (payload?.statusCardId !== card.id || payload?.generationIssueId !== generationIssueId) {
       throw forbidden("Generation task does not target this status card");
     }
     if (!actor.runId || (issue.checkoutRunId !== actor.runId && issue.executionRunId !== actor.runId)) {
@@ -515,7 +512,7 @@ export function statusCardService(
     });
   }
 
-  async function loadIssueSummaries(companyId: string, issueIds: string[]): Promise<CompanySearchIssueSummary[]> {
+  async function loadIssueSummaries(issueIds: string[]): Promise<CompanySearchIssueSummary[]> {
     if (issueIds.length === 0) return [];
     const rows = await db
       .select({
@@ -530,7 +527,7 @@ export function statusCardService(
         updatedAt: issues.updatedAt,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), inArray(issues.id, issueIds)));
+      .where(inArray(issues.id, issueIds));
     return rows.map((row) => ({
       ...row,
       status: row.status as CompanySearchIssueSummary["status"],
@@ -544,7 +541,7 @@ export function statusCardService(
    * Unknown identifiers and foreign-company links drop out here, so a summary
    * cannot join arbitrary ids to the watched set.
    */
-  async function resolveMentionedIssueIds(companyId: string, markdown: string) {
+  async function resolveMentionedIssueIds(markdown: string) {
     const mentions = extractIssueMentions(markdown);
     const conditions = [
       ...(mentions.identifiers.length > 0 ? [inArray(issues.identifier, mentions.identifiers)] : []),
@@ -554,20 +551,20 @@ export function statusCardService(
     const rows = await db
       .select({ id: issues.id })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), or(...conditions)))
+      .where(or(...conditions))
       .limit(STATUS_CARD_MAX_MENTIONED_ISSUES);
     return rows.map((row) => row.id).sort();
   }
 
   async function listMentionedIssues(card: StatusCardRow) {
-    return loadIssueSummaries(card.companyId, card.mentionedIssueIds ?? []);
+    return loadIssueSummaries(card.mentionedIssueIds ?? []);
   }
 
   async function executeQueries(card: StatusCardRow) {
     const issueMap = new Map<string, CompanySearchIssueSummary>();
     for (const storedQuery of card.queries) {
       const query = companySearchQuerySchema.parse(storedQuery);
-      const response = await searchSvc.search(card.companyId, query);
+      const response = await searchSvc.search(query);
       for (const result of response.results) {
         if (result.type === "issue" && result.issue) issueMap.set(result.issue.id, result.issue);
       }
@@ -575,7 +572,6 @@ export function statusCardService(
     // Issues mentioned in the latest summary join the watched set alongside the
     // compiled-query matches, so their later changes fire deltas too.
     const mentioned = await loadIssueSummaries(
-      card.companyId,
       (card.mentionedIssueIds ?? []).filter((issueId) => !issueMap.has(issueId)),
     );
     for (const issue of mentioned) issueMap.set(issue.id, issue);
@@ -687,7 +683,7 @@ export function statusCardService(
       : null;
     const fingerprintHash = statusCardFingerprintHash(fingerprint);
     let deduplicated = false;
-    const created = await issuesSvc.create(card.companyId, {
+    const created = await issuesSvc.create({
       title: `${kind === "full" ? "Rebuild" : "Update"} status card: ${card.title ?? card.interestPrompt.slice(0, 80)}`,
       description: updateDescription({ card, generationIssueId: null, fingerprint, changes, kind, trigger, previousSummary, snapshot }),
       status: "todo",
@@ -761,7 +757,7 @@ export function statusCardService(
         if (result.enqueued && result.generatingIssue) enqueued.push({ cardId: claimed.id, generatingIssue: result.generatingIssue });
       } catch (err) {
         logger.warn(
-          { err, cardId: claimed.id, companyId: claimed.companyId },
+          { err, cardId: claimed.id },
           "status card scheduled refresh failed",
         );
       }
@@ -793,7 +789,7 @@ export function statusCardService(
       const payloadFingerprint = payload?.operation === "update" && payload.fingerprint && typeof payload.fingerprint === "object"
         ? payload.fingerprint as StatusCardFingerprint
         : null;
-      const mentionedIssueIds = await resolveMentionedIssueIds(current.companyId, input.markdown);
+      const mentionedIssueIds = await resolveMentionedIssueIds(input.markdown);
       // Current watched membership: compiled-query matches plus the issues this
       // summary mentions.
       const watchedNow = buildStatusCardFingerprint(
@@ -818,13 +814,12 @@ export function statusCardService(
         snapshot = watchedNow;
       }
       const existing = current.documentId
-        ? await tx.select().from(documents).where(and(eq(documents.id, current.documentId), eq(documents.companyId, current.companyId))).then((rows) => rows[0] ?? null)
+        ? await tx.select().from(documents).where(eq(documents.id, current.documentId)).then((rows) => rows[0] ?? null)
         : null;
       let document = existing;
       const revisionNumber = (existing?.latestRevisionNumber ?? 0) + 1;
       if (!document) {
         [document] = await tx.insert(documents).values({
-          companyId: current.companyId,
           title: input.title ?? current.title,
           format: "markdown",
           latestBody: input.markdown,
@@ -836,7 +831,6 @@ export function statusCardService(
         }).returning();
       }
       const [revision] = await tx.insert(documentRevisions).values({
-        companyId: current.companyId,
         documentId: document!.id,
         revisionNumber,
         title: input.title ?? current.title,
@@ -910,7 +904,7 @@ export function statusCardService(
   }
 
   async function dryRun(card: StatusCardRow) {
-    return Promise.all(card.queries.map(async (query) => ({ query, result: await searchSvc.search(card.companyId, query) })));
+    return Promise.all(card.queries.map(async (query) => ({ query, result: await searchSvc.search(query) })));
   }
 
   return { list, getById, hydrate, create, update, remove, listUpdates, listSummaryRevisions, listMentionedIssues, requestCompile, requestRefresh, tickDueStatusCards, writeQuery, writeSummary, dryRun };

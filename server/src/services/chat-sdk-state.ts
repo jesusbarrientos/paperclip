@@ -9,9 +9,8 @@ const MAX_CAS_ATTEMPTS = 32;
 
 type StateKind = "cache" | "list" | "lock" | "queue" | "subscription";
 
-/** Company + endpoint boundary applied to every Chat SDK state operation. */
+/** Endpoint boundary applied to every Chat SDK state operation. */
 export interface ChatSdkStateScope {
-  companyId: string;
   endpointId: string;
 }
 
@@ -38,7 +37,7 @@ export interface ChatSdkStateDeleteInput extends ChatSdkStateScope {
 /**
  * Narrow database port used by the Chat SDK adapter.
  *
- * The production implementation is responsible for company scoping and for
+ * The production implementation is responsible for endpoint scoping and for
  * making compare-and-set/delete atomic in the database transaction. Keeping
  * those two primitives below this adapter lets every higher-level Chat SDK
  * operation (locks, queues, subscriptions, lists, and cache entries) share the
@@ -111,7 +110,7 @@ function decodeEnvelope(
 }
 
 /**
- * Chat SDK StateAdapter backed by Paperclip's injected, company-scoped CAS
+ * Chat SDK StateAdapter backed by Paperclip's injected, endpoint-scoped CAS
  * persistence. Instances are endpoint-scoped and never own or close the shared
  * database connection.
  */
@@ -124,17 +123,11 @@ export class PaperclipChatSdkStateAdapter implements StateAdapter {
 
   constructor(options: PaperclipChatSdkStateOptions) {
     assertBoundedIdentifier(
-      "companyId",
-      options.companyId,
-      MAX_SCOPE_ID_LENGTH,
-    );
-    assertBoundedIdentifier(
       "endpointId",
       options.endpointId,
       MAX_SCOPE_ID_LENGTH,
     );
     this.scope = {
-      companyId: options.companyId,
       endpointId: options.endpointId,
     };
     this.persistence = options.persistence;

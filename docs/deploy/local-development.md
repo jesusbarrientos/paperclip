@@ -75,8 +75,8 @@ For full setup and troubleshooting, see [Tailscale Private Access](/deploy/tails
 curl http://localhost:3100/api/health
 # -> {"status":"ok"}
 
-curl http://localhost:3100/api/companies
-# -> []
+curl http://localhost:3100/api/organization
+# -> 404 {"code":"organization_missing"} until onboarding creates the organization
 ```
 
 ## Safe Worktree Bootstrap for Local Agent Runs

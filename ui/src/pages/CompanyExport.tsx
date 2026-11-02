@@ -9,18 +9,17 @@ import type {
   Project,
 } from "@paperclipai/shared";
 import { useNavigate, useLocation } from "@/lib/router";
-import { useCompany } from "../context/CompanyContext";
+import { useOrganization } from "../context/OrganizationContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
-import { companiesApi } from "../api/companies";
+import { organizationApi } from "../api/organization";
 import { projectsApi } from "../api/projects";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { MarkdownBody } from "../components/MarkdownBody";
-import { toCompanyRelativePath } from "@/lib/company-routes";
 import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import { formatBytes } from "../lib/issue-output";
@@ -586,13 +585,12 @@ function ExportPreviewPane({
 
 // ── Main page ─────────────────────────────────────────────────────────
 
-/** Extract the file path from the current URL pathname (after /company/export/files/) */
+/** Extract the file path from the current URL pathname (after /organization/export/files/) */
 function filePathFromLocation(pathname: string): string | null {
-  const marker = "/company/export/files/";
-  const relativePathname = toCompanyRelativePath(pathname);
-  const idx = relativePathname.indexOf(marker);
+  const marker = "/organization/export/files/";
+  const idx = pathname.indexOf(marker);
   if (idx === -1) return null;
-  const filePath = decodeURIComponent(relativePathname.slice(idx + marker.length));
+  const filePath = decodeURIComponent(pathname.slice(idx + marker.length));
   return filePath || null;
 }
 
@@ -626,7 +624,7 @@ function previewErrorMessage(error: unknown): string {
 }
 
 export function CompanyExport() {
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const navigate = useNavigate();
@@ -637,19 +635,16 @@ export function CompanyExport() {
     queryFn: () => authApi.getSession(),
   });
   const { data: agents = [] } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: projects = [] } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!),
-    queryFn: () => projectsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
   });
   const { data: fidelityReport } = useQuery({
-    queryKey: queryKeys.companies.exportFidelity(selectedCompanyId!),
-    queryFn: () => companiesApi.exportFidelity(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.organizationExportFidelity,
+    queryFn: () => organizationApi.exportFidelity(),
   });
 
   const [exportData, setExportData] = useState<CompanyPortabilityExportPreviewResult | null>(null);
@@ -669,7 +664,6 @@ export function CompanyExport() {
   const savedExpandedRef = useRef<Set<string> | null>(null);
   const previewAbortControllerRef = useRef<AbortController | null>(null);
   const previewRequestIdRef = useRef(0);
-  const previewCompanyIdRef = useRef<string | null>(null);
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const visibleAgents = useMemo(
     () => agents.filter((agent: Agent) => agent.status !== "terminated"),
@@ -681,12 +675,10 @@ export function CompanyExport() {
   );
   const { orderedAgents } = useAgentOrder({
     agents: visibleAgents,
-    companyId: selectedCompanyId,
     userId: currentUserId,
   });
   const { orderedProjects } = useProjectOrder({
     projects: visibleProjects,
-    companyId: selectedCompanyId,
     userId: currentUserId,
   });
   const sidebarOrder = useMemo(
@@ -706,9 +698,9 @@ export function CompanyExport() {
     (filePath: string | null, replace = false) => {
       setSelectedFile(filePath);
       if (filePath) {
-        navigate(`/company/export/files/${encodeURI(filePath)}`, { replace });
+        navigate(`/organization/export/files/${encodeURI(filePath)}`, { replace });
       } else {
-        navigate("/company/export", { replace });
+        navigate("/organization/export", { replace });
       }
     },
     [navigate],
@@ -733,15 +725,15 @@ export function CompanyExport() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Organization", href: "/dashboard" },
-      { label: "Settings", href: "/company/settings" },
+      { label: organization?.name ?? "Organization", href: "/dashboard" },
+      { label: "Settings", href: "/organization/settings" },
       { label: "Export" },
     ]);
-  }, [selectedCompany?.name, setBreadcrumbs]);
+  }, [organization?.name, setBreadcrumbs]);
 
   const exportPreviewMutation = useMutation({
     mutationFn: ({ includeIssues: withIssues, includeSkills, signal }: ExportPreviewMutationInput) =>
-      companiesApi.exportPreview(selectedCompanyId!, {
+      organizationApi.exportPreview({
         include: { company: true, agents: true, projects: true, issues: withIssues, skills: includeSkills },
         sidebarOrder,
       }, { signal }),
@@ -783,7 +775,6 @@ export function CompanyExport() {
   });
 
   function startPreviewRequest() {
-    if (!selectedCompanyId) return;
     previewAbortControllerRef.current?.abort();
     const controller = new AbortController();
     const requestId = previewRequestIdRef.current + 1;
@@ -800,7 +791,7 @@ export function CompanyExport() {
 
   const downloadMutation = useMutation({
     mutationFn: () =>
-      companiesApi.exportBundle(selectedCompanyId!, {
+      organizationApi.exportBundle({
         include: { company: true, agents: true, projects: true, issues: includeIssues, skills: categories.skills },
         selectedFiles: Array.from(checkedFiles).sort(),
         sidebarOrder,
@@ -824,15 +815,9 @@ export function CompanyExport() {
   });
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
-    if (previewCompanyIdRef.current !== selectedCompanyId) {
-      previewCompanyIdRef.current = selectedCompanyId;
-      setExportData(null);
-      setSelectedFile(null);
-    }
     startPreviewRequest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCompanyId, includeIssues, categories.skills]);
+  }, [includeIssues, categories.skills]);
 
   useEffect(() => () => {
     previewRequestIdRef.current += 1;
@@ -915,7 +900,7 @@ export function CompanyExport() {
 
     // Regenerate README.md based on checked selection
     if (typeof exportData.files["README.md"] === "string") {
-      const companyName = exportData.manifest.company?.name ?? selectedCompany?.name ?? "Company";
+      const companyName = exportData.manifest.company?.name ?? organization?.name ?? "Company";
       const companyDescription = exportData.manifest.company?.description ?? null;
       filtered["README.md"] = generateReadmeFromSelection(
         exportData.manifest,
@@ -926,7 +911,7 @@ export function CompanyExport() {
     }
 
     return filtered;
-  }, [exportData, checkedFiles, selectedCompany?.name]);
+  }, [exportData, checkedFiles, organization?.name]);
 
   // The zip is STORE-only, so its size is exactly computable from the filtered
   // file map. Depends only on the selection (not e.g. the tree search), so it
@@ -1023,9 +1008,6 @@ export function CompanyExport() {
     setPreviewCancelled(true);
   }
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Package} message="Select an organization to export." />;
-  }
 
   if (exportPreviewMutation.isPending && !exportData) {
     return <PageSkeleton variant="detail" />;
@@ -1084,7 +1066,7 @@ export function CompanyExport() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <span className="font-medium">
-              {selectedCompany?.name ?? "Organization"} export
+              {organization?.name ?? "Organization"} export
             </span>
             <span className="text-muted-foreground">
               Exporting {selectedCount.toLocaleString()} of {totalFiles.toLocaleString()} file{totalFiles === 1 ? "" : "s"}
@@ -1233,7 +1215,7 @@ export function CompanyExport() {
             selectedFile={selectedFile}
             content={previewContent}
             allFiles={effectiveFiles}
-            orgChartPreviewUrl={`/api/companies/${encodeURIComponent(selectedCompanyId)}/org.svg`}
+            orgChartPreviewUrl={`/api/org.svg`}
             onSkillClick={handleSkillClick}
           />
           {exportPreviewMutation.isPending ? (

@@ -5,7 +5,7 @@ type TestRequest = {
   actor: {
     userId: string | null;
     companyIds: string[];
-    memberships: Array<{ companyId: string; membershipRole: string; status: string }>;
+    memberships: Array<{ membershipRole: string; status: string }>;
     isInstanceAdmin: boolean;
     keyScope: string | null;
     responsibleUserId: string | null;
@@ -29,8 +29,8 @@ describe("createRequestPromiseMemo", () => {
   it.each([
     ["actor", { userId: "user-2" }],
     ["company", { companyIds: ["company-2"] }],
-    ["membership role", { memberships: [{ companyId: "company-1", membershipRole: "member", status: "active" }] }],
-    ["membership status", { memberships: [{ companyId: "company-1", membershipRole: "owner", status: "suspended" }] }],
+    ["membership role", { memberships: [{ membershipRole: "member", status: "active" }] }],
+    ["membership status", { memberships: [{ membershipRole: "owner", status: "suspended" }] }],
     ["instance admin", { isInstanceAdmin: true }],
     ["agent key scope", { keyScope: "read" }],
     ["responsible user", { responsibleUserId: "user-2" }],
@@ -91,7 +91,7 @@ function requestFor(actorPatch: Partial<TestRequest["actor"]> = {}): TestRequest
     actor: {
       userId: "user-1",
       companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", membershipRole: "owner", status: "active" }],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       isInstanceAdmin: false,
       keyScope: null,
       responsibleUserId: "user-1",

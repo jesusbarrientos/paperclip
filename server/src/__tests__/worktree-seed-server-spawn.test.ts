@@ -203,7 +203,7 @@ fs.writeFileSync(path.join(stateDir, "seed-manifest.json"), JSON.stringify({
         identifier: "PAP-17681",
         title: "Recover ambient seed source",
       },
-      agent: { id: "agent-1", name: "Coder", companyId: "company-1" },
+      agent: { id: "agent-1", name: "Coder" },
     });
 
     expect(readWorktreeSeedManifest(path.join(workspace.cwd, ".paperclip", "config.json"))).toMatchObject({

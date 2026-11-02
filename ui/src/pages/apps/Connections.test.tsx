@@ -20,21 +20,21 @@ const mockNavigate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/tools", () => ({
   toolsApi: {
-    listGallery: (companyId: string) => listGalleryMock(companyId),
-    listApplications: (companyId: string) => listApplicationsMock(companyId),
-    listConnections: (companyId: string) => listConnectionsMock(companyId),
-    listAppsAttention: (companyId: string) => listAppsAttentionMock(companyId),
-    listProfiles: (companyId: string) => listProfilesMock(companyId),
+    listGallery: () => listGalleryMock(),
+    listApplications: () => listApplicationsMock(),
+    listConnections: () => listConnectionsMock(),
+    listAppsAttention: () => listAppsAttentionMock(),
+    listProfiles: () => listProfilesMock(),
     archiveConnection: (connectionId: string) =>
       archiveConnectionMock(connectionId),
     getCloudConnectorEnrollment: () => getCloudConnectorEnrollmentMock(),
-    startCloudConnectorEnrollment: (companyId: string, label?: string) => startCloudConnectorEnrollmentMock(companyId, label),
+    startCloudConnectorEnrollment: (label?: string) => startCloudConnectorEnrollmentMock(label),
   },
 }));
 
 vi.mock("@/api/access", () => ({
   accessApi: {
-    listUserDirectory: (companyId: string) => listUserDirectoryMock(companyId),
+    listUserDirectory: () => listUserDirectoryMock(),
   },
 }));
 
@@ -45,10 +45,9 @@ vi.mock("@/lib/router", () => ({
   ),
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
 }));
 
@@ -83,7 +82,6 @@ async function flushReact() {
 function application(overrides: Record<string, unknown>) {
   return {
     id: "app-x",
-    companyId: "company-1",
     applicationKey: undefined,
     name: "GitHub",
     description: null,
@@ -103,7 +101,6 @@ function application(overrides: Record<string, unknown>) {
 function connection(overrides: Record<string, unknown>) {
   return {
     id: "conn-x",
-    companyId: "company-1",
     applicationId: "app-x",
     name: "GitHub",
     connectionKind: "managed",
@@ -129,7 +126,6 @@ function connection(overrides: Record<string, unknown>) {
 function profile(connectionId: string, includedEntryIds: string[]) {
   return {
     id: `profile-${connectionId}`,
-    companyId: "company-1",
     profileKey: `app:${connectionId}`,
     name: connectionId,
     description: null,
@@ -140,7 +136,6 @@ function profile(connectionId: string, includedEntryIds: string[]) {
     updatedAt: new Date("2026-01-01T00:00:00Z"),
     entries: includedEntryIds.map((catalogEntryId, index) => ({
       id: `entry-${connectionId}-${index}`,
-      companyId: "company-1",
       profileId: `profile-${connectionId}`,
       selectorType: "catalog_entry",
       effect: "include",
@@ -423,7 +418,6 @@ describe("Connections table (M1b / PAP-13254 door 2)", () => {
       }),
     );
   });
-
 
   it("reports the remaining active connections after deleting one", async () => {
     listApplicationsMock.mockResolvedValue({

@@ -115,7 +115,6 @@ export interface CapabilityLiveEvidenceEntry {
 export interface CapabilityLiveAuthoritySnapshot {
   active: boolean;
   runId: string;
-  companyId: string;
   actorId: string;
   taskId: string;
   sessionId: string;
@@ -329,7 +328,6 @@ export interface CreateCapabilityLiveSessionInput {
   scenario?: CapabilitySemanticScenarioPolicy;
   capabilities?: string[];
   explicitClaims?: string[];
-  companyId?: string;
   actorId?: string;
   taskId?: string;
   runId?: string;
@@ -596,7 +594,7 @@ export function assertCapabilityLiveSessionSnapshot(
     throw new Error("capability_live_checkpoint_corrupt: invalid revision");
   }
   const authority = record(snapshot.authority);
-  for (const name of ["runId", "companyId", "actorId", "taskId", "sessionId"] as const) {
+  for (const name of ["runId", "actorId", "taskId", "sessionId"] as const) {
     if (text(authority[name]).length === 0) {
       throw new Error(`capability_live_checkpoint_corrupt: missing authority.${name}`);
     }
@@ -931,7 +929,6 @@ export class CapabilityLiveSessionService {
     const authority: CapabilityLiveAuthoritySnapshot = {
       active: true,
       runId,
-      companyId: input.companyId ?? state.company.id,
       actorId: input.actorId ?? state.actors[0]!.id,
       taskId: input.taskId ?? state.tasks[0]!.id,
       sessionId,
@@ -943,7 +940,6 @@ export class CapabilityLiveSessionService {
       identity: {
         runId,
         sessionId,
-        companyId: authority.companyId,
         issueId: authority.taskId,
         agentId: authority.actorId,
       },

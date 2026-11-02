@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -29,11 +28,11 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
     const [company] = await db.insert(companies).values({ name: "Aggregator sync test", issuePrefix: randomUUID().slice(0, 6).toUpperCase() }).returning();
     const userId = randomUUID();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "admin", status: "active" }).onConflictDoUpdate(membershipUpsert);
-    const [application] = await db.insert(toolApplications).values({ companyId: company.id, applicationKey: randomUUID(), name: provider, type: "mcp_http", metadata: { sourceTemplateKey: provider } }).returning();
-    const [connection] = await db.insert(toolConnections).values({ companyId: company.id, applicationId: application.id, uid: randomUUID(), name: `${provider} gateway`, transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", status: "active", enabled: true, config: { sourceTemplateKey: provider, url: provider === "arcade" ? "https://api.arcade.dev/mcp/test" : "https://executor.example/mcp", managementUrl: "https://executor.example/team/integrations" } }).returning();
-    await db.insert(connectionGrants).values({ companyId: company.id, connectionId: connection.id, kind: "organization", status: "active", isDefault: true });
+    const [application] = await db.insert(toolApplications).values({ applicationKey: randomUUID(), name: `${provider} ${randomUUID()}`, type: "mcp_http", metadata: { sourceTemplateKey: provider } }).returning();
+    const [connection] = await db.insert(toolConnections).values({ applicationId: application.id, uid: randomUUID(), name: `${provider} gateway`, transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", status: "active", enabled: true, config: { sourceTemplateKey: provider, url: provider === "arcade" ? "https://api.arcade.dev/mcp/test" : "https://executor.example/mcp", managementUrl: "https://executor.example/team/integrations" } }).returning();
+    await db.insert(connectionGrants).values({ connectionId: connection.id, kind: "organization", status: "active", isDefault: true });
     const names = provider === "executor" ? ["integrations"] : ["Notion.ListPages"];
-    await db.insert(toolCatalogEntries).values(names.map(toolName => ({ companyId: company.id, connectionId: connection.id, name: toolName, toolName, versionHash: "v1", status: "active", riskLevel: "read" as const })));
+    await db.insert(toolCatalogEntries).values(names.map(toolName => ({ connectionId: connection.id, name: toolName, toolName, versionHash: "v1", status: "active", riskLevel: "read" as const })));
     let accounts = [{ integration: "notion", owner: "user", connection: "Work", lastHealth: { status: "healthy", checkedAt: Date.now() } }];
     let fail = false;
     let partial = false;
@@ -54,24 +53,11 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
     await vi.waitFor(async () => { result = await f.access.listAggregatorApps(f.connection.id, f.actor); expect(result.sync.status).not.toBe("syncing"); }, { timeout: 5000 });
     return result;
   }
-  it("replays the account migrations without losing observations or weakening company boundaries", async () => {
-    const f = await fixture();
-    await sync(f);
-    const before = await db.select().from(toolConnectionAppSnapshots).where(eq(toolConnectionAppSnapshots.connectionId, f.connection.id));
-    for (const name of ["0295_public_captain_cross", "0296_stiff_thaddeus_ross"]) {
-      const migration = await readFile(new URL(`../../../packages/db/src/migrations/${name}.sql`, import.meta.url), "utf8");
-      for (const statement of migration.split("--> statement-breakpoint")) await db.execute(sql.raw(statement));
-    }
-    expect(await db.select().from(toolConnectionAppSnapshots).where(eq(toolConnectionAppSnapshots.connectionId, f.connection.id))).toEqual(before);
-    const other = await fixture();
-    await expect(db.insert(toolConnectionAppSnapshots).values({ companyId: other.company.id, connectionId: f.connection.id,
-      userId: other.actor.actorId, credentialKey: "different", toolkit: "notion", status: "connected", accounts: [] })).rejects.toThrow();
-  });
   it("imports and reconciles Executor accounts without new executable connections or access grants", async () => {
     const f = await fixture();
     const grants = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connection.id));
     expect((await sync(f)).apps[0]).toMatchObject({ provider: "executor", appSlug: "notion", status: "connected" });
-    expect(await db.select().from(toolConnections).where(eq(toolConnections.companyId, f.company.id))).toHaveLength(1);
+    expect(await db.select().from(toolConnections).where(eq(toolConnections.applicationId, f.connection.applicationId))).toHaveLength(1);
     expect(await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, f.connection.id))).toEqual(grants);
     f.disconnect();
     expect((await sync(f)).apps.flatMap(app => app.accounts)).toHaveLength(0);
@@ -96,8 +82,8 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
   });
   it("reuses an existing Arcade API key and secret-backed user header without extra sync setup", async () => {
     const f = await fixture("arcade");
-    const key = await secretService(db).create(f.company.id, { name: "Arcade project", provider: "local_encrypted", value: "existing-key" }, { userId: f.actor.actorId });
-    const user = await secretService(db).create(f.company.id, { name: "Arcade user", provider: "local_encrypted", value: "arcade-user" }, { userId: f.actor.actorId });
+    const key = await secretService(db).create({ name: "Arcade project", provider: "local_encrypted", value: "existing-key" }, { userId: f.actor.actorId });
+    const user = await secretService(db).create({ name: "Arcade user", provider: "local_encrypted", value: "arcade-user" }, { userId: f.actor.actorId });
     await db.update(toolConnections).set({ authKind: "api_key", credentialRefs: [
       { name: "authorization", secretId: key.id, placement: "header", key: "Authorization", prefix: "Bearer " },
       { name: "headers.Arcade-User-ID", secretId: user.id, placement: "header", key: "Arcade-User-ID", prefix: "" },
@@ -105,7 +91,7 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
       { secretId: key.id, configPath: "credentials.authorization", versionSelector: "latest" },
       { secretId: user.id, configPath: "headers.Arcade-User-ID", versionSelector: "latest" },
     ] }).where(eq(toolConnections.id, f.connection.id));
-    for (const [secretId, configPath] of [[key.id, "credentials.authorization"], [user.id, "headers.Arcade-User-ID"]]) await secretService(db).createBinding({ companyId: f.company.id, secretId, targetType: "tool_connection", targetId: f.connection.id, configPath });
+    for (const [secretId, configPath] of [[key.id, "credentials.authorization"], [user.id, "headers.Arcade-User-ID"]]) await secretService(db).createBinding({ secretId, targetType: "tool_connection", targetId: f.connection.id, configPath });
     expect((await f.access.listAggregatorApps(f.connection.id, f.actor)).discovery.availability).toBe("available");
     expect((await sync(f)).apps[0]).toMatchObject({ provider: "arcade", appSlug: "notion" });
     expect(f.calls.filter(call => call.method === "GET").every(call => call.authorization === "Bearer existing-key")).toBe(true);
@@ -123,7 +109,7 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
     expect(f.calls.filter(call => call.method === "POST").every(call => call.authorization !== "Bearer project-discovery-key")).toBe(true);
     expect(f.calls.filter(call => call.method === "GET").every(call => call.authorization === "Bearer project-discovery-key")).toBe(true);
     const metadata = (saved.config.aggregatorDiscovery as Record<string, { secretId: string }>)[f.actor.actorId];
-    await secretService(db).rotateCurrentUserSecretValue(f.company.id, f.actor.actorId, metadata.secretId, { value: "rotated-discovery-key" }, { userId: f.actor.actorId });
+    await secretService(db).rotateCurrentUserSecretValue(f.actor.actorId, metadata.secretId, { value: "rotated-discovery-key" }, { userId: f.actor.actorId });
     expect((await f.access.listAggregatorApps(f.connection.id, f.actor)).apps).toHaveLength(0);
     expect(await db.select().from(toolConnectionAppSnapshots).where(eq(toolConnectionAppSnapshots.connectionId, f.connection.id))).toHaveLength(1);
     expect((await sync(f)).apps[0].accounts).toHaveLength(1);
@@ -134,7 +120,7 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
     const memberId = randomUUID();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: memberId, membershipRole: "member", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const app = express(); app.use(express.json());
-    app.use((req, _res, next) => { req.actor = req.headers["x-test-agent"] ? { type: "agent", agentId: randomUUID(), companyId: f.company.id } : { type: "board", userId: memberId, source: "session", isInstanceAdmin: false, companyIds: [f.company.id] }; next(); });
+    app.use((req, _res, next) => { req.actor = req.headers["x-test-agent"] ? { type: "agent", agentId: randomUUID() } : { type: "board", userId: memberId, source: "session", isInstanceAdmin: false, memberships: [{ membershipRole: "member", status: "active" }] }; next(); });
     app.use("/api", toolAccessRoutes(db)); app.use(errorHandler);
     for (const agent of [false, true]) {
       const response = await request(app).put(`/api/tool-connections/${f.connection.id}/aggregator/discovery`).set("x-test-agent", agent ? "yes" : "").send({ apiKey: "not-saved", userId: "arcade-user" });
@@ -144,11 +130,11 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
     expect(saved.config.aggregatorDiscovery).toBeUndefined();
   });
 
-  it("enforces company membership and connection-manager access on all generic endpoints", async () => {
+  it("enforces organization membership and connection-manager access on all generic endpoints", async () => {
     const f = await fixture("arcade");
     const app = express(); app.use(express.json());
     let viewingUser = randomUUID();
-    app.use((req, _res, next) => { req.actor = { type: "board", userId: viewingUser, source: "session", isInstanceAdmin: false, companyIds: viewingUser === f.actor.actorId ? [f.company.id] : [] }; next(); });
+    app.use((req, _res, next) => { req.actor = { type: "board", userId: viewingUser, source: "session", isInstanceAdmin: false, memberships: viewingUser === f.actor.actorId ? [{ membershipRole: "admin", status: "active" }] : [] }; next(); });
     app.use("/api", toolAccessRoutes(db)); app.use(errorHandler);
     for (const path of ["/aggregator/apps", "/aggregator/apps/sync", "/aggregator/apps/refresh", "/aggregator/discovery"]) {
       const endpoint = `/api/tool-connections/${f.connection.id}${path}`;

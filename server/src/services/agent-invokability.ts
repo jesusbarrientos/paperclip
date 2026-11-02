@@ -7,7 +7,7 @@ type AgentStatus = (typeof agents.$inferSelect)["status"];
 
 export type AgentOrgRow = Pick<
   typeof agents.$inferSelect,
-  "id" | "companyId" | "name" | "reportsTo" | "status"
+  "id" | "name" | "reportsTo" | "status"
 >;
 
 export type AgentInvokabilityBlockReason =
@@ -57,7 +57,6 @@ function statusBlockReason(status: AgentStatus): AgentInvokabilityBlockReason | 
 function toEligibilityAgent(row: AgentOrgRow): AgentEligibilityAgent {
   return {
     id: row.id,
-    companyId: row.companyId,
     name: row.name,
     status: row.status,
     reportsTo: row.reportsTo,
@@ -123,13 +122,11 @@ export async function evaluateAgentInvokabilityFromDb(
   const companyAgents = await db
     .select({
       id: agents.id,
-      companyId: agents.companyId,
       name: agents.name,
       reportsTo: agents.reportsTo,
       status: agents.status,
     })
-    .from(agents)
-    .where(eq(agents.companyId, agent.companyId));
+    .from(agents);
   return evaluateAgentInvokability(agent, companyAgents);
 }
 

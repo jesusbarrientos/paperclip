@@ -31,7 +31,6 @@ const LATEST_REVISION_SELECT_VALUE = "__latest__";
 const MAX_REVISION_OPTIONS = 30;
 
 export interface SummarySlotCardProps {
-  companyId: string | null | undefined;
   scopeKind: SummarySlotScopeKind;
   scopeId?: string | null;
   slotKey?: SummarySlotKey;
@@ -133,7 +132,6 @@ function setupState(state: BuiltInAgentState | undefined) {
 }
 
 export function SummarySlotCard({
-  companyId,
   scopeKind,
   scopeId = null,
   slotKey = "header",
@@ -145,9 +143,7 @@ export function SummarySlotCard({
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
   const [configureOpen, setConfigureOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const selector: SummarySlotSelector | null = companyId
-    ? { companyId, scopeKind, scopeId, slotKey }
-    : null;
+  const selector: SummarySlotSelector = { scopeKind, scopeId, slotKey };
 
   const experimentalQuery = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
@@ -157,9 +153,9 @@ export function SummarySlotCard({
   const builtInAgentsEnabled = experimentalQuery.data?.enableBuiltInAgents === true;
 
   const builtInAgentsQuery = useQuery({
-    queryKey: queryKeys.builtInAgents.list(companyId ?? "__none__"),
-    queryFn: () => builtInAgentsApi.list(companyId!),
-    enabled: Boolean(companyId && summariesEnabled && builtInAgentsEnabled),
+    queryKey: queryKeys.builtInAgents.list(),
+    queryFn: () => builtInAgentsApi.list(),
+    enabled: summariesEnabled && builtInAgentsEnabled,
     retry: false,
   });
 
@@ -168,30 +164,26 @@ export function SummarySlotCard({
   );
   const needsSetup = setupState(summarizerState);
 
-  const slotQueryKey = selector
-    ? queryKeys.summarySlots.detail(selector.companyId, selector.scopeKind, selector.slotKey, selector.scopeId)
-    : queryKeys.summarySlots.detail("__none__", scopeKind, slotKey, scopeId);
-  const revisionsQueryKey = selector
-    ? queryKeys.summarySlots.revisions(selector.companyId, selector.scopeKind, selector.slotKey, selector.scopeId)
-    : queryKeys.summarySlots.revisions("__none__", scopeKind, slotKey, scopeId);
+  const slotQueryKey = queryKeys.summarySlots.detail(scopeKind, slotKey, scopeId);
+  const revisionsQueryKey = queryKeys.summarySlots.revisions(scopeKind, slotKey, scopeId);
 
   const slotQuery = useQuery({
     queryKey: slotQueryKey,
-    queryFn: () => summarySlotsApi.get(selector!),
-    enabled: Boolean(selector && summariesEnabled),
+    queryFn: () => summarySlotsApi.get(selector),
+    enabled: summariesEnabled,
     retry: false,
     refetchInterval: (query) => query.state.data?.slot?.status === "generating" ? 3_000 : false,
   });
 
   const revisionsQuery = useQuery({
     queryKey: revisionsQueryKey,
-    queryFn: () => summarySlotsApi.revisions(selector!),
-    enabled: Boolean(selector && summariesEnabled && slotQuery.data?.document),
+    queryFn: () => summarySlotsApi.revisions(selector),
+    enabled: Boolean(summariesEnabled && slotQuery.data?.document),
     retry: false,
   });
 
   const generateMutation = useMutation({
-    mutationFn: () => summarySlotsApi.generate(selector!),
+    mutationFn: () => summarySlotsApi.generate(selector),
     onMutate: () => setActionError(null),
     onSuccess: async () => {
       setSelectedRevisionId(null);
@@ -206,11 +198,9 @@ export function SummarySlotCard({
   });
 
   const resumeSummarizer = useMutation({
-    mutationFn: (agentId: string) => agentsApi.resume(agentId, companyId ?? undefined),
+    mutationFn: (agentId: string) => agentsApi.resume(agentId),
     onSuccess: async () => {
-      if (companyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.builtInAgents.list(companyId) });
-      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.builtInAgents.list() });
     },
   });
 
@@ -237,7 +227,7 @@ export function SummarySlotCard({
   const latestSelectLabel = latestDocument ? latestRevisionOptionLabel(latestDocument, latestRevision) : "Latest";
   const generatingIssue = slotQuery.data?.generatingIssue ?? null;
   const liveStatusLine = resolveGenerationStatusLine(useGenerationStatus(generatingIssue?.id ?? null));
-  const draftStream = useSummaryDraftStream(companyId, generatingIssue);
+  const draftStream = useSummaryDraftStream(generatingIssue);
   // The token-streamed STATUS line is more responsive than the server-derived
   // progress snippet; prefer it and fall back to the Phase 1 status line.
   const generationStatusLine = draftStream.statusLine ?? liveStatusLine;
@@ -250,7 +240,7 @@ export function SummarySlotCard({
   if (experimentalQuery.isLoading || !summariesEnabled) return null;
 
   const startGeneration = () => {
-    if (!selector || generateMutation.isPending) return;
+    if (generateMutation.isPending) return;
     generateMutation.mutate();
   };
 
@@ -284,7 +274,7 @@ export function SummarySlotCard({
               size="sm"
               variant="outline"
               onClick={startGeneration}
-              disabled={!selector || generateMutation.isPending || Boolean(isGenerating)}
+              disabled={generateMutation.isPending || Boolean(isGenerating)}
             >
               {generateMutation.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               Refresh
@@ -320,15 +310,12 @@ export function SummarySlotCard({
               </Button>
             )}
           </div>
-          {companyId ? (
-            <ConfigureBuiltInAgentModal
-              companyId={companyId}
-              state={needsSetup}
-              open={configureOpen}
-              onOpenChange={setConfigureOpen}
-              onConfigured={() => setActionError(null)}
-            />
-          ) : null}
+          <ConfigureBuiltInAgentModal
+            state={needsSetup}
+            open={configureOpen}
+            onOpenChange={setConfigureOpen}
+            onConfigured={() => setActionError(null)}
+          />
         </>
       ) : null}
 
@@ -380,7 +367,7 @@ export function SummarySlotCard({
               type="button"
               size="sm"
               onClick={startGeneration}
-              disabled={!selector || generateMutation.isPending}
+              disabled={generateMutation.isPending}
             >
               {generateMutation.isPending ? "Retrying..." : "Retry"}
             </Button>
@@ -444,7 +431,7 @@ export function SummarySlotCard({
             type="button"
             size="sm"
             onClick={startGeneration}
-            disabled={!selector || generateMutation.isPending}
+            disabled={generateMutation.isPending}
           >
             {generateMutation.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {generateMutation.isPending ? "Generating..." : "Generate summary"}

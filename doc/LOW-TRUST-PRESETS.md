@@ -22,8 +22,8 @@ Community Edition even when EE policy editing is unavailable.
 - issue/run policy: `executionPolicy.authorizationPolicy.trustBoundary`
 
 The resolver intersects those sources. Narrower wins. A low-trust preset must
-resolve to a concrete company-local project, root issue, or issue-id scope. If a
-policy source names another company, uses an unsupported preset, or lacks that
+resolve to a concrete project, root issue, or issue-id scope. If a
+policy source names an unknown scope, uses an unsupported preset, or lacks that
 scope for risky access, Paperclip fails closed.
 
 ## Containment, Not Privacy
@@ -31,8 +31,8 @@ scope for risky access, Paperclip fails closed.
 This is containment for hostile automated work. It is not a general project,
 issue, or human privacy system.
 
-V1 standard work remains company-visible by default: board users and in-company
-actors can inspect company work objects unless a separate access-control feature
+V1 standard work remains organization-visible by default: board users and agents
+in the instance can inspect work objects unless a separate access-control feature
 changes that behavior. Low-trust containment instead limits what the low-trust
 agent can read or mutate through the Paperclip API and prevents raw untrusted
 output from being automatically promoted into higher-trust agent context.

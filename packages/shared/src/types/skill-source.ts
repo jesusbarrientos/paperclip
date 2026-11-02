@@ -47,7 +47,6 @@ export interface SkillSourceEntry {
 }
 export interface SkillSource {
   id: string;
-  companyId: string;
   repositoryId: string | null;
   repositoryUrl: string;
   fullName: string;

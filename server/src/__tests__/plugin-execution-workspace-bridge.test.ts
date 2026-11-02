@@ -6,7 +6,6 @@ describe("plugin execution workspace bridge", () => {
   it("routes metadata reads through the host client when the capability is declared", async () => {
     const get = vi.fn().mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
       projectId: "project-1",
       projectWorkspaceId: null,
       path: "/tmp/workspace-1",
@@ -27,14 +26,14 @@ describe("plugin execution workspace bridge", () => {
 
     await expect(
       handlers["executionWorkspaces.get"](
-        { workspaceId: "workspace-1", companyId: "company-1" },
-        { invocationScope: { companyId: "company-1" } },
+        { workspaceId: "workspace-1" },
+        { invocationScope: { } },
       ),
     ).resolves.toMatchObject({
       id: "workspace-1",
       cwd: "/tmp/workspace-1",
     });
-    expect(get).toHaveBeenCalledWith({ workspaceId: "workspace-1", companyId: "company-1" });
+    expect(get).toHaveBeenCalledWith({ workspaceId: "workspace-1" });
   });
 
   it("rejects metadata reads when the plugin lacks execution.workspace read access", async () => {
@@ -49,8 +48,8 @@ describe("plugin execution workspace bridge", () => {
 
     await expect(
       handlers["executionWorkspaces.get"](
-        { workspaceId: "workspace-1", companyId: "company-1" },
-        { invocationScope: { companyId: "company-1" } },
+        { workspaceId: "workspace-1" },
+        { invocationScope: { } },
       ),
     ).rejects.toMatchObject({
       code: PLUGIN_RPC_ERROR_CODES.CAPABILITY_DENIED,

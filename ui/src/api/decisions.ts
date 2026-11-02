@@ -27,7 +27,6 @@ export interface DecisionTargetSnapshot {
 
 export interface Decision {
   id: string;
-  companyId: string;
   bundleId: string | null;
   originAgentId: string;
   originIssueId: string;
@@ -103,8 +102,8 @@ function listQuery(filter: DecisionListFilter): string {
 }
 
 export const decisionsApi = {
-  list: (companyId: string, filter: DecisionListFilter = {}) =>
-    api.get<DecisionListItem[]>(`/companies/${companyId}/decisions${listQuery(filter)}`),
+  list: (filter: DecisionListFilter = {}) =>
+    api.get<DecisionListItem[]>(`/decisions${listQuery(filter)}`),
   get: (id: string) => api.get<DecisionOutcome>(`/decisions/${id}`),
   decide: (id: string, input: DecideInput) =>
     api.post<DecisionOutcome>(`/decisions/${id}/decide`, input),

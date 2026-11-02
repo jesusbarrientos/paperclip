@@ -24,7 +24,6 @@ import { logger } from "../middleware/logger.js";
 type LeasedEvent = SealedConnectorEvents["events"][number];
 type GitHubBinding = {
   id: string;
-  companyId: string;
   connectionId: string;
   grantId: string;
   subject: string;
@@ -158,7 +157,6 @@ function bindingRows(rows: Array<{
     if (!subject) return [];
     return github.installationIds.map((installationId) => ({
       id: `${grant.id}_${installationId}`,
-      companyId: grant.companyId,
       connectionId: connection.id,
       grantId: grant.id,
       subject,
@@ -223,10 +221,7 @@ export function githubConnectionEventService(
   async function activeBindings() {
     const rows = await db.select({ grant: connectionGrants, connection: toolConnections })
       .from(connectionGrants)
-      .innerJoin(toolConnections, and(
-        eq(toolConnections.id, connectionGrants.connectionId),
-        eq(toolConnections.companyId, connectionGrants.companyId),
-      ))
+      .innerJoin(toolConnections, eq(toolConnections.id, connectionGrants.connectionId))
       .where(and(
         eq(connectionGrants.status, "active"),
         eq(toolConnections.status, "active"),
@@ -235,7 +230,7 @@ export function githubConnectionEventService(
     return bindingRows(rows);
   }
 
-  async function applyPullRequestEvent(companyId: string, event: LeasedEvent) {
+  async function applyPullRequestEvent(event: LeasedEvent) {
     const snapshot = githubSnapshotUpdate(event.payload);
     if (!snapshot) return;
     const appliedAt = now();
@@ -253,7 +248,6 @@ export function githubConnectionEventService(
       nextRefreshAt: appliedAt,
       updatedAt: appliedAt,
     }).where(and(
-      eq(externalObjects.companyId, companyId),
       eq(externalObjects.providerKey, "github"),
       eq(externalObjects.objectType, "pull_request"),
       sql`lower(${externalObjects.externalId}) = lower(${snapshot.externalId})`,
@@ -261,7 +255,6 @@ export function githubConnectionEventService(
     if (snapshot.merged && event.action === "closed") {
       await issueThreadInteractionService(db, { wakeup: options.wakeup })
         .sweepMergedPullRequestConfirmations([{
-          companyId,
           owner: snapshot.owner,
           repo: snapshot.repo,
           number: snapshot.number,
@@ -274,7 +267,6 @@ export function githubConnectionEventService(
     // again so a refresh completed during that request cannot be overwritten.
     const [currentGrant] = await database.select().from(connectionGrants).where(and(
       eq(connectionGrants.id, binding.grantId),
-      eq(connectionGrants.companyId, binding.companyId),
       eq(connectionGrants.status, "active"),
     )).for("update").limit(1);
     const currentProviderTenant = currentGrant?.providerTenant;
@@ -289,7 +281,7 @@ export function githubConnectionEventService(
           github: { ...github, lastWebhookAt: now().toISOString(), webhookHealth: "healthy" },
         },
         updatedAt: now(),
-      }).where(and(eq(connectionGrants.id, binding.grantId), eq(connectionGrants.companyId, binding.companyId)));
+      }).where(eq(connectionGrants.id, binding.grantId));
       return;
     }
     const unavailable = event.event === "installation" && (event.action === "deleted" || event.action === "suspend");
@@ -323,7 +315,7 @@ export function githubConnectionEventService(
       },
     };
     await database.update(connectionGrants).set({ providerTenant, updatedAt: now() })
-      .where(and(eq(connectionGrants.id, binding.grantId), eq(connectionGrants.companyId, binding.companyId)));
+      .where(eq(connectionGrants.id, binding.grantId));
     await database.update(toolConnections).set({
       healthStatus: unavailable ? "failed" : "ok",
       healthMessage: unavailable
@@ -333,14 +325,13 @@ export function githubConnectionEventService(
       lastHealthAt: now(),
       lastError: unavailable ? "GitHub installation unavailable" : null,
       updatedAt: now(),
-    }).where(and(eq(toolConnections.id, binding.connectionId), eq(toolConnections.companyId, binding.companyId)));
+    }).where(eq(toolConnections.id, binding.connectionId));
   }
 
-  async function processForCompany(companyId: string, bindings: GitHubBinding[], event: LeasedEvent) {
+  async function processBindings(bindings: GitHubBinding[], event: LeasedEvent) {
     const receiptAt = now();
     const normalizedEvent = { ...event, payload: normalizeLeasedPayload(event) };
     const [receipt] = await db.insert(connectionEventDeliveries).values({
-      companyId,
       provider: event.provider,
       providerDeliveryId: event.id,
       event: event.event,
@@ -355,7 +346,6 @@ export function githubConnectionEventService(
     }).onConflictDoNothing().returning();
     if (!receipt) {
       const [existing] = await db.select().from(connectionEventDeliveries).where(and(
-        eq(connectionEventDeliveries.companyId, companyId),
         eq(connectionEventDeliveries.provider, event.provider),
         eq(connectionEventDeliveries.providerDeliveryId, event.id),
       )).limit(1);
@@ -370,7 +360,7 @@ export function githubConnectionEventService(
     const postCommitPublications: ActivityPublication[] = [];
     try {
       const applyAndFinalize = async (database: Db) => {
-        if (event.event === "pull_request") await applyPullRequestEvent(companyId, normalizedEvent);
+        if (event.event === "pull_request") await applyPullRequestEvent(normalizedEvent);
         if (event.event === "installation" || event.event === "installation_repositories") {
           for (const binding of bindings) await applyInstallationEvent(database, binding, normalizedEvent);
         } else {
@@ -388,7 +378,6 @@ export function githubConnectionEventService(
               updatedAt: touchedAt,
             }).where(and(
               eq(connectionGrants.id, binding.grantId),
-              eq(connectionGrants.companyId, companyId),
               eq(connectionGrants.status, "active"),
               sql`${connectionGrants.providerTenant}->'github' is not null`,
             ));
@@ -401,12 +390,10 @@ export function githubConnectionEventService(
           lastError: null,
           updatedAt: finishedAt,
         }).where(and(
-          eq(connectionEventDeliveries.companyId, companyId),
           eq(connectionEventDeliveries.provider, event.provider),
           eq(connectionEventDeliveries.providerDeliveryId, event.id),
         ));
         await logActivity(database, {
-          companyId,
           actorType: "system",
           actorId: "system:github-webhook",
           action: "tool_connection.webhook_processed",
@@ -433,7 +420,6 @@ export function githubConnectionEventService(
         lastError: error instanceof Error ? error.message.slice(0, 500) : "GitHub event processing failed",
         updatedAt: now(),
       }).where(and(
-        eq(connectionEventDeliveries.companyId, companyId),
         eq(connectionEventDeliveries.provider, event.provider),
         eq(connectionEventDeliveries.providerDeliveryId, event.id),
       ));
@@ -448,7 +434,6 @@ export function githubConnectionEventService(
       } catch (error) {
         logger.warn({
           err: error,
-          companyId,
           providerDeliveryId: event.id,
         }, "GitHub webhook activity publication failed after commit");
       }
@@ -473,7 +458,7 @@ export function githubConnectionEventService(
         return { leased: 0, processed: 0, duplicate: 0, ignored: 0, failed: 0 };
       }
       const first = bindings[0]!;
-      const lease = await connector.leaseEvents({ subject: first.subject, companyId: first.companyId });
+      const lease = await connector.leaseEvents({ subject: first.subject });
       if (!lease) {
         emptyPolls += 1;
         nextPollAt = now().getTime() + Math.min(5 * 60_000, 5_000 * (2 ** Math.min(emptyPolls, 6)));
@@ -497,17 +482,12 @@ export function githubConnectionEventService(
           continue;
         }
         try {
-          const companies = new Map<string, GitHubBinding[]>();
-          for (const binding of matched) companies.set(binding.companyId, [...(companies.get(binding.companyId) ?? []), binding]);
-          for (const [companyId, companyBindings] of companies) {
-            const status = await processForCompany(companyId, companyBindings, event);
-            result[status] += 1;
-          }
+          const status = await processBindings(matched, event);
+          result[status] += 1;
           acknowledge.push(event.id);
           if (event.event === "installation" && (event.action === "deleted" || event.action === "suspend")) {
             await Promise.all(matched.map((binding) => connector.setWebhookBinding({
               subject: binding.subject,
-              companyId: binding.companyId,
               id: binding.id,
               installationId: binding.installationId,
               connectionId: binding.connectionId,
@@ -522,7 +502,6 @@ export function githubConnectionEventService(
       if (acknowledge.length > 0) {
         await connector.acknowledgeEvents({
           subject: first.subject,
-          companyId: first.companyId,
           leaseId: lease.leaseId,
           deliveryIds: acknowledge,
         });

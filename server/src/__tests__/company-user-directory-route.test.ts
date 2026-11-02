@@ -97,7 +97,7 @@ function createApp(actor: Express.Request["actor"]) {
   return app;
 }
 
-describe("GET /companies/:companyId/user-directory", () => {
+describe("GET /user-directory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -109,10 +109,10 @@ describe("GET /companies/:companyId/user-directory", () => {
       source: "session",
       isInstanceAdmin: false,
       companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", membershipRole: "operator", status: "active" }],
+      memberships: [{ membershipRole: "operator", status: "active" }],
     });
 
-    const res = await request(app).get("/api/companies/company-1/user-directory");
+    const res = await request(app).get("/api/user-directory");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({

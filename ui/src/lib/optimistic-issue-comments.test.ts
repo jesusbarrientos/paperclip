@@ -27,7 +27,6 @@ describe("optimistic issue comments", () => {
 
   it("creates a pending optimistic comment for the current user", () => {
     const comment = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Working on it",
       authorUserId: "board-1",
@@ -46,7 +45,6 @@ describe("optimistic issue comments", () => {
     const mathSpy = vi.spyOn(Math, "random").mockReturnValue(0.123456789);
 
     const comment = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Working on it",
       authorUserId: "board-1",
@@ -61,7 +59,6 @@ describe("optimistic issue comments", () => {
 
   it("supports queued optimistic comments for active-run follow-ups", () => {
     const comment = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Queue this",
       authorUserId: "board-1",
@@ -78,7 +75,6 @@ describe("optimistic issue comments", () => {
       [
         {
           id: "comment-2",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "board-1",
@@ -95,7 +91,6 @@ describe("optimistic issue comments", () => {
           id: "optimistic-1",
           clientId: "optimistic-1",
           clientStatus: "pending",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "board-1",
@@ -114,7 +109,6 @@ describe("optimistic issue comments", () => {
 
   it("reconciles an optimistic comment with its canonical server copy", () => {
     const optimistic = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Do not flash twice",
       authorUserId: "board-1",
@@ -132,13 +126,11 @@ describe("optimistic issue comments", () => {
 
   it("reconciles repeated identical comments one-for-one", () => {
     const first = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Same text",
       authorUserId: "board-1",
     });
     const second = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Same text",
       authorUserId: "board-1",
@@ -157,13 +149,11 @@ describe("optimistic issue comments", () => {
 
   it("keeps repeated identical optimistic comments when neither is persisted", () => {
     const first = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Same pending text",
       authorUserId: "board-1",
     });
     const second = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Same pending text",
       authorUserId: "board-1",
@@ -174,7 +164,6 @@ describe("optimistic issue comments", () => {
 
   it("can take one optimistic queued comment back out of the queue", () => {
     const first = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "First",
       authorUserId: "board-1",
@@ -182,7 +171,6 @@ describe("optimistic issue comments", () => {
       queueTargetRunId: "run-1",
     });
     const second = createOptimisticIssueComment({
-      companyId: "company-1",
       issueId: "issue-1",
       body: "Second",
       authorUserId: "board-1",
@@ -201,7 +189,6 @@ describe("optimistic issue comments", () => {
       [
         {
           id: "comment-1",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "board-1",
@@ -215,7 +202,6 @@ describe("optimistic issue comments", () => {
       ],
       {
         id: "comment-1",
-        companyId: "company-1",
         issueId: "issue-1",
         authorAgentId: null,
         authorUserId: "board-1",
@@ -237,7 +223,6 @@ describe("optimistic issue comments", () => {
       [
         {
           id: "comment-3",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "board-1",
@@ -252,7 +237,6 @@ describe("optimistic issue comments", () => {
       [
         {
           id: "comment-1",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "board-1",
@@ -265,7 +249,6 @@ describe("optimistic issue comments", () => {
         },
         {
           id: "comment-2",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "board-1",
@@ -292,7 +275,6 @@ describe("optimistic issue comments", () => {
         [
           {
             id: "comment-2",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -305,7 +287,6 @@ describe("optimistic issue comments", () => {
           },
           {
             id: "comment-1",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -392,7 +373,6 @@ describe("optimistic issue comments", () => {
         [
           {
             id: "comment-3",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -407,7 +387,6 @@ describe("optimistic issue comments", () => {
         [
           {
             id: "comment-1",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -422,7 +401,6 @@ describe("optimistic issue comments", () => {
       ],
       {
         id: "comment-4",
-        companyId: "company-1",
         issueId: "issue-1",
         authorAgentId: null,
         authorUserId: "board-1",
@@ -445,7 +423,6 @@ describe("optimistic issue comments", () => {
         [
           {
             id: "comment-3",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -460,7 +437,6 @@ describe("optimistic issue comments", () => {
         [
           {
             id: "comment-2",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -473,7 +449,6 @@ describe("optimistic issue comments", () => {
           },
           {
             id: "comment-1",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: null,
             authorUserId: "board-1",
@@ -498,7 +473,6 @@ describe("optimistic issue comments", () => {
     const next = applyOptimisticIssueCommentUpdate(
       {
         id: "issue-1",
-        companyId: "company-1",
         projectId: null,
         projectWorkspaceId: null,
         goalId: null,
@@ -554,7 +528,6 @@ describe("optimistic issue comments", () => {
     const next = applyOptimisticIssueFieldUpdate(
       {
         id: "issue-1",
-        companyId: "company-1",
         projectId: "project-1",
         projectWorkspaceId: "workspace-1",
         goalId: null,
@@ -609,7 +582,6 @@ describe("optimistic issue comments", () => {
         labels: [
           {
             id: "label-1",
-            companyId: "company-1",
             name: "One",
             color: "#111111",
             createdAt: new Date("2026-03-28T14:00:00.000Z"),
@@ -617,7 +589,6 @@ describe("optimistic issue comments", () => {
           },
           {
             id: "label-2",
-            companyId: "company-1",
             name: "Two",
             color: "#222222",
             createdAt: new Date("2026-03-28T14:00:00.000Z"),
@@ -647,7 +618,6 @@ describe("optimistic issue comments", () => {
         blocks: [],
         project: {
           id: "project-1",
-          companyId: "company-1",
           urlKey: "project-one",
           goalId: null,
           goalIds: [],
@@ -682,7 +652,6 @@ describe("optimistic issue comments", () => {
         },
         currentExecutionWorkspace: {
           id: "exec-1",
-          companyId: "company-1",
           projectId: "project-1",
           projectWorkspaceId: null,
           sourceIssueId: "issue-1",
@@ -747,7 +716,6 @@ describe("optimistic issue comments", () => {
     const issues: Issue[] = [
       {
         id: "issue-1",
-        companyId: "company-1",
         projectId: null,
         projectWorkspaceId: null,
         goalId: null,
@@ -791,7 +759,6 @@ describe("optimistic issue comments", () => {
       },
       {
         id: "issue-2",
-        companyId: "company-1",
         projectId: null,
         projectWorkspaceId: null,
         goalId: null,

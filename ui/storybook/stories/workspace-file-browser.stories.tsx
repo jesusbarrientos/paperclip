@@ -167,7 +167,6 @@ function Placement() {
         <h3 className="text-sm font-medium text-muted-foreground">Workspace</h3>
         <IssueWorkspaceCard
           issue={{
-            companyId: "company-1",
             projectId: "project-1",
             projectWorkspaceId: "pw-1",
             executionWorkspaceId: "ws-1",

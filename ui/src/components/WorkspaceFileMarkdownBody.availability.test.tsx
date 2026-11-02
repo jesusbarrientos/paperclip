@@ -25,11 +25,11 @@ vi.mock("@/lib/router", () => ({
   ),
   useLocation: () => ({ pathname: "/PAP/issues/PAP-1", search: "", hash: "", state: null }),
   useNavigate: () => mockNavigate,
-  useCaseHref: () => (identifier: string) => `/cases/${identifier}`,
+  caseHref: (identifier: string) => `/cases/${identifier}`,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useOptionalCompany: () => null,
+vi.mock("../context/OrganizationContext", () => ({
+  useOptionalOrganization: () => null,
 }));
 
 import { FileViewerProvider } from "@/context/FileViewerContext";

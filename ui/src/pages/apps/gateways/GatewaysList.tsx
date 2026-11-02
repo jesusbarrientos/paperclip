@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import type { ToolMcpGatewayWithTokens } from "@paperclipai/shared";
 import { useNavigate } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
@@ -32,7 +31,6 @@ export function GatewaysList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
@@ -46,34 +44,28 @@ export function GatewaysList() {
   }, [setBreadcrumbs]);
 
   const gatewaysQuery = useQuery({
-    queryKey: gatewaysQueryKey(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGateways(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: gatewaysQueryKey(),
+    queryFn: () => toolsApi.listGateways(),
   });
   const profilesQuery = useQuery({
-    queryKey: queryKeys.tools.profiles(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listProfiles(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId ?? "__none__"),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId ?? "__none__"),
-    queryFn: () => projectsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
   });
 
   const profileById = useMemo(
@@ -91,7 +83,7 @@ export function GatewaysList() {
 
   const toggleMutation = useMutation({
     mutationFn: ({ gateway }: { gateway: ToolMcpGatewayWithTokens }) =>
-      toolsApi.updateGateway(selectedCompanyId!, gateway.id, {
+      toolsApi.updateGateway(gateway.id, {
         status: isGatewayOn(gateway) ? "disabled" : "active",
       }),
     onSuccess: async (gateway) => {
@@ -103,7 +95,7 @@ export function GatewaysList() {
             : `${gateway.name} is off — every client goes silent.`,
         tone: "success",
       });
-      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey() });
     },
     onError: (error) =>
       pushToast({
@@ -113,9 +105,6 @@ export function GatewaysList() {
       }),
   });
 
-  if (!selectedCompanyId) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an organization to manage gateways.</div>;
-  }
 
   const gateways = gatewaysQuery.data?.gateways ?? [];
   const term = search.trim().toLowerCase();
@@ -299,7 +288,6 @@ export function GatewaysList() {
       )}
 
       <NewGatewayDialog
-        companyId={selectedCompanyId}
         open={creating}
         onOpenChange={setCreating}
         onCreated={(gatewayId) => navigate(gatewayTabHref(gatewayId, "overview"))}

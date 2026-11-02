@@ -5,7 +5,7 @@
   "name": "Interrupted run",
   "description": "A pending runtime permission request is followed by an explicit turn interruption.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_replay", "issueId": "issue_replay_interrupted",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_replay_interrupted",
     "runId": "run_replay_interrupted", "environmentLeaseId": "lease_replay_interrupted",
     "runnerInstanceId": "runner_replay", "normalizedSessionId": "session_replay_interrupted",
     "driverSessionId": "driver_replay_interrupted"

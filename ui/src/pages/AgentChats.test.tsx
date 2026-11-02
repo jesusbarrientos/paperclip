@@ -7,7 +7,6 @@ import { recordAgentChatVisit } from "@/lib/recent-agent-chats";
 import { AgentChats } from "./AgentChats";
 
 const state = vi.hoisted(() => ({
-  companyId: "company-a",
   userId: "user-a",
   agents: [] as Agent[],
   chats: [] as { id: string; conversationAgentId: string }[],
@@ -20,7 +19,6 @@ const state = vi.hoisted(() => ({
 vi.mock("@/context/BreadcrumbContext", () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }) }));
 vi.mock("@/hooks/useAgentChatNavigation", () => ({
   useAgentChatNavigation: () => ({
-    companyId: state.companyId,
     userId: state.userId,
     enabled: true,
     loaded: true,
@@ -38,8 +36,8 @@ vi.mock("@/components/AgentAvatar", () => ({ AgentAvatar: () => null }));
 
 let root: Root;
 let container: HTMLDivElement;
-const agent = (id: string, companyId = "company-a") => ({
-  id, companyId, name: id, urlKey: `${id}-slug`, role: "engineer", status: "idle",
+const agent = (id: string) => ({
+  id, name: id, urlKey: `${id}-slug`, role: "engineer", status: "idle",
 } as Agent);
 
 async function render() {
@@ -48,7 +46,6 @@ async function render() {
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  state.companyId = "company-a";
   state.userId = "user-a";
   state.agents = [agent("alice"), agent("bob")];
   state.chats = [];
@@ -57,10 +54,9 @@ beforeEach(() => {
   state.sessionError = null;
   state.navigate.mockReset();
   for (const id of ["alice", "bob", "removed", "retired-id"])
-    recordAgentChatVisit("company-a", "user-a", id, null);
-  localStorage.setItem("paperclip.recentAgentChats:company-a:user-a", "[]");
-  localStorage.setItem("paperclip.recentAgentChats:company-b:user-a", "[]");
-  localStorage.setItem("paperclip.recentAgentChats:company-a:user-b", "[]");
+    recordAgentChatVisit("user-a", id, null);
+  localStorage.setItem("paperclip.recentAgentChats:user-a", "[]");
+  localStorage.setItem("paperclip.recentAgentChats:user-b", "[]");
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -74,32 +70,31 @@ afterEach(async () => {
 
 describe("Chat landing", () => {
   it("opens the most recently visited agent and replaces the landing history entry", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice");
-    recordAgentChatVisit("company-a", "user-a", "bob");
+    recordAgentChatVisit("user-a", "alice");
+    recordAgentChatVisit("user-a", "bob");
     await render();
     expect(state.navigate).toHaveBeenCalledWith("/chats/bob-slug", { replace: true });
     expect(container.textContent).toContain("Opening chat");
   });
 
-  it("skips unavailable saved agents and preserves the company and user scope", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice");
-    recordAgentChatVisit("company-a", "user-a", "removed");
-    recordAgentChatVisit("company-b", "user-a", "other-company-agent");
-    recordAgentChatVisit("company-a", "user-b", "other-user-agent");
+  it("skips unavailable saved agents and preserves the user scope", async () => {
+    recordAgentChatVisit("user-a", "alice");
+    recordAgentChatVisit("user-a", "removed");
+    recordAgentChatVisit("user-b", "other-user-agent");
     await render();
     expect(state.navigate).toHaveBeenCalledWith("/chats/alice-slug", { replace: true });
   });
 
   it("reopens historical chats for agents missing from the active roster", async () => {
-    recordAgentChatVisit("company-a", "user-a", "retired-id");
+    recordAgentChatVisit("user-a", "retired-id");
     state.chats = [{ id: "chat-retired", conversationAgentId: "retired-id" }];
     await render();
     expect(state.navigate).toHaveBeenCalledWith("/chats/retired-id", { replace: true });
   });
 
   it("waits for history before skipping a recent historical chat", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice");
-    recordAgentChatVisit("company-a", "user-a", "retired-id");
+    recordAgentChatVisit("user-a", "alice");
+    recordAgentChatVisit("user-a", "retired-id");
     state.chatsFetched = false;
     await render();
     expect(state.navigate).not.toHaveBeenCalled();
@@ -110,22 +105,22 @@ describe("Chat landing", () => {
   });
 
   it("shows the chooser when no saved chat remains available", async () => {
-    recordAgentChatVisit("company-a", "user-a", "removed");
+    recordAgentChatVisit("user-a", "removed");
     await render();
     expect(state.navigate).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Who would you like to talk to?");
   });
 
   it("skips a saved conversation that is no longer accessible even when its agent remains available", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice");
-    recordAgentChatVisit("company-a", "user-a", "bob", "deleted-chat");
+    recordAgentChatVisit("user-a", "alice");
+    recordAgentChatVisit("user-a", "bob", "deleted-chat");
     state.chats = [{ id: "chat-alice", conversationAgentId: "alice" }];
     await render();
     expect(state.navigate).toHaveBeenCalledWith("/chats/alice-slug", { replace: true });
   });
 
   it("reopens an active agent when history fails", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice", "chat-alice");
+    recordAgentChatVisit("user-a", "alice", "chat-alice");
     state.chatsFetched = false;
     state.chatsError = new Error("History unavailable");
     await render();
@@ -133,14 +128,14 @@ describe("Chat landing", () => {
   });
 
   it("reopens a visited empty chat without waiting for history", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice", null);
+    recordAgentChatVisit("user-a", "alice", null);
     state.chatsFetched = false;
     await render();
     expect(state.navigate).toHaveBeenCalledWith("/chats/alice-slug", { replace: true });
   });
 
   it("shows a retry state when identity fails instead of waiting for disabled history", async () => {
-    recordAgentChatVisit("company-a", "user-a", "alice");
+    recordAgentChatVisit("user-a", "alice");
     state.sessionError = new Error("Session unavailable");
     state.chatsFetched = false;
     await render();

@@ -54,7 +54,7 @@ A watchdog has three fields:
 | Field            | Required | Notes                                                                                  |
 | ---------------- | -------- | -------------------------------------------------------------------------------------- |
 | Watched issue    | yes      | The issue you attach the watchdog to. Configured implicitly via the issue you edit.    |
-| Watchdog agent   | yes      | Any same-company, invokable agent. Cannot be paused, terminated, or budget-blocked.    |
+| Watchdog agent   | yes      | Any invokable agent. Cannot be paused, terminated, or budget-blocked.    |
 | Instructions     | no       | Free-form text (trimmed; empty becomes null). Can narrow focus; cannot expand authority.|
 
 A single watched issue holds **at most one active watchdog**. Re-assigning the agent or editing instructions invalidates the previously reviewed state and forces a fresh evaluation on the next scan.
@@ -80,7 +80,7 @@ DELETE /api/issues/:issueId/watchdog
 
 ## How a scan works
 
-Paperclip runs a watchdog reconciliation tick at server startup, at the end of each heartbeat cycle, and on demand after any mutation that could change the watched subtree (status, blockers, assignment, interactions). The tick is per-company and only walks active rows.
+Paperclip runs a watchdog reconciliation tick at server startup, at the end of each heartbeat cycle, and on demand after any mutation that could change the watched subtree (status, blockers, assignment, interactions). The tick covers the instance's organization and only walks active rows.
 
 For each active watchdog the tick:
 
@@ -106,7 +106,7 @@ On wake, the watchdog agent reads a fixed default mandate plus your custom instr
 
 The mandate also enforces safety constraints that custom instructions **cannot override**:
 
-- Stay inside the watched subtree. No cross-company mutations, no mutations outside the watched issue and its non-watchdog descendants.
+- Stay inside the watched subtree. No mutations outside the watched issue and its non-watchdog descendants.
 - No impersonating formal approvals, accepting spend or hiring decisions, using an interaction response as downstream authority, or bypassing execution-policy stages that require a typed reviewer or approver.
 - No creating another watchdog for the watched subtree. No waking itself. Exactly one reusable review task per watched issue.
 - Custom instructions can narrow focus or veto specific shortcuts. They cannot grant authority the server does not already give the watchdog.

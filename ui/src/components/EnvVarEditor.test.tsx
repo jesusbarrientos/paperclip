@@ -11,7 +11,6 @@ import { EnvironmentVariablesEditor } from "./environment-variables-editor";
 
 const definition: UserSecretDefinition = {
   id: "def-1",
-  companyId: "c1",
   key: "PERSONAL_GH_TOKEN",
   name: "Personal GitHub token",
   description: null,
@@ -93,7 +92,6 @@ describe("EnvironmentVariablesEditor user secret binding", () => {
   it("keeps working for company secrets when no user definitions are provided", async () => {
     const secret: CompanySecret = {
       id: "sec-1",
-      companyId: "c1",
       scope: "company",
       ownerUserId: null,
       userSecretDefinitionId: null,

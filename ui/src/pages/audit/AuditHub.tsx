@@ -4,7 +4,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageTabBar } from "@/components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
-import { useCompany } from "@/context/CompanyContext";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { Costs } from "@/pages/Costs";
 import { Timeline } from "@/pages/Timeline";
@@ -20,7 +19,6 @@ import {
 
 export function AuditHub({ section }: { section: AuditSection }) {
   const navigate = useNavigate();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [searchParams, setSearchParams] = useSearchParams();
   const scope = auditScopeFromSearchParams(searchParams);
@@ -77,9 +75,6 @@ export function AuditHub({ section }: { section: AuditSection }) {
     [setSearchParams],
   );
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={History} message="Select an organization to view Audit." />;
-  }
 
   return (
     <div className="space-y-6">
@@ -102,10 +97,9 @@ export function AuditHub({ section }: { section: AuditSection }) {
       </Tabs>
 
       {section === "activity" && routineId ? (
-        <RoutineAuditActivity companyId={selectedCompanyId} routineId={routineId} />
+        <RoutineAuditActivity routineId={routineId} />
       ) : section === "activity" ? (
         <AuditFeed
-          companyId={selectedCompanyId}
           hideHeader
           mode={mode}
           onModeChange={handleModeChange}
@@ -120,7 +114,7 @@ export function AuditHub({ section }: { section: AuditSection }) {
           }
         />
       ) : section === "runs" ? (
-        <AuditRuns companyId={selectedCompanyId} routineId={routineId} />
+        <AuditRuns routineId={routineId} />
       ) : section === "budgets" ? (
         <Costs embedded initialTab="budgets" lockTab />
       ) : section === "timeline" ? (

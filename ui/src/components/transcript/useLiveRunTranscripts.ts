@@ -57,7 +57,6 @@ export interface RunTranscriptSource {
 
 interface UseLiveRunTranscriptsOptions {
   runs: RunTranscriptSource[];
-  companyId?: string | null;
   /**
    * Compact chunk-count cap for ticker-style consumers (dashboard). When set,
    * trimming is silent — the historical behavior. Full task views omit this and
@@ -97,7 +96,6 @@ export function resolveInitialLogOffset(run: RunTranscriptSource, limitBytes: nu
 
 export function useLiveRunTranscripts({
   runs,
-  companyId,
   maxChunksPerRun,
   maxBytesPerRun = TASK_VIEW_MAX_BYTES_PER_RUN,
   logPollIntervalMs = LOG_POLL_INTERVAL_MS,
@@ -152,7 +150,7 @@ export function useLiveRunTranscripts({
   // Backoff state for the live event socket. Held outside the socket effect
   // because that effect restarts on run-metadata changes; per-effect state
   // would reset a progressed delay back to its base mid-outage.
-  const reconnectStateRef = useRef<{ companyId: string; attempt: number } | null>(null);
+  const reconnectStateRef = useRef({ attempt: 0 });
   const prevKnownRunIdsRef = useRef(new Set<string>());
   const [pruneTick, setPruneTick] = useState(0);
   const transcriptCacheRef = useRef(new Map<string, {
@@ -393,18 +391,12 @@ export function useLiveRunTranscripts({
 
   useEffect(() => {
     if (!visible || !enableRealtimeUpdates) return;
-    if (!companyId || activeRunIds.size === 0) return;
+    if (activeRunIds.size === 0) return;
 
     let closed = false;
     let reconnectTimer: number | null = null;
     let socket: WebSocket | null = null;
 
-    // The attempt counter lives in a ref keyed to the company: this effect
-    // restarts whenever run metadata changes, and a per-effect counter would
-    // reset the backoff to its base delay mid-outage on every such restart.
-    if (reconnectStateRef.current?.companyId !== companyId) {
-      reconnectStateRef.current = { companyId, attempt: 0 };
-    }
     const reconnectState = reconnectStateRef.current;
 
     // Exponential backoff (1.5s → 15s cap), mirroring LiveUpdatesProvider.
@@ -421,7 +413,7 @@ export function useLiveRunTranscripts({
     const connect = () => {
       if (closed) return;
       const url = buildSameOriginWebSocketUrl(
-        `/api/companies/${encodeURIComponent(companyId)}/events/ws`,
+        `/api/events/ws`,
       );
       socket = tryCreateWebSocket(url);
       if (!socket) {
@@ -445,7 +437,6 @@ export function useLiveRunTranscripts({
           return;
         }
 
-        if (event.companyId !== companyId) return;
         const payload = event.payload ?? {};
         const runId = readString(payload["runId"]);
         if (!runId || !activeRunIds.has(runId)) return;
@@ -525,7 +516,7 @@ export function useLiveRunTranscripts({
         }
       }
     };
-  }, [visible, activeRunIds, companyId, enableRealtimeUpdates, runById]);
+  }, [visible, activeRunIds, enableRealtimeUpdates, runById]);
 
   const transcriptByRun = useMemo(() => {
     const next = new Map<string, TranscriptEntry[]>();

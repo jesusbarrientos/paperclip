@@ -77,14 +77,12 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       issuePrefix: `RM${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
     const [agent] = await db.insert(agents).values({
-      companyId: company!.id,
       name: "Runtime MCP Agent",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: {},
     }).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company!.id,
       applicationKey: `runtime-${randomUUID().slice(0, 8)}`,
       name: "Runtime MCP App",
       type: "mcp_http",
@@ -92,7 +90,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     }).returning();
     const [installedConnection, uninstalledConnection] = await db.insert(toolConnections).values([
       {
-        companyId: company!.id,
         applicationId: application!.id,
         name: "Installed MCP",
         uid: `test/${randomUUID()}`,
@@ -102,7 +99,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
         config: { url: "https://installed.example.test/mcp" },
       },
       {
-        companyId: company!.id,
         applicationId: application!.id,
         name: "Uninstalled MCP",
         uid: `test/${randomUUID()}`,
@@ -113,13 +109,11 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       },
     ]).returning();
     const [profile] = await db.insert(toolProfiles).values({
-      companyId: company!.id,
       profileKey: `app:${installedConnection!.id}`,
       name: "Installed MCP",
       defaultAction: "deny",
     }).returning();
     await db.insert(toolProfileEntries).values({
-      companyId: company!.id,
       profileId: profile!.id,
       selectorType: "connection",
       effect: "include",
@@ -127,13 +121,11 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       connectionId: installedConnection!.id,
     });
     await db.insert(toolProfileBindings).values({
-      companyId: company!.id,
       profileId: profile!.id,
       targetType: "agent",
       targetId: agent!.id,
     });
     await db.insert(toolConnectionInstalls).values({
-      companyId: company!.id,
       connectionId: installedConnection!.id,
       targetType: "agent",
       targetId: agent!.id,
@@ -213,14 +205,12 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       issuePrefix: `RM${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company!.id,
       applicationKey: `runtime-${randomUUID().slice(0, 8)}`,
       name: "Runtime MCP App",
       type: "mcp_http",
       status: "active",
     }).returning();
     const [connection] = await db.insert(toolConnections).values({
-      companyId: company!.id,
       applicationId: application!.id,
       name: "Installed MCP",
       uid: `test/${randomUUID()}`,
@@ -230,13 +220,11 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       config: { url: "https://installed.example.test/mcp" },
     }).returning();
     const [profile] = await db.insert(toolProfiles).values({
-      companyId: company!.id,
       profileKey: `app:${connection!.id}`,
       name: "Installed MCP",
       defaultAction: "deny",
     }).returning();
     await db.insert(toolProfileEntries).values({
-      companyId: company!.id,
       profileId: profile!.id,
       selectorType: "connection",
       effect: "include",
@@ -246,26 +234,22 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     const seeded = [];
     for (let index = 0; index < count; index += 1) {
       const [agent] = await db.insert(agents).values({
-        companyId: company!.id,
         name: `Runtime MCP Agent ${index}`,
         role: "engineer",
         adapterType: "codex_local",
         adapterConfig: {},
       }).returning();
       await db.insert(toolProfileBindings).values({
-        companyId: company!.id,
         profileId: profile!.id,
         targetType: "agent",
         targetId: agent!.id,
       });
       await db.insert(toolConnectionInstalls).values({
-        companyId: company!.id,
         connectionId: connection!.id,
         targetType: "agent",
         targetId: agent!.id,
       });
       const [run] = await db.insert(heartbeatRuns).values({
-        companyId: company!.id,
         agentId: agent!.id,
         status: "running",
         contextSnapshot: {},
@@ -281,7 +265,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     const [gateway] = await db.select().from(toolMcpGateways);
     const service = createToolGatewayService(db);
     const otherToken = await service.createNamedGatewayToken({
-      companyId: owner!.agent.companyId,
       gatewayId: gateway!.id,
       body: {
         name: "Other agent run",
@@ -323,7 +306,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     await db.update(toolMcpGateways).set({ agentId: null }).where(eq(toolMcpGateways.id, gateway!.id));
     const service = createToolGatewayService(db);
     const token = await service.createNamedGatewayToken({
-      companyId: owner!.agent.companyId, gatewayId: gateway!.id,
+      gatewayId: gateway!.id,
       body: { name: "Other run", subjectType: "heartbeat_run", subjectId: other!.run.id,
         allowedActions: ["tools/list"], expiresAt: new Date(Date.now() + 60_000) },
       actor: { agentId: other!.agent.id },
@@ -355,7 +338,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       .where(eq(toolMcpGateways.id, gateway!.id));
     const service = createToolGatewayService(db);
     const token = await service.createNamedGatewayToken({
-      companyId: owner!.agent.companyId, gatewayId: gateway!.id,
+      gatewayId: gateway!.id,
       body: { name: "Other run", subjectType: "heartbeat_run", subjectId: other!.run.id,
         allowedActions: ["tools/list"], expiresAt: new Date(Date.now() + 60_000) },
       actor: { agentId: other!.agent.id },
@@ -403,17 +386,16 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
         .resolves.toBeNull();
     }
     const [sharedProfile] = await db.insert(toolProfiles).values({
-      companyId: owner!.agent.companyId, profileKey: `shared:${randomUUID()}`,
+      profileKey: `shared:${randomUUID()}`,
       name: "Explicit shared profile", defaultAction: "deny",
     }).returning();
     const [nativeEntry] = await db.select().from(toolProfileEntries).where(eq(toolProfileEntries.profileId, gateway!.profileId));
     await db.insert(toolProfileEntries).values({
-      companyId: owner!.agent.companyId, profileId: sharedProfile!.id, selectorType: "connection", effect: "include",
+      profileId: sharedProfile!.id, selectorType: "connection", effect: "include",
       applicationId: nativeEntry!.applicationId, connectionId: nativeEntry!.connectionId,
     });
     const service = createToolGatewayService(db);
     const shared = await service.createNamedGateway({
-      companyId: owner!.agent.companyId,
       body: { name: "Explicit company gateway", slug: `shared-${randomUUID()}`, profileId: sharedProfile!.id,
         defaultProfileMode: "gateway_only" },
       actor: { agentId: owner!.agent.id },
@@ -422,7 +404,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       config: {}, projectId: null, issueId: null });
     expect(managed?.gateways.map((entry) => entry.id)).toEqual([shared.id]);
     const token = await service.createNamedGatewayToken({
-      companyId: owner!.agent.companyId, gatewayId: shared.id,
+      gatewayId: shared.id,
       body: { name: "Shared run", subjectType: "heartbeat_run", subjectId: other!.run.id,
         allowedActions: ["tools/list"], expiresAt: new Date(Date.now() + 60_000) },
       actor: { agentId: other!.agent.id },
@@ -449,19 +431,19 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       issuePrefix: `LM${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
     const [agent, gatewayReader] = await db.insert(agents).values([
-      { companyId: company!.id, name: "Cursor Cloud", role: "engineer", adapterType: "cursor_cloud" },
-      { companyId: company!.id, name: "Gateway reader", role: "engineer", adapterType: "cursor_cloud" },
+      { name: "Cursor Cloud", role: "engineer", adapterType: "cursor_cloud" },
+      { name: "Gateway reader", role: "engineer", adapterType: "cursor_cloud" },
     ]).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company!.id, applicationKey: "large-mcp", name: "Large MCP", type: "mcp_http",
+      applicationKey: "large-mcp", name: "Large MCP", type: "mcp_http",
     }).returning();
     const [connection] = await db.insert(toolConnections).values({
-      companyId: company!.id, applicationId: application!.id,
+      applicationId: application!.id,
       name: "Large MCP", uid: `test/${randomUUID()}`, transport: "mcp_remote", status: "active", enabled: true,
       config: { url: "https://large.example.test/mcp" },
     }).returning();
     const catalogInput = (name: string) => ({
-      companyId: company!.id, applicationId: application!.id, connectionId: connection!.id,
+      applicationId: application!.id, connectionId: connection!.id,
       name, toolName: name, versionHash: "fixture", status: "active" as const,
     });
     const catalog = await db.insert(toolCatalogEntries).values([
@@ -473,25 +455,25 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     // Multiple valid profiles can each have fewer than 250 entries while their
     // union exceeds the HTTP edit-request limit.
     const profiles = await db.insert(toolProfiles).values(["first", "second"].map((key) => ({
-      companyId: company!.id, profileKey: key, name: key, defaultAction: "deny" as const,
+      profileKey: key, name: key, defaultAction: "deny" as const,
     }))).returning();
     await db.insert(toolProfileEntries).values([
       ...[...allowed, excluded].map((tool, index) => ({
-        companyId: company!.id, profileId: profiles[index < 200 ? 0 : 1]!.id,
+        profileId: profiles[index < 200 ? 0 : 1]!.id,
         selectorType: "catalog_entry" as const, effect: "include" as const,
         applicationId: application!.id, connectionId: connection!.id, catalogEntryId: tool.id,
       })),
       {
-        companyId: company!.id, profileId: profiles[1]!.id,
+        profileId: profiles[1]!.id,
         selectorType: "catalog_entry" as const, effect: "exclude" as const,
         applicationId: application!.id, connectionId: connection!.id, catalogEntryId: excluded.id,
       },
     ]);
     await db.insert(toolProfileBindings).values(profiles.map((profile) => ({
-      companyId: company!.id, profileId: profile.id, targetType: "agent" as const, targetId: agent!.id,
+      profileId: profile.id, targetType: "agent" as const, targetId: agent!.id,
     })));
     await db.insert(toolConnectionInstalls).values({
-      companyId: company!.id, connectionId: connection!.id, targetType: "agent", targetId: agent!.id,
+      connectionId: connection!.id, targetType: "agent", targetId: agent!.id,
     });
 
     const servers = await buildPaperclipRuntimeMcpServers({ db, agent: agent!, runId: randomUUID() });
@@ -507,9 +489,9 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     // including a tool discovered after the immutable profile was created.
     await db.insert(toolCatalogEntries).values(catalogInput("new_after_snapshot"));
     await db.insert(toolProfileBindings).values({
-      companyId: company!.id, profileId: gateway!.profileId!, targetType: "agent", targetId: gatewayReader!.id,
+      profileId: gateway!.profileId!, targetType: "agent", targetId: gatewayReader!.id,
     });
-    const effective = await toolAccessService(db).getEffectiveProfilesForAgent(company!.id, gatewayReader!.id);
+    const effective = await toolAccessService(db).getEffectiveProfilesForAgent(gatewayReader!.id);
     expect(effective.allowedTools.map((tool) => tool.id).sort()).toEqual(allowed.map((tool) => tool.id).sort());
     expect(effective.allowedToolNames).not.toContain("excluded");
     expect(effective.allowedToolNames).not.toContain("unassigned");
@@ -533,14 +515,12 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert);
     const [agent] = await db.insert(agents).values({
-      companyId: company!.id,
       name: "Dedicated GitHub Agent",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: {},
     }).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company!.id,
       applicationKey: `github-${randomUUID().slice(0, 8)}`,
       name: "GitHub",
       type: "mcp_http",
@@ -549,7 +529,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     }).returning();
     const [personal, dedicated] = await db.insert(toolConnections).values([
       {
-        companyId: company!.id,
         applicationId: application!.id,
         name: "Responsible user's GitHub",
         uid: `github/${randomUUID()}`,
@@ -562,7 +541,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
         transportConfig: { sourceTemplateKey: "github" },
       },
       {
-        companyId: company!.id,
         applicationId: application!.id,
         name: "Dedicated GitHub",
         uid: `github/${randomUUID()}`,
@@ -577,7 +555,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     ]).returning();
     await db.insert(connectionGrants).values([
       {
-        companyId: company!.id,
         connectionId: personal!.id,
         kind: "user",
         subjectUserId: "responsible-user",
@@ -585,7 +562,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
         isDefault: false,
       },
       {
-        companyId: company!.id,
         connectionId: dedicated!.id,
         kind: "agent",
         subjectAgentId: agent!.id,
@@ -595,26 +571,22 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     ]);
     await db.insert(toolConnectionInstalls).values([
       {
-        companyId: company!.id,
         connectionId: personal!.id,
         targetType: "company",
         targetId: company!.id,
       },
       {
-        companyId: company!.id,
         connectionId: dedicated!.id,
         targetType: "agent",
         targetId: agent!.id,
       },
     ]);
     const [profile] = await db.insert(toolProfiles).values({
-      companyId: company!.id,
       profileKey: `github-identities:${agent!.id}`,
       name: "GitHub identities",
       defaultAction: "deny",
     }).returning();
     await db.insert(toolProfileEntries).values([personal!, dedicated!].map((connection) => ({
-      companyId: company!.id,
       profileId: profile!.id,
       selectorType: "connection" as const,
       effect: "include" as const,
@@ -622,13 +594,11 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       connectionId: connection.id,
     })));
     await db.insert(toolProfileBindings).values({
-      companyId: company!.id,
       profileId: profile!.id,
       targetType: "agent",
       targetId: agent!.id,
     });
     const [run] = await db.insert(heartbeatRuns).values({
-      companyId: company!.id,
       agentId: agent!.id,
       status: "running",
       responsibleUserId: "responsible-user",
@@ -651,21 +621,18 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       issuePrefix: `RD${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
     const [agent] = await db.insert(agents).values({
-      companyId: company!.id,
       name: "Runtime MCP Diagnostic Agent",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: {},
     }).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company!.id,
       applicationKey: `runtime-diagnostic-${randomUUID().slice(0, 8)}`,
       name: "Zapier",
       type: "mcp_http",
       status: "active",
     }).returning();
     const [connection] = await db.insert(toolConnections).values({
-      companyId: company!.id,
       applicationId: application!.id,
       name: "Zapier",
       uid: `test/${randomUUID()}`,
@@ -675,13 +642,11 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       config: { url: "https://zapier.example.test/mcp" },
     }).returning();
     const [profile] = await db.insert(toolProfiles).values({
-      companyId: company!.id,
       profileKey: `app:${connection!.id}`,
       name: "Zapier",
       defaultAction: "deny",
     }).returning();
     await db.insert(toolProfileEntries).values({
-      companyId: company!.id,
       profileId: profile!.id,
       selectorType: "connection",
       effect: "include",
@@ -689,7 +654,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       connectionId: connection!.id,
     });
     await db.insert(toolProfileBindings).values({
-      companyId: company!.id,
       profileId: profile!.id,
       targetType: "agent",
       targetId: agent!.id,
@@ -697,7 +661,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: company!.id,
       agentId: agent!.id,
       status: "running",
       contextSnapshot: {},
@@ -711,7 +674,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       .from(activityLog)
       .where(eq(activityLog.action, "tool_gateway.runtime_mcp_delivery"));
     expect(activity).toMatchObject({
-      companyId: company!.id,
       agentId: agent!.id,
       runId,
       details: expect.objectContaining({
@@ -723,7 +685,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     });
     const [audit] = await db.select().from(toolAccessAuditEvents);
     expect(audit).toMatchObject({
-      companyId: company!.id,
       actorType: "agent",
       actorId: agent!.id,
       reasonCode: "permitted_connections_not_installed",
@@ -737,14 +698,12 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       issuePrefix: `MG${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
     const [agent] = await db.insert(agents).values({
-      companyId: company!.id,
       name: "Managed Gateway Agent",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: {},
     }).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company!.id,
       applicationKey: `managed-gateway-${randomUUID().slice(0, 8)}`,
       name: "Managed Gateway App",
       type: "mcp_http",
@@ -752,7 +711,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     }).returning();
     const connections = await db.insert(toolConnections).values([
       {
-        companyId: company!.id,
         applicationId: application!.id,
         name: "Installed gateway connection",
         uid: `test/${randomUUID()}`,
@@ -761,7 +719,6 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
         enabled: true,
       },
       {
-        companyId: company!.id,
         applicationId: application!.id,
         name: "Uninstalled gateway connection",
         uid: `test/${randomUUID()}`,
@@ -771,27 +728,23 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       },
     ]).returning();
     const profiles = await db.insert(toolProfiles).values(connections.map((connection) => ({
-      companyId: company!.id,
       profileKey: `gateway:${connection.id}`,
       name: connection.name,
       defaultAction: "deny" as const,
     }))).returning();
     await db.insert(toolProfileEntries).values(profiles.map((profile, index) => ({
-      companyId: company!.id,
       profileId: profile.id,
       selectorType: "connection" as const,
       effect: "include" as const,
       connectionId: connections[index]!.id,
     })));
     const gateways = await db.insert(toolMcpGateways).values(profiles.map((profile, index) => ({
-      companyId: company!.id,
       name: `${connections[index]!.name} gateway`,
       slug: `gateway-${index}-${randomUUID().slice(0, 8)}`,
       profileId: profile.id,
       status: "active" as const,
     }))).returning();
     await db.insert(toolConnectionInstalls).values({
-      companyId: company!.id,
       connectionId: connections[0]!.id,
       targetType: "agent",
       targetId: agent!.id,

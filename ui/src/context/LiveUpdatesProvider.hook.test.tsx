@@ -9,11 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../lib/queryKeys";
 
 const { pushToast } = vi.hoisted(() => ({ pushToast: vi.fn(() => "toast-id") }));
-vi.mock("./CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1", selectedCompany: { id: "company-1" } }),
+vi.mock("./OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1" } }),
 }));
 vi.mock("./ToastContext", () => ({ useToastActions: () => ({ pushToast }) }));
-vi.mock("../lib/router", () => ({ useLocation: () => ({ pathname: "/PAP/issues/PAP-204" }) }));
+vi.mock("../lib/router", () => ({ useLocation: () => ({ pathname: "/issues/PAP-204" }) }));
 vi.mock("../api/auth", () => ({
   authApi: { getSession: async () => ({ user: { id: "viewer" }, session: { id: "session", userId: "viewer" } }) },
 }));
@@ -35,7 +35,6 @@ function act(callback: () => void) {
 function progressEvent(overrides: Partial<LiveEvent> = {}): LiveEvent {
   return {
     id: 1,
-    companyId: "company-1",
     type: "heartbeat.run.progress",
     createdAt: "2026-07-15T00:00:00.000Z",
     payload: { issueId: "issue-1", message: "reviewing 14 open issues" },
@@ -90,7 +89,7 @@ describe("useCompanyLiveEvent", () => {
     const received: LiveEvent[] = [];
     const subscribers = renderWithSubscription((event) => received.push(event));
 
-    act(() => dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent()));
+    act(() => dispatchLiveEventToSubscribers(subscribers, progressEvent()));
 
     expect(received).toHaveLength(1);
     expect(received[0].payload.message).toBe("reviewing 14 open issues");
@@ -103,7 +102,7 @@ describe("useCompanyLiveEvent", () => {
     act(() => root?.unmount());
     root = null;
 
-    act(() => dispatchLiveEventToSubscribers(subscribers, "company-1", progressEvent()));
+    act(() => dispatchLiveEventToSubscribers(subscribers, progressEvent()));
 
     expect(received).toHaveLength(0);
   });
@@ -138,10 +137,10 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
     queryClient.setQueryData(queryKeys.issues.detail("PAP-204"), {
       id: "root", companyId: "company-1", identifier: "PAP-204", assigneeAgentId: "parent-agent",
     });
-    queryClient.setQueryData(queryKeys.issues.listByDescendantRoot("company-1", "root"), [
+    queryClient.setQueryData(queryKeys.issues.listByDescendantRoot("root"), [
       { id: "child", companyId: "company-1", identifier: "PAP-205", assigneeAgentId: "child-agent", executionRunId: "child-run" },
     ]);
-    queryClient.setQueryData(queryKeys.liveRuns("company-1"), [
+    queryClient.setQueryData(queryKeys.liveRuns(), [
       { id: "child-run", issueId: "child", agentId: "child-agent", status: "running" },
     ]);
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -264,7 +263,7 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
   it("suppresses an exact descendant run before terminal cache removal", async () => {
     await receiveStatus({ runId: "child-run", agentId: "child-agent", status: "cancelled" });
     expect(pushToast).not.toHaveBeenCalled();
-    expect(queryClient.getQueryData(queryKeys.liveRuns("company-1"))).toEqual([]);
+    expect(queryClient.getQueryData(queryKeys.liveRuns())).toEqual([]);
   });
 
   it("keeps a stopped visible task quiet when its retryable status follows live-cache eviction", async () => {
@@ -273,7 +272,7 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
     queryClient.setQueryData(queryKeys.issues.runs("root"), [
       { runId: "parent-run", agentId: "parent-agent", status: "cancelled" },
     ]);
-    queryClient.setQueryData(queryKeys.liveRuns("company-1"), [
+    queryClient.setQueryData(queryKeys.liveRuns(), [
       {
         id: "parent-run",
         issueId: "root",
@@ -289,7 +288,7 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
       triggerDetail: "system",
     });
     expect(pushToast).not.toHaveBeenCalled();
-    expect(queryClient.getQueryData(queryKeys.liveRuns("company-1"))).toEqual(
+    expect(queryClient.getQueryData(queryKeys.liveRuns())).toEqual(
       [],
     );
     expect(
@@ -392,15 +391,14 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
       triggerDetail: "system",
     });
     expect(pushToast).not.toHaveBeenCalled();
-    expect(queryClient.getQueryData(queryKeys.liveRuns("company-1"))).toEqual(
+    expect(queryClient.getQueryData(queryKeys.liveRuns())).toEqual(
       [],
     );
     queryClient.setQueryData(
-      queryKeys.issues.listByDescendantRoot("company-1", "root"),
+      queryKeys.issues.listByDescendantRoot("root"),
       [
         {
           id: "child",
-          companyId: "company-1",
           identifier: "PAP-205",
           assigneeAgentId: "child-agent",
           executionRunId: null,
@@ -432,13 +430,12 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
   ] as const)(
     "uses the current descendant's exact %s %s cache",
     async (ref, cache) => {
-      queryClient.setQueryData(queryKeys.liveRuns("company-1"), []);
+      queryClient.setQueryData(queryKeys.liveRuns(), []);
       queryClient.setQueryData(
-        queryKeys.issues.listByDescendantRoot("company-1", "root"),
+        queryKeys.issues.listByDescendantRoot("root"),
         [
           {
             id: "child",
-            companyId: "company-1",
             identifier: "PAP-205",
             assigneeAgentId: "child-agent",
             executionRunId: null,
@@ -474,15 +471,14 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
     "unrelated same-agent run",
     "removed descendant",
   ])("retains child-history notifications for %s", async (scope) => {
-    queryClient.setQueryData(queryKeys.liveRuns("company-1"), []);
+    queryClient.setQueryData(queryKeys.liveRuns(), []);
     queryClient.setQueryData(
-      queryKeys.issues.listByDescendantRoot("company-1", "root"),
+      queryKeys.issues.listByDescendantRoot("root"),
       scope === "removed descendant"
         ? []
         : [
             {
               id: "child",
-              companyId: "company-1",
               identifier: "PAP-205",
               assigneeAgentId: "child-agent",
               executionRunId: null,
@@ -519,13 +515,12 @@ describe("LiveUpdatesProvider socket run notification scope", () => {
   it.each(["child", "unrelated"])(
     "routes a never-visited child's retryable status by its explicit %s task",
     async (issueId) => {
-      queryClient.setQueryData(queryKeys.liveRuns("company-1"), []);
+      queryClient.setQueryData(queryKeys.liveRuns(), []);
       queryClient.setQueryData(
-        queryKeys.issues.listByDescendantRoot("company-1", "root"),
+        queryKeys.issues.listByDescendantRoot("root"),
         [
           {
             id: "child",
-            companyId: "company-1",
             identifier: "PAP-205",
             assigneeAgentId: "child-agent",
             executionRunId: null,

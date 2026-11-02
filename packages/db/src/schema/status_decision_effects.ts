@@ -8,7 +8,6 @@ import {
   jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { statusDecisions } from "./status_decisions.js";
 
@@ -16,7 +15,6 @@ export const statusDecisionEffects = pgTable(
   "status_decision_effects",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     issueId: uuid("issue_id").notNull(),
     decisionId: uuid("decision_id").notNull(),
     ordinal: integer("ordinal").notNull(),
@@ -35,13 +33,13 @@ export const statusDecisionEffects = pgTable(
   },
   (table) => ({
     issueCompanyFk: foreignKey({
-      columns: [table.companyId, table.issueId],
-      foreignColumns: [issues.companyId, issues.id],
+      columns: [table.issueId],
+      foreignColumns: [issues.id],
       name: "status_decision_effects_issue_company_fk",
     }),
     decisionOwnerFk: foreignKey({
-      columns: [table.companyId, table.issueId, table.decisionId],
-      foreignColumns: [statusDecisions.companyId, statusDecisions.issueId, statusDecisions.id],
+      columns: [table.issueId, table.decisionId],
+      foreignColumns: [statusDecisions.issueId, statusDecisions.id],
       name: "status_decision_effects_decision_owner_fk",
     }),
     decisionOrdinalUq: uniqueIndex("status_decision_effects_decision_ordinal_uq").on(
@@ -49,7 +47,6 @@ export const statusDecisionEffects = pgTable(
       table.ordinal,
     ),
     idempotencyUq: uniqueIndex("status_decision_effects_company_idempotency_uq").on(
-      table.companyId,
       table.idempotencyKey,
     ),
   }),

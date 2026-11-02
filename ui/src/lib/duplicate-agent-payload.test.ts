@@ -5,7 +5,6 @@ import type { AgentDetail } from "@paperclipai/shared";
 
 const baseAgent: AgentDetail = {
   id: "agent-1",
-  companyId: "company-1",
   name: "Senior Product Engineer",
   urlKey: "senior-product-engineer",
   role: "engineer",

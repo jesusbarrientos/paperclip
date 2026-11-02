@@ -8,10 +8,6 @@ const mockStorage = vi.hoisted(() => ({
   headObject: vi.fn(),
 }));
 
-vi.mock("../services/organization.js", () => ({
-  organizationService: () => ({ findId: async () => "company-1" }),
-}));
-
 vi.mock("../storage/index.js", () => ({
   getStorageService: () => mockStorage,
 }));
@@ -25,6 +21,9 @@ function createSelectChain(rows: unknown[]) {
       return query;
     },
     where() {
+      return Promise.resolve(rows);
+    },
+    limit() {
       return Promise.resolve(rows);
     },
   };
@@ -72,10 +71,9 @@ describe("GET /invites/:token/logo", () => {
     mockStorage.headObject.mockReset();
   });
 
-  it("serves the company logo for an active invite without company auth", async () => {
+  it("serves the company logo for an active invite without organization auth", async () => {
     const invite = {
       id: "invite-1",
-      companyId: "company-1",
       inviteType: "company_join",
       allowedJoinTypes: "human",
       tokenHash: "hash",
@@ -99,7 +97,6 @@ describe("GET /invites/:token/logo", () => {
     });
     const app = createApp(
       createDbStub([invite], [{
-        companyId: "company-1",
         objectKey: "assets/companies/logo-1",
         contentType: "image/png",
         byteSize: 3,
@@ -111,14 +108,13 @@ describe("GET /invites/:token/logo", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("image/png");
-    expect(mockStorage.headObject).toHaveBeenCalledWith("company-1", "assets/companies/logo-1");
-    expect(mockStorage.getObject).toHaveBeenCalledWith("company-1", "assets/companies/logo-1");
+    expect(mockStorage.headObject).toHaveBeenCalledWith("assets/companies/logo-1");
+    expect(mockStorage.getObject).toHaveBeenCalledWith("assets/companies/logo-1");
   });
 
   it("returns 404 when the logo asset record exists but storage does not", async () => {
     const invite = {
       id: "invite-1",
-      companyId: "company-1",
       inviteType: "company_join",
       allowedJoinTypes: "human",
       tokenHash: "hash",
@@ -133,7 +129,6 @@ describe("GET /invites/:token/logo", () => {
     mockStorage.headObject.mockResolvedValue({ exists: false });
     const app = createApp(
       createDbStub([invite], [{
-        companyId: "company-1",
         objectKey: "assets/companies/logo-1",
         contentType: "image/png",
         byteSize: 3,

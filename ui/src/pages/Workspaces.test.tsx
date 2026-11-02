@@ -21,8 +21,8 @@ const mockSummarySlotCard = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/execution-workspaces", () => ({ executionWorkspacesApi: mockExecutionWorkspacesApi }));
 vi.mock("../api/instanceSettings", () => ({ instanceSettingsApi: mockInstanceSettingsApi }));
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 vi.mock("../context/BreadcrumbContext", () => ({
   useBreadcrumbs: () => ({ setBreadcrumbs: mockSetBreadcrumbs }),
@@ -181,11 +181,10 @@ describe("Workspaces", () => {
     await flushQueries();
 
     expect(mockInstanceSettingsApi.getExperimental).toHaveBeenCalled();
-    expect(mockExecutionWorkspacesApi.listOverview).toHaveBeenCalledWith("company-1", { offset: 0 });
+    expect(mockExecutionWorkspacesApi.listOverview).toHaveBeenCalledWith({ offset: 0 });
     expect(mockExecutionWorkspacesApi.list).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Workspaces summary card");
     expect(mockSummarySlotCard).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       scopeKind: "workspaces_overview",
       title: "Workspace summary",
     }));
@@ -207,7 +206,7 @@ describe("Workspaces", () => {
     });
     await flushQueries();
 
-    expect(mockExecutionWorkspacesApi.listOverview).toHaveBeenLastCalledWith("company-1", { offset: 50 });
+    expect(mockExecutionWorkspacesApi.listOverview).toHaveBeenLastCalledWith({ offset: 50 });
     expect(container.textContent).toContain("Workspace Beta");
     expect(container.textContent).toContain("PAP-11917");
   });

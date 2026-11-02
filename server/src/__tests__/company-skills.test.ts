@@ -177,7 +177,6 @@ describe("project workspace skill discovery", () => {
     await fs.writeFile(path.join(workspace, "src", "index.ts"), "export {};\n", "utf8");
 
     const imported = await readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       workspace,
       { inventoryMode: "project_root", metadata: { sourceKind: "project_scan" } },
     );
@@ -202,7 +201,6 @@ describe("project workspace skill discovery", () => {
     await fs.symlink(outsideFile, path.join(skillDir, "references", "outside.md"));
 
     await expect(readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       skillDir,
       { inventoryMode: "full", workspaceRoot: workspace },
     )).rejects.toThrow(/symbolic link/);
@@ -230,7 +228,6 @@ describe("project workspace skill discovery", () => {
     );
 
     const imported = await readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       workspace,
       { inventoryMode: "full" },
     );
@@ -313,17 +310,14 @@ describe("project workspace skill discovery", () => {
     );
 
     const folded = await readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       foldedWorkspace,
       { inventoryMode: "full" },
     );
     const literal = await readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       literalWorkspace,
       { inventoryMode: "full" },
     );
     const strip = await readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       stripWorkspace,
       { inventoryMode: "full" },
     );
@@ -359,7 +353,6 @@ describe("project workspace skill discovery", () => {
     );
 
     const imported = await readLocalSkillImportFromDirectory(
-      "33333333-3333-4333-8333-333333333333",
       workspace,
       { inventoryMode: "full" },
     );

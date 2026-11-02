@@ -187,7 +187,6 @@ export interface PipelineCaseDocumentPayload {
 
 export interface PipelineCaseDocumentRevision {
   id: string;
-  companyId: string;
   documentId: string;
   caseId: string;
   key: string;

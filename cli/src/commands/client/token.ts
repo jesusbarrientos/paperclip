@@ -11,13 +11,11 @@ import {
 } from "./common.js";
 
 interface AgentTokenOptions extends BaseClientOptions {
-  companyId?: string;
   agent?: string;
   name?: string;
 }
 
 interface BoardTokenOptions extends BaseClientOptions {
-  companyId?: string;
   name?: string;
   expiresAt?: string;
   ttlDays?: string;
@@ -66,13 +64,12 @@ export function registerTokenCommands(program: Command): void {
     agent
       .command("create")
       .description("Create an agent API key")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--agent <agent>", "Agent ID, shortname, or unambiguous name")
       .option("--name <name>", "API key label", "cli-agent")
       .action(async (opts: AgentTokenOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const agentRow = await resolveAgent(ctx.api, ctx.companyId ?? "", opts.agent ?? "");
+          const ctx = resolveCommandContext(opts);
+          const agentRow = await resolveAgent(ctx.api, opts.agent ?? "");
           const payload = createAgentKeySchema.parse({ name: opts.name });
           const key = await ctx.api.post<CreatedAgentKey>(apiPath`/api/agents/${agentRow.id}/keys`, payload);
           if (!key) throw new Error("Failed to create agent API key");
@@ -80,7 +77,6 @@ export function registerTokenCommands(program: Command): void {
             {
               agentId: agentRow.id,
               agentName: agentRow.name,
-              companyId: agentRow.companyId,
               key,
             },
             { json: ctx.json },
@@ -88,23 +84,21 @@ export function registerTokenCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
     agent
       .command("list")
       .description("List agent API keys")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--agent <agent>", "Agent ID, shortname, or unambiguous name")
       .action(async (opts: AgentTokenOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const agentRow = await resolveAgent(ctx.api, ctx.companyId ?? "", opts.agent ?? "");
+          const ctx = resolveCommandContext(opts);
+          const agentRow = await resolveAgent(ctx.api, opts.agent ?? "");
           const keys = (await ctx.api.get<AgentKeyRow[]>(apiPath`/api/agents/${agentRow.id}/keys`)) ?? [];
           if (ctx.json) {
-            printOutput({ agentId: agentRow.id, companyId: agentRow.companyId, keys }, { json: true });
+            printOutput({ agentId: agentRow.id, keys }, { json: true });
             return;
           }
           for (const key of keys) {
@@ -114,8 +108,7 @@ export function registerTokenCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -123,19 +116,17 @@ export function registerTokenCommands(program: Command): void {
       .command("revoke")
       .description("Revoke an agent API key")
       .argument("<keyId>", "Agent API key ID")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--agent <agent>", "Agent ID, shortname, or unambiguous name")
       .action(async (keyId: string, opts: AgentTokenOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const agentRow = await resolveAgent(ctx.api, ctx.companyId ?? "", opts.agent ?? "");
+          const ctx = resolveCommandContext(opts);
+          const agentRow = await resolveAgent(ctx.api, opts.agent ?? "");
           const result = await ctx.api.delete<{ ok: true; keyId?: string }>(apiPath`/api/agents/${agentRow.id}/keys/${keyId}`);
-          printOutput({ ok: true, agentId: agentRow.id, companyId: agentRow.companyId, ...(result ?? {}) }, { json: ctx.json });
+          printOutput({ ok: true, agentId: agentRow.id, ...(result ?? {}) }, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   const board = token.command("board").description("Manage board API keys");
@@ -144,7 +135,6 @@ export function registerTokenCommands(program: Command): void {
     board
       .command("create")
       .description("Create a named board API key")
-      .option("-C, --company-id <id>", "Company ID used for audit context")
       .option("--name <name>", "API key label", "cli-board")
       .option("--expires-at <iso8601>", "Expiration timestamp")
       .option("--ttl-days <days>", "Expiration in days from now")
@@ -155,7 +145,6 @@ export function registerTokenCommands(program: Command): void {
           const expiresAt = resolveBoardKeyExpiresAt(opts);
           const payload = createBoardApiKeySchema.parse({
             name: opts.name,
-            requestedCompanyId: opts.companyId ?? ctx.companyId ?? null,
             expiresAt,
           });
           const key = await ctx.api.post<CreatedBoardKey>("/api/board-api-keys", payload);
@@ -164,8 +153,7 @@ export function registerTokenCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -214,17 +202,11 @@ export function registerTokenCommands(program: Command): void {
   );
 }
 
-async function resolveAgent(api: { get<T>(path: string): Promise<T | null> }, companyId: string, agentRef: string): Promise<Agent> {
+async function resolveAgent(api: { get<T>(path: string): Promise<T | null> }, agentRef: string): Promise<Agent> {
   const trimmed = agentRef.trim();
   if (!trimmed) throw new Error("Agent reference is required");
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)) {
-    const agent = await api.get<Agent>(apiPath`/api/agents/${trimmed}`);
-    if (!agent || agent.companyId !== companyId) throw new Error(`Agent not found: ${agentRef}`);
-    return agent;
-  }
-  const query = new URLSearchParams({ companyId });
-  const agent = await api.get<Agent>(`${apiPath`/api/agents/${trimmed}`}?${query.toString()}`);
-  if (!agent || agent.companyId !== companyId) throw new Error(`Agent not found: ${agentRef}`);
+  const agent = await api.get<Agent>(apiPath`/api/agents/${trimmed}`);
+  if (!agent) throw new Error(`Agent not found: ${agentRef}`);
   return agent;
 }
 

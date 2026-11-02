@@ -5,16 +5,15 @@ import { formatDateTime } from "@/lib/utils";
 import { ApiKeyCredentialField } from "./ApiKeyCredentialField";
 import { AGENTMAIL_API_KEYS_URL } from "./AgentMailApiKeyField";
 
-export function AgentMailCredentialField({ companyId, connectionId, onConnectionChange, value, onChange, disabled }: {
-  companyId: string;
+export function AgentMailCredentialField({ connectionId, onConnectionChange, value, onChange, disabled }: {
   connectionId: string | null;
   onConnectionChange(id: string): void;
   value: string;
   onChange(value: string): void;
   disabled?: boolean;
 }) {
-  const saved = useQuery({ queryKey: ["email-credentials", companyId],
-    queryFn: () => emailApi.credentials(companyId), staleTime: 60_000, retry: false });
+  const saved = useQuery({ queryKey: ["email-credentials"],
+    queryFn: () => emailApi.credentials(), staleTime: 60_000, retry: false });
   useEffect(() => {
     // Null means untouched; an explicit new-key choice must survive refreshes
     // and slow responses. Inbox-only keys cannot create a new email address.

@@ -216,7 +216,7 @@ export class NativeChatAttachmentReadScope {
       );
     });
     const acquiring = storage
-      .getObject(this.options.binding.companyId, source.objectKey)
+      .getObject(source.objectKey)
       .then((value) => {
         if (signal.aborted) {
           value.stream.destroy();

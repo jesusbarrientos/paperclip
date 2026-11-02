@@ -6,7 +6,7 @@ import { remoteTerminationReceipt } from "./remote-execution-termination.js";
 import { hasNativeWorkspaceExportResume, readNativeWorkspaceExportResume, settleNativeWorkspaceExportResume } from "./native-runtime/native-workspace-export-resume.js";
 
 type Lease = Pick<typeof environmentLeases.$inferSelect,
-  "id" | "companyId" | "heartbeatRunId" | "provider" | "providerLeaseId" | "metadata">;
+  "id" | "heartbeatRunId" | "provider" | "providerLeaseId" | "metadata">;
 export const SANDBOX_STOP_AND_RETAIN_KEY = "sandboxStopAndRetain";
 
 export function hasStopOnlyCleanup(lease: Pick<Lease, "metadata">): boolean {
@@ -23,8 +23,7 @@ export function readStopOnlyCleanup(lease: Lease) {
   const value = lease.metadata?.[SANDBOX_STOP_AND_RETAIN_KEY];
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const intent = value as Record<string, unknown>;
-  if (intent.schema !== "paperclip.sandbox-stop-and-retain.v1"
-    || intent.companyId !== lease.companyId || intent.runId !== lease.heartbeatRunId || !lease.heartbeatRunId
+  if ((intent.schema !== "paperclip.sandbox-stop-and-retain.v1") || intent.runId !== lease.heartbeatRunId || !lease.heartbeatRunId
     || intent.leaseId !== lease.id || intent.provider !== lease.provider || !lease.provider
     || intent.providerLeaseId !== lease.providerLeaseId || !lease.providerLeaseId
     || typeof intent.requestId !== "string" || !intent.requestId) return null;
@@ -41,8 +40,7 @@ export function readStopOnlyCleanup(lease: Lease) {
  * an explicit stop into ordinary destructive release. Invalid pins stay pending. */
 export async function prepareSandboxStopAndRetain(db: Db, lease: Lease) {
   const requestId = randomUUID(), now = new Date();
-  const intent = { schema: "paperclip.sandbox-stop-and-retain.v1", requestId,
-    companyId: lease.companyId, runId: lease.heartbeatRunId, leaseId: lease.id,
+  const intent = { schema: "paperclip.sandbox-stop-and-retain.v1", requestId, runId: lease.heartbeatRunId, leaseId: lease.id,
     provider: lease.provider, providerLeaseId: lease.providerLeaseId,
     ...(lease.provider && isBuiltinSandboxProvider(lease.provider) && !lease.metadata?.sandboxProviderPlugin && lease.metadata?.pluginId == null
       ? { builtinProvider: lease.provider } : { pluginId: lease.metadata?.pluginId }) };
@@ -53,7 +51,7 @@ export async function prepareSandboxStopAndRetain(db: Db, lease: Lease) {
       pendingCleanupInFlight: false, pendingCleanupLeaseExpiresAtMs: 0,
       pendingCleanupRetryAfterMs: 0, pendingCleanupRetryAttempts: 0, pendingCleanupRetryCapWarned: false,
     })}::jsonb`,
-  }).where(and(eq(environmentLeases.id, lease.id), eq(environmentLeases.companyId, lease.companyId),
+  }).where(and(eq(environmentLeases.id, lease.id),
     eq(environmentLeases.heartbeatRunId, lease.heartbeatRunId!), eq(environmentLeases.status, "active"),
     sql`${environmentLeases.provider} is not distinct from ${lease.provider}`,
     sql`${environmentLeases.providerLeaseId} is not distinct from ${lease.providerLeaseId}`,
@@ -75,8 +73,7 @@ export async function settleStopOnlyCleanup(db: Db, lease: Lease, options: { att
     releasedAt: now, lastUsedAt: now, updatedAt: now,
     metadata: sql`(${environmentLeases.metadata} - 'remoteExecutionTermination' ${removeIntent}) || ${JSON.stringify({
       ...(stopped ? { remoteExecutionTermination: receipt, sandboxStopAndRetainReceipt: {
-        schema: "paperclip.sandbox-stop-and-retain-receipt.v1", requestId: intent.requestId,
-        companyId: lease.companyId, runId: lease.heartbeatRunId, leaseId: lease.id,
+        schema: "paperclip.sandbox-stop-and-retain-receipt.v1", requestId: intent.requestId, runId: lease.heartbeatRunId, leaseId: lease.id,
         provider: lease.provider, providerLeaseId: lease.providerLeaseId,
         ...(intent.pluginId ? { pluginId: intent.pluginId, method: "environmentStopLease" }
           : { builtinProvider: lease.provider, method: "builtin.stopLease" }),
@@ -84,7 +81,7 @@ export async function settleStopOnlyCleanup(db: Db, lease: Lease, options: { att
       } } : {}),
       pendingCleanupInFlight: false, pendingCleanupLeaseExpiresAtMs: 0,
     })}::jsonb`,
-  }).where(and(eq(environmentLeases.id, lease.id), eq(environmentLeases.companyId, lease.companyId),
+  }).where(and(eq(environmentLeases.id, lease.id),
     eq(environmentLeases.heartbeatRunId, lease.heartbeatRunId!), eq(environmentLeases.provider, lease.provider!),
     eq(environmentLeases.providerLeaseId, lease.providerLeaseId!), eq(environmentLeases.status, "pending_cleanup"),
     sql`${environmentLeases.metadata}->>'pendingCleanupAttemptId' = ${options.attemptId}`,

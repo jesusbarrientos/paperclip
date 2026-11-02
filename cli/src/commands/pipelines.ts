@@ -69,7 +69,6 @@ type CaseDetail = CaseListRow & {
 };
 
 interface PipelineOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface CreateOptions extends PipelineOptions {
@@ -219,7 +218,7 @@ export function registerPipelineCommands(program: Command): void {
         setIfDefined(body, "enforceTransitions", opts.enforceTransitions);
         const stages = await readJsonFromOptions(opts.stagesJson, opts.stagesFile);
         if (stages !== undefined) body.stages = stages;
-        printPipeline(await ctx.api.post<PipelineDetail>(apiPath`/api/companies/${ctx.companyId}/pipelines`, body), ctx);
+        printPipeline(await ctx.api.post<PipelineDetail>(apiPath`/api/pipelines`, body), ctx);
       })),
   );
 
@@ -229,7 +228,7 @@ export function registerPipelineCommands(program: Command): void {
       .description("List pipelines")
       .action((opts: PipelineOptions) => withPipelineErrors(async () => {
         const ctx = resolvePipelineContext(opts);
-        const rows = await ctx.api.get<PipelineSummary[]>(apiPath`/api/companies/${ctx.companyId}/pipelines`) ?? [];
+        const rows = await ctx.api.get<PipelineSummary[]>(apiPath`/api/pipelines`) ?? [];
         if (ctx.json) return printOutput(rows, { json: true });
         if (rows.length === 0) return printOutput([]);
         rows.forEach((row) => console.log(formatPipeline(row)));
@@ -399,7 +398,7 @@ export function registerPipelineCommands(program: Command): void {
         if (opts.pipeline) params.set("pipelineId", await resolvePipelineId(ctx, opts.pipeline));
         if (opts.parent) params.set("parentCaseId", opts.parent);
         const query = params.toString();
-        const rows = await ctx.api.get<CaseListRow[]>(`${apiPath`/api/companies/${ctx.companyId}/review-cases`}${query ? `?${query}` : ""}`) ?? [];
+        const rows = await ctx.api.get<CaseListRow[]>(`${apiPath`/api/review-cases`}${query ? `?${query}` : ""}`) ?? [];
         printCases(rows, ctx);
       })),
   );
@@ -413,7 +412,7 @@ export function registerPipelineCommands(program: Command): void {
         const ctx = resolvePipelineContext(opts);
         const input = await readJsonFile(opts.file);
         const body = Array.isArray(input) ? { items: input } : asObject(input);
-        printOutput(await ctx.api.post(apiPath`/api/companies/${ctx.companyId}/review-cases/bulk`, body), { json: ctx.json });
+        printOutput(await ctx.api.post(apiPath`/api/review-cases/bulk`, body), { json: ctx.json });
       })),
   );
 }
@@ -633,22 +632,22 @@ function registerCaseCommands(caseCommand: Command): void {
 }
 
 function addPipelineOptions(command: Command): Command {
-  return addCommonClientOptions(command, { includeCompany: true });
+  return addCommonClientOptions(command);
 }
 
-function resolvePipelineContext(opts: PipelineOptions): ResolvedClientContext & { companyId: string } {
-  return resolveCommandContext(opts, { requireCompany: true }) as ResolvedClientContext & { companyId: string };
+function resolvePipelineContext(opts: PipelineOptions): ResolvedClientContext & { } {
+  return resolveCommandContext(opts) as ResolvedClientContext & { };
 }
 
-async function resolvePipelineId(ctx: ResolvedClientContext & { companyId: string }, pipeline: string): Promise<string> {
+async function resolvePipelineId(ctx: ResolvedClientContext & { }, pipeline: string): Promise<string> {
   if (looksLikeUuid(pipeline)) return pipeline;
-  const rows = await ctx.api.get<PipelineSummary[]>(apiPath`/api/companies/${ctx.companyId}/pipelines`) ?? [];
+  const rows = await ctx.api.get<PipelineSummary[]>(apiPath`/api/pipelines`) ?? [];
   const match = rows.find((row) => row.key === pipeline || row.id === pipeline);
   if (!match) throw new Error(`Pipeline not found by key or id: ${pipeline}`);
   return match.id;
 }
 
-async function getPipeline(ctx: ResolvedClientContext & { companyId: string }, pipeline: string): Promise<PipelineDetail> {
+async function getPipeline(ctx: ResolvedClientContext & { }, pipeline: string): Promise<PipelineDetail> {
   const pipelineId = await resolvePipelineId(ctx, pipeline);
   const detail = await ctx.api.get<PipelineDetail>(apiPath`/api/pipelines/${pipelineId}`);
   if (!detail) throw new Error(`Pipeline not found: ${pipeline}`);

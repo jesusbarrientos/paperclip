@@ -28,8 +28,8 @@ vi.mock("@/lib/router", () => ({
   useLocation: () => ({ pathname: "/PAP/dashboard", search: "", hash: "", state: null }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1", selectedCompany: { id: "company-1", issuePrefix: "PAP" } }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("../context/SidebarContext", () => ({
@@ -62,7 +62,6 @@ async function act(callback: () => void | Promise<void>) {
 function makeProject(overrides: Partial<Project>): Project {
   return {
     id: "project-a",
-    companyId: "company-1",
     urlKey: "alpha",
     goalId: null,
     goalIds: [],

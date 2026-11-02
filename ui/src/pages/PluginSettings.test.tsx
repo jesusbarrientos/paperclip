@@ -29,10 +29,9 @@ vi.mock("@/context/BreadcrumbContext", () => ({
   }),
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompany: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
-    selectedCompanyId: "company-1",
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 
@@ -174,7 +173,7 @@ describe("PluginSettings", () => {
 
     expect(container.textContent).toContain("Configure this plugin from Settings → Environments.");
     expect(container.textContent).toContain("secret bindings still resolve through the selected organization context");
-    const link = container.querySelector('a[href="/company/settings/instance/environments"]');
+    const link = container.querySelector('a[href="/organization/settings/instance/environments"]');
     expect(link?.textContent).toContain("Open Environments");
 
     await act(async () => {

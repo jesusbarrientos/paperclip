@@ -311,7 +311,6 @@ export interface ToolGatewayDescriptor extends AgentToolDescriptor {
 export interface ToolGatewaySession {
   id: string;
   token: string;
-  companyId: string;
   agentId: string | null;
   runId: string | null;
   issueId: string | null;
@@ -362,7 +361,6 @@ interface ExecuteGatewayToolInput {
 }
 
 interface ExecuteTestCallInput {
-  companyId: string;
   connectionId: string;
   agentId: string;
   userId: string;
@@ -375,7 +373,6 @@ interface ExecutePluginToolInput {
   actor: {
     type: "agent" | "board";
     agentId?: string | null;
-    companyId?: string | null;
     userId?: string | null;
     runId?: string | null;
   };
@@ -388,7 +385,6 @@ type HeaderPolicyConfig = {
   staticHeaders: Array<{ name: string; value: string }>;
   passthroughAllowlist: string[];
   metadataHeaders: Array<
-    | "company_id"
     | "agent_id"
     | "issue_id"
     | "project_id"
@@ -703,7 +699,6 @@ function gatewaySessionFromRow(
   return {
     id: row.id,
     token: "",
-    companyId: row.companyId,
     agentId: row.agentId,
     runId: row.runId,
     issueId: row.issueId,
@@ -1092,7 +1087,6 @@ export function createToolGatewayService(
     paperclipIdGmailConnector?: PaperclipCloudConnector | null;
     /** Refreshes customer-owned/DCR OAuth grants before remote MCP execution. */
     oauthGrantRefresher?: (input: {
-      companyId: string;
       connectionId: string;
       grantId: string;
       forceRefresh?: boolean;
@@ -1196,7 +1190,6 @@ export function createToolGatewayService(
   }
 
   async function consumeProtocolRateLimit(input: {
-    companyId: string;
     counterKey: string;
     config: McpGatewayRateLimitConfig;
   }): Promise<McpGatewayRateLimitState> {
@@ -1211,7 +1204,6 @@ export function createToolGatewayService(
     const rows = Array.from(
       await db.execute(sql<{ count: number | string }>`
       INSERT INTO "tool_gateway_rate_limit_counters" (
-        "company_id",
         "counter_key",
         "window_start_at",
         "window_ms",
@@ -1222,7 +1214,6 @@ export function createToolGatewayService(
         "updated_at"
       )
       VALUES (
-        ${input.companyId},
         ${input.counterKey},
         ${windowStartIso}::timestamptz,
         ${input.config.windowMs},
@@ -1232,7 +1223,7 @@ export function createToolGatewayService(
         ${nowIso}::timestamptz,
         ${nowIso}::timestamptz
       )
-      ON CONFLICT ("company_id", "counter_key", "window_start_at")
+      ON CONFLICT ("counter_key", "window_start_at")
       DO UPDATE SET
         "count" = "tool_gateway_rate_limit_counters"."count" + 1,
         "window_ms" = ${input.config.windowMs},
@@ -1262,9 +1253,8 @@ export function createToolGatewayService(
     return [...BUILTIN_TOOLS, ...pluginTools()];
   }
 
-  function connectedMcpConnectionFilter(companyId: string) {
+  function connectedMcpConnectionFilter() {
     return and(
-      eq(toolConnections.companyId, companyId),
       inArray(toolConnections.transport, ["mcp_remote", "local_stdio", "rest_api"]),
       eq(toolConnections.status, "active"),
       eq(toolConnections.enabled, true),
@@ -1277,14 +1267,13 @@ export function createToolGatewayService(
         inArray(toolConnections.healthStatus, ["ok", "healthy"]),
         eq(toolConnections.credentialPolicy, "per_user"),
       ),
-      eq(toolApplications.companyId, companyId),
       inArray(toolApplications.type, ["mcp_http", "mcp_stdio", "rest_api"]),
       eq(toolApplications.status, "active"),
     );
   }
 
   async function connectedMcpToolsForCompany(
-    companyId: string,
+    
   ): Promise<ToolGatewayDescriptor[]> {
     // Read each connection and application row once. Selecting them in the
     // catalog join repeats the full connection row (config included) for
@@ -1306,11 +1295,10 @@ export function createToolGatewayService(
           )
           .where(
             and(
-              eq(toolCatalogEntries.companyId, companyId),
               eq(toolCatalogEntries.entryKind, "tool"),
               eq(toolCatalogEntries.status, "active"),
               isNull(toolCatalogEntries.quarantinedAt),
-              connectedMcpConnectionFilter(companyId),
+              connectedMcpConnectionFilter(),
             ),
           )
           .orderBy(toolConnections.name, toolCatalogEntries.name);
@@ -1334,7 +1322,7 @@ export function createToolGatewayService(
           .where(
             and(
               inArray(toolConnections.id, connectionIds),
-              connectedMcpConnectionFilter(companyId),
+              connectedMcpConnectionFilter(),
             ),
           );
         return { connectionRows, catalogRows };
@@ -1451,27 +1439,24 @@ export function createToolGatewayService(
   }
 
   async function connectedMcpToolsForConnection(
-    companyId: string,
     connectionId: string,
   ): Promise<ToolGatewayDescriptor[]> {
-    return (await connectedMcpToolsForCompany(companyId)).filter(
+    return (await connectedMcpToolsForCompany()).filter(
       (tool) => tool.connectionId === connectionId,
     );
   }
 
   async function assertAgentInCompany(
-    companyId: string,
     agentId: string,
   ): Promise<void> {
     const [agent] = await db
       .select({
-        companyId: agents.companyId,
-      })
+})
       .from(agents)
       .where(eq(agents.id, agentId))
       .limit(1);
 
-    if (!agent || agent.companyId !== companyId) {
+    if (!agent) {
       throw new ToolGatewayHttpError(
         404,
         "Agent not found for company",
@@ -1491,7 +1476,6 @@ export function createToolGatewayService(
    * the timestamp is still returned but the actor is null.
    */
   async function summarizeAccessLastChange(input: {
-    companyId: string;
     connectionId: string;
     agentId: string;
     policyIds: string[];
@@ -1516,10 +1500,7 @@ export function createToolGatewayService(
         })
         .from(toolPolicies)
         .where(
-          and(
-            eq(toolPolicies.companyId, input.companyId),
-            inArray(toolPolicies.id, input.policyIds),
-          ),
+          inArray(toolPolicies.id, input.policyIds),
         );
       candidates.push(
         ...policies.map((row) => ({
@@ -1535,17 +1516,13 @@ export function createToolGatewayService(
           .select({ updatedAt: toolProfiles.updatedAt })
           .from(toolProfiles)
           .where(
-            and(
-              eq(toolProfiles.companyId, input.companyId),
-              inArray(toolProfiles.id, input.profileIds),
-            ),
+            inArray(toolProfiles.id, input.profileIds),
           ),
         db
           .select({ updatedAt: toolProfileEntries.updatedAt })
           .from(toolProfileEntries)
           .where(
             and(
-              eq(toolProfileEntries.companyId, input.companyId),
               inArray(toolProfileEntries.profileId, input.profileIds),
               eq(toolProfileEntries.connectionId, input.connectionId),
             ),
@@ -1558,7 +1535,6 @@ export function createToolGatewayService(
           .from(toolProfileBindings)
           .where(
             and(
-              eq(toolProfileBindings.companyId, input.companyId),
               inArray(toolProfileBindings.profileId, input.profileIds),
               eq(toolProfileBindings.targetType, "agent"),
               eq(toolProfileBindings.targetId, input.agentId),
@@ -1601,7 +1577,6 @@ export function createToolGatewayService(
   }
 
   async function resolveRunContext(input: {
-    companyId: string;
     agentId: string;
     runId: string;
     issueId?: string | null;
@@ -1609,7 +1584,6 @@ export function createToolGatewayService(
   }): Promise<{ issueId: string | null; projectId: string | null }> {
     const [run] = await db
       .select({
-        companyId: heartbeatRuns.companyId,
         agentId: heartbeatRuns.agentId,
         status: heartbeatRuns.status,
         issueId: runContextSnapshotString("issueId"),
@@ -1619,7 +1593,7 @@ export function createToolGatewayService(
       .where(eq(heartbeatRuns.id, input.runId))
       .limit(1);
 
-    if (!run || run.companyId !== input.companyId) {
+    if (!run) {
       throw new ToolGatewayHttpError(
         403,
         "Run does not belong to company",
@@ -1655,11 +1629,11 @@ export function createToolGatewayService(
     let projectId = snapshotProjectId ?? input.projectId ?? null;
     if (issueId) {
       const [issue] = await db
-        .select({ companyId: issues.companyId, projectId: issues.projectId })
+        .select({ projectId: issues.projectId })
         .from(issues)
         .where(eq(issues.id, issueId))
         .limit(1);
-      if (!issue || issue.companyId !== input.companyId) {
+      if (!issue) {
         throw new ToolGatewayHttpError(
           403,
           "Issue context is outside the run company",
@@ -1677,11 +1651,11 @@ export function createToolGatewayService(
     }
     if (projectId) {
       const [project] = await db
-        .select({ companyId: projects.companyId })
+        .select({ })
         .from(projects)
         .where(eq(projects.id, projectId))
         .limit(1);
-      if (!project || project.companyId !== input.companyId) {
+      if (!project) {
         throw new ToolGatewayHttpError(
           403,
           "Project context is outside the run company",
@@ -1697,7 +1671,6 @@ export function createToolGatewayService(
 
   async function writeAudit(input: {
     session?: ToolGatewaySession | null;
-    companyId: string;
     agentId: string | null;
     runId: string | null;
     issueId: string | null;
@@ -1739,7 +1712,6 @@ export function createToolGatewayService(
         : typeof input.details.gatewayTokenId === "string" && uuidPattern.test(input.details.gatewayTokenId)
           ? input.details.gatewayTokenId : null;
       await db.insert(toolAccessAuditEvents).values({
-        companyId: input.companyId,
         gatewayId:
           input.session?.gatewayId ??
           (typeof input.details.gatewayId === "string" &&
@@ -1750,7 +1722,7 @@ export function createToolGatewayService(
         // inside this INSERT and lock a surviving row until the statement ends.
         // A plain existence read before insertion still races with deletion.
         gatewayTokenId: tokenId ? sql`(select ${toolMcpGatewayTokens.id} from ${toolMcpGatewayTokens}
-          where ${toolMcpGatewayTokens.id} = ${tokenId} and ${toolMcpGatewayTokens.companyId} = ${input.companyId}
+          where ${toolMcpGatewayTokens.id} = ${tokenId}
           for key share)` : null,
         gatewayPublicId:
           typeof input.details.gatewayPublicId === "string"
@@ -1781,7 +1753,7 @@ export function createToolGatewayService(
           input.session?.actorId ??
           input.agentId ??
           input.session?.gatewayTokenId ??
-          input.companyId,
+          "system",
         action: dedicatedAuditAction,
         outcome: dedicatedOutcome,
         reasonCode:
@@ -1804,7 +1776,7 @@ export function createToolGatewayService(
         },
       });
     } catch (error) {
-      await recordToolRuntimeAuditWriteFailure(db, input.companyId);
+      await recordToolRuntimeAuditWriteFailure(db);
       throw error;
     }
 
@@ -1817,9 +1789,8 @@ export function createToolGatewayService(
       input.issueId ??
       input.session?.gatewayId ??
       input.agentId ??
-      input.companyId;
+      "system";
     await logActivity(db, {
-      companyId: input.companyId,
       actorType:
         input.actorType ??
         input.session?.actorType ??
@@ -1829,7 +1800,7 @@ export function createToolGatewayService(
         input.session?.actorId ??
         input.agentId ??
         input.session?.gatewayTokenId ??
-        input.companyId,
+        "system",
       action: input.action,
       entityType,
       entityId,
@@ -1856,7 +1827,6 @@ export function createToolGatewayService(
     const session = gatewaySessionFromRow(row);
     await writeAudit({
       session,
-      companyId: session.companyId,
       agentId: session.agentId,
       runId: session.runId,
       issueId: session.issueId,
@@ -1876,7 +1846,6 @@ export function createToolGatewayService(
   ) {
     const [run] = await db
       .select({
-        companyId: heartbeatRuns.companyId,
         agentId: heartbeatRuns.agentId,
         status: heartbeatRuns.status,
       })
@@ -1886,7 +1855,6 @@ export function createToolGatewayService(
 
     if (
       !run ||
-      run.companyId !== row.companyId ||
       run.agentId !== row.agentId ||
       !ACTIVE_GATEWAY_RUN_STATUSES.has(run.status)
     ) {
@@ -2001,14 +1969,10 @@ export function createToolGatewayService(
       })
       .from(heartbeatRuns)
       .where(
-        and(
-          eq(heartbeatRuns.id, session.runId),
-          eq(heartbeatRuns.companyId, session.companyId),
-        ),
+        eq(heartbeatRuns.id, session.runId),
       );
     if (!run?.activeIdentityContextId) return session;
     const captured = await captureRunIdentity(db, {
-      companyId: session.companyId,
       agentId: session.agentId,
       runId: session.runId,
     });
@@ -2049,7 +2013,6 @@ export function createToolGatewayService(
     if (!allowedActions || allowedActions.includes(action)) return;
     await writeAudit({
       session,
-      companyId: session.companyId,
       agentId: session.agentId,
       runId: session.runId,
       issueId: session.issueId,
@@ -2099,7 +2062,6 @@ export function createToolGatewayService(
   }) {
     const metadata = input.tool ? toolAuditMetadata(input.tool) : {};
     await db.insert(toolCallEvents).values({
-      companyId: input.session.companyId,
       invocationId: input.invocationId ?? null,
       actionRequestId: input.actionRequestId ?? null,
       eventType: input.eventType,
@@ -2110,7 +2072,7 @@ export function createToolGatewayService(
         input.session.actorId ??
         input.session.agentId ??
         input.session.gatewayTokenId ??
-        input.session.companyId,
+        "system",
       agentId: input.session.agentId,
       issueId: input.session.issueId,
       runId: input.session.runId,
@@ -2158,7 +2120,6 @@ export function createToolGatewayService(
   }): Promise<void> {
     const [linked] = await db
       .select({
-        companyId: toolActionRequests.companyId,
         interactionId: toolActionRequests.interactionId,
         issueId: toolActionRequests.issueId,
       })
@@ -2176,10 +2137,7 @@ export function createToolGatewayService(
         })
         .from(issueThreadInteractions)
         .where(
-          and(
-            eq(issueThreadInteractions.id, interactionId),
-            eq(issueThreadInteractions.companyId, linked.companyId),
-          ),
+          eq(issueThreadInteractions.id, interactionId),
         )
         .for("update")
         .limit(1);
@@ -2238,7 +2196,6 @@ export function createToolGatewayService(
     });
     if (!changed) return;
     await logActivity(db, {
-      companyId: linked.companyId,
       actorType: "system",
       actorId: "tool-gateway",
       action: "issue.thread_interaction_updated",
@@ -2456,7 +2413,6 @@ export function createToolGatewayService(
       const [approval] = await db
         .insert(approvals)
         .values({
-          companyId: input.session.companyId,
           type: "request_board_approval",
           requestedByAgentId: input.session.agentId,
           payload: {
@@ -2481,7 +2437,6 @@ export function createToolGatewayService(
       await db
         .insert(issueApprovals)
         .values({
-          companyId: input.session.companyId,
           issueId: input.session.issueId,
           approvalId: approval.id,
           linkedByAgentId: input.session.agentId,
@@ -2490,7 +2445,7 @@ export function createToolGatewayService(
     }
 
     const interaction = await interactions.create(
-      { id: input.session.issueId, companyId: input.session.companyId },
+      { id: input.session.issueId },
       {
         kind: "request_confirmation",
         idempotencyKey: `tool-action:${actionRequest.id}`,
@@ -2602,7 +2557,6 @@ export function createToolGatewayService(
     await db
       .insert(toolActionDeliveries)
       .values({
-        companyId: input.session.companyId,
         actionRequestId: actionRequest.id,
         issueId: input.session.issueId,
         interactionId: interaction.id,
@@ -2629,7 +2583,6 @@ export function createToolGatewayService(
 
     await writeAudit({
       session: input.session,
-      companyId: input.session.companyId,
       agentId: input.session.agentId,
       runId: input.session.runId,
       issueId: input.session.issueId,
@@ -2666,7 +2619,6 @@ export function createToolGatewayService(
     consumeRateLimit?: boolean;
   }): ToolAccessDecisionInput {
     return policyInputForAgentTool({
-      companyId: input.session.companyId,
       agentId: input.session.agentId,
       actorType: input.session.actorType,
       actorId: input.session.actorId ?? input.session.gatewayTokenId ?? null,
@@ -2682,7 +2634,6 @@ export function createToolGatewayService(
   }
 
   function policyInputForAgentTool(input: {
-    companyId: string;
     agentId: string | null;
     actorType?: "agent" | "user" | "system" | "plugin";
     actorId?: string | null;
@@ -2697,9 +2648,8 @@ export function createToolGatewayService(
   }): ToolAccessDecisionInput {
     const actorType = input.actorType ?? (input.agentId ? "agent" : "system");
     const actorId =
-      input.actorId ?? input.agentId ?? input.gatewayId ?? input.companyId;
+      input.actorId ?? input.agentId ?? input.gatewayId ?? "system";
     return {
-      companyId: input.companyId,
       actor: {
         actorType,
         actorId,
@@ -2767,7 +2717,7 @@ export function createToolGatewayService(
     session: ToolGatewaySession,
     toolName: string,
   ): Promise<ToolGatewayDescriptor> {
-    const connectedTools = await connectedMcpToolsForCompany(session.companyId);
+    const connectedTools = await connectedMcpToolsForCompany();
     const hasOnDemandTargets = connectedTools.some(isOnDemandRemoteTool);
     const virtualTools = hasOnDemandTargets ? VIRTUAL_TOOLS : [];
     const githubBotTools = await githubBotToolsForSession(db, session);
@@ -2795,10 +2745,7 @@ export function createToolGatewayService(
         .select()
         .from(toolConnections)
         .where(
-          and(
-            eq(toolConnections.id, tool.connectionId),
-            eq(toolConnections.companyId, session.companyId),
-          ),
+          eq(toolConnections.id, tool.connectionId),
         );
       if (
         connection?.config.sourceTemplateKey === "github" ||
@@ -2806,7 +2753,6 @@ export function createToolGatewayService(
       ) {
         let selected = await resolveManagedGitHubIdentitySelection(
           db,
-          session.companyId,
           {
             agentId: session.agentId,
             responsibleUserId: session.responsibleUserId,
@@ -2840,10 +2786,7 @@ export function createToolGatewayService(
             .select()
             .from(toolConnections)
             .where(
-              and(
-                eq(toolConnections.id, grant.connectionId),
-                eq(toolConnections.companyId, session.companyId),
-              ),
+              eq(toolConnections.id, grant.connectionId),
             );
           if (!selectedConnection)
             throw new ToolGatewayHttpError(
@@ -2865,7 +2808,6 @@ export function createToolGatewayService(
             if (attempt !== 0) throw error;
             const alternate = await resolveManagedGitHubIdentitySelection(
               db,
-              session.companyId,
               {
                 agentId: session.agentId,
                 responsibleUserId: session.responsibleUserId,
@@ -2918,7 +2860,7 @@ export function createToolGatewayService(
   async function searchableOnDemandTools(
     session: ToolGatewaySession,
   ): Promise<ToolGatewayDescriptor[]> {
-    const tools = (await connectedMcpToolsForCompany(session.companyId)).filter(
+    const tools = (await connectedMcpToolsForCompany()).filter(
       isOnDemandRemoteTool,
     );
     const decisions = await decideToolsForListing(tools, (tool) =>
@@ -2989,7 +2931,7 @@ export function createToolGatewayService(
   /** Shared connection descriptors and task restrictions; no provider calls. */
   async function connectionToolsForContext(session: ToolGatewaySession): Promise<ToolGatewayDescriptor[]> {
     const guestBotConnection = await githubGuestBotConnectionForSession(db, session);
-    const connectedTools = (await connectedMcpToolsForCompany(session.companyId))
+    const connectedTools = (await connectedMcpToolsForCompany())
       .filter(tool => !guestBotConnection || !tool.connectionId || (tool.connectionId === guestBotConnection && tool.providerType === "paperclip_github_chat"));
     return [
       ...await githubBotToolsForSession(db, session),
@@ -3004,7 +2946,7 @@ export function createToolGatewayService(
   ): Promise<ToolGatewayDescriptor[]> {
     signal?.throwIfAborted();
     if (session.agentId) {
-      await assertAgentInCompany(session.companyId, session.agentId);
+      await assertAgentInCompany(session.agentId);
     }
     const connectionTools = await connectionToolsForContext(session);
     const onDemandTargets = connectionTools.filter(isOnDemandRemoteTool);
@@ -3072,7 +3014,7 @@ export function createToolGatewayService(
     if (tool.providerType === "paperclip_slack_chat") {
       if (!session.agentId || !session.runId || !session.issueId) throw new ToolGatewayHttpError(403, "Slack task binding required", "slack_task_required");
       try {
-      const data = await executeSlackTool(db, { companyId: session.companyId, agentId: session.agentId, runId: session.runId, issueId: session.issueId, endpointId: String(asRecord(tool.providerMetadata)?.endpointId ?? ""), identityContextId: session.identityContextId, approvedInvocationId: session.approvedSlackInvocationId }, tool.upstreamToolName ?? "", parameters, fetch, invocationId);
+      const data = await executeSlackTool(db, { agentId: session.agentId, runId: session.runId, issueId: session.issueId, endpointId: String(asRecord(tool.providerMetadata)?.endpointId ?? ""), identityContextId: session.identityContextId, approvedInvocationId: session.approvedSlackInvocationId }, tool.upstreamToolName ?? "", parameters, fetch, invocationId);
       return { content: JSON.stringify(data), data };
       } catch (error) {
         if (error instanceof HttpError) {
@@ -3157,10 +3099,7 @@ export function createToolGatewayService(
         })
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, session.companyId),
-            eq(issues.assigneeAgentId, session.agentId),
-          ),
+          eq(issues.assigneeAgentId, session.agentId),
         )
         .orderBy(desc(issues.updatedAt))
         .limit(limit);
@@ -3199,7 +3138,7 @@ export function createToolGatewayService(
         })
         .from(issues)
         .where(
-          and(eq(issues.companyId, session.companyId), eq(issues.id, issueId)),
+          eq(issues.id, issueId),
         )
         .limit(1);
       if (!issue) {
@@ -3236,8 +3175,7 @@ export function createToolGatewayService(
     if (tool.providerType === "mcp_stdio_fixture") {
       return runtimeSupervisor.useFixtureSlot(
         {
-          companyId: session.companyId,
-          connectionKey: `${session.companyId}:mcp-stdio-fixture:default`,
+          connectionKey: "mcp-stdio-fixture:default",
           runId: session.runId,
           issueId: session.issueId,
           agentId: session.agentId,
@@ -3418,7 +3356,6 @@ export function createToolGatewayService(
       ...stringArray(rawPolicy.forwardContextHeaders),
     ].filter(
       (value): value is HeaderPolicyConfig["metadataHeaders"][number] =>
-        value === "company_id" ||
         value === "agent_id" ||
         value === "issue_id" ||
         value === "project_id" ||
@@ -3482,7 +3419,6 @@ export function createToolGatewayService(
       HeaderPolicyConfig["metadataHeaders"][number],
       string | null
     > = {
-      company_id: session.companyId,
       agent_id: session.agentId,
       issue_id: session.issueId,
       project_id: session.projectId,
@@ -3822,7 +3758,6 @@ export function createToolGatewayService(
       try {
         const credentials = await cloudConnector.refresh({
           subject: connectorSubject,
-          companyId: connection.companyId,
           profile: connectorProfile,
           refreshToken,
         });
@@ -3951,10 +3886,7 @@ export function createToolGatewayService(
             },
           })
           .where(
-            and(
-              eq(runIdentityContexts.id, session.identityContextId!),
-              eq(runIdentityContexts.companyId, session.companyId),
-            ),
+            eq(runIdentityContexts.id, session.identityContextId!),
           );
       return headers;
     } catch (error) {
@@ -3969,10 +3901,7 @@ export function createToolGatewayService(
             },
           })
           .where(
-            and(
-              eq(runIdentityContexts.id, session.identityContextId!),
-              eq(runIdentityContexts.companyId, session.companyId),
-            ),
+            eq(runIdentityContexts.id, session.identityContextId!),
           );
       throw error;
     }
@@ -3999,8 +3928,7 @@ export function createToolGatewayService(
       const request = vercelTokenRequest({
         credential: connection.externalCredential,
         grant,
-        connectionId: connection.id,
-        companyId: connection.companyId,
+        connectionId: connection.id
       });
       try {
         const token = await vercelConnect.getToken(request, resolveOptions);
@@ -4029,7 +3957,6 @@ export function createToolGatewayService(
           .where(
             and(
               eq(connectionGrants.id, grant.id),
-              eq(connectionGrants.companyId, connection.companyId),
               eq(connectionGrants.connectionId, connection.id),
             ),
           );
@@ -4049,10 +3976,7 @@ export function createToolGatewayService(
               updatedAt: new Date(options.now?.() ?? Date.now()),
             })
             .where(
-              and(
-                eq(connectionGrants.id, grant.id),
-                eq(connectionGrants.companyId, connection.companyId),
-              ),
+              eq(connectionGrants.id, grant.id),
             );
           const responsibleUserId =
             grant.kind === "user"
@@ -4113,7 +4037,6 @@ export function createToolGatewayService(
     ) {
       try {
         grant = await options.oauthGrantRefresher({
-          companyId: connection.companyId,
           connectionId: connection.id,
           grantId: grant.id,
           forceRefresh: resolveOptions.forceRefresh,
@@ -4223,7 +4146,6 @@ export function createToolGatewayService(
     const versionSelector = input.versionSelector ?? "latest";
     try {
       const resolvedVersion = await secrets.resolveSecretVersion(
-        connection.companyId,
         input.secretId,
         versionSelector,
       );
@@ -4325,7 +4247,6 @@ export function createToolGatewayService(
     const [company] = await db
       .select({ issuePrefix: companies.issuePrefix })
       .from(companies)
-      .where(eq(companies.id, session.companyId))
       .limit(1);
     const href = `/${company?.issuePrefix ?? ""}/apps/${connection.id}/permissions`;
     const idempotencyKey = `connection-authorization:${connection.id}:${userId}`;
@@ -4357,7 +4278,6 @@ export function createToolGatewayService(
       .from(issueThreadInteractions)
       .where(
         and(
-          eq(issueThreadInteractions.companyId, session.companyId),
           eq(issueThreadInteractions.issueId, session.issueId),
           eq(issueThreadInteractions.idempotencyKey, idempotencyKey),
         ),
@@ -4383,7 +4303,6 @@ export function createToolGatewayService(
       return;
     }
     await db.insert(issueThreadInteractions).values({
-      companyId: session.companyId,
       issueId: session.issueId,
       kind: "request_confirmation",
       status: "pending",
@@ -4422,10 +4341,7 @@ export function createToolGatewayService(
             })
             .from(heartbeatRuns)
             .where(
-              and(
-                eq(heartbeatRuns.id, session.runId),
-                eq(heartbeatRuns.companyId, session.companyId),
-              ),
+              eq(heartbeatRuns.id, session.runId),
             )
             .limit(1)
         : [];
@@ -4441,7 +4357,7 @@ export function createToolGatewayService(
       const captured = githubOperationCredentials.get(session);
       const selected = captured
         ? { grant: captured.grant, error: undefined }
-        : await resolveManagedGitHubIdentitySelection(db, session.companyId, {
+        : await resolveManagedGitHubIdentitySelection(db, {
             agentId: session.agentId,
             responsibleUserId: session.responsibleUserId,
             allowStandingDelegation: false,
@@ -4512,7 +4428,6 @@ export function createToolGatewayService(
         .from(connectionGrants)
         .where(
           and(
-            eq(connectionGrants.companyId, connection.companyId),
             eq(connectionGrants.connectionId, connection.id),
             eq(connectionGrants.kind, "user"),
             eq(connectionGrants.subjectUserId, actingUserId),
@@ -4528,7 +4443,6 @@ export function createToolGatewayService(
         .from(connectionGrants)
         .where(
           and(
-            eq(connectionGrants.companyId, connection.companyId),
             eq(connectionGrants.connectionId, connection.id),
             eq(connectionGrants.kind, "organization"),
             eq(connectionGrants.isDefault, true),
@@ -4551,7 +4465,6 @@ export function createToolGatewayService(
         .from(connectionGrantMembers)
         .where(
           and(
-            eq(connectionGrantMembers.companyId, connection.companyId),
             eq(connectionGrantMembers.grantId, grant.id),
             eq(connectionGrantMembers.subjectType, "user"),
           ),
@@ -4607,7 +4520,6 @@ export function createToolGatewayService(
         .from(connectionGrants)
         .where(
           and(
-            eq(connectionGrants.companyId, connection.companyId),
             eq(connectionGrants.connectionId, connection.id),
             eq(connectionGrants.kind, "agent"),
             eq(connectionGrants.subjectAgentId, session.agentId),
@@ -4649,17 +4561,10 @@ export function createToolGatewayService(
         .from(connectionGrantDelegations)
         .innerJoin(
           connectionGrants,
-          and(
-            eq(connectionGrants.id, connectionGrantDelegations.grantId),
-            eq(
-              connectionGrants.companyId,
-              connectionGrantDelegations.companyId,
-            ),
-          ),
+          eq(connectionGrants.id, connectionGrantDelegations.grantId),
         )
         .where(
           and(
-            eq(connectionGrantDelegations.companyId, connection.companyId),
             eq(connectionGrantDelegations.agentId, session.agentId),
             eq(connectionGrants.connectionId, connection.id),
             eq(connectionGrants.kind, "user"),
@@ -4750,10 +4655,7 @@ export function createToolGatewayService(
       .select()
       .from(toolCatalogEntries)
       .where(
-        and(
-          eq(toolCatalogEntries.id, tool.catalogEntryId),
-          eq(toolCatalogEntries.companyId, session.companyId),
-        ),
+        eq(toolCatalogEntries.id, tool.catalogEntryId),
       )
       .limit(1);
     if (!entry || entry.status !== "active" || entry.entryKind !== "tool") {
@@ -4767,10 +4669,7 @@ export function createToolGatewayService(
       .select()
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.id, entry.connectionId),
-          eq(toolConnections.companyId, session.companyId),
-        ),
+        eq(toolConnections.id, entry.connectionId),
       )
       .limit(1);
     if (!connection || (connection.transport !== "mcp_remote" && !isBrowserUseConnection(connection))) {
@@ -4843,10 +4742,7 @@ export function createToolGatewayService(
       .select()
       .from(toolCatalogEntries)
       .where(
-        and(
-          eq(toolCatalogEntries.id, tool.catalogEntryId),
-          eq(toolCatalogEntries.companyId, session.companyId),
-        ),
+        eq(toolCatalogEntries.id, tool.catalogEntryId),
       )
       .limit(1);
     if (!entry || entry.status !== "active" || entry.entryKind !== "tool") {
@@ -4860,10 +4756,7 @@ export function createToolGatewayService(
       .select()
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.id, entry.connectionId),
-          eq(toolConnections.companyId, session.companyId),
-        ),
+        eq(toolConnections.id, entry.connectionId),
       )
       .limit(1);
     if (!connection || connection.transport !== "local_stdio") {
@@ -4917,10 +4810,7 @@ export function createToolGatewayService(
       .select()
       .from(toolStdioCommandTemplates)
       .where(
-        and(
-          eq(toolStdioCommandTemplates.companyId, connection.companyId),
-          eq(toolStdioCommandTemplates.templateKey, templateId),
-        ),
+        eq(toolStdioCommandTemplates.templateKey, templateId),
       )
       .limit(1);
     if (!template || template.status !== "active") {
@@ -5223,11 +5113,9 @@ export function createToolGatewayService(
       )
       .where(
         and(
-          eq(toolProfileEntries.companyId, session.companyId),
           eq(toolProfileEntries.profileId, session.gatewayProfileId),
           eq(toolProfileEntries.selectorType, "connection"),
           eq(toolProfileEntries.effect, "include"),
-          eq(toolConnections.companyId, session.companyId),
           eq(toolConnections.enabled, true),
           eq(toolConnections.status, "active"),
           inArray(toolConnections.transport, ["mcp_remote", "local_stdio"]),
@@ -5371,10 +5259,9 @@ export function createToolGatewayService(
     }
     return runtimeSupervisor.useConnectionSlot(
       {
-        companyId: input.session.companyId,
         applicationId: input.connection.applicationId,
         connectionId: input.connection.id,
-        connectionKey: `mcp:${input.session.companyId}:${input.connection.id}`,
+        connectionKey: `mcp:${input.connection.id}`,
         runId: input.session.runId,
         issueId: input.session.issueId,
         agentId: input.session.agentId,
@@ -5540,7 +5427,7 @@ export function createToolGatewayService(
   ): Promise<Record<string, unknown> | null> {
     if (tool.providerType === "paperclip_slack_chat") {
       if (!session.agentId || !session.runId || !session.issueId) throw new ToolGatewayHttpError(403, "Slack task binding required", "slack_task_required");
-      const authority = await resolveSlackTaskAuthority(db, { companyId: session.companyId, agentId: session.agentId, runId: session.runId, issueId: session.issueId, endpointId: String(asRecord(tool.providerMetadata)?.endpointId ?? ""), identityContextId: session.identityContextId, approvedInvocationId: session.approvedSlackInvocationId });
+      const authority = await resolveSlackTaskAuthority(db, { agentId: session.agentId, runId: session.runId, issueId: session.issueId, endpointId: String(asRecord(tool.providerMetadata)?.endpointId ?? ""), identityContextId: session.identityContextId, approvedInvocationId: session.approvedSlackInvocationId });
       return { endpointId: authority.endpoint.id, userId: authority.userId, revision: authority.revision, identityContextId: authority.identityContextId };
     }
     if (
@@ -5568,10 +5455,7 @@ export function createToolGatewayService(
       .where(
         and(
           eq(toolCatalogEntries.id, tool.catalogEntryId),
-          eq(toolCatalogEntries.companyId, session.companyId),
-          eq(toolConnections.id, tool.connectionId),
-          eq(toolConnections.companyId, session.companyId),
-          eq(toolApplications.companyId, session.companyId),
+          eq(toolConnections.id, tool.connectionId)
         ),
       )
       .limit(1);
@@ -5601,7 +5485,7 @@ export function createToolGatewayService(
       credentialSecretRefsHash: stableHash(
         row.connection.credentialSecretRefs ?? [],
       ),
-      ...(isBrowserUseConnection(row.connection) ? { browserSettingsHash: stableHash(await browserUseService(db).getSettings(session.companyId, grant.id)) } : {}),
+      ...(isBrowserUseConnection(row.connection) ? { browserSettingsHash: stableHash(await browserUseService(db).getSettings(grant.id)) } : {}),
       credentialGrantId: grant.id,
       credentialGrantRefsHash: stableHash(grant.credentialSecretRefs ?? []),
       headerCredentialVersions: credentialVersions.headerCredentialVersions,
@@ -5777,7 +5661,7 @@ export function createToolGatewayService(
       );
     }
     const interaction = await interactions.create(
-      { id: input.session.issueId, companyId: input.session.companyId },
+      { id: input.session.issueId },
       {
         kind: "ask_user_questions",
         idempotencyKey: `mcp-elicitation:${input.invocationId}`,
@@ -5823,7 +5707,6 @@ export function createToolGatewayService(
     });
     await writeAudit({
       session: input.session,
-      companyId: input.session.companyId,
       agentId: input.session.agentId,
       runId: input.session.runId,
       issueId: input.session.issueId,
@@ -6068,10 +5951,7 @@ export function createToolGatewayService(
               updatedAt: new Date(options.now?.() ?? Date.now()),
             })
             .where(
-              and(
-                eq(connectionGrants.id, grant.id),
-                eq(connectionGrants.companyId, connection.companyId),
-              ),
+              eq(connectionGrants.id, grant.id),
             );
         }
       }
@@ -6118,8 +5998,7 @@ export function createToolGatewayService(
         const tokenRequest = vercelTokenRequest({
           credential: connection.externalCredential,
           grant,
-          connectionId: connection.id,
-          companyId: connection.companyId,
+          connectionId: connection.id
         });
         vercelConnect.evict(tokenRequest);
         credentialHeaders = {
@@ -6375,10 +6254,9 @@ export function createToolGatewayService(
       ? await invoke()
       : await runtimeSupervisor.useConnectionSlot(
       {
-        companyId: session.companyId,
         applicationId: tool.applicationId ?? null,
         connectionId: connection.id,
-        connectionKey: `mcp:${session.companyId}:${connection.id}`,
+        connectionKey: `mcp:${connection.id}`,
         runId: session.runId,
         issueId: session.issueId,
         agentId: session.agentId,
@@ -6518,7 +6396,6 @@ export function createToolGatewayService(
   function toGateway(row: typeof toolMcpGateways.$inferSelect): ToolMcpGateway {
     return {
       id: row.id,
-      companyId: row.companyId,
       gatewayPublicId: row.gatewayPublicId,
       name: row.name,
       displaySlug: row.displaySlug || row.slug,
@@ -6552,7 +6429,6 @@ export function createToolGatewayService(
   ): ToolMcpGatewayToken {
     return {
       id: row.id,
-      companyId: row.companyId,
       gatewayId: row.gatewayId,
       name: row.name,
       tokenPrefix: row.tokenPrefix,
@@ -6576,17 +6452,13 @@ export function createToolGatewayService(
   }
 
   async function getGatewayWithTokens(
-    companyId: string,
     gatewayId: string,
   ): Promise<ToolMcpGatewayWithTokens> {
     const [gateway] = await db
       .select()
       .from(toolMcpGateways)
       .where(
-        and(
-          eq(toolMcpGateways.companyId, companyId),
-          eq(toolMcpGateways.id, gatewayId),
-        ),
+        eq(toolMcpGateways.id, gatewayId),
       )
       .limit(1);
     if (!gateway) {
@@ -6600,10 +6472,7 @@ export function createToolGatewayService(
       .select()
       .from(toolMcpGatewayTokens)
       .where(
-        and(
-          eq(toolMcpGatewayTokens.companyId, companyId),
-          eq(toolMcpGatewayTokens.gatewayId, gatewayId),
-        ),
+        eq(toolMcpGatewayTokens.gatewayId, gatewayId),
       )
       .orderBy(desc(toolMcpGatewayTokens.createdAt));
     return {
@@ -6614,7 +6483,6 @@ export function createToolGatewayService(
   }
 
   async function assertGatewayContext(input: {
-    companyId: string;
     profileId?: string | null;
     agentId?: string | null;
     projectId?: string | null;
@@ -6625,10 +6493,7 @@ export function createToolGatewayService(
         .select({ id: toolProfiles.id })
         .from(toolProfiles)
         .where(
-          and(
-            eq(toolProfiles.companyId, input.companyId),
-            eq(toolProfiles.id, input.profileId),
-          ),
+          eq(toolProfiles.id, input.profileId),
         )
         .limit(1);
       if (!profile)
@@ -6639,16 +6504,13 @@ export function createToolGatewayService(
         );
     }
     if (input.agentId)
-      await assertAgentInCompany(input.companyId, input.agentId);
+      await assertAgentInCompany(input.agentId);
     if (input.projectId) {
       const [project] = await db
         .select({ id: projects.id })
         .from(projects)
         .where(
-          and(
-            eq(projects.companyId, input.companyId),
-            eq(projects.id, input.projectId),
-          ),
+          eq(projects.id, input.projectId),
         )
         .limit(1);
       if (!project)
@@ -6663,10 +6525,7 @@ export function createToolGatewayService(
         .select({ id: issues.id, projectId: issues.projectId })
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, input.companyId),
-            eq(issues.id, input.issueId),
-          ),
+          eq(issues.id, input.issueId),
         )
         .limit(1);
       if (!issue)
@@ -6727,7 +6586,6 @@ export function createToolGatewayService(
   }) {
     await writeAudit({
       session: input.session,
-      companyId: input.session.companyId,
       agentId: input.session.agentId,
       runId: input.session.runId,
       issueId: input.session.issueId,
@@ -6768,7 +6626,6 @@ export function createToolGatewayService(
         : protocolLimits.tokenRequests;
     const tokenKey = `mcp_gateway_protocol:token:${session.gatewayTokenId ?? session.actorId ?? "unknown"}:${action}`;
     const tokenState = await consumeProtocolRateLimit({
-      companyId: session.companyId,
       counterKey: tokenKey,
       config: tokenLimit,
     });
@@ -6802,7 +6659,6 @@ export function createToolGatewayService(
         : protocolLimits.gatewayRequests;
     const gatewayKey = `mcp_gateway_protocol:gateway:${session.gatewayId ?? session.gatewayPublicId ?? "unknown"}:${action}`;
     const gatewayState = await consumeProtocolRateLimit({
-      companyId: session.companyId,
       counterKey: gatewayKey,
       config: gatewayLimit,
     });
@@ -6855,12 +6711,10 @@ export function createToolGatewayService(
       );
     }
     const gatewayState = await consumeProtocolRateLimit({
-      companyId: gateway.companyId,
       counterKey: `mcp_gateway_auth_failure:gateway:${gatewayKey}`,
       config: protocolLimits.authFailures,
     });
     const tokenState = await consumeProtocolRateLimit({
-      companyId: gateway.companyId,
       counterKey: `mcp_gateway_auth_failure:token:${gatewayKey}:${tokenKey}`,
       config: protocolLimits.authFailures,
     });
@@ -6879,7 +6733,6 @@ export function createToolGatewayService(
         session: {
           id: `gateway:${gateway.id}`,
           token: "",
-          companyId: gateway.companyId,
           agentId: gateway.agentId,
           runId: null,
           issueId: gateway.issueId,
@@ -6893,7 +6746,6 @@ export function createToolGatewayService(
           createdAt: new Date(),
           expiresAt: new Date(),
         },
-        companyId: gateway.companyId,
         agentId: gateway.agentId,
         runId: null,
         issueId: gateway.issueId,
@@ -7008,10 +6860,7 @@ export function createToolGatewayService(
       source: sql<string | null>`${toolProfiles.metadata}->>'source'`,
       agentId: sql<string | null>`${toolProfiles.metadata}->>'agentId'`,
       assignmentDigest: sql<string | null>`${toolProfiles.metadata}->>'assignmentDigest'`,
-    }).from(toolProfiles).where(and(
-      eq(toolProfiles.id, row.gateway.profileId),
-      eq(toolProfiles.companyId, row.gateway.companyId),
-    )).limit(1);
+    }).from(toolProfiles).where(eq(toolProfiles.id, row.gateway.profileId)).limit(1);
     // The immutable native profile also identifies legacy assignments when an
     // update has cleared the gateway metadata. Missing metadata must fail closed.
     const nativeAssignment = Object.hasOwn(nativeMetadata ?? {}, "nativeRuntimeAssignmentDigest") ||
@@ -7057,7 +6906,6 @@ export function createToolGatewayService(
       }
       const [run] = await db
         .select({
-          companyId: heartbeatRuns.companyId,
           agentId: heartbeatRuns.agentId,
           status: heartbeatRuns.status,
           responsibleUserId: heartbeatRuns.responsibleUserId,
@@ -7065,7 +6913,7 @@ export function createToolGatewayService(
         .from(heartbeatRuns)
         .where(eq(heartbeatRuns.id, tokenRunId))
         .limit(1);
-      if (!run || run.companyId !== row.gateway.companyId) {
+      if (!run) {
         return recordNamedGatewayAuthFailure({
           gatewayId: input.gatewayId,
           gatewayPublicId: input.gatewayPublicId,
@@ -7094,7 +6942,6 @@ export function createToolGatewayService(
       }
       try {
         const runContext = await resolveRunContext({
-          companyId: row.gateway.companyId,
           agentId: run.agentId,
           runId: tokenRunId,
           issueId: row.gateway.issueId,
@@ -7123,7 +6970,6 @@ export function createToolGatewayService(
     const session: ToolGatewaySession = {
       id: `gateway:${row.gateway.id}`,
       token: "",
-      companyId: row.gateway.companyId,
       agentId,
       runId,
       issueId,
@@ -7184,7 +7030,6 @@ export function createToolGatewayService(
     tool: ToolGatewayDescriptor;
     parameters: unknown;
     invocationId: string;
-    companyId: string;
     agentId: string;
     userId: string;
     argumentsSummary: ReturnType<typeof summarizeToolValue>;
@@ -7209,7 +7054,6 @@ export function createToolGatewayService(
       .where(eq(toolInvocations.id, args.invocationId));
     await writeAudit({
       session: args.session,
-      companyId: args.companyId,
       agentId: args.agentId,
       runId: null,
       issueId: null,
@@ -7303,7 +7147,6 @@ export function createToolGatewayService(
       });
       await writeAudit({
         session: args.session,
-        companyId: args.companyId,
         agentId: args.agentId,
         runId: null,
         issueId: null,
@@ -7381,7 +7224,6 @@ export function createToolGatewayService(
       });
       await writeAudit({
         session: args.session,
-        companyId: args.companyId,
         agentId: args.agentId,
         runId: null,
         issueId: null,
@@ -7436,7 +7278,6 @@ export function createToolGatewayService(
     const session: ToolGatewaySession = {
       id: "test-call",
       token: "test-call",
-      companyId: invocation.companyId,
       agentId,
       runId: null,
       issueId: null,
@@ -7451,7 +7292,6 @@ export function createToolGatewayService(
     try {
       tool = (
         await connectedMcpToolsForConnection(
-          invocation.companyId,
           invocation.connectionId,
         )
       ).find(
@@ -7494,7 +7334,6 @@ export function createToolGatewayService(
         tool,
         parameters,
         invocationId: invocation.id,
-        companyId: invocation.companyId,
         agentId,
         userId,
         argumentsSummary,
@@ -7761,10 +7600,7 @@ export function createToolGatewayService(
       .select({ status: issues.status, projectId: issues.projectId })
       .from(issues)
       .where(
-        and(
-          eq(issues.id, invocation.issueId!),
-          eq(issues.companyId, invocation.companyId),
-        ),
+        eq(issues.id, invocation.issueId!),
       )
       .limit(1);
     if (issue && issue.status !== "done" && issue.status !== "cancelled") {
@@ -7798,7 +7634,6 @@ export function createToolGatewayService(
       .where(
         and(
           eq(runIdentityContexts.id, identityContextId),
-          eq(runIdentityContexts.companyId, session.companyId),
           eq(runIdentityContexts.runId, session.runId!),
           eq(runIdentityContexts.status, "accepted"),
         ),
@@ -7915,7 +7750,6 @@ export function createToolGatewayService(
     const session: ToolGatewaySession = {
       id: `approved-action:${claimed.id}`,
       token: "",
-      companyId: invocation.companyId,
       agentId: invocation.agentId,
       runId: invocation.runId,
       issueId: invocation.issueId,
@@ -8205,7 +8039,6 @@ export function createToolGatewayService(
       )
       .where(
         and(
-          eq(toolActionRequests.companyId, input.session.companyId),
           eq(toolActionRequests.issueId, input.session.issueId),
           eq(toolActionRequests.canonicalArgumentsHash, input.argumentsHash),
           eq(toolInvocations.agentId, input.session.agentId),
@@ -8460,7 +8293,6 @@ export function createToolGatewayService(
 
   return {
     async recordRuntimeMcpDeliveryDiagnostic(input: {
-      companyId: string;
       agentId: string;
       runId: string;
       permittedNotInstalledConnections: Array<{ id: string; name: string }>;
@@ -8476,13 +8308,11 @@ export function createToolGatewayService(
         .where(
           and(
             eq(heartbeatRuns.id, input.runId),
-            eq(heartbeatRuns.companyId, input.companyId),
             eq(heartbeatRuns.agentId, input.agentId),
           ),
         )
         .limit(1);
       await writeAudit({
-        companyId: input.companyId,
         agentId: input.agentId,
         runId: input.runId,
         issueId: run?.issueId ?? null,
@@ -8500,32 +8330,27 @@ export function createToolGatewayService(
     },
 
     async listNamedGateways(
-      companyId: string,
+      
     ): Promise<ToolMcpGatewayWithTokens[]> {
       // Archived gateways are retired — they must not appear in the list UI.
       const gateways = await db
         .select()
         .from(toolMcpGateways)
         .where(
-          and(
-            eq(toolMcpGateways.companyId, companyId),
-            ne(toolMcpGateways.status, "archived"),
-          ),
+          ne(toolMcpGateways.status, "archived"),
         )
         .orderBy(desc(toolMcpGateways.createdAt));
       const rows = await Promise.all(
-        gateways.map((gateway) => getGatewayWithTokens(companyId, gateway.id)),
+        gateways.map((gateway) => getGatewayWithTokens(gateway.id)),
       );
       return rows;
     },
 
     async createNamedGateway(input: {
-      companyId: string;
       body: CreateToolMcpGateway;
       actor?: { agentId?: string | null; userId?: string | null };
     }): Promise<ToolMcpGatewayWithTokens> {
       await assertGatewayContext({
-        companyId: input.companyId,
         profileId: input.body.profileId,
         agentId: input.body.agentId ?? null,
         projectId: input.body.projectId ?? null,
@@ -8539,7 +8364,6 @@ export function createToolGatewayService(
       const [gateway] = await db
         .insert(toolMcpGateways)
         .values({
-          companyId: input.companyId,
           name: input.body.name,
           slug,
           displaySlug: slug,
@@ -8574,7 +8398,6 @@ export function createToolGatewayService(
       await db
         .insert(toolProfileBindings)
         .values({
-          companyId: input.companyId,
           profileId: input.body.profileId,
           targetType: "gateway",
           targetId: gateway.id,
@@ -8588,7 +8411,6 @@ export function createToolGatewayService(
         session: {
           id: `gateway:${gateway.id}`,
           token: "",
-          companyId: gateway.companyId,
           agentId: gateway.agentId,
           runId: null,
           issueId: gateway.issueId,
@@ -8604,7 +8426,6 @@ export function createToolGatewayService(
           createdAt: now,
           expiresAt: now,
         },
-        companyId: input.companyId,
         agentId: input.actor?.agentId ?? gateway.agentId,
         runId: null,
         issueId: gateway.issueId,
@@ -8623,11 +8444,10 @@ export function createToolGatewayService(
           profileId: gateway.profileId,
         },
       });
-      return getGatewayWithTokens(input.companyId, gateway.id);
+      return getGatewayWithTokens(gateway.id);
     },
 
     async updateNamedGateway(input: {
-      companyId: string;
       gatewayId: string;
       body: UpdateToolMcpGateway;
     }): Promise<ToolMcpGatewayWithTokens> {
@@ -8635,10 +8455,7 @@ export function createToolGatewayService(
         .select()
         .from(toolMcpGateways)
         .where(
-          and(
-            eq(toolMcpGateways.companyId, input.companyId),
-            eq(toolMcpGateways.id, input.gatewayId),
-          ),
+          eq(toolMcpGateways.id, input.gatewayId),
         )
         .limit(1);
       if (!existing)
@@ -8648,7 +8465,6 @@ export function createToolGatewayService(
           "gateway_not_found",
         );
       await assertGatewayContext({
-        companyId: input.companyId,
         profileId: input.body.profileId ?? existing.profileId,
         agentId:
           input.body.agentId === undefined
@@ -8723,17 +8539,13 @@ export function createToolGatewayService(
           updatedAt: new Date(),
         })
         .where(
-          and(
-            eq(toolMcpGateways.companyId, input.companyId),
-            eq(toolMcpGateways.id, input.gatewayId),
-          ),
+          eq(toolMcpGateways.id, input.gatewayId),
         )
         .returning();
       if (input.body.profileId && input.body.profileId !== existing.profileId) {
         await db
           .insert(toolProfileBindings)
           .values({
-            companyId: input.companyId,
             profileId: input.body.profileId,
             targetType: "gateway",
             targetId: input.gatewayId,
@@ -8742,11 +8554,10 @@ export function createToolGatewayService(
           })
           .onConflictDoNothing();
       }
-      return getGatewayWithTokens(input.companyId, updated.id);
+      return getGatewayWithTokens(updated.id);
     },
 
     async createNamedGatewayToken(input: {
-      companyId: string;
       gatewayId: string;
       body: CreateToolMcpGatewayToken;
       actor?: { agentId?: string | null; userId?: string | null };
@@ -8755,10 +8566,7 @@ export function createToolGatewayService(
         .select()
         .from(toolMcpGateways)
         .where(
-          and(
-            eq(toolMcpGateways.companyId, input.companyId),
-            eq(toolMcpGateways.id, input.gatewayId),
-          ),
+          eq(toolMcpGateways.id, input.gatewayId),
         )
         .limit(1);
       if (!gateway)
@@ -8775,7 +8583,6 @@ export function createToolGatewayService(
         .insert(toolMcpGatewayTokens)
         .values({
           id: tokenId,
-          companyId: input.companyId,
           gatewayId: input.gatewayId,
           name: input.body.name,
           tokenHash: hashGatewayToken(token),
@@ -8813,7 +8620,6 @@ export function createToolGatewayService(
     },
 
     async revokeNamedGatewayToken(input: {
-      companyId: string;
       tokenId: string;
       revokedAt?: Date;
     }): Promise<ToolMcpGatewayToken> {
@@ -8822,10 +8628,7 @@ export function createToolGatewayService(
         .update(toolMcpGatewayTokens)
         .set({ revokedAt: now, updatedAt: now })
         .where(
-          and(
-            eq(toolMcpGatewayTokens.companyId, input.companyId),
-            eq(toolMcpGatewayTokens.id, input.tokenId),
-          ),
+          eq(toolMcpGatewayTokens.id, input.tokenId),
         )
         .returning();
       if (!row)
@@ -8871,7 +8674,6 @@ export function createToolGatewayService(
       const tools = await listToolsForContext(session, input.signal);
       await writeAudit({
         session,
-        companyId: session.companyId,
         agentId: session.agentId,
         runId: session.runId,
         issueId: session.issueId,
@@ -8899,7 +8701,6 @@ export function createToolGatewayService(
     },
 
     async createSession(input: {
-      companyId: string;
       agentId: string;
       runId: string;
       issueId?: string | null;
@@ -8908,7 +8709,7 @@ export function createToolGatewayService(
       actorType?: LogActivityInput["actorType"];
       actorId?: string;
     }): Promise<ToolGatewaySession> {
-      await assertAgentInCompany(input.companyId, input.agentId);
+      await assertAgentInCompany(input.agentId);
       const { issueId, projectId } = await resolveRunContext(input);
       const now = new Date();
       const sessionId = randomUUID();
@@ -8916,7 +8717,6 @@ export function createToolGatewayService(
       const session: ToolGatewaySession = {
         id: sessionId,
         token,
-        companyId: input.companyId,
         agentId: input.agentId,
         runId: input.runId,
         issueId,
@@ -8927,7 +8727,6 @@ export function createToolGatewayService(
 
       await db.insert(toolGatewaySessions).values({
         id: session.id,
-        companyId: session.companyId,
         agentId: input.agentId,
         runId: input.runId,
         issueId: session.issueId,
@@ -8940,7 +8739,6 @@ export function createToolGatewayService(
 
       await writeAudit({
         session,
-        companyId: session.companyId,
         agentId: session.agentId,
         runId: session.runId,
         issueId: session.issueId,
@@ -8966,7 +8764,6 @@ export function createToolGatewayService(
       const tools = await listToolsForContext(session, options.signal);
       await writeAudit({
         session,
-        companyId: session.companyId,
         agentId: session.agentId,
         runId: session.runId,
         issueId: session.issueId,
@@ -8982,13 +8779,11 @@ export function createToolGatewayService(
     },
 
     async listPluginToolsForAgent(input: {
-      companyId: string;
       agentId: string;
     }): Promise<AgentToolDescriptor[]> {
-      await assertAgentInCompany(input.companyId, input.agentId);
+      await assertAgentInCompany(input.agentId);
       const decisions = await decideToolsForListing(pluginTools(), (tool) =>
         policyInputForAgentTool({
-          companyId: input.companyId,
           agentId: input.agentId,
           tool,
         }),
@@ -9008,16 +8803,16 @@ export function createToolGatewayService(
         });
     },
 
-    async browserUseSessionAuthorized(binding: { companyId: string; agentId: string; runId: string; issueId: string; connectionId: string; grantId: string; invocationId: string }) {
-      const [connection] = await db.select().from(toolConnections).where(and(eq(toolConnections.companyId, binding.companyId), eq(toolConnections.id, binding.connectionId)));
-      const [invocation] = await db.select().from(toolInvocations).where(and(eq(toolInvocations.companyId, binding.companyId), eq(toolInvocations.id, binding.invocationId)));
+    async browserUseSessionAuthorized(binding: { agentId: string; runId: string; issueId: string; connectionId: string; grantId: string; invocationId: string }) {
+      const [connection] = await db.select().from(toolConnections).where(eq(toolConnections.id, binding.connectionId));
+      const [invocation] = await db.select().from(toolInvocations).where(eq(toolInvocations.id, binding.invocationId));
       if (!connection || !invocation || !connection.enabled || connection.status !== "active") return false;
-      const [issue] = await db.select({ projectId: issues.projectId }).from(issues).where(and(eq(issues.companyId, binding.companyId), eq(issues.id, binding.issueId)));
+      const [issue] = await db.select({ projectId: issues.projectId }).from(issues).where(eq(issues.id, binding.issueId));
       const session: ToolGatewaySession = { ...binding, id: randomUUID(), token: "", projectId: issue?.projectId ?? null, createdAt: new Date(), expiresAt: new Date(Date.now() + 60000) };
       try {
         const grant = await resolveConnectionGrant(session, connection, false);
         if (grant.id !== binding.grantId) return false;
-        const tool = (await connectedMcpToolsForConnection(binding.companyId, binding.connectionId)).find(t => t.name === invocation.toolName);
+        const tool = (await connectedMcpToolsForConnection(binding.connectionId)).find(t => t.name === invocation.toolName);
         if (!tool) return false;
         const decision = await policyService.decide(policyInputForTool({ session, tool, consumeRateLimit: false }));
         return decision.allowed || decision.decision === "require_approval";
@@ -9025,9 +8820,9 @@ export function createToolGatewayService(
     },
 
     /** Standing instructions use exactly the same authorization as tool discovery. */
-    async resolveConnectionInstructionsForRun(binding: { companyId: string; agentId: string; runId: string }) {
+    async resolveConnectionInstructionsForRun(binding: { agentId: string; runId: string }) {
       const candidates = await db.select().from(toolConnections).where(and(
-        eq(toolConnections.companyId, binding.companyId), eq(toolConnections.enabled, true),
+        eq(toolConnections.enabled, true),
         eq(toolConnections.status, "active"), sql`${toolConnections.agentInstructions}->>'enabled' = 'true'`,
       ));
       if (!candidates.length) return null;
@@ -9035,7 +8830,7 @@ export function createToolGatewayService(
       const session = await captureSessionIdentity({
         ...binding, ...runContext, id: randomUUID(), token: "", createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000),
       });
-      await assertAgentInCompany(binding.companyId, binding.agentId);
+      await assertAgentInCompany(binding.agentId);
       const candidateIds = new Set(candidates.map((connection) => connection.id));
       // Prompt assembly needs authorization, not a full discovery listing. Share
       // descriptors and policy decisions, but only authorize candidate sources;
@@ -9062,13 +8857,13 @@ export function createToolGatewayService(
       return composeConnectionInstructions(sources);
     },
 
-    async browserUseResources(binding: { companyId: string; agentId: string; runId?: string; issueId?: string }) {
+    async browserUseResources(binding: { agentId: string; runId?: string; issueId?: string }) {
       if (!binding.runId || !binding.issueId) return [];
       const session: ToolGatewaySession = { ...binding, runId: binding.runId, issueId: binding.issueId, id: randomUUID(), token: "", projectId: null, createdAt: new Date(), expiresAt: new Date(Date.now() + 60000) };
       const tools = (await listToolsForContext(session)).filter(t => t.providerType === "provider_rest");
       const resources: Array<{ id: string; label: string; connectionId: string }> = [];
       for (const connectionId of new Set(tools.map(t => t.connectionId!))) {
-        const [connection] = await db.select().from(toolConnections).where(and(eq(toolConnections.companyId, binding.companyId), eq(toolConnections.id, connectionId)));
+        const [connection] = await db.select().from(toolConnections).where(eq(toolConnections.id, connectionId));
         if (!connection || !isBrowserUseConnection(connection)) continue;
         try { await resolveConnectionGrant(session, connection, false); resources.push({ id: connectionId, connectionId, label: "Browser Use Cloud" }); } catch { /* Unavailable grants do not contribute a runtime skill. */ }
       }
@@ -9076,19 +8871,16 @@ export function createToolGatewayService(
     },
 
     async summarizeConnectionAccessForAgent(input: {
-      companyId: string;
       connectionId: string;
       agentId: string;
     }) {
-      await assertAgentInCompany(input.companyId, input.agentId);
+      await assertAgentInCompany(input.agentId);
       const tools = await connectedMcpToolsForConnection(
-        input.companyId,
         input.connectionId,
       );
       const decisions = (
         await decideToolsForListing(tools, (tool) =>
           policyInputForAgentTool({
-            companyId: input.companyId,
             agentId: input.agentId,
             tool,
           }),
@@ -9112,7 +8904,6 @@ export function createToolGatewayService(
         };
       });
       const lastChange = await summarizeAccessLastChange({
-        companyId: input.companyId,
         connectionId: input.connectionId,
         agentId: input.agentId,
         policyIds: [
@@ -9147,11 +8938,10 @@ export function createToolGatewayService(
     },
 
     async executeTestCall(input: ExecuteTestCallInput) {
-      await assertAgentInCompany(input.companyId, input.agentId);
+      await assertAgentInCompany(input.agentId);
       const session: ToolGatewaySession = {
         id: "test-call",
         token: "test-call",
-        companyId: input.companyId,
         agentId: input.agentId,
         runId: null,
         issueId: null,
@@ -9164,7 +8954,6 @@ export function createToolGatewayService(
       };
       const tool = (
         await connectedMcpToolsForConnection(
-          input.companyId,
           input.connectionId,
         )
       ).find(
@@ -9196,7 +8985,6 @@ export function createToolGatewayService(
         promptInjectionMode: "ignore",
       });
       const decisionInput = policyInputForAgentTool({
-        companyId: input.companyId,
         agentId: input.agentId,
         actorType: "user",
         actorId: input.userId,
@@ -9315,7 +9103,6 @@ export function createToolGatewayService(
         });
         await writeAudit({
           session,
-          companyId: input.companyId,
           agentId: input.agentId,
           runId: null,
           issueId: null,
@@ -9347,7 +9134,6 @@ export function createToolGatewayService(
         void emitConnectionInvoked(db, invocationId);
         await writeAudit({
           session,
-          companyId: input.companyId,
           agentId: input.agentId,
           runId: null,
           issueId: null,
@@ -9381,7 +9167,6 @@ export function createToolGatewayService(
         tool,
         parameters: requestedParameters,
         invocationId,
-        companyId: input.companyId,
         agentId: input.agentId,
         userId: input.userId,
         argumentsSummary: argumentValidation.summary,
@@ -9397,7 +9182,6 @@ export function createToolGatewayService(
      * requests only, so it can't be used to read arbitrary action requests.
      */
     async getTestCallStatus(input: {
-      companyId: string;
       connectionId: string;
       actionRequestId: string;
     }): Promise<ToolConnectionTestCallStatus> {
@@ -9406,7 +9190,7 @@ export function createToolGatewayService(
         .from(toolActionRequests)
         .where(eq(toolActionRequests.id, input.actionRequestId))
         .limit(1);
-      if (!actionRequest || actionRequest.companyId !== input.companyId) {
+      if (!actionRequest) {
         throw new ToolGatewayHttpError(
           404,
           "Tool action request not found",
@@ -9418,7 +9202,7 @@ export function createToolGatewayService(
         .from(toolInvocations)
         .where(eq(toolInvocations.id, actionRequest.invocationId))
         .limit(1);
-      if (!invocation || invocation.companyId !== input.companyId) {
+      if (!invocation) {
         throw new ToolGatewayHttpError(
           404,
           "Tool invocation not found",
@@ -9502,7 +9286,6 @@ export function createToolGatewayService(
         for (const row of rows) {
           if (row.status === "approved") {
             await this.approveActionRequest({
-              companyId: row.companyId,
               actionRequestId: row.id,
               actor: { userId: row.decidedByUserId ?? row.resolvedByUserId },
             }).catch((error) =>
@@ -9560,7 +9343,6 @@ export function createToolGatewayService(
     },
 
     async approveActionRequest(input: {
-      companyId: string;
       rememberAction?: boolean;
       issueId?: string;
       interactionId?: string;
@@ -9578,7 +9360,7 @@ export function createToolGatewayService(
         .from(toolActionRequests)
         .where(eq(toolActionRequests.id, input.actionRequestId))
         .limit(1);
-      if (!actionRequest || actionRequest.companyId !== input.companyId) {
+      if (!actionRequest) {
         throw new ToolGatewayHttpError(
           404,
           "Tool action request not found",
@@ -9590,7 +9372,7 @@ export function createToolGatewayService(
         .from(toolInvocations)
         .where(eq(toolInvocations.id, actionRequest.invocationId))
         .limit(1);
-      if (!invocation || invocation.companyId !== input.companyId) {
+      if (!invocation) {
         throw new ToolGatewayHttpError(
           404,
           "Tool invocation not found",
@@ -9617,7 +9399,6 @@ export function createToolGatewayService(
           .where(
             and(
               eq(issueThreadInteractions.id, input.interactionId),
-              eq(issueThreadInteractions.companyId, input.companyId),
               eq(issueThreadInteractions.issueId, input.issueId),
             ),
           )
@@ -9690,10 +9471,7 @@ export function createToolGatewayService(
           .select({ status: approvals.status })
           .from(approvals)
           .where(
-            and(
-              eq(approvals.id, actionRequest.approvalId),
-              eq(approvals.companyId, input.companyId),
-            ),
+            eq(approvals.id, actionRequest.approvalId),
           )
           .limit(1);
         if (!formalApproval || formalApproval.status !== "approved") {
@@ -9743,10 +9521,7 @@ export function createToolGatewayService(
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.id, invocation.issueId!),
-              eq(issues.companyId, input.companyId),
-            ),
+            eq(issues.id, invocation.issueId!),
           )
           .limit(1);
         if (!issue || issue.status === "done" || issue.status === "cancelled")
@@ -9758,7 +9533,6 @@ export function createToolGatewayService(
         const session: ToolGatewaySession = {
           id: `review:${actionRequest.id}`,
           token: "",
-          companyId: input.companyId,
           agentId: invocation.agentId,
           runId: invocation.runId,
           issueId: issue.id,
@@ -9834,7 +9608,6 @@ export function createToolGatewayService(
     },
 
     async declineActionRequest(input: {
-      companyId: string;
       issueId?: string;
       interactionId?: string;
       actionRequestId: string;
@@ -9874,10 +9647,7 @@ export function createToolGatewayService(
           .select()
           .from(toolActionRequests)
           .where(
-            and(
-              eq(toolActionRequests.id, input.approvedActionRequestId),
-              eq(toolActionRequests.companyId, session.companyId),
-            ),
+            eq(toolActionRequests.id, input.approvedActionRequestId),
           );
         const [invocation] = request
           ? await db
@@ -9886,7 +9656,6 @@ export function createToolGatewayService(
               .where(
                 and(
                   eq(toolInvocations.id, request.invocationId),
-                  eq(toolInvocations.companyId, session.companyId),
                   eq(toolInvocations.runId, session.runId!),
                   eq(toolInvocations.agentId, session.agentId!),
                 ),
@@ -9908,7 +9677,6 @@ export function createToolGatewayService(
             .where(
               and(
                 eq(runIdentityContexts.id, payload.identityContextId),
-                eq(runIdentityContexts.companyId, session.companyId),
                 eq(runIdentityContexts.runId, session.runId!),
                 eq(runIdentityContexts.status, "accepted"),
               ),
@@ -9933,7 +9701,7 @@ export function createToolGatewayService(
         if (!args) throw new ToolGatewayHttpError(403, "Unknown Slack operation", "slack_task_required");
         if (typeof args.idempotencyKey === "string") {
           const key = `slack:${tool.connectionId}:${session.issueId}:${session.responsibleUserId}:${args.idempotencyKey}`;
-          const [prior] = await db.select().from(toolInvocations).where(and(eq(toolInvocations.companyId, session.companyId), eq(toolInvocations.idempotencyKey, key)));
+          const [prior] = await db.select().from(toolInvocations).where(eq(toolInvocations.idempotencyKey, key));
           const currentHash = validateToolContent({ value: args, direction: "arguments", sensitiveMode: "redact", promptInjectionMode: "ignore" }).summary.sha256;
           if (prior && (prior.toolName !== tool.name || prior.argumentsHash !== currentHash)) throw new ToolGatewayHttpError(409, "Idempotency key belongs to a different Slack operation", "slack_idempotency_conflict");
           input = { ...input, idempotencyKey: key };
@@ -9965,14 +9733,13 @@ export function createToolGatewayService(
         const [invocation] = await db
           .insert(toolInvocations)
           .values({
-            companyId: session.companyId,
             actorType:
               session.actorType ?? (session.agentId ? "agent" : "system"),
             actorId:
               session.actorId ??
               session.agentId ??
               session.gatewayTokenId ??
-              session.companyId,
+              "system",
             agentId: session.agentId,
             issueId: session.issueId,
             runId: session.runId,
@@ -10008,7 +9775,6 @@ export function createToolGatewayService(
         });
         await writeAudit({
           session,
-          companyId: session.companyId,
           agentId: session.agentId,
           runId: session.runId,
           issueId: session.issueId,
@@ -10098,7 +9864,7 @@ export function createToolGatewayService(
           .from(toolActionRequests)
           .where(eq(toolActionRequests.id, input.approvedActionRequestId))
           .limit(1);
-        if (!actionRequest || actionRequest.companyId !== session.companyId) {
+        if (!actionRequest) {
           throw new ToolGatewayHttpError(
             404,
             "Tool action request not found",
@@ -10111,8 +9877,7 @@ export function createToolGatewayService(
           .where(eq(toolInvocations.id, actionRequest.invocationId))
           .limit(1);
         if (
-          !storedInvocation ||
-          storedInvocation.companyId !== session.companyId
+          !storedInvocation
         ) {
           throw new ToolGatewayHttpError(
             404,
@@ -10144,14 +9909,12 @@ export function createToolGatewayService(
         const [linkedInteraction] = await db
           .select({
             id: issueThreadInteractions.id,
-            issueId: issueThreadInteractions.issueId,
-            companyId: issueThreadInteractions.companyId,
+            issueId: issueThreadInteractions.issueId
           })
           .from(issueThreadInteractions)
           .where(
             and(
               eq(issueThreadInteractions.id, actionRequest.interactionId),
-              eq(issueThreadInteractions.companyId, session.companyId),
               eq(issueThreadInteractions.issueId, actionIssueId),
             ),
           )
@@ -10214,7 +9977,6 @@ export function createToolGatewayService(
             .where(
               and(
                 eq(issueThreadInteractions.id, actionRequest.interactionId),
-                eq(issueThreadInteractions.companyId, session.companyId),
                 eq(issueThreadInteractions.issueId, actionIssueId),
               ),
             )
@@ -10283,10 +10045,7 @@ export function createToolGatewayService(
             .select({ status: approvals.status })
             .from(approvals)
             .where(
-              and(
-                eq(approvals.id, actionRequest.approvalId),
-                eq(approvals.companyId, session.companyId),
-              ),
+              eq(approvals.id, actionRequest.approvalId),
             )
             .limit(1);
           if (!formalApproval || formalApproval.status !== "approved") {
@@ -10472,12 +10231,11 @@ export function createToolGatewayService(
         await policyService.writeAudit(decisionInput, accessDecision);
         invocationId = recorded.invocation.id;
         const retryingSlackRateLimit = recorded.replayed && accessDecision.allowed && tool.providerType === "paperclip_slack_chat" && session.agentId && session.runId && session.issueId
-          ? await claimSlackRateLimitRetry(db, { companyId: session.companyId, agentId: session.agentId, runId: session.runId, issueId: session.issueId, endpointId: String(asRecord(tool.providerMetadata)?.endpointId ?? ""), identityContextId: session.identityContextId }, invocationId)
+          ? await claimSlackRateLimitRetry(db, { agentId: session.agentId, runId: session.runId, issueId: session.issueId, endpointId: String(asRecord(tool.providerMetadata)?.endpointId ?? ""), identityContextId: session.identityContextId }, invocationId)
           : false;
         if (recorded.replayed && !retryingSlackRateLimit) {
           await writeAudit({
             session,
-            companyId: session.companyId,
             agentId: session.agentId,
             runId: session.runId,
             issueId: session.issueId,
@@ -10515,7 +10273,6 @@ export function createToolGatewayService(
           void emitConnectionInvoked(db, invocationId);
           await writeAudit({
             session,
-            companyId: session.companyId,
             agentId: session.agentId,
             runId: session.runId,
             issueId: session.issueId,
@@ -10558,7 +10315,6 @@ export function createToolGatewayService(
 
       await writeAudit({
         session,
-        companyId: session.companyId,
         agentId: session.agentId,
         runId: session.runId,
         issueId: session.issueId,
@@ -10619,7 +10375,6 @@ export function createToolGatewayService(
                   {
                     agentId: session.agentId!,
                     runId: session.runId!,
-                    companyId: session.companyId,
                     projectId: session.projectId ?? "",
                   },
                 ),
@@ -10708,7 +10463,6 @@ export function createToolGatewayService(
 
         await writeAudit({
           session,
-          companyId: session.companyId,
           agentId: session.agentId,
           runId: session.runId,
           issueId: session.issueId,
@@ -10839,7 +10593,6 @@ export function createToolGatewayService(
         });
         await writeAudit({
           session,
-          companyId: session.companyId,
           agentId: session.agentId,
           runId: session.runId,
           issueId: session.issueId,
@@ -10880,13 +10633,6 @@ export function createToolGatewayService(
         );
       }
       if (input.actor.type === "agent") {
-        if (input.actor.companyId !== input.runContext.companyId) {
-          throw new ToolGatewayHttpError(
-            403,
-            "Agent key cannot access another company",
-            "actor_company_mismatch",
-          );
-        }
         if (input.actor.agentId !== input.runContext.agentId) {
           throw new ToolGatewayHttpError(
             403,
@@ -10904,7 +10650,6 @@ export function createToolGatewayService(
       }
 
       const context = await resolveRunContext({
-        companyId: input.runContext.companyId,
         agentId: input.runContext.agentId,
         runId: input.runContext.runId,
         projectId: input.runContext.projectId,
@@ -10913,7 +10658,6 @@ export function createToolGatewayService(
       const sessionLike: ToolGatewaySession = {
         id: "plugin-route",
         token: "plugin-route",
-        companyId: input.runContext.companyId,
         agentId: input.runContext.agentId,
         runId: input.runContext.runId,
         issueId: context.issueId,
@@ -10976,7 +10720,6 @@ export function createToolGatewayService(
         void emitConnectionInvoked(db, invocationId);
         await writeAudit({
           session: sessionLike,
-          companyId: input.runContext.companyId,
           agentId: input.runContext.agentId,
           runId: input.runContext.runId,
           issueId: context.issueId,
@@ -11017,7 +10760,6 @@ export function createToolGatewayService(
 
       await writeAudit({
         session: sessionLike,
-        companyId: input.runContext.companyId,
         agentId: input.runContext.agentId,
         runId: input.runContext.runId,
         issueId: context.issueId,
@@ -11070,7 +10812,6 @@ export function createToolGatewayService(
         });
         await writeAudit({
           session: sessionLike,
-          companyId: input.runContext.companyId,
           agentId: input.runContext.agentId,
           runId: input.runContext.runId,
           issueId: context.issueId,
@@ -11130,7 +10871,6 @@ export function createToolGatewayService(
         });
         await writeAudit({
           session: sessionLike,
-          companyId: input.runContext.companyId,
           agentId: input.runContext.agentId,
           runId: input.runContext.runId,
           issueId: context.issueId,
@@ -11156,7 +10896,6 @@ export function createToolGatewayService(
     },
 
     async revokeSession(input: {
-      companyId: string;
       sessionId: string;
       revokedAt?: Date;
       actor?: {
@@ -11172,10 +10911,7 @@ export function createToolGatewayService(
         .select()
         .from(toolGatewaySessions)
         .where(
-          and(
-            eq(toolGatewaySessions.companyId, input.companyId),
-            eq(toolGatewaySessions.id, input.sessionId),
-          ),
+          eq(toolGatewaySessions.id, input.sessionId),
         )
         .limit(1);
       if (!existing) {
@@ -11201,16 +10937,12 @@ export function createToolGatewayService(
         .update(toolGatewaySessions)
         .set({ revokedAt: now, updatedAt: now })
         .where(
-          and(
-            eq(toolGatewaySessions.companyId, input.companyId),
-            eq(toolGatewaySessions.id, input.sessionId),
-          ),
+          eq(toolGatewaySessions.id, input.sessionId),
         )
         .returning();
       const sessionView = gatewaySessionFromRow(session!);
       await writeAudit({
         session: sessionView,
-        companyId: sessionView.companyId,
         agentId: sessionView.agentId,
         runId: sessionView.runId,
         issueId: sessionView.issueId,
@@ -11246,18 +10978,16 @@ export function createToolGatewayService(
       return { deletedCount: rows.length };
     },
 
-    async listRuntimeSlots(companyId?: string) {
-      return runtimeSupervisor.listSlots(companyId);
+    async listRuntimeSlots() {
+      return runtimeSupervisor.listSlots();
     },
 
     async stopRuntimeSlot(input: {
-      companyId: string;
       slotId: string;
       actor?: { agentId?: string | null; runId?: string | null };
     }) {
       try {
         return await runtimeSupervisor.stopSlot({
-          companyId: input.companyId,
           slotId: input.slotId,
           agentId: input.actor?.agentId ?? null,
           runId: input.actor?.runId ?? null,
@@ -11276,13 +11006,11 @@ export function createToolGatewayService(
     },
 
     async restartRuntimeSlot(input: {
-      companyId: string;
       slotId: string;
       actor?: { agentId?: string | null; runId?: string | null };
     }) {
       try {
         return await runtimeSupervisor.restartSlot({
-          companyId: input.companyId,
           slotId: input.slotId,
           agentId: input.actor?.agentId ?? null,
           runId: input.actor?.runId ?? null,

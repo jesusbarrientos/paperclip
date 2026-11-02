@@ -21,7 +21,6 @@ export type SourceTrustActor = {
 
 export type SourceTrustIssueContext = {
   id: string;
-  companyId: string;
   projectId?: string | null;
   executionPolicy?: unknown;
 };
@@ -104,31 +103,28 @@ export async function resolveActorSourceTrustForIssue(input: {
   const [agent, project, run] = await Promise.all([
     input.db
       .select({
-        companyId: agents.companyId,
         permissions: agents.permissions,
       })
       .from(agents)
-      .where(and(eq(agents.id, input.actor.agentId), eq(agents.companyId, input.issue.companyId)))
+      .where(eq(agents.id, input.actor.agentId))
       .then((rows) => rows[0] ?? null),
     input.issue.projectId
       ? input.db
           .select({
-            companyId: projects.companyId,
             executionWorkspacePolicy: projects.executionWorkspacePolicy,
           })
           .from(projects)
-          .where(and(eq(projects.id, input.issue.projectId), eq(projects.companyId, input.issue.companyId)))
+          .where(eq(projects.id, input.issue.projectId))
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
     input.actor.runId
       ? input.db
           .select({
-            companyId: heartbeatRuns.companyId,
             agentId: heartbeatRuns.agentId,
             contextSnapshot: heartbeatRuns.contextSnapshot,
           })
           .from(heartbeatRuns)
-          .where(and(eq(heartbeatRuns.id, input.actor.runId), eq(heartbeatRuns.companyId, input.issue.companyId)))
+          .where(eq(heartbeatRuns.id, input.actor.runId))
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
   ]);
@@ -146,16 +142,13 @@ export async function resolveActorSourceTrustForIssue(input: {
   const runExecutionPolicy = readObject(runContext?.executionPolicy);
 
   const resolution = resolveCoreTrustPreset({
-    companyId: input.issue.companyId,
     agent,
     project,
     issue: {
-      companyId: input.issue.companyId,
       executionPolicy: input.issue.executionPolicy,
     },
     run: run
       ? {
-          companyId: run.companyId,
           executionPolicy: runExecutionPolicy,
         }
       : null,

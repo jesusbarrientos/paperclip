@@ -21,7 +21,7 @@ function Hydrate({ children }: { children: ReactNode }) {
       enableRoutineTriggers: true,
       enableEnvironments: false,
     });
-    queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), []);
+    queryClient.setQueryData(queryKeys.secrets.list(), []);
     return true;
   });
   return children;

@@ -5,7 +5,7 @@
   "name": "Semantic tool conflict and duplicate retry",
   "description": "A stale document write conflicts, a fresh retry succeeds, and an exact idempotent retry returns the original operation receipt.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_semantic_retry", "issueId": "issue_semantic_retry",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_semantic_retry",
     "runId": "run_semantic_retry", "environmentLeaseId": "lease_semantic_retry", "runnerInstanceId": "runner_semantic_retry",
     "normalizedSessionId": "session_semantic_retry", "driverSessionId": "driver_semantic_retry"
   },

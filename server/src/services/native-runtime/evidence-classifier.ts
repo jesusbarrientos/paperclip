@@ -102,7 +102,6 @@ function uuidRef(ref: string, prefixes: string[]): string | null {
 
 async function classifyEvidenceRef(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   runId: string;
   ref: string;
@@ -117,7 +116,6 @@ async function classifyEvidenceRef(input: {
     })
       .from(heartbeatRunEvents)
       .where(and(
-        eq(heartbeatRunEvents.companyId, input.companyId),
         eq(heartbeatRunEvents.runId, input.runId),
         or(eq(heartbeatRunEvents.seq, cursor), eq(heartbeatRunEvents.sourceSeq, cursor)),
       )).limit(1).then((rows) => rows[0] ?? null);
@@ -151,7 +149,6 @@ async function classifyEvidenceRef(input: {
       reviewState: issueWorkProducts.reviewState,
     }).from(issueWorkProducts).where(and(
       eq(issueWorkProducts.id, workProductId),
-      eq(issueWorkProducts.companyId, input.companyId),
       eq(issueWorkProducts.issueId, input.issueId),
     )).limit(1).then((rows) => rows[0] ?? null);
     if (!row) return { ref: input.ref, kind: "work_product", outcome: "missing", reasonCode: "work_product_missing", durableRecordId: null };
@@ -176,9 +173,7 @@ async function classifyEvidenceRef(input: {
       .from(issueApprovals)
       .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
       .where(and(
-        eq(issueApprovals.companyId, input.companyId),
         eq(issueApprovals.issueId, input.issueId),
-        eq(approvals.companyId, input.companyId),
         eq(approvals.id, approvalId),
       )).limit(1).then((rows) => rows[0] ?? null);
     if (!row) return { ref: input.ref, kind: "approval", outcome: "missing", reasonCode: "approval_missing", durableRecordId: null };
@@ -195,7 +190,6 @@ async function classifyEvidenceRef(input: {
       result: issueThreadInteractions.result,
     }).from(issueThreadInteractions).where(and(
       eq(issueThreadInteractions.id, interactionId),
-      eq(issueThreadInteractions.companyId, input.companyId),
       eq(issueThreadInteractions.issueId, input.issueId),
     )).limit(1).then((rows) => rows[0] ?? null);
     if (!row) return { ref: input.ref, kind: "interaction", outcome: "missing", reasonCode: "interaction_missing", durableRecordId: null };
@@ -213,7 +207,6 @@ async function classifyEvidenceRef(input: {
   if (attachmentId) {
     const row = await input.db.select({ id: issueAttachments.id }).from(issueAttachments).where(and(
       eq(issueAttachments.id, attachmentId),
-      eq(issueAttachments.companyId, input.companyId),
       eq(issueAttachments.issueId, input.issueId),
     )).limit(1).then((rows) => rows[0] ?? null);
     return row
@@ -236,7 +229,6 @@ async function classifyEvidenceRef(input: {
  */
 export async function classifyNativeEvidence(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   runId: string;
   contract: Record<string, unknown>;
@@ -344,10 +336,7 @@ export async function classifyNativeEvidence(input: {
   const ignoredAttentionRequests = [...normalizedSignals.ignoredAttentionRequests];
   for (const request of normalizedSignals.actionableAttentionRequests) {
     if (request.ownerClass === "agent" && request.targetAgentId) {
-      const targetExists = await input.db.select({ id: agents.id }).from(agents).where(and(
-        eq(agents.id, request.targetAgentId),
-        eq(agents.companyId, input.companyId),
-      )).limit(1).then((rows) => rows.length > 0);
+      const targetExists = await input.db.select({ id: agents.id }).from(agents).where(eq(agents.id, request.targetAgentId)).limit(1).then((rows) => rows.length > 0);
       if (!targetExists) {
         ignoredAttentionRequests.push({
           sourceIndex: request.sourceIndex,

@@ -543,6 +543,8 @@ Paperclip can map this spec to its runtime model like this:
 - Paperclip extension:
   - `.paperclip.yaml` -> adapter config, runtime config, env input declarations, permissions, budgets, routine triggers, and other Paperclip-specific fidelity
 
+A Paperclip instance serves exactly one organization (one company). Paperclip therefore always imports a package into that instance's existing organization: `COMPANY.md` metadata updates the organization when the company entity is selected (board-only import routes), and agents, teams, projects, tasks, and skills are added to it under the chosen collision strategy. Paperclip does not create a second company from a package; to stand up a separate company from a package, import it into a fresh instance.
+
 Inline Paperclip-only metadata that must live inside a shared markdown file should use:
 
 - `metadata.paperclip`

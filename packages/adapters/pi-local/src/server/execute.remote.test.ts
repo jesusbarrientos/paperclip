@@ -128,7 +128,6 @@ describe("pi remote execution", () => {
       runId: "run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -247,7 +246,6 @@ describe("pi remote execution", () => {
       runId: "run-providers",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -329,7 +327,6 @@ describe("pi remote execution", () => {
       runId: "run-ssh-resume",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -406,7 +403,6 @@ describe("pi remote execution", () => {
       runId: "run-ssh-stale-session",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -479,7 +475,6 @@ describe("pi remote execution", () => {
       runId: "run-ssh-empty-header",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -548,7 +543,6 @@ describe("pi remote execution", () => {
       runId: "run-ssh-head-failure",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -611,7 +605,6 @@ describe("pi remote execution", () => {
       runId: "run-context-ownership",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -645,7 +638,6 @@ describe("pi remote execution", () => {
       runId: "run-default-policy",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -672,7 +664,6 @@ describe("pi remote execution", () => {
       runId: "run-custom-policy",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -706,7 +697,6 @@ describe("pi remote execution", () => {
       runId: "run-resumed-policy",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},
@@ -744,7 +734,6 @@ describe("pi remote execution", () => {
       runId: "run-instructions-policy",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Pi Builder",
         adapterType: "pi_local",
         adapterConfig: {},

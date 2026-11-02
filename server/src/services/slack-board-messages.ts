@@ -26,7 +26,6 @@ export async function mirrorSlackBoardComment(
   db: Executor,
   comment: {
     id: string;
-    companyId: string;
     issueId: string;
     body: string;
     authorType?: string | null;
@@ -58,22 +57,17 @@ export async function mirrorSlackBoardComment(
     .from(chatConversations)
     .innerJoin(
       chatEndpoints,
-      and(
-        eq(chatEndpoints.id, chatConversations.endpointId),
-        eq(chatEndpoints.companyId, comment.companyId),
-      ),
+      eq(chatEndpoints.id, chatConversations.endpointId),
     )
     .innerJoin(
       issues,
       and(
         eq(issues.id, chatConversations.issueId),
-        eq(issues.companyId, comment.companyId),
         eq(issues.assigneeAgentId, chatEndpoints.assignedAgentId),
       ),
     )
     .where(
       and(
-        eq(chatConversations.companyId, comment.companyId),
         eq(chatConversations.issueId, comment.issueId),
         eq(chatEndpoints.provider, "slack"),
         ...(!options.wakeAgent
@@ -104,7 +98,6 @@ export async function mirrorSlackBoardComment(
     const [receipt] = await db
       .insert(chatActions)
       .values({
-        companyId: comment.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         kind: "slack_board_message",
@@ -124,7 +117,6 @@ export async function mirrorSlackBoardComment(
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: comment.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: comment.issueId,
@@ -149,7 +141,6 @@ export async function mirrorSlackBoardComment(
       .innerJoin(assets, eq(assets.id, issueAttachments.assetId))
       .where(
         and(
-          eq(issueAttachments.companyId, comment.companyId),
           eq(issueAttachments.issueId, comment.issueId),
           eq(issueAttachments.issueCommentId, comment.id),
         ),
@@ -165,7 +156,6 @@ export async function mirrorSlackBoardComment(
       await db
         .insert(chatPublications)
         .values({
-          companyId: comment.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: comment.issueId,
@@ -182,7 +172,6 @@ export async function mirrorSlackBoardComment(
         })
         .onConflictDoNothing();
     await logActivity(db as Db, {
-      companyId: comment.companyId,
       actorType: "user",
       actorId: comment.authorUserId,
       action: "chat.publication_requested",
@@ -203,7 +192,6 @@ export async function mirrorSlackBoardComment(
 export async function slackBoardReplyBindings(
   db: Executor,
   input: {
-    companyId: string;
     issueId: string;
     agentId: string;
     commentIds: string[];
@@ -213,7 +201,6 @@ export async function slackBoardReplyBindings(
   if (!input.commentIds.length || !input.userId) return [];
   const bindings = await db
     .select({
-      companyId: chatActions.companyId,
       endpointId: chatActions.endpointId,
       conversationId: chatConversations.id,
       endpoint: chatEndpoints,
@@ -223,7 +210,6 @@ export async function slackBoardReplyBindings(
     .innerJoin(
       issueComments,
       and(
-        eq(issueComments.companyId, input.companyId),
         eq(issueComments.issueId, input.issueId),
         sql`${issueComments.id}::text = ${chatActions.payload}->>'commentId'`,
       ),
@@ -232,7 +218,6 @@ export async function slackBoardReplyBindings(
       chatConversations,
       and(
         eq(chatConversations.id, chatActions.conversationId),
-        eq(chatConversations.companyId, input.companyId),
         eq(chatConversations.issueId, input.issueId),
       ),
     )
@@ -240,7 +225,6 @@ export async function slackBoardReplyBindings(
       chatEndpoints,
       and(
         eq(chatEndpoints.id, chatActions.endpointId),
-        eq(chatEndpoints.companyId, input.companyId),
         eq(chatEndpoints.provider, "slack"),
         eq(chatEndpoints.assignedAgentId, input.agentId),
       ),
@@ -255,7 +239,6 @@ export async function slackBoardReplyBindings(
     )
     .where(
       and(
-        eq(chatActions.companyId, input.companyId),
         eq(chatActions.kind, "slack_board_message"),
         eq(sql<string>`${chatActions.payload}->>'userId'`, input.userId),
         eq(sql<string>`${chatActions.payload}->>'agentId'`, input.agentId),

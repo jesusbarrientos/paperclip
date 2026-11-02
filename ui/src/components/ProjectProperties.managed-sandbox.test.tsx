@@ -26,8 +26,8 @@ vi.mock("../api/secrets", () => ({ secretsApi: { list: vi.fn().mockResolvedValue
 vi.mock("../api/environments", () => ({ environmentsApi: { list: vi.fn().mockResolvedValue([]) } }));
 vi.mock("../api/instanceSettings", () => ({ instanceSettingsApi: { getExperimental: vi.fn().mockResolvedValue({}) } }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ companies: [{ id: "company-1", issuePrefix: "PAP" }], selectedCompanyId: "company-1", setSelectedCompanyId: vi.fn() }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({}),
 }));
 
 vi.mock("./environment-variables-editor", () => ({ EnvironmentVariablesEditor: () => null }));

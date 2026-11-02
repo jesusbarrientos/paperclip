@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentContextualSidebar } from "./AgentContextualSidebar";
 import { queryKeys } from "@/lib/queryKeys";
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ }),
 }));
 
 vi.mock("./ContextualSidebarFrame", () => ({

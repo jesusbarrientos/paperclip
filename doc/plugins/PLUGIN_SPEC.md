@@ -214,7 +214,7 @@ Plugins that need local tooling (file browsing, git, terminals, process tracking
 
 Plugin installation is global and operator-driven.
 
-There is no per-company install table and no per-company enable/disable switch.
+There is no separate organization-level install table or enable/disable switch; an instance serves exactly one organization.
 
 If a plugin needs business-object-specific mappings, those are stored as plugin configuration or plugin state.
 
@@ -563,12 +563,11 @@ Returns:
 
 ### 13.4 `configChanged`
 
-Called when the operator updates a plugin config for a specific company at runtime.
+Called when the operator updates a plugin config at runtime.
 
 Input includes:
 
-- new resolved config
-- `companyId` for the company-scoped config row
+- new resolved config (one config row per plugin; the instance serves exactly one organization)
 
 If the worker implements this method, it applies the new config without restarting. If the worker does not implement this method, the host restarts the worker process with the new config (graceful shutdown then restart).
 
@@ -684,7 +683,7 @@ Plugins that perform durable work should declare managed Paperclip resources rat
 - `skills` + `ctx.skills.managed.*` for reusable agent capabilities (`skills.managed` required)
 
 The LLM Wiki plugin is the current reference for this pattern: it declares managed
-agents, projects, routines, and skills in manifest, reconciles them per company,
+agents, projects, routines, and skills in manifest, reconciles them in the instance's organization,
 and uses managed routines for periodic wiki maintenance and ingest operations.
 Content-oriented plugins should follow the same model instead of running
 unmanaged background loops: make the LLM-facing worker an operator-visible
@@ -701,19 +700,19 @@ Origin rules:
 
 Relation and read helpers:
 
-- `ctx.issues.relations.get(issueId, companyId)`
-- `ctx.issues.relations.setBlockedBy(issueId, blockerIssueIds, companyId)`
-- `ctx.issues.relations.addBlockers(issueId, blockerIssueIds, companyId)`
-- `ctx.issues.relations.removeBlockers(issueId, blockerIssueIds, companyId)`
-- `ctx.issues.getSubtree(issueId, companyId, options)`
-- `ctx.issues.summaries.getOrchestration({ issueId, companyId, includeSubtree, billingCode })`
+- `ctx.issues.relations.get(issueId)`
+- `ctx.issues.relations.setBlockedBy(issueId, blockerIssueIds)`
+- `ctx.issues.relations.addBlockers(issueId, blockerIssueIds)`
+- `ctx.issues.relations.removeBlockers(issueId, blockerIssueIds)`
+- `ctx.issues.getSubtree(issueId, options)`
+- `ctx.issues.summaries.getOrchestration({ issueId, includeSubtree, billingCode })`
 
 Governance helpers:
 
-- `ctx.issues.assertCheckoutOwner({ issueId, companyId, actorAgentId, actorRunId })` lets plugin actions preserve agent-run checkout ownership.
-- `ctx.issues.requestWakeup(issueId, companyId, options)` requests assignment wakeups through host heartbeat semantics, including terminal-status, blocker, assignee, and budget hard-stop checks.
-- `ctx.issues.requestWakeups(issueIds, companyId, options)` applies the same host-owned wakeup semantics to a batch and may use an idempotency key prefix for stable coordinator retries.
-- `ctx.issues.createComment(issueId, body, companyId, options)` posts a comment attributed to the plugin's own agent by default (`options.authorAgentId`). Passing `options.actorUserId` instead attributes the comment to that human company member — this requires `issue.comments.create_human_attributed` in addition to `issue.comments.create`, and the host independently verifies `actorUserId` is an active human member of the company before applying it, so a plugin can never forge attribution to an arbitrary or inactive user. A human-attributed comment on a non-terminal-status issue with an assignee also triggers the same assignee wakeup a board user's comment gets.
+- `ctx.issues.assertCheckoutOwner({ issueId, actorAgentId, actorRunId })` lets plugin actions preserve agent-run checkout ownership.
+- `ctx.issues.requestWakeup(issueId, options)` requests assignment wakeups through host heartbeat semantics, including terminal-status, blocker, assignee, and budget hard-stop checks.
+- `ctx.issues.requestWakeups(issueIds, options)` applies the same host-owned wakeup semantics to a batch and may use an idempotency key prefix for stable coordinator retries.
+- `ctx.issues.createComment(issueId, body, options)` posts a comment attributed to the plugin's own agent by default (`options.authorAgentId`). Passing `options.actorUserId` instead attributes the comment to that human company member — this requires `issue.comments.create_human_attributed` in addition to `issue.comments.create`, and the host independently verifies `actorUserId` is an active human member of the company before applying it, so a plugin can never forge attribution to an arbitrary or inactive user. A human-attributed comment on a non-terminal-status issue with an assignee also triggers the same assignee wakeup a board user's comment gets.
 
 Plugin-originated issue, relation, document, comment, and wakeup mutations must write activity entries with `actorType: "plugin"` and details fields for `sourcePluginId`, `sourcePluginKey`, `initiatingActorType`, `initiatingActorId`, and `initiatingRunId` when a user or agent run initiated the plugin work.
 
@@ -740,10 +739,10 @@ export { z } from "zod";
 export interface PluginContext {
   manifest: PaperclipPluginManifestV1;
   config: {
-    get(companyId: string): Promise<Record<string, unknown>>;
+    get(): Promise<Record<string, unknown>>;
   };
   secrets: {
-    resolve(secretRef: { type: "secret_ref"; secretId: string; version?: number | "latest" }, options: { companyId: string; configPath?: string }): Promise<string>;
+    resolve(secretRef: { type: "secret_ref"; secretId: string; version?: number | "latest" }, options?: { configPath?: string }): Promise<string>;
   };
   events: {
     on(name: string, fn: (event: unknown) => Promise<void>): void;
@@ -781,7 +780,6 @@ export interface PluginContext {
 
 export interface EventFilter {
   projectId?: string;
-  companyId?: string;
   agentId?: string;
   [key: string]: unknown;
 }
@@ -798,7 +796,6 @@ The host enforces capabilities in the SDK layer and refuses calls outside the gr
 
 ### Data Read
 
-- `companies.read`
 - `projects.read`
 - `project.workspaces.read`
 - `issues.read`
@@ -946,10 +943,9 @@ Plugins may provide an optional filter when subscribing to events. The filter is
 Supported filter fields:
 
 - `projectId` — only receive events for a specific project
-- `companyId` — only receive events for a specific company
 - `agentId` — only receive events for a specific agent
 
-Filters are optional. If omitted, the plugin receives all events of the subscribed type. Filters may be combined (e.g. filter by both company and project).
+Filters are optional. If omitted, the plugin receives all events of the subscribed type. Filters may be combined (e.g. filter by both project and agent).
 
 ### 16.2 Plugin-to-Plugin Events
 
@@ -1012,7 +1008,7 @@ A plugin's `dist/ui/` directory contains a built React bundle. The host serves t
 1. The host defines **extension slots** — designated mount points in the UI where plugin components can appear (pages, tabs, widgets, sidebar entries, action bars).
 2. The plugin's UI bundle exports named components for each slot it wants to fill.
 3. The host mounts the plugin component into the slot, passing it a **host bridge** object.
-4. The plugin component uses the bridge to fetch data from its own worker (via `getData`), call actions (via `performAction`), read host context (current company, project, entity), and use shared host UI primitives (design tokens, common components).
+4. The plugin component uses the bridge to fetch data from its own worker (via `getData`), call actions (via `performAction`), read host context (project, entity, user), and use shared host UI primitives (design tokens, common components).
 
 **Concrete example: a Linear plugin ships a dashboard widget.**
 
@@ -1023,7 +1019,7 @@ The plugin's UI bundle exports:
 import { usePluginData, usePluginAction, MetricCard, StatusBadge } from "@paperclipai/plugin-sdk/ui";
 
 export function DashboardWidget({ context }: PluginWidgetProps) {
-  const { data, loading } = usePluginData("sync-health", { companyId: context.companyId });
+  const { data, loading } = usePluginData("sync-health", { projectId: context.projectId });
   const resync = usePluginAction("resync");
 
   if (loading) return <Spinner />;
@@ -1034,7 +1030,7 @@ export function DashboardWidget({ context }: PluginWidgetProps) {
       {data.mappings.map(m => (
         <StatusBadge key={m.id} label={m.label} status={m.status} />
       ))}
-      <button onClick={() => resync({ companyId: context.companyId })}>Resync Now</button>
+      <button onClick={() => resync({ projectId: context.projectId })}>Resync Now</button>
     </div>
   );
 }
@@ -1043,7 +1039,7 @@ export function DashboardWidget({ context }: PluginWidgetProps) {
 **What happens at runtime:**
 
 1. User opens the dashboard. The host sees that the Linear plugin registered a `DashboardWidget` export.
-2. The host mounts the plugin's `DashboardWidget` component into the dashboard widget slot, passing `context` (current company, user, etc.) and the bridge.
+2. The host mounts the plugin's `DashboardWidget` component into the dashboard widget slot, passing `context` (project, user, etc.) and the bridge.
 3. `usePluginData("sync-health", ...)` calls through the bridge → host → plugin worker's `getData` RPC → returns JSON → the plugin component renders it however it wants.
 4. When the user clicks "Resync Now", `usePluginAction("resync")` calls through the bridge → host → plugin worker's `performAction` RPC.
 
@@ -1076,8 +1072,8 @@ Paperclip-internal pages. It exposes `resolveHref(to)`, `navigate(to,
 options?)`, and `linkProps(to, options?)`. Plugin links should prefer
 `linkProps()` so anchors keep real `href` values for copy-link, modifier-click,
 middle-click, and open-in-new-tab behavior while plain left-clicks route through
-the host SPA router. The host resolves company-scoped paths against the active
-company prefix without double-prefixing already-prefixed paths. Plugin UI should
+the host SPA router. Paperclip routes carry no company prefix, so the host resolves paths
+as-is. Plugin UI should
 not use raw same-origin `href`s or `window.location.assign()` for internal
 Paperclip navigation because those can force a full document reload.
 
@@ -1115,7 +1111,7 @@ These routes are instance-level.
 
 ## 19.2 Company-Context Routes
 
-- `/:companyPrefix/plugins/:pluginId`
+- `/plugins/:pluginId`
 
 These routes exist because the board UI is organized around companies even though plugin installation is global.
 
@@ -1131,7 +1127,7 @@ Plugins may add tabs to:
 
 Recommended route pattern:
 
-- `/:companyPrefix/<entity>/:id?tab=<plugin-tab-id>`
+- `/<entity>/:id?tab=<plugin-tab-id>`
 
 ## 19.4 Dashboard Widgets
 
@@ -1228,7 +1224,7 @@ The `@paperclipai/plugin-sdk/ui` subpath should also export an `ErrorBoundary` c
 
 ## 19.8 Plugin Settings UI
 
-Each plugin that declares an `instanceConfigSchema` in its manifest gets an auto-generated company-scoped settings form at `/settings/plugins/:pluginId`. The host renders the form from the JSON Schema for the selected company.
+Each plugin that declares an `instanceConfigSchema` in its manifest gets an auto-generated settings form at `/settings/plugins/:pluginId`. The host renders the form from the JSON Schema; there is one config per plugin because the instance serves exactly one organization.
 
 The auto-generated form supports:
 
@@ -1243,7 +1239,7 @@ For plugins that need richer settings UX beyond what JSON Schema can express, th
 
 Both approaches coexist: a plugin can use the auto-generated form for simple config and add a custom settings page slot for advanced configuration or operational dashboards.
 
-For plugins that need a company-scoped settings surface, declare a `companySettingsPage` slot with a `routePath`. The host renders a sidebar item under Company Settings and mounts the component at `/:companyPrefix/company/settings/:routePath`. The page receives `companyId` and `companyPrefix` in its host context. Core settings routes such as `access`, `invites`, `environments`, and `secrets` are reserved and cannot be shadowed by plugin declarations.
+For plugins that need an organization settings surface, declare a `companySettingsPage` slot with a `routePath`. The host renders a sidebar item under Company Settings and mounts the component at `/company/settings/:routePath`. The page receives the normal host context (there is no `companyId` or `companyPrefix`). Core settings routes such as `access`, `invites`, `environments`, and `secrets` are reserved and cannot be shadowed by plugin declarations.
 
 ## 20. Local Tooling
 
@@ -1297,7 +1293,6 @@ Indexes:
 
 - `id` uuid pk
 - `plugin_id` uuid fk `plugins.id` not null
-- `company_id` uuid fk `companies.id` not null
 - `config_json` jsonb not null
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
@@ -1305,7 +1300,7 @@ Indexes:
 
 Constraints:
 
-- unique `(plugin_id, company_id)`
+- unique `(plugin_id)`
 
 ### `plugin_state`
 
@@ -1444,8 +1439,8 @@ Plugin config must never persist raw secret values.
 Rules:
 
 1. Plugin config stores shared `{ type: "secret_ref", secretId, version? }` refs only. Legacy UUID string refs are rejected.
-2. Save-time validation rejects refs to secrets outside the selected company.
-3. Secret refs resolve through the existing Paperclip secret provider system using explicit `companyId`.
+2. Save-time validation rejects refs to secrets that do not exist in the instance.
+3. Secret refs resolve through the existing Paperclip secret provider system.
 4. Plugin workers receive resolved secrets only at execution time, and resolution writes `secret_access_events` with `consumerType: "plugin_worker"`.
 5. Secret values must never be written to:
    - plugin config JSON
@@ -1496,7 +1491,7 @@ Route:
 
 Each plugin may expose a company-context main page:
 
-- `/:companyPrefix/plugins/:pluginId`
+- `/plugins/:pluginId`
 
 This page is where board users do most day-to-day work.
 
@@ -1504,7 +1499,7 @@ This page is where board users do most day-to-day work.
 
 Each ready plugin may expose a company settings page:
 
-- `/:companyPrefix/company/settings/:routePath`
+- `/company/settings/:routePath`
 
 The host adds a matching Company Settings sidebar item using the slot `displayName`. Plugin settings route segments are single-segment slugs and must not collide with core company settings pages.
 
@@ -1579,13 +1574,13 @@ When a plugin is upgraded at runtime:
 
 #### 25.4.4 Hot Config Change
 
-When an operator updates a plugin config for a company at runtime:
+When an operator updates a plugin config at runtime:
 
-1. The host validates that any shared `{ type: "secret_ref", secretId, version? }` refs belong to that company, then writes the new config to `plugin_config`.
-2. The host syncs plugin secret bindings in `company_secret_bindings` under `(company_id, target_type = "plugin", target_id = plugin_id)`.
-3. The host sends a `configChanged` notification with `companyId` to the running worker via IPC.
-4. The worker reads the config through `ctx.config.get(companyId)` and applies it without restarting. If the plugin needs to re-initialize connections (e.g. a new API token), it does so internally.
-5. If the plugin does not handle `configChanged`, the host restarts the worker process; the worker must still request company-scoped config explicitly.
+1. The host validates that any shared `{ type: "secret_ref", secretId, version? }` refs exist, then writes the new config to `plugin_config`.
+2. The host syncs plugin secret bindings in `company_secret_bindings` under `(target_type = "plugin", target_id = plugin_id)`.
+3. The host sends a `configChanged` notification with the new config to the running worker via IPC.
+4. The worker reads the config through `ctx.config.get()` and applies it without restarting. If the plugin needs to re-initialize connections (e.g. a new API token), it does so internally.
+5. If the plugin does not handle `configChanged`, the host restarts the worker process; the worker reads the config again on startup.
 
 #### 25.4.5 Frontend Cache Invalidation
 
@@ -1675,7 +1670,7 @@ const state = await harness.state.get({ pluginId: manifest.id, scopeKind: "issue
 expect(state).toBeDefined();
 
 // Simulate a UI data request
-const data = await harness.getData("sync-health", { companyId: "comp-1" });
+const data = await harness.getData("sync-health", {});
 expect(data.syncedCount).toBeGreaterThan(0);
 ```
 

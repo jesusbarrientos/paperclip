@@ -34,7 +34,6 @@ function fork(over: Partial<CompanySkillForkSummary> = {}): CompanySkillForkSumm
     id: "fork-1",
     key: "deep-research-fork",
     forkedFromSkillId: "orig-1",
-    forkedFromCompanyId: "co-1",
     currentVersionId: "v1",
     createdByCurrentActor: true,
     diverged: false,

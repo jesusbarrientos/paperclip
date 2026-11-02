@@ -35,8 +35,7 @@ export function BoardClaimPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.health });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.organization });
       await statusQuery.refetch();
     },
   });

@@ -85,7 +85,6 @@ function createContext(
   const meta: Record<string, unknown>[] = [];
   const agent = overrides.agent ?? {
     id: "agent-1",
-    companyId: "company-1",
     name: "Cursor Cloud Agent",
     adapterType: "cursor_cloud",
     adapterConfig: {},
@@ -324,7 +323,6 @@ describe("cursor_cloud execute", () => {
     expect(envVars).toMatchObject({
       PAPERCLIP_RUN_ID: "run-heartbeat-1",
       PAPERCLIP_AGENT_ID: "agent-1",
-      PAPERCLIP_COMPANY_ID: "company-1",
     });
   });
 

@@ -6,7 +6,6 @@ import { nativeSha256 } from "./canonical.js";
 
 export async function recordNativeWorkAssessment(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   runId: string;
   turnId: string | null;
@@ -34,7 +33,6 @@ export async function recordNativeWorkAssessment(input: {
     priorDecisionId: input.priorDecisionId,
     triggerKind: "native_result",
     triggerRef: input.resultId,
-    triggerActorCompanyId: input.companyId,
     triggerCapability: "server_native_finalizer",
     policyVersion: input.policyVersion,
     assessment: assessmentJson,
@@ -46,7 +44,6 @@ export async function recordNativeWorkAssessment(input: {
   )).limit(1).then((rows) => rows[0] ?? null);
   if (existing) return existing;
   const [row] = await input.db.insert(workAssessments).values({
-    companyId: input.companyId,
     issueId: input.issueId,
     runId: input.runId,
     turnId: input.turnId,
@@ -55,7 +52,6 @@ export async function recordNativeWorkAssessment(input: {
     triggerKind: "native_result",
     triggerRef: input.resultId,
     triggerCapability: "server_native_finalizer",
-    triggerActorCompanyId: input.companyId,
     priorIssueStatus: input.priorIssueStatus,
     priorStatusVersion: input.priorStatusVersion,
     priorDecisionId: input.priorDecisionId,
@@ -70,7 +66,6 @@ export async function recordNativeWorkAssessment(input: {
 
 export async function recordNativeAttentionAssessment(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   runId: string;
   turnId: string | null;
@@ -91,7 +86,6 @@ export async function recordNativeAttentionAssessment(input: {
     routingFacts: input.routingFacts,
   };
   const inputDigest = nativeSha256({
-    companyId: input.companyId,
     issueId: input.issueId,
     runId: input.runId,
     resultId: input.resultId,
@@ -104,7 +98,6 @@ export async function recordNativeAttentionAssessment(input: {
     policyVersion: "phase6-v2",
   });
   const existing = await input.db.select().from(workAssessments).where(and(
-    eq(workAssessments.companyId, input.companyId),
     eq(workAssessments.issueId, input.issueId),
     eq(workAssessments.runId, input.runId),
     eq(workAssessments.triggerKind, "native_attention"),
@@ -112,7 +105,6 @@ export async function recordNativeAttentionAssessment(input: {
   )).limit(1).then((rows) => rows[0] ?? null);
   if (existing) return existing;
   const [row] = await input.db.insert(workAssessments).values({
-    companyId: input.companyId,
     issueId: input.issueId,
     runId: input.runId,
     turnId: input.turnId,
@@ -121,7 +113,6 @@ export async function recordNativeAttentionAssessment(input: {
     triggerKind: "native_attention",
     triggerRef: input.requestId,
     triggerCapability: "server_native_attention_router",
-    triggerActorCompanyId: input.companyId,
     priorIssueStatus: input.priorIssueStatus,
     priorStatusVersion: input.priorStatusVersion,
     priorDecisionId: input.priorDecisionId,

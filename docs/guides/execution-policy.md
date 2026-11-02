@@ -67,7 +67,6 @@ An audit trail of every review/approval action:
 ```ts
 interface IssueExecutionDecision {
   id: string;
-  companyId: string;
   issueId: string;
   stageId: string;
   stageType: "review" | "approval";
@@ -196,7 +195,7 @@ Do not split a decision into `POST /comments` followed by a status-only `PATCH`;
 ### Setting an execution policy on issue creation
 
 ```bash
-POST /api/companies/{companyId}/issues
+POST /api/issues
 {
   "title": "Implement feature X",
   "assigneeAgentId": "coder-agent-id",

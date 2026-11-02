@@ -196,7 +196,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       manifestJson: pluginManifest(),
       status: "ready",
     });
-    return { companyId, environmentId };
+    return { environmentId };
   }
 
   it("starts, refreshes, finishes, refreshes again, and rolls back setup sessions", async () => {
@@ -241,52 +241,6 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     const rollback = await service.rollbackTemplate({ environmentId });
     expect(rollback.activeTemplate.id).toBe(promoted.template.id);
     expect(rollback.supersededTemplate.id).toBe(replacement.template.id);
-  });
-
-  it("reuses the setup provider company context across lifecycle calls", async () => {
-    const { companyId, environmentId } = await seed();
-    const workerManager = createWorkerManager();
-    const service = environmentCustomImageService(db, { pluginWorkerManager: workerManager });
-
-    const started = await service.startSetupSession({
-      environmentId,
-      actor: { userId: "user-1" },
-      secretContextCompanyId: companyId,
-    });
-    expect(started.session.metadata).toMatchObject({
-      setupRpcCompanyId: companyId,
-    });
-
-    await service.refreshSetupSession({
-      sessionId: started.session.id,
-      includeConnectionPayload: true,
-    });
-    const promoted = await service.finishSetupSession({ sessionId: started.session.id });
-
-    const lifecycleCalls = workerManager.call.mock.calls
-      .filter(([, method]) => [
-        "environmentStartInteractiveSetup",
-        "environmentGetInteractiveSetup",
-        "environmentCaptureTemplate",
-        "environmentCancelInteractiveSetup",
-      ].includes(method))
-      .map(([, method, params]) => ({
-        method,
-        companyId: (params as Record<string, unknown>).companyId,
-      }));
-
-    expect(lifecycleCalls).toEqual([
-      { method: "environmentStartInteractiveSetup", companyId },
-      { method: "environmentGetInteractiveSetup", companyId },
-      { method: "environmentCaptureTemplate", companyId },
-      { method: "environmentCancelInteractiveSetup", companyId },
-    ]);
-    expect(promoted.session.metadata).toMatchObject({
-      setupRpcCompanyId: companyId,
-    });
-    expect(promoted.template.metadata).toMatchObject({
-      setupRpcCompanyId: companyId,
-    });
   });
 
   it("revokes the active template before deleting the provider template", async () => {
@@ -527,10 +481,10 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   it("applies the active template regardless of base-config changes and falls back when none exists", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const environment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
 
-    const fallback = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const fallback = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -548,7 +502,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       }),
       status: "active",
     });
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -570,7 +524,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       })
       .where(eq(environments.id, environment.id));
     const afterResourceChangeEnvironment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
-    const afterResourceChange = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const afterResourceChange = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: afterResourceChangeEnvironment.id,
       driver: "sandbox",
       config: afterResourceChangeEnvironment.config,
@@ -597,7 +551,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       })
       .where(eq(environments.id, environment.id));
     const afterImageChangeEnvironment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
-    const afterImageChange = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const afterImageChange = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: afterImageChangeEnvironment.id,
       driver: "sandbox",
       config: afterImageChangeEnvironment.config,
@@ -608,7 +562,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   it("applies the active template for ad-hoc Test probes only when applyCustomImageTemplate is set", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const environment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
 
     await db.insert(environmentCustomImageTemplates).values({
@@ -621,7 +575,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
 
     // No issueId/heartbeatRunId and no opt-in: an operator Test probe would
     // otherwise silently boot the base image instead of the captured template.
-    const withoutOptIn = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const withoutOptIn = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -630,7 +584,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     expect(withoutOptIn.config).not.toHaveProperty("snapshot");
 
     // The Test route opts in explicitly so the probe uses the captured image.
-    const withOptIn = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const withOptIn = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -640,7 +594,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   it("applies provider-declared runtime config bindings for captured templates", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const workerManager = createWorkerManager();
     const service = environmentCustomImageService(db, { pluginWorkerManager: workerManager });
 
@@ -651,7 +605,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     const promoted = await service.finishSetupSession({ sessionId: started.session.id });
 
     const environment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -855,11 +809,11 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
       manifestJson: pluginManifest(),
       status: "ready",
     });
-    return { companyId, environmentId };
+    return { environmentId };
   }
 
   it("re-links the active template on save when only non-identity fields change", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const workerManager = createWorkerManager();
     const service = environmentCustomImageService(db, { pluginWorkerManager: workerManager });
 
@@ -891,7 +845,7 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
     await db.update(environments)
       .set({ config: nextConfig })
       .where(eq(environments.id, environmentId));
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environmentId,
       driver: "sandbox",
       config: nextConfig,
@@ -1164,7 +1118,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
       manifestJson: manifest,
       status: "ready",
     });
-    return { companyId, environmentId, provider };
+    return { environmentId, provider };
   }
 
   const relinkActor = {
@@ -1200,7 +1154,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
       credentials: { secret: "cred-secret-value", region: "eu" },
       reuseLease: false,
     };
-    const { companyId, environmentId } = await seed({ manifest: secretPluginManifest(), config });
+    const { environmentId } = await seed({ manifest: secretPluginManifest(), config });
     const service = environmentCustomImageService(db, { pluginWorkerManager: createWorkerManager() });
 
     const started = await service.startSetupSession({ environmentId, actor: { userId: "user-1" } });
@@ -1231,13 +1185,12 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     }
 
     // An excluded path forces the fail-closed unclassified result: the flag is required.
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({ status: 409 });
     const relinked = await service.relinkActiveTemplate({
       environmentId,
       confirmBootSourceDrift: true,
-      actor: relinkActor,
-      companyId,
+      actor: relinkActor
     });
     expect(relinked.classification).toBe("unclassified");
     const responseJson = JSON.stringify(relinked);
@@ -1296,7 +1249,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
   });
 
   it("fails closed for legacy templates without a boot-relevant snapshot", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const service = environmentCustomImageService(db, { pluginWorkerManager: createWorkerManager() });
     await db.insert(environmentCustomImageTemplates).values({
       environmentId,
@@ -1308,7 +1261,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
       metadata: { runtimeConfigBinding: { field: "customTemplate", unsetFields: ["image"] } },
     });
 
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({ status: 409 });
     const beforeRow = await activeTemplateRow(environmentId);
     expect(beforeRow.sourceEnvironmentConfigFingerprint).toBe("stale-fingerprint");
@@ -1316,8 +1269,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     const relinked = await service.relinkActiveTemplate({
       environmentId,
       confirmBootSourceDrift: true,
-      actor: relinkActor,
-      companyId,
+      actor: relinkActor
     });
     expect(relinked.classification).toBe("unclassified");
     const afterRow = await activeTemplateRow(environmentId);
@@ -1325,7 +1277,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
   });
 
   it("relinks a knob-only change without a flag and keeps the fail-closed runtime gate", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const service = environmentCustomImageService(db, { pluginWorkerManager: createWorkerManager() });
     const started = await service.startSetupSession({ environmentId, actor: { userId: "user-1" } });
     const promoted = await service.finishSetupSession({ sessionId: started.session.id });
@@ -1337,11 +1289,11 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     const detached = await service.getOverview({ environmentId });
     expect(detached.activeTemplateMatchesConfig).toBe(false);
 
-    const relinked = await service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId });
+    const relinked = await service.relinkActiveTemplate({ environmentId, actor: relinkActor });
     expect(relinked.classification).toBe("knob_only");
     const afterRelink = await service.getOverview({ environmentId });
     expect(afterRelink.activeTemplateMatchesConfig).toBe(true);
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, {
       id: environmentId,
       driver: "sandbox",
       config: { provider: "fake-plugin", image: "fake:base", reuseLease: false, region: "eu" },
@@ -1357,7 +1309,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
   });
 
   it("requires the flag for boot-source drift and re-stamps only after confirmation", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const service = environmentCustomImageService(db, { pluginWorkerManager: createWorkerManager() });
     const started = await service.startSetupSession({ environmentId, actor: { userId: "user-1" } });
     await service.finishSetupSession({ sessionId: started.session.id });
@@ -1366,7 +1318,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
       .set({ config: { provider: "fake-plugin", image: "fake:other", reuseLease: false } })
       .where(eq(environments.id, environmentId));
 
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({
         status: 409,
         details: {
@@ -1380,8 +1332,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     const relinked = await service.relinkActiveTemplate({
       environmentId,
       confirmBootSourceDrift: true,
-      actor: relinkActor,
-      companyId,
+      actor: relinkActor
     });
     expect(relinked.classification).toBe("boot_source_drift");
     const afterRelink = await service.getOverview({ environmentId });
@@ -1389,7 +1340,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
   });
 
   it("re-stamps only the active template and never a superseded one", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const service = environmentCustomImageService(db, { pluginWorkerManager: createWorkerManager() });
     const first = await service.finishSetupSession({
       sessionId: (await service.startSetupSession({ environmentId, actor: { userId: "user-1" } })).session.id,
@@ -1407,7 +1358,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     await db.update(environments)
       .set({ config: { provider: "fake-plugin", image: "fake:base", reuseLease: false, region: "eu" } })
       .where(eq(environments.id, environmentId));
-    const relinked = await service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId });
+    const relinked = await service.relinkActiveTemplate({ environmentId, actor: relinkActor });
     expect(relinked.template.id).toBe(second.template.id);
 
     const supersededAfter = await db
@@ -1421,16 +1372,16 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
   });
 
   it("aborts with a conflict and writes no active template when none exists", async () => {
-    const { companyId, environmentId } = await seed();
+    const { environmentId } = await seed();
     const service = environmentCustomImageService(db, { pluginWorkerManager: createWorkerManager() });
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({ status: 404 });
     const activities = await relinkActivityRows(environmentId);
     expect(activities.filter((row) => row.action === "environment.custom_image_template.relinked")).toHaveLength(0);
   });
 
   it("classifies an invalid driver identity path as unclassified without treating it as value-bearing", async () => {
-    const { companyId, environmentId } = await seed({ manifest: invalidIdentityPluginManifest(), config: {
+    const { environmentId } = await seed({ manifest: invalidIdentityPluginManifest(), config: {
       provider: "fake-invalid-plugin",
       image: "fake:base",
       reuseLease: false,
@@ -1453,19 +1404,18 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     expect(Object.keys(boot.values)).not.toContain("bad path!");
     expect(Object.keys(boot.values)).not.toContain("a..b");
 
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({ status: 409 });
     const relinked = await service.relinkActiveTemplate({
       environmentId,
       confirmBootSourceDrift: true,
-      actor: relinkActor,
-      companyId,
+      actor: relinkActor
     });
     expect(relinked.classification).toBe("unclassified");
   });
 
   it("fails closed for prototype-key driver identity paths and never persists them", async () => {
-    const { companyId, environmentId } = await seed({ manifest: prototypeKeyIdentityPluginManifest(), config: {
+    const { environmentId } = await seed({ manifest: prototypeKeyIdentityPluginManifest(), config: {
       provider: "fake-prototype-key-plugin",
       image: "fake:base",
       reuseLease: false,
@@ -1496,14 +1446,13 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     expect(metadataJson).not.toContain("nested.__proto__");
 
     // An unflagged relink fails closed with 409 and the unclassified class.
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({ status: 409, details: { classification: "unclassified" } });
     // A confirmed relink succeeds and writes the relinked activity entry.
     const relinked = await service.relinkActiveTemplate({
       environmentId,
       confirmBootSourceDrift: true,
-      actor: relinkActor,
-      companyId,
+      actor: relinkActor
     });
     expect(relinked.classification).toBe("unclassified");
     const activities = await relinkActivityRows(environmentId);
@@ -1512,7 +1461,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
   });
 
   it("fails closed when the provider adds a boot-relevant identity path after capture", async () => {
-    const { companyId, environmentId } = await seed({ config: {
+    const { environmentId } = await seed({ config: {
       provider: "fake-plugin",
       image: "fake:base",
       region: "us",
@@ -1542,13 +1491,12 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
       .set({ manifestJson: nextManifest })
       .where(eq(plugins.pluginKey, manifest.id));
 
-    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor, companyId }))
+    await expect(service.relinkActiveTemplate({ environmentId, actor: relinkActor }))
       .rejects.toMatchObject({ status: 409, details: { classification: "unclassified" } });
     const relinked = await service.relinkActiveTemplate({
       environmentId,
       confirmBootSourceDrift: true,
-      actor: relinkActor,
-      companyId,
+      actor: relinkActor
     });
     expect(relinked.classification).toBe("unclassified");
   });

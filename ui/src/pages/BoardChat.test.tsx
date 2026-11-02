@@ -30,10 +30,9 @@ vi.mock("../api/agents", () => ({ agentsApi: mockAgentsApi }));
 vi.mock("../api/goals", () => ({ goalsApi: mockGoalsApi }));
 vi.mock("../api/issues", () => ({ issuesApi: mockIssuesApi }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Acme Robotics", issuePrefix: "PAP" },
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Acme Robotics", issuePrefix: "PAP" },
   }),
 }));
 

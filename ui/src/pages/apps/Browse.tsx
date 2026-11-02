@@ -43,14 +43,13 @@ import { useNavigate } from "@/lib/router";
 import { useChatConnectorsEnabled } from "@/hooks/useChatConnectorsEnabled";
 import { useMemoryConnectorsEnabled } from "@/hooks/useMemoryConnectorsEnabled";
 import { appCopyFor } from "@/lib/app-gallery-copy";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { aiConnectionPoolsApi } from "@/api/ai-connection-pools";
 import { toolsApi } from "@/api/tools";
 import { emailApi } from "@/api/email";
-import { useAccountIdentity } from "@/api/companies-query";
+import { useAccountIdentity } from "@/api/account-identity";
 import {
   chatEndpointsApi,
   type ChatEndpoint,
@@ -329,7 +328,6 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
       : new URLSearchParams(window.location.search).get("chatAgentId");
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const { selectedCompanyId } = useCompany();
   const assistantConnections = useAssistantConnections();
   const { userId: viewingUserId, settled: identitySettled } = useAccountIdentity();
   const { enabled: chatConnectorsEnabled } = useChatConnectorsEnabled();
@@ -353,41 +351,35 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
-  useEffect(() => { setQuery(""); setPage(1); setSource("paperclip"); setExpandedSearch(false); setArcadeToConfigure(null); setAggregatorToConnect(null); setAggregatorToManage(null); setInitialAggregatorProvider(undefined); setConnectionToRemove(null); }, [selectedCompanyId]);
+  useEffect(() => { setQuery(""); setPage(1); setSource("paperclip"); setExpandedSearch(false); setArcadeToConfigure(null); setAggregatorToConnect(null); setAggregatorToManage(null); setInitialAggregatorProvider(undefined); setConnectionToRemove(null); }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("source") === "composio") {
       setAggregatorToConnect((params.get("targetToolkit") ? findComposioCatalogApp(params.get("targetToolkit")!) : null) ?? null);
       setInitialAggregatorProvider("composio");
     }
-  }, [selectedCompanyId]);
+  }, []);
 
   const galleryQuery = useQuery({
-    queryKey: queryKeys.apps.gallery(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGallery(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.apps.gallery(),
+    queryFn: () => toolsApi.listGallery(),
   });
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
   const chatEndpointsQuery = useQuery({
-    queryKey: queryKeys.chatEndpoints.list(selectedCompanyId ?? "__none__"),
-    queryFn: () => chatEndpointsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.chatEndpoints.list(),
+    queryFn: () => chatEndpointsApi.list(),
   });
   const userDirectoryQuery = useQuery({
     queryKey: queryKeys.access.companyUserDirectory(
-      selectedCompanyId ?? "__none__",
     ),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const aggregatorGateways = useMemo(() => (connectionsQuery.data?.connections ?? []).filter(connection =>
     isAppAggregator(appConnectionSourceSlug(connection)) && connection.transport === "mcp_remote" &&
@@ -428,24 +420,24 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
         }
       } else if (target.pool) {
         if (!target.poolRevision) throw new Error("Open the confirmation again before removing this pool.");
-        await aiConnectionPoolsApi.remove(selectedCompanyId!, target.id, target.poolRevision);
+        await aiConnectionPoolsApi.remove(target.id, target.poolRevision);
       } else {
         await toolsApi.archiveConnection(target.id);
       }
     },
     onSuccess: (_connection, target) => {
-      queryClient.invalidateQueries({ queryKey: ["email-inboxes", selectedCompanyId!] });
+      queryClient.invalidateQueries({ queryKey: ["email-inboxes"] });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.chatEndpoints.list(selectedCompanyId!),
+        queryKey: queryKeys.chatEndpoints.list(),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.tools.connections(selectedCompanyId!),
+        queryKey: queryKeys.tools.connections(),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.tools.applications(selectedCompanyId!),
+        queryKey: queryKeys.tools.applications(),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.apps.attention(selectedCompanyId!),
+        queryKey: queryKeys.apps.attention(),
       });
       pushToast({
         title: "Connection removed",
@@ -470,7 +462,7 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
     removeConnection.reset();
     if (!target.pool) { setConnectionToRemove(target); return; }
     try {
-      const pool = (await aiConnectionPoolsApi.list(selectedCompanyId!)).find(pool => pool.id === target.id);
+      const pool = (await aiConnectionPoolsApi.list()).find(pool => pool.id === target.id);
       if (!pool) throw new Error("This connection pool is no longer available.");
       // Capture the revision when presenting the confirmation. Never replace
       // it at submission time: concurrent edits must invalidate this consent.
@@ -826,13 +818,6 @@ export function Browse({ renderAccountDetails = (connection) => connection.conne
   const showCustomConnector =
     (source === "paperclip" || source === "all") && (!trimmed || "connect your own tool custom mcp server".includes(trimmed));
 
-  if (!selectedCompanyId) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Select an organization to manage connectors.
-      </div>
-    );
-  }
 
   const loading =
     galleryQuery.isLoading ||

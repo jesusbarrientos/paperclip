@@ -81,19 +81,16 @@ describeEmbeddedPostgres("secret proposal routes", () => {
   });
 
   async function seedRun() {
-    const companyId = randomUUID();
     const agentId = randomUUID();
     const heartbeatRunId = randomUUID();
     const issueId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
       name: "Secret proposals",
-      issuePrefix: `P${companyId.slice(0, 7)}`.toUpperCase(),
+      issuePrefix: "SEC",
       status: "active",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Proposer",
       role: "engineer",
       adapterType: "codex_local",
@@ -103,7 +100,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: heartbeatRunId,
-      companyId,
       agentId,
       status: "running",
       responsibleUserId: "user-1",
@@ -111,14 +107,13 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Needs credential",
       identifier: "SEC-1",
       status: "in_progress",
       responsibleUserId: "user-1",
       executionRunId: heartbeatRunId,
     });
-    return { companyId, agentId, heartbeatRunId, issueId };
+    return { agentId, heartbeatRunId, issueId };
   }
 
   async function holdIssueRowLock(issueId: string) {
@@ -182,7 +177,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       req.actor = {
         type: "agent",
         agentId: fixture.agentId,
-        companyId: fixture.companyId,
         runId: fixture.heartbeatRunId,
         source,
         keyScope,
@@ -208,10 +202,9 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       req.actor = {
         type: "board",
         userId: "board-user",
-        companyIds: [fixture.companyId],
         source: options?.admin === false ? "session" : "local_implicit",
         memberships: options?.admin === false
-          ? [{ companyId: fixture.companyId, status: "active", membershipRole: "member" }]
+          ? [{ status: "active", membershipRole: "member" }]
           : undefined,
       };
       next();
@@ -221,14 +214,14 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     return app;
   }
 
-  it("requires company admin access to reject secret proposals", async () => {
+  it("requires organization admin access to reject secret proposals", async () => {
     const fixture = await seedRun();
     const proposed = await request(createAgentApp(fixture))
       .post("/api/agents/me/secret-proposals")
       .send({ kind: "secret", name: "dev/reject/token", value: "reject-secret", justification: "Needed" });
 
     const rejected = await request(createBoardApp(fixture, { admin: false }))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposed.body.id}/reject`)
+      .post(`/api/secret-proposals/${proposed.body.id}/reject`)
       .send({ reason: "Not approved" });
 
     expect(rejected.status).toBe(403);
@@ -258,7 +251,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
         justification: "Needed by task",
       });
     const approved = await request(boardApp)
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${approvedProposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${approvedProposal.body.id}/approve`)
       .send({});
 
     expect(approved.status).toBe(200);
@@ -273,7 +266,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
         justification: "Needed by task",
       });
     const rejected = await request(boardApp)
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${rejectedProposal.body.id}/reject`)
+      .post(`/api/secret-proposals/${rejectedProposal.body.id}/reject`)
       .send({ reason: "No longer needed" });
 
     expect(rejected.status).toBe(200);
@@ -289,7 +282,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("uses the selected provider vault when approving a secret proposal", async () => {
     const fixture = await seedRun();
-    const vault = await secretService(db).createProviderConfig(fixture.companyId, {
+    const vault = await secretService(db).createProviderConfig({
       provider: "aws_secrets_manager",
       displayName: "AWS production",
       config: { region: "us-east-1", namespace: "prod-use1" },
@@ -318,7 +311,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
         justification: "Store this credential in the company vault",
       });
     const approved = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${proposal.body.id}/approve`)
       .send({ overrides: { providerConfigId: vault.id } });
 
     expect(approved.status).toBe(200);
@@ -408,19 +401,19 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     expect(confirmation.payload).not.toHaveProperty("secretId");
 
     const agentApprovalDenied = await request(createAgentApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${secretResponse.body.id}/approve`)
+      .post(`/api/secret-proposals/${secretResponse.body.id}/approve`)
       .send({});
     expect(agentApprovalDenied.status).toBe(403);
     expect(await db.select().from(companySecrets)).toHaveLength(0);
 
     const prerequisite = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${bindingResponse.body.id}/approve`)
+      .post(`/api/secret-proposals/${bindingResponse.body.id}/approve`)
       .send({});
     expect(prerequisite.status).toBe(409);
     expect(await db.select().from(companySecrets)).toHaveLength(0);
 
     const approved = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${bindingResponse.body.id}/approve`)
+      .post(`/api/secret-proposals/${bindingResponse.body.id}/approve`)
       .send({ cascade: true });
     expect(approved.status).toBe(200);
     expect(approved.body).toMatchObject({
@@ -500,13 +493,13 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     expect(bindingProposal.status).toBe(201);
 
     const approvedSecret = await request(boardApp)
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${secretProposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${secretProposal.body.id}/approve`)
       .send({});
     expect(approvedSecret.status).toBe(200);
     expect(approvedSecret.body).toMatchObject({ status: "approved", createdSecretId: expect.any(String) });
 
     const approvedBinding = await request(boardApp)
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${bindingProposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${bindingProposal.body.id}/approve`)
       .send({});
     expect(approvedBinding.status).toBe(200);
     expect(approvedBinding.body).toMatchObject({
@@ -525,14 +518,13 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("proposes and approves a binding by resolving the proposer's own sourceConfigPath", async () => {
     const fixture = await seedRun();
-    const sourceSecret = await secretService(db).create(fixture.companyId, {
+    const sourceSecret = await secretService(db).create({
       name: "dev/source-path/token",
       key: "SOURCE_PATH_TOKEN",
       provider: "local_encrypted",
       value: "source-path-secret",
     });
     await secretService(db).createBinding({
-      companyId: fixture.companyId,
       secretId: sourceSecret.id,
       targetType: "agent",
       targetId: fixture.agentId,
@@ -559,7 +551,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       .toEqual([expect.objectContaining({ secretId: sourceSecret.id, targetId: fixture.agentId })]);
 
     const approved = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${proposal.body.id}/approve`)
       .send({});
 
     expect(approved.status).toBe(200);
@@ -574,14 +566,13 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("rejects binding proposals that provide both secretId and sourceConfigPath", async () => {
     const fixture = await seedRun();
-    const sourceSecret = await secretService(db).create(fixture.companyId, {
+    const sourceSecret = await secretService(db).create({
       name: "dev/mutual-exclusion/token",
       key: "MUTUAL_EXCLUSION_TOKEN",
       provider: "local_encrypted",
       value: "mutual-exclusion-secret",
     });
     await secretService(db).createBinding({
-      companyId: fixture.companyId,
       secretId: sourceSecret.id,
       targetType: "agent",
       targetId: fixture.agentId,
@@ -606,12 +597,12 @@ describeEmbeddedPostgres("secret proposal routes", () => {
   it("accepts a user-scoped source secret only through the proposer's existing binding", async () => {
     const fixture = await seedRun();
     const secrets = secretService(db);
-    const definition = await secrets.createUserSecretDefinition(fixture.companyId, {
+    const definition = await secrets.createUserSecretDefinition({
       key: "personal_source_token",
       name: "Personal source token",
       provider: "local_encrypted",
     });
-    const userSecret = await secrets.createCurrentUserSecretValue(fixture.companyId, "user-1", {
+    const userSecret = await secrets.createCurrentUserSecretValue("user-1", {
       definitionId: definition.id,
       value: "personal-source-secret",
     });
@@ -640,7 +631,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     expect(proposal.body).toMatchObject({ secretId: userSecret.id, target: { id: fixture.agentId } });
 
     const approved = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${proposal.body.id}/approve`)
       .send({});
 
     expect(approved.status).toBe(200);
@@ -672,7 +663,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const reportAgentId = randomUUID();
     await db.insert(agents).values({
       id: reportAgentId,
-      companyId: fixture.companyId,
       name: "Report",
       role: "engineer",
       reportsTo: fixture.agentId,
@@ -682,16 +672,16 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       status: "idle",
     });
     const secrets = secretService(db);
-    const definition = await secrets.createUserSecretDefinition(fixture.companyId, {
+    const definition = await secrets.createUserSecretDefinition({
       key: "personal_report_source_token",
       name: "Personal report source token",
       provider: "local_encrypted",
     });
-    const userSecret = await secrets.createCurrentUserSecretValue(fixture.companyId, "user-1", {
+    const userSecret = await secrets.createCurrentUserSecretValue("user-1", {
       definitionId: definition.id,
       value: "personal-report-source-secret",
     });
-    await secrets.createCurrentUserSecretValue(fixture.companyId, "user-2", {
+    await secrets.createCurrentUserSecretValue("user-2", {
       definitionId: definition.id,
       value: "second-user-report-secret",
     });
@@ -721,7 +711,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     expect(proposal.body).toMatchObject({ secretId: userSecret.id, target: { id: reportAgentId } });
 
     const approved = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${proposal.body.id}/approve`)
       .send({});
 
     expect(approved.status).toBe(200);
@@ -740,7 +730,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       eq(userSecretDeclarations.configPath, "access.personal_alias"),
     ))).toEqual([expect.objectContaining({ userSecretDefinitionId: definition.id })]);
     await expect(secrets.resolveUserSecretValue(
-      fixture.companyId,
       {
         definitionKey: definition.key,
         responsibleUserId: "user-1",
@@ -752,7 +741,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       },
     )).resolves.toMatchObject({ value: "personal-report-source-secret" });
     await expect(secrets.resolveUserSecretValue(
-      fixture.companyId,
       {
         definitionKey: definition.key,
         responsibleUserId: "user-2",
@@ -770,7 +758,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const otherAgentId = randomUUID();
     await db.insert(agents).values({
       id: otherAgentId,
-      companyId: fixture.companyId,
       name: "Other agent",
       role: "engineer",
       adapterType: "codex_local",
@@ -778,14 +765,13 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       permissions: {},
       status: "idle",
     });
-    const otherSecret = await secretService(db).create(fixture.companyId, {
+    const otherSecret = await secretService(db).create({
       name: "dev/other-agent/token",
       key: "OTHER_AGENT_TOKEN",
       provider: "local_encrypted",
       value: "other-agent-secret",
     });
     await secretService(db).createBinding({
-      companyId: fixture.companyId,
       secretId: otherSecret.id,
       targetType: "agent",
       targetId: otherAgentId,
@@ -819,14 +805,13 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("serializes proposal quotas and exposes bounded list pagination", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/quota/source",
       key: "QUOTA_SOURCE",
       provider: "local_encrypted",
       value: "quota-source-secret",
     });
     await secretService(db).createBinding({
-      companyId: fixture.companyId,
       secretId: liveSecret.id,
       targetType: "agent",
       targetId: fixture.agentId,
@@ -857,7 +842,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     expect(firstPage.headers["x-next-offset"]).toBe("7");
 
     const lastBoardPage = await request(createBoardApp(fixture))
-      .get(`/api/companies/${fixture.companyId}/secret-proposals?status=pending&limit=7&offset=14`);
+      .get(`/api/secret-proposals?status=pending&limit=7&offset=14`);
     expect(lastBoardPage.status).toBe(200);
     expect(lastBoardPage.body).toHaveLength(6);
     expect(lastBoardPage.headers["x-next-offset"]).toBeUndefined();
@@ -865,7 +850,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("bounds each expiry sweep batch", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/sweep/source",
       key: "SWEEP_SOURCE",
       provider: "local_encrypted",
@@ -887,12 +872,12 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
     const proposals = createSecretProposalsService(db);
     let injectedCollision = false;
-    await expect(proposals.sweepExpired(new Date(), 2, async (companyId, proposalId) => {
+    await expect(proposals.sweepExpired(new Date(), 2, async (proposalId) => {
       if (!injectedCollision) {
         injectedCollision = true;
         throw conflict("Proposal is no longer pending");
       }
-      return proposals.transition(companyId, proposalId, "expired", { reason: "Pending proposal expired" });
+      return proposals.transition(proposalId, "expired", { reason: "Pending proposal expired" });
     })).resolves.toBe(1);
     expect((await db.select().from(companySecretProposals)).filter((proposal) => proposal.status === "pending"))
       .toHaveLength(2);
@@ -901,7 +886,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("mirrors binding proposal rejection, withdrawal, and expiry onto linked cards", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/lifecycle/source",
       key: "LIFECYCLE_SOURCE",
       provider: "local_encrypted",
@@ -921,7 +906,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const rejected = await createBinding("access.REJECTED_ALIAS");
     expect(rejected.status).toBe(201);
     expect((await request(boardApp)
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${rejected.body.id}/reject`)
+      .post(`/api/secret-proposals/${rejected.body.id}/reject`)
       .send({ reason: "Use a narrower alias" })).status).toBe(200);
 
     const withdrawn = await createBinding("access.WITHDRAWN_ALIAS");
@@ -954,7 +939,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("mirrors card rejection onto the linked binding proposal", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/card-lifecycle/source",
       key: "CARD_LIFECYCLE_SOURCE",
       provider: "local_encrypted",
@@ -974,7 +959,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       .where(eq(issueThreadInteractions.id, proposed.body.interactionId));
     expect(card).toMatchObject({ status: "pending" });
     await issueThreadInteractionService(db).rejectInteraction(
-      { id: fixture.issueId, companyId: fixture.companyId, status: "in_progress" },
+      { id: fixture.issueId, status: "in_progress" },
       card!.id,
       { reason: "Use the canonical binding name" },
       { userId: "board-user" },
@@ -990,7 +975,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("settles an accepted card execution failure on both the card and proposal", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/card-failure/source",
       key: "CARD_FAILURE_SOURCE",
       provider: "local_encrypted",
@@ -1015,7 +1000,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       .where(eq(issueThreadInteractions.id, proposed.body.interactionId));
 
     const card = await issueThreadInteractionService(db).recordSecretProposalExecutionResult(
-      { id: fixture.issueId, companyId: fixture.companyId },
+      { id: fixture.issueId },
       proposed.body.interactionId,
       proposed.body.id,
       { status: "failed", errorCode: "permission_denied" },
@@ -1039,7 +1024,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("waits on the issue before locking a linked proposal during card rejection", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/card-lock-order/source",
       key: "CARD_LOCK_ORDER_SOURCE",
       provider: "local_encrypted",
@@ -1058,7 +1043,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const releaseIssueLock = await holdIssueRowLock(fixture.issueId);
 
     const rejection = issueThreadInteractionService(db).rejectInteraction(
-      { id: fixture.issueId, companyId: fixture.companyId, status: "in_progress" },
+      { id: fixture.issueId, status: "in_progress" },
       proposed.body.interactionId,
       { reason: "Reject after the lock-order check" },
       { userId: "board-user" },
@@ -1079,7 +1064,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("waits on the issue before locking a proposal execution result", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/execution-lock-order/source",
       key: "EXECUTION_LOCK_ORDER_SOURCE",
       provider: "local_encrypted",
@@ -1106,7 +1091,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const releaseIssueLock = await holdIssueRowLock(fixture.issueId);
 
     const recording = issueThreadInteractionService(db).recordSecretProposalExecutionResult(
-      { id: fixture.issueId, companyId: fixture.companyId },
+      { id: fixture.issueId },
       proposed.body.interactionId,
       proposed.body.id,
       { status: "failed", errorCode: "permission_denied" },
@@ -1127,7 +1112,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
   it("keeps proposal and card consistent when approval races card rejection", async () => {
     const fixture = await seedRun();
-    const liveSecret = await secretService(db).create(fixture.companyId, {
+    const liveSecret = await secretService(db).create({
       name: "dev/card-race/source",
       key: "CARD_RACE_SOURCE",
       provider: "local_encrypted",
@@ -1145,10 +1130,10 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
     const [approval, rejection] = await Promise.allSettled([
       request(createBoardApp(fixture))
-        .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposed.body.id}/approve`)
+        .post(`/api/secret-proposals/${proposed.body.id}/approve`)
         .send({}),
       issueThreadInteractionService(db).rejectInteraction(
-        { id: fixture.issueId, companyId: fixture.companyId, status: "in_progress" },
+        { id: fixture.issueId, status: "in_progress" },
         proposed.body.interactionId,
         { reason: "Reject the racing request" },
         { userId: "board-user" },
@@ -1200,12 +1185,12 @@ describeEmbeddedPostgres("secret proposal routes", () => {
       .where(eq(companySecretProposals.id, secretProposal.body.id));
 
     const directApproval = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${secretProposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${secretProposal.body.id}/approve`)
       .send({});
     expect(directApproval.status).toBe(409);
 
     const cascadeApproval = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${bindingProposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${bindingProposal.body.id}/approve`)
       .send({ cascade: true });
     expect(cascadeApproval.status).toBe(409);
     expect(await db.select().from(companySecrets)).toHaveLength(0);
@@ -1228,7 +1213,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
         .where(eq(companySecretProposals.id, proposal.body.id))
         .for("update");
       approvalPromise = request(createBoardApp(fixture))
-        .post(`/api/companies/${fixture.companyId}/secret-proposals/${proposal.body.id}/approve`)
+        .post(`/api/secret-proposals/${proposal.body.id}/approve`)
         .send({})
         .then((response) => response);
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1250,7 +1235,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const targetAgentId = randomUUID();
     await db.insert(agents).values({
       id: targetAgentId,
-      companyId: fixture.companyId,
       name: "Report",
       role: "engineer",
       reportsTo: fixture.agentId,
@@ -1275,7 +1259,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
     await db.update(agents).set({ reportsTo: null }).where(eq(agents.id, targetAgentId));
     const response = await request(createBoardApp(fixture))
-      .post(`/api/companies/${fixture.companyId}/secret-proposals/${bindingProposal.body.id}/approve`)
+      .post(`/api/secret-proposals/${bindingProposal.body.id}/approve`)
       .send({ cascade: true });
     expect(response.status).toBe(409);
     expect(await db.select().from(companySecrets)).toHaveLength(0);
@@ -1378,7 +1362,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
       let rejectionFinished = false;
       const rejectionPromise = request(createBoardApp(fixture))
-        .post(`/api/companies/${fixture.companyId}/secret-proposals/${secretProposal.body.id}/reject`)
+        .post(`/api/secret-proposals/${secretProposal.body.id}/reject`)
         .send({ reason: "Reject during binding creation" })
         .then((response) => {
           rejectionFinished = true;
@@ -1451,7 +1435,6 @@ describeEmbeddedPostgres("secret proposal routes", () => {
     const targetAgentId = randomUUID();
     await db.insert(agents).values({
       id: targetAgentId,
-      companyId: fixture.companyId,
       name: "Concurrent report",
       role: "engineer",
       reportsTo: fixture.agentId,
@@ -1498,7 +1481,7 @@ describeEmbeddedPostgres("secret proposal routes", () => {
 
     try {
       const approvalPromise = request(createBoardApp(fixture))
-        .post(`/api/companies/${fixture.companyId}/secret-proposals/${bindingProposal.body.id}/approve`)
+        .post(`/api/secret-proposals/${bindingProposal.body.id}/approve`)
         .send({ cascade: true })
         .then((response) => response);
 

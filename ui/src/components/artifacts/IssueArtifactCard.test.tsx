@@ -12,7 +12,6 @@ import { DocumentCard } from "./RichArtifactCards";
 function product(overrides: Partial<IssueWorkProduct> = {}): IssueWorkProduct {
   return {
     id: "wp-1",
-    companyId: "company-1",
     projectId: null,
     issueId: "issue-1",
     executionWorkspaceId: null,

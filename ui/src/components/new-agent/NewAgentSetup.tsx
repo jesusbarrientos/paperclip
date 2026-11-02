@@ -28,7 +28,6 @@ import { adaptersApi } from "@/api/adapters";
 import { environmentsApi } from "@/api/environments";
 import { instanceSettingsApi } from "@/api/instanceSettings";
 import { secretsApi } from "@/api/secrets";
-import { useCompany } from "@/context/CompanyContext";
 import { useDialogActions } from "@/context/DialogContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn, agentUrl } from "@/lib/utils";
@@ -73,18 +72,10 @@ const blocking = (result: AdapterEnvironmentTestResult) =>
   result.checks.some((check) => check.code === ADAPTER_AUTH_MISSING_CHECK_CODE);
 
 export function NewAgentSetup() {
-  const { selectedCompanyId } = useCompany();
   const [params] = useSearchParams();
-  if (!selectedCompanyId)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Select an organization to create an agent.
-      </p>
-    );
   return (
     <Setup
-      key={`${selectedCompanyId}:${params.get("name")}:${params.get("adapterType")}:${params.get("runnerProvider")}`}
-      companyId={selectedCompanyId}
+      key={`${params.get("name")}:${params.get("adapterType")}:${params.get("runnerProvider")}`}
       name={params.get("name") ?? ""}
       adapterType={params.get("adapterType") ?? ""}
       runnerProvider={params.get("runnerProvider") ?? "codex"}
@@ -94,13 +85,11 @@ export function NewAgentSetup() {
 }
 
 function Setup({
-  companyId,
   name,
   adapterType,
   runnerProvider,
   createdAgentId,
 }: {
-  companyId: string;
   name: string;
   adapterType: string;
   runnerProvider: string;
@@ -109,7 +98,7 @@ function Setup({
   const navigate = useNavigate();
   const cache = useQueryClient();
   const { openNewIssue } = useDialogActions();
-  const appearanceDraft = useAgentAppearanceDraft(`${companyId}:new-agent`);
+  const appearanceDraft = useAgentAppearanceDraft("new-agent");
   const isRunner = adapterType === "paperclip_runner";
   const brandType = isRunner
     ? runnerProvider === "grok"
@@ -160,13 +149,14 @@ function Setup({
   const [createdInSession, setCreated] = useState<Agent | null>(null);
   const savedAgent = useQuery({
     queryKey: queryKeys.agents.detail(createdAgentId ?? "new"),
-    queryFn: () => agentsApi.get(createdAgentId!, companyId),
+    queryFn: () => agentsApi.get(createdAgentId!),
     enabled: Boolean(createdAgentId),
     retry: false,
   });
   const created =
     createdInSession ??
-    (savedAgent.data?.companyId === companyId ? savedAgent.data : null);
+    savedAgent.data ??
+    null;
   const [saving, setSaving] = useState(false);
   const [testState, setTestState] = useState<TestState | "warn">("idle");
   const [result, setResult] = useState<AdapterEnvironmentTestResult | null>(
@@ -192,12 +182,12 @@ function Setup({
     queryFn: adaptersApi.list,
   });
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const envs = useQuery({
-    queryKey: queryKeys.environments.list(companyId),
-    queryFn: () => environmentsApi.list(companyId),
+    queryKey: queryKeys.environments.list(),
+    queryFn: () => environmentsApi.list(),
   });
   const settings = useQuery({
     queryKey: queryKeys.instance.settings,
@@ -212,23 +202,23 @@ function Setup({
     queryFn: instanceSettingsApi.getGeneral,
   });
   const caps = useQuery({
-    queryKey: queryKeys.environments.capabilities(companyId),
-    queryFn: () => environmentsApi.capabilities(companyId),
+    queryKey: queryKeys.environments.capabilities(),
+    queryFn: () => environmentsApi.capabilities(),
   });
   const models = useQuery({
-    queryKey: queryKeys.agents.adapterModels(companyId, brandType, null, aiBinding?.provider),
-    queryFn: () => agentsApi.adapterModels(companyId, brandType, { provider: aiBinding?.provider }),
+    queryKey: queryKeys.agents.adapterModels(brandType, null, aiBinding?.provider),
+    queryFn: () => agentsApi.adapterModels(brandType, { provider: aiBinding?.provider }),
     enabled: Boolean(brandType) && showModel,
     retry: false,
   });
   const companySecrets = useQuery({
-    queryKey: queryKeys.secrets.list(companyId),
-    queryFn: () => secretsApi.list(companyId),
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
     enabled: hasCredentialField && adapterType !== "cursor_cloud",
   });
   const userSecrets = useQuery({
-    queryKey: queryKeys.secrets.myUserSecrets(companyId),
-    queryFn: () => secretsApi.listMyUserSecrets(companyId),
+    queryKey: queryKeys.secrets.myUserSecrets(),
+    queryFn: () => secretsApi.listMyUserSecrets(),
     enabled: hasCredentialField && adapterType !== "cursor_cloud",
     retry: false,
   });
@@ -432,7 +422,6 @@ function Setup({
     try {
       const config = await preparedConfig(nextConnection);
       const tested = await testAgentSetup({
-        companyId,
         adapterType,
         providerAdapter: brandType,
         adapterConfig: config,
@@ -486,7 +475,7 @@ function Setup({
         const store = connectionAdapter
           ? storeProviderApiKey
           : storeOrganizationApiKey;
-        const secret = await store(companyId, key, value);
+        const secret = await store(key, value);
         staged.push(secret);
         if (adapterType === "hermes_gateway" && key === "API_SERVER_KEY")
           config.apiKey = secret.binding;
@@ -500,7 +489,7 @@ function Setup({
       const leader = existing.find(
         (agent) => agent.role === "ceo" && agent.status !== "terminated",
       );
-      const response = await agentsApi.hire(companyId, {
+      const response = await agentsApi.hire({
         name: name.trim(),
         appearance: appearanceDraft.appearance,
         role: existing.length ? "general" : "ceo",
@@ -534,9 +523,9 @@ function Setup({
         response.agent,
       );
       await Promise.all([
-        cache.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) }),
+        cache.invalidateQueries({ queryKey: queryKeys.agents.list() }),
         cache.invalidateQueries({
-          queryKey: queryKeys.approvals.list(companyId),
+          queryKey: queryKeys.approvals.list(),
         }),
       ]);
     } catch (cause) {
@@ -555,10 +544,10 @@ function Setup({
         }
       }
       void cache.invalidateQueries({
-        queryKey: queryKeys.secrets.myUserSecrets(companyId),
+        queryKey: queryKeys.secrets.myUserSecrets(),
       });
       void cache.invalidateQueries({
-        queryKey: queryKeys.secrets.list(companyId),
+        queryKey: queryKeys.secrets.list(),
       });
       savingRef.current = false;
       setSaving(false);
@@ -742,7 +731,6 @@ function Setup({
                     </div>
                     <AgentProviderConnection
                       key={environmentId ?? "local"}
-                      companyId={companyId}
                       adapterType={connectionAdapter}
                       environmentId={environmentId}
                       canLogin={canLogin}
@@ -845,7 +833,7 @@ function Setup({
                               </Button>
                             </div>
                           ) : (
-                            <AiConnectionField companyId={companyId} agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
+                            <AiConnectionField agentName={name} adapterType={brandType} model={model} environmentId={environmentId ?? undefined} value={aiBinding}
                               onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest(); }} />
                           )
                         )}

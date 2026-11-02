@@ -33,11 +33,11 @@ These decisions close open questions from `SPEC.md` for V1.
 
 | Topic | V1 Decision |
 |---|---|
-| Tenancy | Single-tenant deployment, multi-company data model |
-| Company model | Company is first-order; all business entities are company-scoped |
+| Tenancy | Single-tenant deployment, exactly one organization per instance (see section 3.1) |
+| Company model | The instance's single `companies` row is "the organization"; business entities belong to it implicitly and carry no `company_id` |
 | Board | Single human board operator per deployment |
 | Org graph | Strict tree (`reports_to` nullable root); no multi-manager reporting |
-| Visibility | Company-scoped visibility: board + all in-company agents can see all work objects by default; public/private deployment flags affect external exposure only and do **not** imply project/issue privacy |
+| Visibility | Organization-wide visibility: board + all agents in the instance can see all work objects by default; public/private deployment flags affect external exposure only and do **not** imply project/issue privacy |
 | Communication | Tasks + comments only (no separate chat system) |
 | Task ownership | Single assignee; atomic checkout required for `in_progress` transition |
 | Task watchdogs | A task watchdog is an explicitly configured, issue-subtree-scoped verification and recovery capacity. It may restore live task paths inside the watched subtree; for issue-thread interaction resolution it is an ordinary agent subject to the same audience and containment checks, not board authority, active-run output monitoring, or general liveness recovery. |
@@ -53,6 +53,20 @@ Low-trust agent presets are containment controls for hostile automated work, not
 general project or issue privacy controls. The core preset resolver contract is
 documented in `doc/LOW-TRUST-PRESETS.md`.
 
+## 3.1 Single Organization per Instance
+
+One Paperclip instance serves exactly one organization. Paperclip still models that organization as an AI-agent company (mission, org chart, budget, governance), but there is no multi-tenancy inside an instance: running a second company means running a second instance.
+
+- The `companies` table holds at most one row, and that row is the organization: name, issue prefix and counter, budget, status/pause, and governance flags. Onboarding creates it with `POST /api/organization`, which succeeds only while no organization exists. There is no list, archive, or delete route for companies.
+- Domain tables carry no `company_id`. Only the legacy `companies`, `company_logos`, `company_onboarding_seeds`, and `company_transfer_runs` tables keep it until they are folded into an organization row.
+- Server startup refuses to run when the database holds more than one company, and migrations `0306`/`0307` refuse to apply in that state.
+- Memberships, permission grants, invites, join requests, and agent API keys are instance-level, with one membership per principal. Routes guard access with `assertOrgAccess(req)` instead of comparing a path company id.
+- API routes carry no company prefix (`/api/issues`, not `/api/companies/:companyId/issues`); the organization itself is `/api/organization`. Board UI routes carry no company prefix either (`/issues/PAP-12`), and there is no company switcher.
+- Agent JWTs carry no `company_id` claim; the signing key derives from the instance id. `PAPERCLIP_COMPANY_ID` is neither injected into agent runs nor read by the server or CLI.
+- On-disk state lives under `<instanceRoot>/organization/...` and managed project checkouts under `<instanceRoot>/projects/<projectId>`. Legacy `companies/<id>/...` and `projects/<companyId>/<projectId>` layouts are moved at server startup.
+
+The rest of this document keeps "company" as product vocabulary (company goals, company skills, `agentcompanies/v1` packages). Wherever it says "company-scoped" or "company boundary", read it as "belongs to this instance's organization"; there is no second company to isolate from.
+
 ## 4. Current Baseline (Repo Snapshot)
 
 As of 2026-02-17, the repo already includes:
@@ -61,13 +75,13 @@ As of 2026-02-17, the repo already includes:
 - React UI pages for dashboard/agents/projects/goals/issues lists
 - PostgreSQL schema via Drizzle with embedded PostgreSQL fallback when `DATABASE_URL` is unset
 
-V1 implementation extends this baseline into a company-centric, governance-aware control plane.
+V1 implementation extends this baseline into an organization-centric, governance-aware control plane (one organization per instance).
 
 ## 5. V1 Scope
 
 ## 5.1 In Scope
 
-- Company lifecycle (create/list/get/update/archive)
+- Organization lifecycle (create once during onboarding, get, update, pause)
 - Goal hierarchy linked to company mission
 - Agent lifecycle with org structure and adapter configuration
 - Task lifecycle with parent/child hierarchy and comments
@@ -145,12 +159,13 @@ Human auth tables (`users`, `sessions`, and provider-specific auth artifacts) ar
 - `require_board_approval_for_new_agents` boolean not null default false
 - feedback sharing consent fields
 
-Invariant: every business record belongs to exactly one company.
+The table holds at most one row: the organization this instance serves (see section 3.1).
+
+Invariant: every business record belongs to the instance's organization implicitly; business tables carry no `company_id`.
 
 ## 7.2 `agents`
 
 - `id` uuid pk
-- `company_id` uuid fk `companies.id` not null
 - `name` text not null
 - `role` text not null
 - `title` text null
@@ -172,7 +187,6 @@ Invariant: every business record belongs to exactly one company.
 
 Invariants:
 
-- agent and manager must be in same company
 - no cycles in reporting tree
 - `terminated` agents cannot be resumed
 
@@ -180,7 +194,6 @@ Invariants:
 
 - `id` uuid pk
 - `agent_id` uuid fk `agents.id` not null
-- `company_id` uuid fk `companies.id` not null
 - `name` text not null
 - `key_hash` text not null
 - `last_used_at` timestamptz null
@@ -191,7 +204,6 @@ Invariant: plaintext key shown once at creation; only hash stored.
 ## 7.4 `goals`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `title` text not null
 - `description` text null
 - `level` enum: `company | team | agent | task`
@@ -199,12 +211,11 @@ Invariant: plaintext key shown once at creation; only hash stored.
 - `owner_agent_id` uuid fk `agents.id` null
 - `status` enum: `planned | active | achieved | cancelled`
 
-Invariant: at least one root `company` level goal per company.
+Invariant: the organization has at least one root `company` level goal.
 
 ## 7.5 `projects`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `goal_id` uuid fk `goals.id` null
 - `name` text not null
 - `description` text null
@@ -241,7 +252,6 @@ company-scoped and audited; agent callers must own the active run. Existing task
 retain their titles and default to no generation request.
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `project_id` uuid fk `projects.id` null
 - `project_workspace_id` uuid fk `project_workspaces.id` null
 - `goal_id` uuid fk `goals.id` null
@@ -258,7 +268,7 @@ retain their titles and default to no generation request.
 - `created_by_user_id` uuid fk `users.id` null
 - identifier fields: `issue_number`, `identifier`
 - origin fields: `origin_kind`, `origin_id`, `origin_run_id`, `origin_fingerprint`
-- Creation stores the actor run in `origin_run_id` unless an explicit origin run is supplied. `GET /api/companies/:companyId/issues?createdFromIssueId=<uuid>` selects tasks created by runs bound to that source task, using native run issue identity or persisted legacy task context. Historical rows without an origin run may use their recorded creation activity; comments and shared creators do not establish provenance. Source, run, activity and result are company-scoped.
+- Creation stores the actor run in `origin_run_id` unless an explicit origin run is supplied. `GET /api/issues?createdFromIssueId=<uuid>` selects tasks created by runs bound to that source task, using native run issue identity or persisted legacy task context. Historical rows without an origin run may use their recorded creation activity; comments and shared creators do not establish provenance.
 - Relation lists can use `sortField=id&sortDir=asc&afterId=<uuid>` for stable pagination. The cursor excludes earlier IDs and cannot be combined with an offset or activity-based order.
 - The streamlined task page's Tasks tab keeps two independent memberships: the existing subtask tree, and created tasks grouped by their current project (or No project). A created subtask appears in both. Only Subtasks has completion progress; groups collapse independently and unfinished tasks sort above finished tasks.
 - `request_depth` int not null default 0
@@ -292,7 +302,6 @@ Invariants:
 ## 7.7 `issue_comments`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `issue_id` uuid fk `issues.id` not null
 - `author_agent_id` uuid fk `agents.id` null
 - `author_user_id` uuid fk `users.id` null
@@ -301,7 +310,6 @@ Invariants:
 ## 7.8 `heartbeat_runs`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `agent_id` uuid fk not null
 - `invocation_source` enum: `scheduler | manual | callback`
 - `status` enum: `queued | running | succeeded | failed | cancelled | timed_out`
@@ -314,7 +322,6 @@ Invariants:
 ## 7.9 `cost_events`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `agent_id` uuid fk `agents.id` not null
 - `issue_id` uuid fk `issues.id` null
 - `project_id` uuid fk `projects.id` null
@@ -328,12 +335,11 @@ Invariants:
 - `cost_cents` int not null
 - `occurred_at` timestamptz not null
 
-Invariant: each event must attach to agent and company; rollups are aggregation, never manually edited.
+Invariant: each event must attach to an agent; rollups are aggregation, never manually edited.
 
 ## 7.10 `approvals`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `type` enum: `hire_agent | approve_ceo_strategy | budget_override_required | request_board_approval`
 - `requested_by_agent_id` uuid fk `agents.id` null
 - `requested_by_user_id` uuid fk `users.id` null
@@ -346,7 +352,6 @@ Invariant: each event must attach to agent and company; rollups are aggregation,
 ## 7.11 `activity_log`
 
 - `id` uuid pk
-- `company_id` uuid fk not null
 - `actor_type` enum: `agent | user | system`
 - `actor_id` uuid/text not null
 - `action` text not null
@@ -362,29 +367,27 @@ Per-user project/agent membership is personal visibility state for board users. 
 `project_memberships`:
 
 - `id` uuid pk
-- `company_id` uuid fk `companies.id` not null
 - `project_id` uuid fk `projects.id` not null
 - `user_id` text not null
 - `state` enum-like text: `joined | left`
 - `created_at` timestamptz not null default now()
 - `updated_at` timestamptz not null default now()
-- unique `(company_id, user_id, project_id)`
+- unique `(user_id, project_id)`
 
-`agent_memberships` mirrors the same shape with `agent_id` instead of `project_id` and unique `(company_id, user_id, agent_id)`.
+`agent_memberships` mirrors the same shape with `agent_id` instead of `project_id` and unique `(user_id, agent_id)`.
 
 Invariants:
 
 - Missing membership rows mean `joined` for backward compatibility.
 - Mutations are board-user-only `/me` operations; agent API keys are rejected.
 - Viewer-role board users may update only their own membership rows through the narrow self-service helper.
-- Target project/agent ownership is checked against the path company before mutation.
 - Successful state changes write `resource_membership.joined` or `resource_membership.left` activity entries.
 
 ## 7.13 `company_secrets` + `company_secret_versions`
 
 - Secret values are not stored inline in `agents.adapter_config.env`.
 - Agent env entries should use secret refs for sensitive values.
-- `company_secrets` tracks identity/provider metadata per company.
+- `company_secrets` tracks identity/provider metadata for the organization (the table name is historical).
 - `company_secret_versions` stores encrypted/reference material per version.
 - Default provider in local deployments: `local_encrypted`.
 
@@ -396,32 +399,31 @@ Operational policy:
 
 ## 7.14 Required Indexes
 
-- `agents(company_id, status)`
-- `agents(company_id, reports_to)`
-- `issues(company_id, status)`
-- `issues(company_id, assignee_agent_id, status)`
-- `issues(company_id, parent_id)`
-- `issues(company_id, project_id)`
-- `cost_events(company_id, occurred_at)`
-- `cost_events(company_id, agent_id, occurred_at)`
-- `heartbeat_runs(company_id, agent_id, started_at desc)`
-- `approvals(company_id, status, type)`
-- `activity_log(company_id, created_at desc)`
-- `assets(company_id, created_at desc)`
-- `assets(company_id, object_key)` unique
-- `issue_attachments(company_id, issue_id)`
-- `company_secrets(company_id, name)` unique
+- `agents(status)`
+- `agents(reports_to)`
+- `issues(status)`
+- `issues(assignee_agent_id, status)`
+- `issues(parent_id)`
+- `issues(project_id)`
+- `cost_events(occurred_at)`
+- `cost_events(agent_id, occurred_at)`
+- `heartbeat_runs(agent_id, started_at desc)`
+- `approvals(status, type)`
+- `activity_log(created_at desc)`
+- `assets(created_at desc)`
+- `assets(object_key)` unique
+- `issue_attachments(issue_id)`
+- `company_secrets(name)` unique
 - `company_secret_versions(secret_id, version)` unique
-- `project_memberships(company_id, user_id)`
-- `project_memberships(company_id, user_id, project_id)` unique
-- `agent_memberships(company_id, user_id)`
-- `agent_memberships(company_id, user_id, agent_id)` unique
+- `project_memberships(user_id)`
+- `project_memberships(user_id, project_id)` unique
+- `agent_memberships(user_id)`
+- `agent_memberships(user_id, agent_id)` unique
 
 ## 7.15 `assets` + `issue_attachments`
 
 - `assets` stores provider-backed object metadata (not inline bytes):
   - `id` uuid pk
-  - `company_id` uuid fk not null
   - `provider` enum/text (`local_disk | s3`)
   - `object_key` text not null
   - `content_type` text not null
@@ -432,13 +434,12 @@ Operational policy:
   - `created_by_user_id` uuid/text fk null
 - `issue_attachments` links assets to issues/comments:
   - `id` uuid pk
-  - `company_id` uuid fk not null
   - `issue_id` uuid fk not null
   - `asset_id` uuid fk not null
   - `issue_comment_id` uuid fk null
 - V1 attachment serving contract:
   - Default upload allowlist includes common images, PDF, plain text/markdown/JSON/CSV/HTML, ZIP, and video artifacts (`video/mp4`, `video/webm`, `video/quicktime`).
-  - Attachment reads are company-scoped and expose stable path metadata: `contentPath`/`openPath` for inline-safe viewing and `downloadPath` for forced download.
+  - Attachment reads expose stable path metadata: `contentPath`/`openPath` for inline-safe viewing and `downloadPath` for forced download.
   - Inline-safe responses use `Content-Disposition: inline`; unsafe types and explicit download requests use `attachment`.
   - Script-capable content such as HTML is always served as an attachment with `X-Content-Type-Options: nosniff` and a sandboxed, deny-by-default CSP; it is never rendered inline on the Paperclip origin.
   - Video attachments are inline-safe and support single `Range: bytes=start-end` requests with `206`, `Content-Range`, and `Accept-Ranges: bytes` for browser playback/seeking.
@@ -449,7 +450,6 @@ Operational policy:
 
 - `documents` stores editable text-first documents:
   - `id` uuid pk
-  - `company_id` uuid fk not null
   - `title` text null
   - `format` text not null (`markdown`)
   - `latest_body` text not null
@@ -465,14 +465,12 @@ Operational policy:
   - Locked documents are immutable until unlocked. Board operators can lock/unlock; agent writes to a locked key create a new issue document with a derived key instead of overwriting the locked document.
 - `document_revisions` stores append-only history:
   - `id` uuid pk
-  - `company_id` uuid fk not null
   - `document_id` uuid fk not null
   - `revision_number` int not null
   - `body` text not null
   - `change_summary` text null
 - `issue_documents` links documents to issues with a stable workflow key:
   - `id` uuid pk
-  - `company_id` uuid fk not null
   - `issue_id` uuid fk not null
   - `document_id` uuid fk not null
   - `key` text not null (`plan`, `design`, `notes`, etc.)
@@ -483,14 +481,14 @@ The current implementation includes additional V1-control-plane tables beyond th
 
 - Issue structure and review: `issue_relations` for blockers, `labels`/`issue_labels`, `issue_thread_interactions`, `issue_approvals`, `issue_execution_decisions`, `issue_work_products`, `issue_inbox_archives`, `issue_read_states`, and issue reference mention indexes.
 - Execution and workspace control: `execution_workspaces`, `project_workspaces`, `workspace_runtime_services`, `workspace_operations`, `environments`, `environment_leases`, `agent_task_sessions`, `agent_runtime_state`, `agent_wakeup_requests`, heartbeat events, and watchdog decision tables.
-- Plugins and routines: `plugins`, plugin config/state/entities/jobs/logs/webhooks, plugin database namespaces/migrations, plugin company settings, `routines`, `routine_revisions`, `routine_triggers`, and `routine_runs`.
-- Access and operations: company memberships, instance roles, principal permission grants, invites, join requests, board API keys, CLI auth challenges, budget policies/incidents, feedback exports/votes, company skills, sidebar preferences, and company logos.
+- Plugins and routines: `plugins`, plugin config/state/entities/jobs/logs/webhooks, plugin database namespaces/migrations, plugin settings, `routines`, `routine_revisions`, `routine_triggers`, and `routine_runs`.
+- Access and operations: instance-level memberships (`company_memberships`, one per principal), instance roles, principal permission grants, invites, join requests, board API keys, CLI auth challenges, budget policies/incidents, feedback exports/votes, company skills, sidebar preferences, and the organization logo (`company_logos`).
 
-Decision-desk triage uses company-scoped sidecars rather than adding queue fields to every attention source:
+Decision-desk triage uses sidecar tables rather than adding queue fields to every attention source:
 
 - `decision_queues` stores durable named queues, optional retention overrides, server-derived creator/run provenance, and data-backed seed rules.
-- `decision_queue_items` keys membership by `(queue_id, source_kind, source_id)` and repeats `company_id` for company-consistent joins.
-- `decision_triage` keys current decide-by/snooze state by `(company_id, source_kind, source_id)` and preserves the latest setter attribution.
+- `decision_queue_items` keys membership by `(queue_id, source_kind, source_id)`.
+- `decision_triage` keys current decide-by/snooze state by `(source_kind, source_id)` and preserves the latest setter attribution.
 - `decision_triage_events` is the immutable mutation history for queue membership and triage overrides, including actor, run, API-key, and responsible-user provenance.
 - `decision_retention` stores the attention source's last observed activity timestamp, monotonic version, Keep flag, and reversible archive provenance. Queue `retention_days` overrides use the shortest assigned queue threshold; otherwise the shelf threshold is 30 days.
 - `decision_archive_notification_outbox` records one retry-safe origin-agent notification per source/archive version. The 90-day internal sweeper archives only unkept rows and coalesces delivery per origin agent.
@@ -569,36 +567,36 @@ conversation lifecycles, and protection against replaying superseded requests.
 ## 9.1 Board Auth
 
 - Session-based auth for human operator
-- Board has full read/write across all companies in deployment
+- Board has full read/write across the instance's organization
 - Every board mutation writes to `activity_log`
 
 ## 9.2 Agent Auth
 
-- Bearer API key mapped to one agent and company
+- Bearer API key mapped to one agent (keys are instance-level; the agent JWT carries no company claim)
 - Agent key scope:
-  - read org/task/company context for own company
-  - read company-visible tasks and comments
+  - read org/task/organization context
+  - read organization-visible tasks and comments
   - comment on and update visible tasks under the shared write rule
   - create child tasks and assign visible work for delegation under the same rule
   - report heartbeat status
   - report cost events
 - Agent cannot:
   - bypass approval gates
-  - modify company-wide budgets directly
+  - modify organization-wide budgets directly
   - mutate auth/keys
 
 ## 9.3 Permission Matrix (V1)
 
 | Action | Board | Agent |
 |---|---|---|
-| Create company | yes | no |
+| Create organization (onboarding only, once per instance) | yes | no |
 | Hire/create agent | yes (direct) | new standard agents: direct via `canCreateAgents`; low-trust policy or approval gates can restrict |
 | Pause/resume agent | yes | pause: no; resume: direct `agents:configure` grant only |
 | Create/update task | yes | yes |
 | Force reassign task | yes | limited |
 | Approve strategy/hire requests | yes | no |
 | Report cost | yes | yes |
-| Set company budget | yes | no |
+| Set organization budget | yes | no |
 | Set subordinate budget | yes | yes (manager subtree only) |
 | Manage responsible user's inbox state | yes | yes (default-open policy) |
 | Manage another user's inbox state | yes | saved target-user opt-in or scoped `inbox:manage` grant |
@@ -625,7 +623,7 @@ For standard-trust agents, issue comments, issue field/status updates, child
 creation under a parent, and assignment share one authorization rule: the
 target issue must be visible to the agent and the responsible user represented
 by the run must also be authorized. In V1, issue visibility defaults to the
-whole company, so these writes are company-wide by default.
+whole organization, so these writes are organization-wide by default.
 
 The shared rule does not widen low-trust, `skill_test`, or `task_bridge` key
 scopes. It also does not replace run-lifecycle controls: checkout ownership,
@@ -660,7 +658,7 @@ may wake the target assignee, including an explicit `resume: true` comment on a
 `done` or `cancelled` issue, but the wake remains agent-class and is subject to
 the normal agent rewake throttle; comment presentation cannot give it human
 wake privileges. Agent issue comments and updates require a persisted heartbeat
-run bound to the authenticated agent and company; missing, invalid, or mismatched
+run bound to the authenticated agent; missing, invalid, or mismatched
 run context fails closed before mutation. A run may attempt at most 20 cross-issue comments, issue
 updates, or issue-thread interaction resolutions across one shared counter. The
 server records each attempt with its source issue, target issue, run, count, and
@@ -682,7 +680,7 @@ changes so both agent and board edits are visible in the issue activity stream.
 
 ## 9.4 Permission Terminology and Default Visibility Rule
 
-Paperclip V1 keeps a company-scoped visibility model as the default because centralized authorization and scoped work-object controls are not yet a core V1 control surface.
+Paperclip V1 keeps an organization-wide visibility model as the default because centralized authorization and scoped work-object controls are not yet a core V1 control surface.
 
 The approved term set is:
 
@@ -695,36 +693,36 @@ The approved term set is:
 
 ## 9.5 Core V1 Rule: what “private” means
 
-- A **private marker** on an agent profile (where represented) does **not** make company-visible work private.
-- Company-visible work objects (issues, comments, work products, costs, activity, project/task state) remain visible to the board and in-company agents by default.
+- A **private marker** on an agent profile (where represented) does **not** make organization-visible work private.
+- Organization-visible work objects (issues, comments, work products, costs, activity, project/task state) remain visible to the board and all agents in the instance by default.
 - Project/issue-level privacy, scoped assignment-only object visibility, and organization-wide custom ACLs are deferred to Pro/Enterprise controls.
 
 ## 9.6 V1 vs Pro/Enterprise Controls (recommended target split)
 
 | Permission area | Free / V1 default | Pro / Enterprise |
 |---|---|---|
-| Company boundary | Hard boundary only (`company_id`) | Multi-company policy overlays (`membership`, `project`, and `task` scopes) |
+| Organization boundary | The instance is the boundary: one organization per instance, no `company_id` scoping inside it | Policy overlays inside the organization (`membership`, `project`, and `task` scopes) |
 | Simple roles | Board + agent roles with existing approval/budget gates | Additional role aliases + scoped approver roles |
 | Profile visibility | Full profile visibility for coordination and audit | Optional profile redaction / selective sharing for external surfaces |
 | Config visibility | Board full read with redacted secret fields; agent config read/write constrained by own agent identity | Scoped config visibility controls and central policy enforcement |
 | Assignment/invocation | Assignment creates execution authority; board can reassign or force release | Delegation policies and scoped invokers with deny-listed tool classes |
-| Work-object visibility | All issues and projects in-company are visible to board and agents | Project/issue ACLs and reviewer-only channels |
+| Work-object visibility | All issues and projects in the organization are visible to board and agents | Project/issue ACLs and reviewer-only channels |
 | Tool/secret policy | Secret refs, log redaction, and adapter-level command/webhook restrictions | Tool allowlists with centralized policy evaluation |
-| Company skills | Open to authenticated company agents; core enforces invariants and any stored restriction policy | Paperclip EE policy editor, protected-skill controls, presets, simulation, and policy audit UX |
+| Company skills | Open to authenticated agents; core enforces invariants and any stored restriction policy | Paperclip EE policy editor, protected-skill controls, presets, simulation, and policy audit UX |
 | Inbox management | Responsible agent may archive/unarchive its responsible user's Mine items under a default-open user policy; explicit cross-user access requires saved target-user opt-in or `inbox:manage`; all mutations are audited | Policy administration UX, organization presets, simulations, bulk controls, and richer audit/reporting surfaces |
 | Escalation | Escalate from agent to manager to board; board approval/budget gates remain authoritative | Escalation routing and SLA windows |
 
 ## 9.7 Recommended first-slice implementation order
 
-1. Lock route-level checks for existing company boundaries, actor extraction, and approval/budget gates.
-2. Treat profile privacy as external-facing signal only; do not use it to hide company-visible work objects.
+1. Lock route-level checks for organization access (`assertOrgAccess`), actor extraction, and approval/budget gates.
+2. Treat profile privacy as external-facing signal only; do not use it to hide organization-visible work objects.
 3. Enforce assignment/invocation coupling (`assignee`/`agent` checks, checkout semantics, invocation checks).
 4. Standardize read-path redaction for secrets and secret references, including logs and activity.
 5. Standardize escalation paths (`blocked` and refusal) so non-board agents hand off by manager/board with immutable audit.
 
 ## 9.8 Scoped Task Assignment Grants
 
-`tasks:assign` remains the broad assignment permission. Existing unscoped grants preserve compatibility and allow the principal to assign any visible company task within normal company-boundary checks.
+`tasks:assign` remains the broad assignment permission. Existing unscoped grants preserve compatibility and allow the principal to assign any visible company task within normal organization access checks.
 
 `tasks:assign_scope` is the constrained assignment permission. Its `principal_permission_grants.scope` JSON must include at least one recognized constraint:
 
@@ -756,7 +754,7 @@ the pending request, as the opening onboarding question does.
 
 Canonical resolver policies are:
 
-- `anyone`: any authenticated actor in the interaction's company who can read the
+- `anyone`: any authenticated actor in the organization who can read the
   issue and use the normal resolution route. For agents this includes the creator
   agent and the creating/source run.
 - `not_creator`: the explicit independent-review policy. It excludes the creator
@@ -780,7 +778,7 @@ outcomes and resolver attribution are immutable.
 An explicit named agent or user addressee and a company-configured cap may narrow
 the effective audience. Only the exact named addressee may resolve an addressed
 interaction; a human does not override a user addressee. Explicit user recipients
-must exist and be authorized to respond in the issue's company before creation.
+must exist and be authorized to respond in the organization before creation.
 Ordinary Agent Chat questions derive their user recipient from the persisted
 conversation owner. A conflicting explicit user recipient is rejected; IDs are
 never guessed or repaired. Ordinary task questions keep optional addressing.
@@ -816,7 +814,7 @@ downstream capability.
 
 ## 9.9 Task Watchdog Authority Contract
 
-A task watchdog is a scoped execution capacity for a configured watchdog agent on one watched issue subtree. It is not a separate principal, does not inherit board auth, and does not expand the selected agent's company boundary. The server must enforce the watchdog contract from persisted watchdog configuration and run context; custom instructions and prompt text can narrow the mandate but cannot expand it.
+A task watchdog is a scoped execution capacity for a configured watchdog agent on one watched issue subtree. It is not a separate principal, does not inherit board auth, and does not expand the selected agent's access. The server must enforce the watchdog contract from persisted watchdog configuration and run context; custom instructions and prompt text can narrow the mandate but cannot expand it.
 
 The watched subtree is the source issue plus descendants reached through `parent_id`, excluding every issue whose `origin_kind = 'task_watchdog'` and excluding all descendants below those watchdog issues. The generated reusable watchdog issue is outside the watched work subtree for scan purposes, but the watchdog agent may update that reusable watchdog issue to record its own review disposition.
 
@@ -827,11 +825,11 @@ Task-watchdog wakes must include server-derived capability metadata that names t
 Within the watched subtree, a watchdog run may perform only mutations that restore or clarify the next live/waiting path:
 
 - add comments that explain findings, evidence, and next action
-- create descendant follow-up issues under an included subtree issue, inheriting company, project, goal, and workspace context from that subtree
-- assign or reassign included issues to active, invokable, same-company agents when normal assignment checks and scoped assignment grants allow it
+- create descendant follow-up issues under an included subtree issue, inheriting project, goal, and workspace context from that subtree
+- assign or reassign included issues to active, invokable agents when normal assignment checks and scoped assignment grants allow it
 - move included issues among `todo`, `in_progress`, `in_review`, and `blocked` when the transition is needed to restore a valid action path
 - reopen `done` or `cancelled` included issues only with explicit resume metadata and an audit comment when evidence shows the stopped disposition is wrong or incomplete
-- add, replace, or clear blockers on included issues when the blocker target is in the same company and the change makes the waiting path more accurate
+- add, replace, or clear blockers on included issues when the blocker target is visible to the watchdog agent and the change makes the waiting path more accurate
 - set or refresh a one-shot monitor on an included issue when the current assignee owns the future check
 - resolve issue-thread interactions through the ordinary resolver-audience path
   when the watchdog agent otherwise has issue access and the effective policy allows it
@@ -889,11 +887,11 @@ in the disallowed-mutations list above.
 
 Implementation, security, UI, and QA work for task watchdogs must prove these contract points:
 
-- server tests deny cross-company watched issues, watchdog agents, watchdog issues, blockers, interactions, and assignment targets
+- server tests deny missing or out-of-subtree watched issues, watchdog agents, watchdog issues, blockers, interactions, and assignment targets
 - server tests deny paused, terminated, pending-approval, budget-blocked, or otherwise uninvokable watchdog agents
 - watchdog-scoped mutations can touch only the watched subtree and the reusable watchdog issue, with activity records for each mutation
 - interaction tests prove watchdog runs use the same resolver policy as ordinary agents, without a watchdog-only kind or purpose-marker exception
-- interaction tests cover `anyone`, `not_creator`, `human_only`, named addressees, company caps, stale targets, governed actions, newer user comments, low-trust/task-bridge containment, and cross-company denial
+- interaction tests cover `anyone`, `not_creator`, `human_only`, named addressees, company caps, stale targets, governed actions, newer user comments, and low-trust/task-bridge containment
 - scheduler tests prove live runs, queued wakes, and scheduled retries suppress watchdog wakeups, while terminal, cancelled, blocked, and review leaves are still verified when the subtree has no live path
 - tests prove `task_watchdog` origin issues and descendants are excluded from scans so watchdogs do not trigger themselves
 - recovery-batch tests prove batches are capped at 3 allowed mutations, applied all-or-nothing, and aborted with recorded evidence when the observed stop fingerprint went stale mid-batch
@@ -909,15 +907,15 @@ No unresolved policy decision blocks implementation once CTO and Security accept
 
 ### Product default
 
-An authenticated agent may perform normal company-skill work without a skill-specific grant when the target company has no explicit skill policy. This includes creating, importing, installing, editing, updating, testing, resetting, and removing skills. Core MUST NOT introduce a `skills:author` prerequisite, a draft-only default, or an activation-approval default.
+An authenticated agent may perform normal company-skill work without a skill-specific grant when the organization has no explicit skill policy. This includes creating, importing, installing, editing, updating, testing, resetting, and removing skills. Core MUST NOT introduce a `skills:author` prerequisite, a draft-only default, or an activation-approval default.
 
 Authorization order is fixed:
 
 1. Enforce non-configurable platform invariants.
-2. Evaluate the company's explicit skill policy when one exists.
-3. Otherwise allow the authenticated company agent.
+2. Evaluate the organization's explicit skill policy when one exists.
+3. Otherwise allow the authenticated agent.
 
-Non-configurable invariants include authenticated actor identity, exact company scoping, source and workspace path containment, package and frontmatter validation, secret redaction/non-export, immutable audit attribution, and any hard runtime isolation rule. A policy rule, legacy grant, plugin, or EE configuration cannot override these invariants.
+Non-configurable invariants include authenticated actor identity, organization access, source and workspace path containment, package and frontmatter validation, secret redaction/non-export, immutable audit attribution, and any hard runtime isolation rule. A policy rule, legacy grant, plugin, or EE configuration cannot override these invariants.
 
 For avoidance of doubt:
 
@@ -932,18 +930,18 @@ The version 1 evaluator uses these stable action identifiers:
 
 - `skills.create`: create or fork a company-authored skill and create skill versions
 - `skills.import`: import or scan skills from a workspace, Git source, URL, or package
-- `skills.install`: install a catalog or externally sourced skill into the company
+- `skills.install`: install a catalog or externally sourced skill into the organization
 - `skills.edit`: change skill metadata, name, files, test inputs, or test templates
 - `skills.update`: install a newer upstream revision
 - `skills.test`: start, cancel, or remove a skill test run and run a skill audit
 - `skills.reset`: restore the installed/upstream revision
 - `skills.remove`: delete a company skill
 
-Policy resources may include `skillId`, stable `skillKey`, `sourceType`, and `sourceLocator`. The stable source categories are `workspace`, `catalog`, `git`, `external_package`, `generated`, and `unknown`; adapters may preserve a more specific source value as metadata, but policy evaluation MUST normalize it to one of these categories. Core derives actor and company identity from authentication and derives known resource fields from stored data; a mutation client cannot authorize itself by supplying actor or resource identity fields.
+Policy resources may include `skillId`, stable `skillKey`, `sourceType`, and `sourceLocator`. The stable source categories are `workspace`, `catalog`, `git`, `external_package`, `generated`, and `unknown`; adapters may preserve a more specific source value as metadata, but policy evaluation MUST normalize it to one of these categories. Core derives actor identity from authentication and derives known resource fields from stored data; a mutation client cannot authorize itself by supplying actor or resource identity fields.
 
 ### Version 1 policy document
 
-Absence of a policy record is semantically equivalent to the following document, but core SHOULD avoid materializing records for untouched companies:
+Absence of a policy record is semantically equivalent to the following document, but core SHOULD avoid materializing a record while the organization has not configured one:
 
 ```json
 {
@@ -956,7 +954,7 @@ Absence of a policy record is semantically equivalent to the following document,
 
 An explicit policy has a monotonically increasing `revision`, a `defaultEffect` of `allow` or `deny`, and ordered rules. Each rule contains a stable `id`, integer `priority`, `effect` (`allow` or `deny`), a subject selector (`all_agents`, agent ids, or role names), one or more canonical actions, and optional resource selectors for skill ids/keys and normalized source types/locators. An omitted resource selector matches every resource for the listed action.
 
-Rules are evaluated by ascending `priority`, then stable rule id; the first matching rule decides. If no rule matches, `defaultEffect` decides. This supports both the normal open policy with targeted deny rules and an opt-in restricted preset with default deny plus explicit allow rules. Core MUST validate policy documents atomically and reject ambiguous, unknown-version, unknown-action, cross-company, or malformed selectors with `422`.
+Rules are evaluated by ascending `priority`, then stable rule id; the first matching rule decides. If no rule matches, `defaultEffect` decides. This supports both the normal open policy with targeted deny rules and an opt-in restricted preset with default deny plus explicit allow rules. Core MUST validate policy documents atomically and reject ambiguous, unknown-version, unknown-action, or malformed selectors with `422`.
 
 Every decision returned by the evaluator has this stable shape:
 
@@ -971,7 +969,7 @@ Every decision returned by the evaluator has this stable shape:
 }
 ```
 
-`reason` is one of `platform_invariant`, `no_policy_default`, `explicit_rule`, `policy_default`, or `legacy_compatibility`. Mutation routes MUST use this evaluator and return `403` with code `skill_policy_denied` and the non-sensitive decision fields when an explicit restriction denies an operation. Denials must identify the action and remediation without exposing hidden rule data, secrets, or another company's policy.
+`reason` is one of `platform_invariant`, `no_policy_default`, `explicit_rule`, `policy_default`, or `legacy_compatibility`. Mutation routes MUST use this evaluator and return `403` with code `skill_policy_denied` and the non-sensitive decision fields when an explicit restriction denies an operation. Denials must identify the action and remediation without exposing hidden rule data or secrets.
 
 Platform-invariant failures are not policy denials and MUST use stable machine-readable error codes so clients can distinguish non-overridable safety failures from optional administrative restrictions. Version 1 requires a finite code set covering at least:
 
@@ -987,20 +985,20 @@ Core Skill Studio and Paperclip EE MUST treat those codes as hard platform failu
 
 ### Core API and ownership boundary
 
-Core owns and ships these company-scoped endpoints:
+Core owns and ships these organization-level endpoints:
 
-- `GET /companies/:companyId/skill-policy` returns the effective versioned policy, its revision, and whether it is materialized or the open default.
-- `PUT /companies/:companyId/skill-policy` atomically replaces the policy and requires the caller's expected revision; stale writes return `409`.
-- `DELETE /companies/:companyId/skill-policy` removes explicit configuration and restores the open default.
-- `POST /companies/:companyId/skill-policy/evaluate` simulates decisions for administrative tooling without performing a skill mutation.
+- `GET /skill-policy` returns the effective versioned policy, its revision, and whether it is materialized or the open default.
+- `PUT /skill-policy` atomically replaces the policy and requires the caller's expected revision; stale writes return `409`.
+- `DELETE /skill-policy` removes explicit configuration and restores the open default.
+- `POST /skill-policy/evaluate` simulates decisions for administrative tooling without performing a skill mutation.
 
-Policy reads, writes, deletion, and simulation enforce company access. Policy mutation and cross-principal simulation require board administration authority or the existing `users:manage_permissions` capability; ordinary skill access does not. Every policy mutation writes an activity event containing the actor, previous revision, new revision, and a redacted change summary. Skill mutation activity logging remains required independently of the policy decision.
+Policy reads, writes, deletion, and simulation enforce organization access. Policy mutation and cross-principal simulation require board administration authority or the existing `users:manage_permissions` capability; ordinary skill access does not. Every policy mutation writes an activity event containing the actor, previous revision, new revision, and a redacted change summary. Skill mutation activity logging remains required independently of the policy decision.
 
 Paperclip EE owns the detailed editor, presets, protected-skill management, policy simulation UX, and policy-specific audit views. EE consumes the core endpoints and does not implement a second evaluator. Core may expose a concise effective-policy summary and denial state, but MUST NOT depend on EE for enforcement or make EE installation a prerequisite for normal skill work.
 
 ### Compatibility and availability
 
-- Existing companies with no explicit restriction adopt the open default, including companies that previously depended on missing grants to deny skill changes. Release notes and upgrade guidance MUST call out this behavior change.
+- An existing organization with no explicit restriction adopts the open default, including one that previously depended on missing grants to deny skill changes. Release notes and upgrade guidance MUST call out this behavior change.
 - Existing explicit restriction policies remain effective after migration.
 - Legacy `skills:create` and `skills:suggest-changes` positive grants remain accepted in APIs and portability packages. Historically either positive grant authorized the broad company-skill mutation surface, so in an explicit restricted policy either grant remains a compatibility allow fallback for all eight canonical skill actions only when no explicit rule matched. They never override an explicit deny or a platform invariant. With no explicit policy they are redundant because the default already allows the action.
 - Legacy `skills:suggest-changes` consent state is not a platform invariant for company skills and does not add a second mutation gate under the open-default policy. Companies that require approval or consent before skill changes must express that restriction through explicit skill-policy rules; authentication, company boundaries, source containment, validation, auditability, and runtime safety remain non-configurable invariants.
@@ -1012,7 +1010,7 @@ Paperclip EE owns the detailed editor, presets, protected-skill management, poli
 
 Phase 2 server tests and Phase 4 UI tests must prove:
 
-- unauthenticated actors and authenticated actors from another company are denied for all skill mutation routes and all skill-policy routes
+- unauthenticated actors and actors without organization access are denied for all skill mutation routes and all skill-policy routes
 - local-path imports and project scans reject paths outside approved workspace or managed-skill roots, including symlink escapes and out-of-tree files
 - remote imports and updates reject unknown schemes/categories, unpinned mutable refs, unsafe executable content, and secret exfiltration patterns before persistence
 - policy mutation, policy reset, and cross-principal policy simulation require board administration authority or `users:manage_permissions`; ordinary open-default skill access never grants those actions
@@ -1025,11 +1023,11 @@ Phase 2 server tests and Phase 4 UI tests must prove:
 
 Core authorization follows these rules:
 
-- Board users may archive or unarchive inbox entries for users in the company.
+- Board users may archive or unarchive inbox entries for users in the organization.
 - An agent may manage the responsible user's inbox without an explicit grant when the authenticated run resolves that user and the user's inbox-agent policy permits the agent. This is the default-open path.
 - A user may set inbox-agent policy to `disabled` or `allowlist`. Policy restrictions override the default-open path, and low-trust agents are denied.
 - An agent targeting any user other than its resolved responsible user requires either a materialized target-user policy that permits that agent (`open` or matching `allowlist`) or an explicit `inbox:manage` grant. The implicit default-open policy for a missing row remains responsible-user-only, so it never becomes a blanket cross-user grant. Grants may be unscoped or constrained by `scope.userIds` and act as administrative overrides, including over a disabled target-user policy.
-- Archive and unarchive operations are company-scoped, reversible, and activity logged with actor, agent, run, target user, target-resolution source, and policy mode.
+- Archive and unarchive operations are reversible, and activity logged with actor, agent, run, target user, target-resolution source, and policy mode.
 - New qualifying issue activity may invalidate an archive so the item resurfaces; archival is not a substitute for resolving or closing work.
 - Viewing an issue may update its per-user read receipt, but read receipts alone do not enroll the issue in Mine. Mine participation begins with a user-authored comment, issue creation/assignment, or another audited user mutation; explicit product actions such as manually running a routine may record an audited inbox touch.
 
@@ -1037,40 +1035,43 @@ Failed-run rows in Mine and the inbox badge use the run's `responsibleUserId`.
 Another user's run does not appear there, even for a shared agent. Select the
 latest run per agent before checking ownership so older failures do not resurface.
 Unattributed runs appear only for `local-board` in Mine; an unresolved viewer
-identity shows no failed runs. All retains company-wide failed-run visibility.
+identity shows no failed runs. All retains organization-wide failed-run visibility.
 Company health alerts do not contribute to the personal inbox badge.
 Run list responses, including summaries, retain `responsibleUserId`.
 
 Ownership split:
 
 - **Core / Free:** permission key and scoped-grant enforcement; responsible-user resolution; default-open, disabled, and allowlist policy modes; archive/unarchive APIs; per-user archive persistence; resurfacing behavior; activity audit records; and stable denial codes.
-- **Paperclip EE / Enterprise:** centralized policy administration beyond the per-user controls, organization-wide presets, policy simulation, bulk inbox operations, advanced compliance reporting, and richer administrative audit UX. EE may extend policy management surfaces but must not weaken core company boundaries, user policy restrictions, scoped grants, or audit requirements.
+- **Paperclip EE / Enterprise:** centralized policy administration beyond the per-user controls, organization-wide presets, policy simulation, bulk inbox operations, advanced compliance reporting, and richer administrative audit UX. EE may extend policy management surfaces but must not weaken core organization access checks, user policy restrictions, scoped grants, or audit requirements.
 
 ## 10. API Contract (REST)
 
 All endpoints are under `/api` and return JSON.
 
-## 10.1 Companies
+## 10.1 Organization
 
-- `GET /companies`
-- `POST /companies`
-- `GET /companies/:companyId`
-- `PATCH /companies/:companyId`
-- `PATCH /companies/:companyId/branding`
-- `POST /companies/:companyId/archive`
+Every endpoint in section 10 is implicitly scoped to the instance's single organization; there is no `/companies/:companyId` prefix.
 
-On a Paperclip Cloud-managed instance, `POST /companies` returns `403` with
-code `cloud_managed`; the trusted-header provisioning path and company import
-routes remain the only company-creation paths there.
+- `GET /organization`
+- `POST /organization` (onboarding only; fails once an organization exists)
+- `PATCH /organization`
+- `PATCH /organization/branding`
+- `POST /organization/logo`
+
+Listing, archiving, and deleting companies are not part of the API, and neither is `/admin/users/:userId/company-access`.
+
+On a Paperclip Cloud-managed instance, `POST /organization` returns `403` with
+code `cloud_managed`; the trusted-header provisioning path and the organization
+import routes remain the only organization-creation paths there.
 
 ## 10.1.1 Organization navigation and Cloud invitations
 
-Core's built-in organization switcher lists this instance's companies. An
-installed plugin can replace it through the generic `organizationSwitcher`
-slot. The built-in menu remains available when no unique usable contribution
-exists. Core does not fetch or render Cloud portfolios in its switcher. Managed
-hosts do not expose local company creation in that built-in menu; their extension
-owns the creation action.
+Core has no built-in company switcher: the sidebar organization menu shows the
+instance's one organization. An installed plugin can still contribute to the
+generic `organizationSwitcher` slot, and core falls back to the built-in menu
+when no unique usable contribution exists. Core does not fetch or render Cloud
+portfolios itself. Managed hosts do not expose local organization creation in
+that menu; their extension owns that action.
 
 The Cloud Members-page invitation action still uses the following route:
 
@@ -1091,16 +1092,16 @@ Invites tab does not hide this Cloud action.
 
 ## 10.2 Goals
 
-- `GET /companies/:companyId/goals`
-- `POST /companies/:companyId/goals`
+- `GET /goals`
+- `POST /goals`
 - `GET /goals/:goalId`
 - `PATCH /goals/:goalId`
 - `DELETE /goals/:goalId` (soft delete optional, hard delete board-only)
 
 ## 10.3 Agents
 
-- `GET /companies/:companyId/agents`
-- `POST /companies/:companyId/agents`
+- `GET /agents`
+- `POST /agents`
 - `GET /agents/:agentId`
 - `PATCH /agents/:agentId`
 - `POST /agents/:agentId/pause`
@@ -1111,8 +1112,8 @@ Invites tab does not hide this Cloud action.
 
 ## 10.4 Tasks (Issues)
 
-- `GET /companies/:companyId/issues`
-- `POST /companies/:companyId/issues`
+- `GET /issues`
+- `POST /issues`
 - `GET /issues/:issueId`
 - `PATCH /issues/:issueId`
 - `GET /issues/:issueId/documents`
@@ -1127,7 +1128,7 @@ Invites tab does not hide this Cloud action.
 - `POST /issues/:issueId/admin/force-release` (board-only lock recovery)
 - `POST /issues/:issueId/comments`
 - `GET /issues/:issueId/comments`
-- `POST /companies/:companyId/issues/:issueId/attachments` (multipart upload)
+- `POST /issues/:issueId/attachments` (multipart upload)
 - `GET /issues/:issueId/attachments`
 - `GET /attachments/:attachmentId/content`
 - `DELETE /attachments/:attachmentId`
@@ -1163,23 +1164,23 @@ Server behavior:
 `POST /issues/:issueId/release` clears checkout and execution locks. For terminal
 issues (`done` or `cancelled`), it preserves the assignee, status, and disposition
 timestamps, including on repeated release. For unfinished issues it clears the
-agent assignee; only `in_progress` changes to `todo`. Existing company access,
+agent assignee; only `in_progress` changes to `todo`. Existing organization access,
 assignee/run ownership checks, and the `issue.released` activity event still apply.
 
-`POST /issues/:issueId/admin/force-release` is an operator recovery endpoint for stale harness locks. It requires board access to the issue company, clears checkout and execution run lock fields, and may clear the agent assignee when `clearAssignee=true` is passed. The route must write an `issue.admin_force_release` activity log entry containing the previous checkout and execution run IDs.
+`POST /issues/:issueId/admin/force-release` is an operator recovery endpoint for stale harness locks. It requires board access to the organization, clears checkout and execution run lock fields, and may clear the agent assignee when `clearAssignee=true` is passed. The route must write an `issue.admin_force_release` activity log entry containing the previous checkout and execution run IDs.
 
 ## 10.5 Projects
 
-- `GET /companies/:companyId/projects`
-- `POST /companies/:companyId/projects`
+- `GET /projects`
+- `POST /projects`
 - `GET /projects/:projectId`
 - `PATCH /projects/:projectId`
 
 ## 10.6 Current-user Resource Memberships
 
-- `GET /companies/:companyId/resource-memberships/me`
-- `PUT /companies/:companyId/resource-memberships/me/projects/:projectId`
-- `PUT /companies/:companyId/resource-memberships/me/agents/:agentId`
+- `GET /resource-memberships/me`
+- `PUT /resource-memberships/me/projects/:projectId`
+- `PUT /resource-memberships/me/agents/:agentId`
 
 Request payload:
 
@@ -1187,28 +1188,28 @@ Request payload:
 { "state": "joined" }
 ```
 
-Allowed states are `joined` and `left`. Endpoints require a concrete board user and active company membership, reject agent API keys, and only mutate the caller's own sidebar visibility state. Joining/leaving is idempotent; missing rows read as `joined`.
+Allowed states are `joined` and `left`. Endpoints require a concrete board user and active organization membership, reject agent API keys, and only mutate the caller's own sidebar visibility state. Joining/leaving is idempotent; missing rows read as `joined`.
 
 ## 10.7 Approvals
 
-- `GET /companies/:companyId/approvals?status=pending`
-- `POST /companies/:companyId/approvals`
+- `GET /approvals?status=pending`
+- `POST /approvals`
 - `POST /approvals/:approvalId/approve`
 - `POST /approvals/:approvalId/reject`
 
 ## 10.8 Cost and Budgets
 
-- `POST /companies/:companyId/cost-events`
-- `GET /companies/:companyId/costs/summary`
-- `GET /companies/:companyId/costs/by-agent`
-- `GET /companies/:companyId/costs/by-project`
-- `PATCH /companies/:companyId/budgets`
+- `POST /cost-events`
+- `GET /costs/summary`
+- `GET /costs/by-agent`
+- `GET /costs/by-project`
+- `PATCH /budgets`
 - `PATCH /agents/:agentId/budgets`
 
 ## 10.9 Activity and Dashboard
 
-- `GET /companies/:companyId/activity`
-- `GET /companies/:companyId/dashboard`
+- `GET /activity`
+- `GET /dashboard`
 
 Dashboard payload must include:
 
@@ -1239,14 +1240,14 @@ can show every run.
 
 The current app also exposes V1-supporting surfaces for:
 
-- company-scoped summary slots for projects, the workspaces overview, project workspaces, and individual execution workspaces; execution-workspace slots are keyed by execution workspace id so a new workspace never inherits another workspace's summary
+- summary slots for projects, the workspaces overview, project workspaces, and individual execution workspaces; execution-workspace slots are keyed by execution workspace id so a new workspace never inherits another workspace's summary
 - issue thread interactions (`suggest_tasks`, `ask_user_questions`, `request_confirmation`, `request_checkbox_confirmation`, `request_item_verdicts`) with the open-default resolver contract in §9.8.1
 - issue approvals, issue references/search, labels, read state, inbox/archive state, and work products
 - task search uses shared PostgreSQL matching/ranking for company search and task-list quick search;
   all query terms contribute, quoted phrases stay literal, exact identifiers and direct title matches
   lead relevance ordering, and the UI preserves server result order (see `doc/SEARCH.md`)
-- company search through `GET /companies/:companyId/search` plus agent-oriented bulk extraction through
-  `GET /companies/:companyId/search/extract`; extraction accepts a server-escaped literal `contains`, optional
+- organization-wide search through `GET /search` plus agent-oriented bulk extraction through
+  `GET /search/extract`; extraction accepts a server-escaped literal `contains`, optional
   server-owned URL expansion, issue/comment/document scopes, status/date filters, issue-level pagination, a
   bounded `matchesPerIssue` override for machine consumers, and explicit issue/match truncation flags
 - execution workspaces, project workspaces, workspace runtime services, and workspace operations. Workspace reads
@@ -1256,20 +1257,20 @@ The current app also exposes V1-supporting surfaces for:
 - task watchdog configuration and reusable watchdog issue orchestration for explicitly watched issue subtrees
 - routines and scheduled/API/webhook triggers
 - plugin installation, configuration, state, jobs, logs, webhooks, and plugin database namespace migration
-- company import/export preview/apply, feedback export/vote routes, instance backup/config routes, invites, join requests, memberships, and permission grants
+- organization import/export preview/apply under `/organization/...`, feedback export/vote routes, instance backup/config routes, and instance-level invites, join requests, memberships, and permission grants
 - company skill policy read/replace/reset/simulation, enforced by the same core evaluator used by skill mutation routes
 - decision queues and per-attention-item triage:
-  - `GET|POST /companies/:companyId/decision-queues`
-  - `PATCH /companies/:companyId/decision-queues/:key`
-  - `GET|POST /companies/:companyId/decision-queues/:key/items`
-  - `DELETE /companies/:companyId/decision-queues/:key/items/:sourceKind/:sourceId`
-  - `GET /companies/:companyId/decision-queue-seed-rules`
-  - `GET|PUT /companies/:companyId/decision-triage/:sourceKind/:sourceId`
-  - `PATCH /companies/:companyId/decision-retention/:sourceKind/:sourceId` (Keep)
-  - `POST /companies/:companyId/decision-retention/:sourceKind/:sourceId/archive|revive`
-  - `POST /companies/:companyId/decision-archive-proposals`
+  - `GET|POST /decision-queues`
+  - `PATCH /decision-queues/:key`
+  - `GET|POST /decision-queues/:key/items`
+  - `DELETE /decision-queues/:key/items/:sourceKind/:sourceId`
+  - `GET /decision-queue-seed-rules`
+  - `GET|PUT /decision-triage/:sourceKind/:sourceId`
+  - `PATCH /decision-retention/:sourceKind/:sourceId` (Keep)
+  - `POST /decision-retention/:sourceKind/:sourceId/archive|revive`
+  - `POST /decision-archive-proposals`
 
-Queue and triage mutations accept board non-viewers and active standard-scope agents, apply responsible-user intersection for run JWTs, and reject low-trust, `task_bridge`, and `skill_test` contexts. Missing, cross-company, and unauthorized attention sources share the same not-found response.
+Queue and triage mutations accept board non-viewers and active standard-scope agents, apply responsible-user intersection for run JWTs, and reject low-trust, `task_bridge`, and `skill_test` contexts. Missing and unauthorized attention sources share the same not-found response.
 
 The attention feed returns server-computed `shelf`, `retentionDays`, `keep`, `archivedAt`, and `retentionVersion` fields. Archived rows are excluded by default and selected with `archived=true`. Bulk archive proposals bind the exact source identities, per-item reasons, activity timestamps, and expected retention versions into the signed decisions-v1 target snapshots; acceptance re-authorizes both proposer and decider and commits all rows or none.
 
@@ -1463,7 +1464,7 @@ Board may override by raising budget or explicitly resuming agent.
 
 ## 13.3 Cost Event Ingestion
 
-`POST /companies/:companyId/cost-events` body:
+`POST /cost-events` body:
 
 ```json
 {
@@ -1494,18 +1495,18 @@ Materialized rollups can be added later if query latency exceeds targets.
 
 V1 UI routes:
 
+Routes carry no company prefix (one organization per instance):
+
 - `/` dashboard
-- `/companies` company list/create
-- `/companies/:id/org` org chart and agent status
-- `/companies/:id/tasks` task list/kanban
-- `/companies/:id/agents/:agentId` agent detail
-- `/companies/:id/costs` cost and budget dashboard
-- `/companies/:id/approvals` pending/history approvals
-- `/companies/:id/activity` audit/event stream
+- `/org` org chart and agent status
+- `/issues` task list/kanban (`/issues/PAP-12` for one task)
+- `/agents/:agentId` agent detail
+- `/costs` cost and budget dashboard
+- `/approvals` pending/history approvals
+- `/activity` audit/event stream
 
 Required UX behaviors:
 
-- global company selector
 - quick actions: pause/resume agent, create task, approve/reject request
 - conflict toasts on atomic checkout failure
 - no silent background failures; every failed run visible in UI
@@ -1551,10 +1552,10 @@ restores the original form and draft. Approval and permission gates are unchange
 - forward authorized semantic tool arguments unchanged, including credential-bearing document and instruction content; the provider harness owns credential-content policy, and diagnostic redaction must not act as a save or execution gate
 - CSRF protection for board session endpoints
 - rate limit auth and key-management endpoints
-- strict company boundary checks on every entity fetch/mutation
-- restricted `skill_test` and `task_bridge` keys cannot enumerate company-wide run telemetry, workspace-operation logs, or the company secret catalog
+- organization access checks (`assertOrgAccess`) on every entity fetch/mutation; the server refuses to start when the database holds more than one company
+- restricted `skill_test` and `task_bridge` keys cannot enumerate organization-wide run telemetry, workspace-operation logs, or the organization secret catalog
 - HTTP adapters use DNS-pinned outbound requests, reject redirects and link-local/metadata targets, and require an exact server-owner origin allowlist for private destinations
-- external instruction bundle roots and exports that read them require instance-admin access; managed company-scoped bundles remain available through normal company authorization
+- external instruction bundle roots and exports that read them require instance-admin access; managed bundles under the organization root remain available through normal organization authorization
 - agent-authenticated callers cannot persist host-executed workspace commands, and restricted keys cannot invoke preconfigured workspace runtime controls
 
 ## 17. Testing Strategy
@@ -1594,9 +1595,9 @@ Current implementation note: the milestones below describe the original V1 seque
 
 ## Milestone 1: Company Core and Auth
 
-- add `companies` and company scoping to existing entities
+- add the single `companies` row (the organization) and onboarding create
 - add board session auth and agent API keys
-- migrate existing API routes to company-aware paths
+- serve organization-scoped routes without a company path prefix
 
 ## Milestone 2: Task and Governance Semantics
 
@@ -1619,7 +1620,7 @@ Current implementation note: the milestones below describe the original V1 seque
 
 ## Milestone 5: Board UI Completion
 
-- add company selector and org chart view
+- add organization menu and org chart view
 - add approvals and cost pages
 
 ## Milestone 6: Hardening and Release
@@ -1632,8 +1633,8 @@ Current implementation note: the milestones below describe the original V1 seque
 
 V1 is complete only when all criteria are true:
 
-1. A board user can create multiple companies and switch between them.
-2. A company can run at least one active heartbeat-enabled agent.
+1. A board user can create the instance's organization during onboarding and manage it afterwards.
+2. The organization can run at least one active heartbeat-enabled agent.
 3. Task checkout is conflict-safe with `409` on concurrent claims.
 4. Agents can update tasks/comments and report costs with API keys only.
 5. Board can approve/reject hire and CEO strategy requests in UI.
@@ -1675,9 +1676,7 @@ Export/import behavior in V1:
 - export strips environment-specific paths (`cwd`, local instruction file paths, inline prompt duplication) while preserving portable project repo/workspace metadata such as `repoUrl`, refs, and workspace-policy references keyed in `.paperclip.yaml`
 - export never includes secret values; env inputs are reported as portable declarations instead
 - export preserves explicit company skill policy and retained legacy skill grants in `.paperclip.yaml`; absence of policy remains the open default
-- import supports target modes:
-  - create a new company
-  - import into an existing company
+- import always targets the instance's single organization (`existing_company` mode); a `new_company` target is rejected with `409 organization_exists`
 - import recreates exported project workspaces and remaps portable workspace keys back to target-local workspace ids
 - import forces imported agent timer heartbeats off so packages never start scheduled runs implicitly
 - import supports collision strategies: `rename`, `skip`, `replace`
@@ -1693,11 +1692,11 @@ placements may use a lazy live character. See [agent-personas.md](agent-personas
 for persistence, migration, rendering, and integration contracts.
 ### Experimental task-backed agent chat (2026-09-10)
 
-`enableAgentChat` is an instance experimental flag, default false. Conversation containers remain issues, unique by `(company_id, conversation_agent_id, conversation_user_id)`. The authenticated board actor supplies ownership; local trusted mode uses `local-board`. Ordinary company task access applies. A conversation's agent assignment and identity are immutable through ordinary updates; terminal status mutations are rejected.
+`enableAgentChat` is an instance experimental flag, default false. Conversation containers remain issues, unique by `(conversation_agent_id, conversation_user_id)`. The authenticated board actor supplies ownership; local trusted mode uses `local-board`. Ordinary task access applies. A conversation's agent assignment and identity are immutable through ordinary updates; terminal status mutations are rejected.
 
-`GET /api/companies/:companyId/chats/:agentRef` reads an existing conversation or null. `POST` atomically resolves its issue when adding a chat or on first send/upload. `GET /api/companies/:companyId/chats` lists only the current board user’s conversations in that company, subject to ordinary issue read access. The Chat navigation opens a searchable secondary sidebar with agent avatars and a picker for starting or reopening the same per-agent conversation. Existing issue comment, attachment, document, interaction, and run APIs apply thereafter. User chat comments require an idempotent UUID `clientRequestId`. Conversation delivery preserves comment order through the existing issue execution queue; the durable comment outbox repairs the commit-to-enqueue crash window.
+`GET /api/chats/:agentRef` reads an existing conversation or null. `POST` atomically resolves its issue when adding a chat or on first send/upload. `GET /api/chats` lists only the current board user’s conversations, subject to ordinary issue read access. The Chat navigation opens a searchable secondary sidebar with agent avatars and a picker for starting or reopening the same per-agent conversation. Existing issue comment, attachment, document, interaction, and run APIs apply thereafter. User chat comments require an idempotent UUID `clientRequestId`. Conversation delivery preserves comment order through the existing issue execution queue; the durable comment outbox repairs the commit-to-enqueue crash window.
 
-The Chat navigation entry reopens the last agent conversation visited by the current user in the current company. The browser keeps this recent order and any existing conversation ID locally; unavailable agents and removed conversations are skipped. An agent chat that has no issue yet can still reopen from the agent roster. The agent chooser remains the landing view when no saved chat is available.
+The Chat navigation entry reopens the last agent conversation visited by the current user. The browser keeps this recent order and any existing conversation ID locally; unavailable agents and removed conversations are skipped. An agent chat that has no issue yet can still reopen from the agent roster. The agent chooser remains the landing view when no saved chat is available.
 
 The server owns conversation state: `waiting` plus `in_review` denotes a healthy idle conversation, and `active` denotes an unanswered or executing turn. Successful replies settle a turn; they do not finish the issue. Idle containers are excluded from execution-work counts, ordinary task lists, timer work, and recovery invocations. Failed/unanswered turns retain normal handling. Child completion never wakes or completes the conversation. Search and direct task access preserve history.
 
@@ -1738,12 +1737,12 @@ explicit shared grant. The existing human-audience and agent-access permissions
 apply; AI credentials have no separate agent-delegation exception. Selection preserves
 harness/model routing and fails closed without ambient credential fallback.
 Legacy agents retain their authentication until validated adoption. See
-[AI Connections](connections/AI-CONNECTIONS.md) for company isolation, compatible
+[AI Connections](connections/AI-CONNECTIONS.md) for credential isolation, compatible
 methods, lifecycle, runtime enforcement, and migration details.
 
 The selected AI connection supports an on-demand usage probe through the common
 connection service, independent of legacy/native execution. The board usage
-endpoint rechecks company membership and the credential's human audience before
+endpoint rechecks organization membership and the credential's human audience before
 reading its stored token. Report all returned allowance windows, model/feature
 scope, reset times, exhaustion and overage observations; missing values remain
 unknown and unsupported methods/provider failures are explicit. The account
@@ -1809,9 +1808,9 @@ A versioned remote JSON manifest supplies one optional board announcement.
 The instance validates/caches content, proxies its raster image, and stores
 user-scoped dismissals. Closing or following an action dismisses the ID; copy
 edits retain it. Writes are board-only, idempotent and transactionally audited
-using an authorized company's context. Viewers may dismiss their own card.
-This is an explicit exception to company-scoped business entities: the
-preference follows one account across companies on the instance. A separate
+after an organization membership check. Viewers may dismiss their own card.
+Dismissals are keyed by user and announcement ID rather than attached to
+organization data. A separate
 instance-level registry retains validated publication IDs, allowing offline
 dismissal retries after withdrawal while rejecting caller-invented IDs. It
 stores no announcement content, account data or interaction events.
@@ -1825,7 +1824,7 @@ instance setting and no personal preference that turns them off.
 ### Persistent managed agent files (2026-09-28)
 
 The Instructions Editor and agent execution share one current agent-owned
-directory, scoped by company and agent. The configured instruction entry is one
+directory under the organization root, scoped by agent. The configured instruction entry is one
 file in this directory. Registered private copies synchronize supported files
 across tasks and sessions, separately from task workspace persistence. Saves
 require verified provider stop and current authorization, then synchronize changed

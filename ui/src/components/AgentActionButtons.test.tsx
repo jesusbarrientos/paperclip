@@ -65,7 +65,6 @@ async function flushReact() {
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "Alpha Agent",
     urlKey: "alpha",
     role: "engineer",
@@ -129,7 +128,7 @@ describe("AgentActionButtons", () => {
     root ??= createRoot(container);
     root.render(
       <QueryClientProvider client={queryClient}>
-        <AgentActionButtons agent={agent} companyId="company-1" runLabel="Run Heartbeat" {...props} />
+        <AgentActionButtons agent={agent} runLabel="Run Heartbeat" {...props} />
       </QueryClientProvider>,
     );
   }
@@ -159,14 +158,14 @@ describe("AgentActionButtons", () => {
     });
     await flushReact();
 
-    expect(mockAgentsApi.clearError).toHaveBeenCalledWith("agent-1", "company-1");
+    expect(mockAgentsApi.clearError).toHaveBeenCalledWith("agent-1");
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "detail", "agent-1"] });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "detail", "alpha"] });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "runtime-state", "agent-1"] });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "task-sessions", "agent-1"] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "company-1"] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["live-runs", "company-1"] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["heartbeats", "company-1", "agent-1"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "list"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["live-runs"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["heartbeats", "agent-1"] });
   });
 
   it("keeps the normal pause action for non-error agents", async () => {
@@ -191,7 +190,7 @@ describe("AgentActionButtons", () => {
     });
     await flushReact();
 
-    expect(mockAgentsApi.invoke).toHaveBeenCalledWith("agent-1", "company-1", {
+    expect(mockAgentsApi.invoke).toHaveBeenCalledWith("agent-1", {
       debug: { providerTrace: "raw" },
     });
     expect(mockNavigate).toHaveBeenCalledWith("/agents/alpha/runs/run-1");
@@ -216,14 +215,14 @@ describe("AgentActionButtons", () => {
     });
     await flushReact();
 
-    expect(mockAgentsApi.terminate).toHaveBeenCalledWith("agent-1", "company-1");
+    expect(mockAgentsApi.terminate).toHaveBeenCalledWith("agent-1");
     expect(onTerminateSuccess).toHaveBeenCalledWith(expect.objectContaining({
       id: "agent-1",
       status: "terminated",
     }));
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "detail", "agent-1"] });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "detail", "alpha"] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "company-1"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["agents", "list"] });
   });
 
   it("does not terminate when navigation away from a dirty detail page is rejected", async () => {

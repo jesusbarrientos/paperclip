@@ -7,8 +7,7 @@ import type { Agent } from "@paperclipai/shared";
 import { SidebarAgentChats } from "./SidebarAgentChats";
 import { queryKeys } from "@/lib/queryKeys";
 
-const state = vi.hoisted(() => ({ companyId: "company-a", navigate: vi.fn(), closeSidebar: vi.fn(), list: vi.fn() }));
-vi.mock("@/context/CompanyContext", () => ({ useCompany: () => ({ selectedCompanyId: state.companyId }) }));
+const state = vi.hoisted(() => ({ navigate: vi.fn(), closeSidebar: vi.fn(), list: vi.fn() }));
 vi.mock("@/context/SidebarContext", () => ({ useSidebar: () => ({ isMobile: true, setSidebarOpen: state.closeSidebar }) }));
 vi.mock("@/lib/router", () => ({ useLocation: () => ({ pathname: "/A/dashboard" }), useNavigate: () => state.navigate }));
 vi.mock("@/api/agents", () => ({ agentsApi: { list: state.list } }));
@@ -22,7 +21,7 @@ vi.mock("./AgentChatSidebar", () => ({ AgentChatSidebar: ({ onOpenChat }: { onOp
 let root: Root;
 let container: HTMLDivElement;
 let client: QueryClient;
-const agent = (id: string, companyId: string) => ({ id, companyId, name: id, urlKey: id, role: "engineer", title: "Engineer", icon: null, status: "idle" } as Agent);
+const agent = (id: string) => ({ id, name: id, urlKey: id, role: "engineer", title: "Engineer", icon: null, status: "idle" } as Agent);
 async function render() {
   await act(async () => { root.render(<QueryClientProvider client={client}><SidebarAgentChats /></QueryClientProvider>); });
 }
@@ -33,13 +32,11 @@ async function openPicker() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
-  state.companyId = "company-a";
   state.navigate.mockClear();
   state.closeSidebar.mockClear();
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(queryKeys.auth.session, { user: { id: "user-a" } });
-  client.setQueryData(queryKeys.agents.list("company-a"), [agent("alice", "company-a"), agent("never-visited", "company-a")]);
-  client.setQueryData(queryKeys.agents.list("company-b"), [agent("bob", "company-b")]);
+  client.setQueryData(queryKeys.agents.list(), [agent("alice"), agent("never-visited")]);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -63,23 +60,13 @@ describe("SidebarAgentChats", () => {
     expect(document.querySelector("[role=dialog]")).toBeNull();
   });
 
-  it("drops the open picker across company and user changes", async () => {
+  it("drops the open picker across user changes", async () => {
     await render();
     await openPicker();
-    state.companyId = "company-b";
-    await render();
-    expect(document.querySelector("[role=dialog]")).toBeNull();
-    await openPicker();
-    const options = [...document.querySelectorAll("[role=option]")];
-    expect(options).toHaveLength(1);
-    expect(options[0].textContent).toContain("bob");
     await act(async () => {
       client.setQueryData(queryKeys.auth.session, { user: { id: "user-b" } });
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(document.querySelector("[role=dialog]")).toBeNull();
-    state.companyId = "company-a";
-    await render();
     expect(document.querySelector("[role=dialog]")).toBeNull();
   });
 });

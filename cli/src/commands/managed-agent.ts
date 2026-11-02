@@ -17,7 +17,6 @@ export const CLAUDE_MANAGED_SYSTEM_PROMPT =
   "You are a Paperclip remote agent. Follow the current user turn and use only the custom tools supplied for that session. Paperclip tool authority, completion, blocking, review, and yielding are enforced by the runner. Never request or infer a Paperclip endpoint or credential.";
 
 export interface ManagedAgentSetupOptions extends BaseClientOptions {
-  companyId?: string;
   profileKey: string;
   displayName: string;
   apiKeySecretId: string;
@@ -382,9 +381,9 @@ export async function setupManagedAgent(options: ManagedAgentSetupOptions): Prom
     return;
   }
 
-  const context = resolveCommandContext(options, { requireCompany: true });
+  const context = resolveCommandContext(options);
   const stored = await context.api.post(
-    apiPath`/api/companies/${context.companyId}/managed-agent-profiles`,
+    apiPath`/api/managed-agent-profiles`,
     profile,
   );
   printOutput(stored, { json: context.json });
@@ -398,13 +397,13 @@ export function registerManagedAgentCommands(program: Command): void {
     command
       .command("setup")
       .description(
-        "Create or adopt a locked-down Anthropic Agent and Environment, then store a company profile",
+        "Create or adopt a locked-down Anthropic Agent and Environment, then store a profile",
       )
-      .requiredOption("--profile-key <key>", "Stable company profile key")
+      .requiredOption("--profile-key <key>", "Stable profile key")
       .requiredOption("--display-name <name>", "Profile display name")
       .requiredOption(
         "--api-key-secret-id <id>",
-        "Existing company secret containing ANTHROPIC_API_KEY",
+        "Existing secret containing ANTHROPIC_API_KEY",
       )
       .option("--model <id>", "Pinned Claude model", CLAUDE_MANAGED_QUALIFIED_MODEL)
       .option(
@@ -427,7 +426,6 @@ export function registerManagedAgentCommands(program: Command): void {
         } catch (error) {
           handleCommandError(error);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 }

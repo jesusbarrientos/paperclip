@@ -21,7 +21,7 @@ describe("chat connector UI contract", () => {
     ]) {
       const page = source(`../../${file}`);
       expect(page).toMatch(
-        /agentsApi\.retryFailedRun\(\s*run\.agentId,\s*run\.id,\s*run\.companyId,?\s*\)/,
+        /agentsApi\.retryFailedRun\(\s*run\.agentId,\s*run\.id,?\s*\)/,
       );
       expect(page).not.toContain('reason: "retry_failed_run"');
       expect(page).toContain("newRun.runId");
@@ -29,7 +29,7 @@ describe("chat connector UI contract", () => {
     }
     const issue = source("../../IssueDetail.tsx");
     expect(issue).toMatch(
-      /agentsApi\.retryFailedRun\(\s*failedRun\.agentId,\s*failedRun\.runId,\s*companyId/,
+      /agentsApi\.retryFailedRun\(\s*failedRun\.agentId,\s*failedRun\.runId,?\s*\)/,
     );
     expect(issue).toContain("Retry queued");
     for (const file of ["Inbox.tsx", "LegacyInbox.tsx"]) {

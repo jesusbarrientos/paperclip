@@ -34,7 +34,6 @@ type SubmitEvent = Parameters<SubmitCallback>[0];
 function formFixture() {
   const interaction: AskUserQuestionsInteraction = {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "22222222-2222-4222-8222-222222222222",
     issueId: "33333333-3333-4333-8333-333333333333",
     kind: "ask_user_questions",
     status: "pending",
@@ -108,7 +107,6 @@ function formFixture() {
   const draft = createChatQuestionFormDraft(interaction)!;
   const payload = parseChatQuestionFormSubmitTokenPayload(
     chatQuestionFormActionRecords(draft, {
-      companyId: interaction.companyId,
       endpointId: "endpoint-slack-modal",
       conversationId: "conversation-slack-modal",
       publicationId: "publication-slack-modal",
@@ -125,7 +123,7 @@ function formFixture() {
 function memoryPersistence(): ChatSdkStatePersistence {
   const rows = new Map<string, ChatSdkStateRecord>();
   const keyFor = (scope: ChatSdkStateScope, key: string) =>
-    JSON.stringify([scope.companyId, scope.endpointId, key]);
+    JSON.stringify([scope.endpointId, key]);
   return {
     async read(scope, key) {
       return rows.get(keyFor(scope, key)) ?? null;
@@ -242,7 +240,6 @@ describe("Slack native multi-question modal adapter-to-runtime boundary", () => 
       onSubmit?: SubmitCallback;
       persistence?: ChatSdkStatePersistence;
       endpointId?: string;
-      companyId?: string;
     } = {},
   ) {
     const form = formFixture();
@@ -330,7 +327,6 @@ describe("Slack native multi-question modal adapter-to-runtime boundary", () => 
       },
     );
     const runtime = createChatSdkEndpointRuntime({
-      companyId: options.companyId ?? form.interaction.companyId,
       endpointId: options.endpointId ?? "endpoint-slack-modal",
       callbacks: { onMessage() {}, onAction, onModalSubmit: onSubmit },
       logger: "silent",
@@ -411,7 +407,6 @@ describe("Slack native multi-question modal adapter-to-runtime boundary", () => 
     const wire = JSON.stringify(view);
     for (const canonical of [
       test.form.interaction.id,
-      test.form.interaction.companyId,
       '"environment"',
       '"reason"',
       '"production"',
@@ -631,7 +626,6 @@ describe("Slack native multi-question modal adapter-to-runtime boundary", () => 
     const second = await harness({
       persistence,
       endpointId: "endpoint-other",
-      companyId: "company-other",
       onSubmit: () => chatQuestionFormDenialResponse(),
     });
     const submitted = submission(view);

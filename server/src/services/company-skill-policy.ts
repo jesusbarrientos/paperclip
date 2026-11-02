@@ -112,31 +112,25 @@ export function normalizeSkillPolicySourceType(sourceType: string | null | undef
 }
 
 export function companySkillPolicyService(db: Db) {
-  async function get(companyId: string): Promise<EffectiveSkillPolicy> {
+  async function get(): Promise<EffectiveSkillPolicy> {
     const row = await db
       .select()
       .from(companySkillPolicies)
-      .where(eq(companySkillPolicies.companyId, companyId))
       .then((rows) => rows[0] ?? null);
     return row ? effectivePolicyFromRow(row) : { ...OPEN_DEFAULT_POLICY };
   }
 
-  async function resolveAgentPrincipal(companyId: string, agentId: string): Promise<SkillPolicyPrincipal> {
+  async function resolveAgentPrincipal(agentId: string): Promise<SkillPolicyPrincipal> {
     const agent = await db
-      .select({ id: agents.id, companyId: agents.companyId, role: agents.role })
+      .select({ id: agents.id, role: agents.role })
       .from(agents)
       .where(eq(agents.id, agentId))
       .then((rows) => rows[0] ?? null);
     if (!agent) throw notFound("Agent not found");
-    if (agent.companyId !== companyId) {
-      throw forbidden("Agent cannot be evaluated for another company", {
-        code: "skill_company_boundary_denied",
-      });
-    }
     return { type: "agent", id: agent.id, role: agent.role };
   }
 
-  async function hasLegacyBroadMutationGrant(companyId: string, principal: SkillPolicyPrincipal) {
+  async function hasLegacyBroadMutationGrant(principal: SkillPolicyPrincipal) {
     const principalType = principal.type === "agent" ? "agent" : "user";
     const row = await db
       .select({ permissionKey: principalPermissionGrants.permissionKey })
@@ -152,12 +146,11 @@ export function companySkillPolicyService(db: Db) {
   }
 
   async function evaluate(input: {
-    companyId: string;
     principal: SkillPolicyPrincipal;
     action: SkillPolicyAction;
     resource?: SkillPolicyEvaluationResource;
   }): Promise<SkillPolicyDecision> {
-    const policy = await get(input.companyId);
+    const policy = await get();
     if (!policy.materialized) {
       return decision(true, input.action, "no_policy_default", policy.revision);
     }
@@ -179,17 +172,16 @@ export function companySkillPolicyService(db: Db) {
     // These grants historically authorized the full company-skill mutation surface.
     // Preserve that broad scope only as a default-deny compatibility fallback;
     // explicit policy rules and platform invariants still take precedence.
-    if (policy.defaultEffect === "deny" && await hasLegacyBroadMutationGrant(input.companyId, input.principal)) {
+    if (policy.defaultEffect === "deny" && await hasLegacyBroadMutationGrant(input.principal)) {
       return decision(true, input.action, "legacy_compatibility", policy.revision);
     }
     return decision(policy.defaultEffect === "allow", input.action, "policy_default", policy.revision);
   }
 
   async function replace(input: {
-    companyId: string;
     expectedRevision: number;
     policy: SkillPolicyDocument;
-    activity: Omit<LogActivityInput, "companyId" | "action" | "entityType" | "entityId" | "details">;
+    activity: Omit<LogActivityInput, "action" | "entityType" | "entityId" | "details">;
   }) {
     return db.transaction(async (tx) => {
       const transactionDb = tx as unknown as Db;
@@ -197,7 +189,6 @@ export function companySkillPolicyService(db: Db) {
       const existing = await tx
         .select()
         .from(companySkillPolicies)
-        .where(eq(companySkillPolicies.companyId, input.companyId))
         .then((rows) => rows[0] ?? null);
       const currentRevision = existing?.revision ?? 0;
       if (currentRevision !== input.expectedRevision) {
@@ -219,10 +210,7 @@ export function companySkillPolicyService(db: Db) {
         const updated = await tx
           .update(companySkillPolicies)
           .set(values)
-          .where(and(
-            eq(companySkillPolicies.companyId, input.companyId),
-            eq(companySkillPolicies.revision, currentRevision),
-          ))
+          .where(eq(companySkillPolicies.revision, currentRevision))
           .returning({ revision: companySkillPolicies.revision })
           .then((rows) => rows[0] ?? null);
         if (!updated) {
@@ -234,7 +222,7 @@ export function companySkillPolicyService(db: Db) {
       } else {
         const inserted = await tx
           .insert(companySkillPolicies)
-          .values({ companyId: input.companyId, ...values })
+          .values({ ...values })
           .onConflictDoNothing()
           .returning({ revision: companySkillPolicies.revision })
           .then((rows) => rows[0] ?? null);
@@ -247,10 +235,9 @@ export function companySkillPolicyService(db: Db) {
       }
       await logActivity(transactionDb, {
         ...input.activity,
-        companyId: input.companyId,
         action: "company.skill_policy_replaced",
         entityType: "company_skill_policy",
-        entityId: input.companyId,
+        entityId: "default",
         details: {
           previousRevision: currentRevision,
           newRevision: nextRevision,
@@ -263,23 +250,20 @@ export function companySkillPolicyService(db: Db) {
   }
 
   async function reset(input: {
-    companyId: string;
-    activity: Omit<LogActivityInput, "companyId" | "action" | "entityType" | "entityId" | "details">;
+    activity: Omit<LogActivityInput, "action" | "entityType" | "entityId" | "details">;
   }) {
     return db.transaction(async (tx) => {
       const transactionDb = tx as unknown as Db;
       const existing = await tx
         .delete(companySkillPolicies)
-        .where(eq(companySkillPolicies.companyId, input.companyId))
         .returning({ revision: companySkillPolicies.revision })
         .then((rows) => rows[0] ?? null);
       if (existing) {
         await logActivity(transactionDb, {
           ...input.activity,
-          companyId: input.companyId,
           action: "company.skill_policy_reset",
           entityType: "company_skill_policy",
-          entityId: input.companyId,
+          entityId: "default",
           details: { previousRevision: existing.revision, newRevision: 0 },
         });
       }

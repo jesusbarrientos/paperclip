@@ -42,7 +42,6 @@ async function buildSandboxTarget(input: {
 
   const target = await resolveEnvironmentExecutionTarget({
     db: {} as never,
-    companyId: "company-1",
     adapterType: "codex_local",
     environment: { id: "env-1", driver: "sandbox", config: { provider: "daytona" } },
     leaseId: "lease-1",

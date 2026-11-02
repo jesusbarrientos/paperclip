@@ -1,9 +1,9 @@
 /**
- * Client-side bookkeeping for async company import jobs.
+ * Client-side bookkeeping for async organization import jobs.
  *
  * The import page submits imports as server-side jobs and polls their status,
  * so a dropped connection or a page reload must not lose track of a running
- * import. The job id is mirrored into `sessionStorage` (keyed per company and
+ * import. The job id is mirrored into `sessionStorage` (keyed per
  * package) when a job is accepted and removed once it reaches a terminal
  * state, letting the page resume watching after a reload. Jobs live in server
  * memory only: a stored id the server no longer knows (restart, retention
@@ -19,8 +19,8 @@ export interface StoredImportJob {
   pauseAutomations: boolean;
 }
 
-export function importJobStorageKey(companyId: string, packageName: string): string {
-  return `${STORAGE_PREFIX}:${companyId}:${packageName}`;
+export function importJobStorageKey(packageName: string): string {
+  return `${STORAGE_PREFIX}:${packageName}`;
 }
 
 export function writeStoredImportJob(storageKey: string, value: StoredImportJob): void {
@@ -41,15 +41,13 @@ export function clearStoredImportJob(storageKey: string): void {
 }
 
 /**
- * Find a stored job for this company. Keys are scoped per package name, so
- * scan the company's prefix; the server allows one live job per user, so at
+ * Find a stored job. Keys are scoped per package name, so scan the prefix; the server allows one live job per user, so at
  * most one non-terminal entry is expected.
  */
 export function readStoredImportJob(
-  companyId: string,
 ): (StoredImportJob & { storageKey: string }) | null {
   try {
-    const prefix = `${STORAGE_PREFIX}:${companyId}:`;
+    const prefix = `${STORAGE_PREFIX}:`;
     for (let index = 0; index < sessionStorage.length; index += 1) {
       const key = sessionStorage.key(index);
       if (!key || !key.startsWith(prefix)) continue;

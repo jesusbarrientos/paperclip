@@ -38,7 +38,6 @@ function seed(runId: string, sessionId: string): SessionSnapshot {
     fixtureName: "live-console-demo",
     identity: {
       schema: "paperclip.prp.identity.v1",
-      companyId: "package-local-demo",
       issueId: "live-console-demo",
       runId,
       environmentLeaseId: "package-local",

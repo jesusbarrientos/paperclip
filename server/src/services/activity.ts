@@ -22,7 +22,6 @@ import { visibleIssueCondition } from "./issue-visibility.js";
 import { classifyRunLiveness } from "./run-liveness.js";
 
 export interface ActivityFilters {
-  companyId: string;
   agentId?: string;
   entityType?: string;
   entityId?: string;
@@ -155,11 +154,10 @@ export function activityService(db: Db) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
-  async function backfillMissingRunLivenessForIssue(companyId: string, issueId: string) {
+  async function backfillMissingRunLivenessForIssue(issueId: string) {
     const runs = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
         status: heartbeatRuns.status,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         resultJson: heartbeatRuns.resultJson,
@@ -172,7 +170,6 @@ export function activityService(db: Db) {
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, companyId),
           isNull(heartbeatRuns.livenessState),
           sql`${heartbeatRuns.status} not in ('queued', 'running')`,
           or(
@@ -180,8 +177,7 @@ export function activityService(db: Db) {
             sql`exists (
               select 1
               from ${activityLog}
-              where ${activityLog.companyId} = ${companyId}
-                and ${activityLog.entityType} = 'issue'
+              where ${activityLog.entityType} = 'issue'
                 and ${activityLog.entityId} = ${issueId}
                 and ${activityLog.runId} = ${heartbeatRuns.id}
             )`,
@@ -200,7 +196,7 @@ export function activityService(db: Db) {
         workMode: issues.workMode,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+      .where(eq(issues.id, issueId))
       .then((rows) => rows[0] ?? null);
 
     for (const run of runs) {
@@ -219,7 +215,6 @@ export function activityService(db: Db) {
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.companyId, companyId),
             eq(issueComments.issueId, issueId),
             eq(issueComments.createdByRunId, run.id),
           ),
@@ -235,9 +230,7 @@ export function activityService(db: Db) {
         .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
         .where(
           and(
-            eq(documentRevisions.companyId, companyId),
             eq(documentRevisions.createdByRunId, run.id),
-            eq(issueDocuments.companyId, companyId),
             eq(issueDocuments.issueId, issueId),
             sql`${issueDocuments.key} != ${ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY}`,
           ),
@@ -251,7 +244,6 @@ export function activityService(db: Db) {
         .from(issueWorkProducts)
         .where(
           and(
-            eq(issueWorkProducts.companyId, companyId),
             eq(issueWorkProducts.issueId, issueId),
             eq(issueWorkProducts.createdByRunId, run.id),
           ),
@@ -263,7 +255,7 @@ export function activityService(db: Db) {
           latestAt: sql<Date | null>`max(${workspaceOperations.startedAt})`,
         })
         .from(workspaceOperations)
-        .where(and(eq(workspaceOperations.companyId, companyId), eq(workspaceOperations.heartbeatRunId, run.id)));
+        .where(eq(workspaceOperations.heartbeatRunId, run.id));
 
       const [activityStats] = await db
         .select({
@@ -271,7 +263,7 @@ export function activityService(db: Db) {
           latestAt: sql<Date | null>`max(${activityLog.createdAt})`,
         })
         .from(activityLog)
-        .where(and(eq(activityLog.companyId, companyId), eq(activityLog.runId, run.id)));
+        .where(eq(activityLog.runId, run.id));
 
       const [eventStats] = await db
         .select({
@@ -279,7 +271,7 @@ export function activityService(db: Db) {
           latestAt: sql<Date | null>`max(${heartbeatRunEvents.createdAt}) filter (where ${heartbeatRunEvents.eventType} not in ('lifecycle', 'adapter.invoke', 'error'))`,
         })
         .from(heartbeatRunEvents)
-        .where(and(eq(heartbeatRunEvents.companyId, companyId), eq(heartbeatRunEvents.runId, run.id)));
+        .where(eq(heartbeatRunEvents.runId, run.id));
 
       const classification = classifyRunLiveness({
         runStatus: run.status,
@@ -323,13 +315,13 @@ export function activityService(db: Db) {
     }
   }
 
-  function scheduleRunLivenessBackfill(companyId: string, issueId: string) {
-    const key = `${companyId}:${issueId}`;
+  function scheduleRunLivenessBackfill(issueId: string) {
+    const key = issueId;
     if (scheduledLivenessBackfills.has(key)) return;
     scheduledLivenessBackfills.add(key);
-    void backfillMissingRunLivenessForIssue(companyId, issueId)
+    void backfillMissingRunLivenessForIssue(issueId)
       .catch((err: unknown) => {
-        logger.warn({ err, companyId, issueId }, "run liveness backfill failed");
+        logger.warn({ err, issueId }, "run liveness backfill failed");
       })
       .finally(() => {
         scheduledLivenessBackfills.delete(key);
@@ -338,7 +330,7 @@ export function activityService(db: Db) {
 
   return {
     list: (filters: ActivityFilters) => {
-      const conditions = [eq(activityLog.companyId, filters.companyId)];
+      const conditions = [];
       const limit = normalizeActivityLimit(filters.limit);
 
       if (filters.agentId) {
@@ -382,14 +374,13 @@ export function activityService(db: Db) {
         .where(
           or(
             and(eq(activityLog.entityType, "issue"), eq(activityLog.entityId, issueId)),
-            and(or(eq(activityLog.action, "project.created"), eq(activityLog.action, "company.skill_created")), sql`${activityLog.details}->>'sourceIssueId' = ${issueId}`,
-              sql`${activityLog.companyId} = (select company_id from issues where id = ${issueId})`),
+            and(or(eq(activityLog.action, "project.created"), eq(activityLog.action, "company.skill_created")), sql`${activityLog.details}->>'sourceIssueId' = ${issueId}`),
           ),
         )
         .orderBy(desc(activityLog.createdAt)),
 
-    runsForIssue: async (companyId: string, issueId: string) => {
-      scheduleRunLivenessBackfill(companyId, issueId);
+    runsForIssue: async (issueId: string) => {
+      scheduleRunLivenessBackfill(issueId);
       const runs = await db
         .select({
           runId: heartbeatRuns.id,
@@ -426,26 +417,19 @@ export function activityService(db: Db) {
         .from(heartbeatRuns)
         .innerJoin(
           agents,
-          and(
-            eq(agents.id, heartbeatRuns.agentId),
-            eq(agents.companyId, heartbeatRuns.companyId),
-          ),
+          eq(agents.id, heartbeatRuns.agentId),
         )
         .where(
-          and(
-            eq(heartbeatRuns.companyId, companyId),
-            or(
-              sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
-              sql`exists (
+          or(
+                          sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
+                          sql`exists (
                 select 1
                 from ${activityLog}
-                where ${activityLog.companyId} = ${companyId}
-                  and ${activityLog.entityType} = 'issue'
+                where ${activityLog.entityType} = 'issue'
                   and ${activityLog.entityId} = ${issueId}
                   and ${activityLog.runId} = ${heartbeatRuns.id}
               )`,
-            ),
-          ),
+                        ),
         )
         .orderBy(desc(heartbeatRuns.createdAt));
 
@@ -480,10 +464,7 @@ export function activityService(db: Db) {
         .from(environmentLeases)
         .innerJoin(environments, eq(environmentLeases.environmentId, environments.id))
         .where(
-          and(
-            eq(environmentLeases.companyId, companyId),
-            inArray(environmentLeases.heartbeatRunId, runIds),
-          ),
+          inArray(environmentLeases.heartbeatRunId, runIds),
         )
         .orderBy(desc(environmentLeases.lastUsedAt), desc(environmentLeases.createdAt));
 
@@ -492,15 +473,15 @@ export function activityService(db: Db) {
       const savedPlanQuery = runs.some((run) => hasWorkspaceRestoreFailure(run.resultJson))
         ? db.select({ revisionId: documentRevisions.id, runId: documentRevisions.createdByRunId })
           .from(issueDocuments)
-          .innerJoin(documents, and(eq(documents.id, issueDocuments.documentId), eq(documents.companyId, companyId)))
-          .innerJoin(documentRevisions, and(eq(documentRevisions.id, documents.latestRevisionId), eq(documentRevisions.documentId, documents.id), eq(documentRevisions.companyId, companyId)))
-          .where(and(eq(issueDocuments.companyId, companyId), eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, "plan")))
+          .innerJoin(documents, eq(documents.id, issueDocuments.documentId))
+          .innerJoin(documentRevisions, and(eq(documentRevisions.id, documents.latestRevisionId), eq(documentRevisions.documentId, documents.id)))
+          .where(and(eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, "plan")))
           .limit(1)
         : Promise.resolve([]);
       const [exhaustionRows, leaseRows, executionByRunId, [savedPlan]] = await Promise.all([
         exhaustionRowsQuery,
         leaseRowsQuery,
-        executionProjectionsForRuns(db, companyId, runIds, new Date(), { retryDatabaseReads: true }),
+        executionProjectionsForRuns(db, runIds, new Date(), { retryDatabaseReads: true }),
         savedPlanQuery,
       ]);
       const retryExhaustedReasonByRunId = new Map<string, string>();
@@ -567,7 +548,6 @@ export function activityService(db: Db) {
     issuesForRun: async (runId: string) => {
       const run = await db
         .select({
-          companyId: heartbeatRuns.companyId,
           contextSnapshot: heartbeatRuns.contextSnapshot,
         })
         .from(heartbeatRuns)
@@ -587,7 +567,6 @@ export function activityService(db: Db) {
         .innerJoin(issues, eq(activityLog.entityId, issueIdAsText))
         .where(
           and(
-            eq(activityLog.companyId, run.companyId),
             eq(activityLog.runId, runId),
             eq(activityLog.entityType, "issue"),
             visibleIssueCondition(),
@@ -614,7 +593,6 @@ export function activityService(db: Db) {
         .from(issues)
         .where(
           and(
-            eq(issues.companyId, run.companyId),
             eq(issues.id, contextIssueId),
             visibleIssueCondition(),
           ),

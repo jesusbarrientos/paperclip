@@ -25,7 +25,6 @@ export type ExportFidelityCounts = Record<(typeof EXPORT_FIDELITY_COUNT_KEYS)[nu
 
 export interface ExportFidelityReport {
   schema: typeof EXPORT_FIDELITY_REPORT_SCHEMA;
-  companyId: string;
   counts: ExportFidelityCounts;
   warnings: PortabilityFidelityWarning[];
   generatedAt: string;

@@ -91,19 +91,6 @@ interface PluginStreamOptions extends BaseClientOptions {
   durationMs?: string;
 }
 
-interface PluginCompanyOptions extends PluginJsonOptions {
-  companyId?: string;
-}
-
-function requireCompanyId(ctx: { companyId?: string }): string {
-  if (!ctx.companyId) {
-    throw new Error(
-      "Company ID is required. Pass --company-id, set PAPERCLIP_COMPANY_ID, or set context profile companyId via `paperclipai context set`.",
-    );
-  }
-  return ctx.companyId;
-}
-
 interface PluginInitResult {
   outputDir: string;
   nextCommands: string[];
@@ -682,9 +669,9 @@ export function registerPluginCommands(program: Command): void {
   addPluginSubGet(plugin, "health", "Get plugin health", "health");
   addPluginSubGet(plugin, "logs", "Get plugin logs", "logs");
   addPluginSubPost(plugin, "upgrade", "Upgrade a plugin", "upgrade");
-  addPluginConfigGet(plugin, "config", "Get company-scoped plugin config");
-  addPluginConfigPost(plugin, "config:set", "Set company-scoped plugin config", "config");
-  addPluginConfigPost(plugin, "config:test", "Test company-scoped plugin config", "config/test");
+  addPluginConfigGet(plugin, "config", "Get plugin config");
+  addPluginConfigPost(plugin, "config:set", "Set plugin config", "config");
+  addPluginConfigPost(plugin, "config:test", "Test plugin config", "config/test");
   addPluginSubGet(plugin, "jobs", "List plugin jobs", "jobs");
   addPluginJobGet(plugin, "job:runs", "List plugin job runs", "runs");
   addPluginJobPost(plugin, "job:trigger", "Trigger a plugin job", "trigger");
@@ -766,20 +753,17 @@ function addPluginConfigGet(parent: Command, name: string, description: string):
       .command(name)
       .description(description)
       .argument("<pluginId>", "Plugin ID or key")
-      .option("-C, --company-id <id>", "Company ID")
-      .action(async (pluginId: string, opts: PluginCompanyOptions) => {
+      .action(async (pluginId: string, opts: PluginJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const companyId = requireCompanyId(ctx);
+          const ctx = resolveCommandContext(opts);
           printOutput(
-            await ctx.api.get(`/api/plugins/${encodeURIComponent(pluginId)}/config?companyId=${encodeURIComponent(companyId)}`),
+            await ctx.api.get(`/api/plugins/${encodeURIComponent(pluginId)}/config`),
             { json: ctx.json },
           );
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -789,24 +773,21 @@ function addPluginConfigPost(parent: Command, name: string, description: string,
       .command(name)
       .description(description)
       .argument("<pluginId>", "Plugin ID or key")
-      .option("-C, --company-id <id>", "Company ID")
       .option("--payload-json <json>", "JSON payload", "{}")
-      .action(async (pluginId: string, opts: PluginCompanyOptions) => {
+      .action(async (pluginId: string, opts: PluginJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const payload = parseJson(opts.payloadJson ?? "{}") as Record<string, unknown>;
           printOutput(
             await ctx.api.post(`/api/plugins/${encodeURIComponent(pluginId)}/${suffix}`, {
-              ...payload,
-              companyId: ctx.companyId,
+              ...payload
             }),
             { json: ctx.json },
           );
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -849,16 +830,14 @@ function addPluginLocalFolderGet(parent: Command, name: string, description: str
       .command(name)
       .description(description)
       .argument("<pluginId>", "Plugin ID or key")
-      .requiredOption("-C, --company-id <id>", "Company ID")
-      .action(async (pluginId: string, opts: PluginCompanyOptions) => {
+      .action(async (pluginId: string, opts: PluginJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          printOutput(await ctx.api.get(`/api/plugins/${encodeURIComponent(pluginId)}/companies/${ctx.companyId}/local-folders`), { json: ctx.json });
+          const ctx = resolveCommandContext(opts);
+          printOutput(await ctx.api.get(`/api/plugins/${encodeURIComponent(pluginId)}/local-folders`), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -869,19 +848,17 @@ function addPluginLocalFolderKeyGet(parent: Command, name: string, description: 
       .description(description)
       .argument("<pluginId>", "Plugin ID or key")
       .argument("<folderKey>", "Local folder key")
-      .requiredOption("-C, --company-id <id>", "Company ID")
-      .action(async (pluginId: string, folderKey: string, opts: PluginCompanyOptions) => {
+      .action(async (pluginId: string, folderKey: string, opts: PluginJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           printOutput(
-            await ctx.api.get(`/api/plugins/${encodeURIComponent(pluginId)}/companies/${ctx.companyId}/local-folders/${encodeURIComponent(folderKey)}/${suffix}`),
+            await ctx.api.get(`/api/plugins/${encodeURIComponent(pluginId)}/local-folders/${encodeURIComponent(folderKey)}/${suffix}`),
             { json: ctx.json },
           );
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -892,14 +869,13 @@ function addPluginLocalFolderKeyPost(parent: Command, name: string, description:
       .description(description)
       .argument("<pluginId>", "Plugin ID or key")
       .argument("<folderKey>", "Local folder key")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .option("--payload-json <json>", "JSON payload", "{}")
-      .action(async (pluginId: string, folderKey: string, opts: PluginCompanyOptions) => {
+      .action(async (pluginId: string, folderKey: string, opts: PluginJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           printOutput(
             await ctx.api.post(
-              `/api/plugins/${encodeURIComponent(pluginId)}/companies/${ctx.companyId}/local-folders/${encodeURIComponent(folderKey)}/${suffix}`,
+              `/api/plugins/${encodeURIComponent(pluginId)}/local-folders/${encodeURIComponent(folderKey)}/${suffix}`,
               parseJson(opts.payloadJson ?? "{}"),
             ),
             { json: ctx.json },
@@ -907,8 +883,7 @@ function addPluginLocalFolderKeyPost(parent: Command, name: string, description:
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 
@@ -919,14 +894,13 @@ function addPluginLocalFolderKeyPut(parent: Command, name: string, description: 
       .description(description)
       .argument("<pluginId>", "Plugin ID or key")
       .argument("<folderKey>", "Local folder key")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "JSON payload")
-      .action(async (pluginId: string, folderKey: string, opts: PluginCompanyOptions) => {
+      .action(async (pluginId: string, folderKey: string, opts: PluginJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           printOutput(
             await ctx.api.put(
-              `/api/plugins/${encodeURIComponent(pluginId)}/companies/${ctx.companyId}/local-folders/${encodeURIComponent(folderKey)}`,
+              `/api/plugins/${encodeURIComponent(pluginId)}/local-folders/${encodeURIComponent(folderKey)}`,
               parseJson(opts.payloadJson ?? "{}"),
             ),
             { json: ctx.json },
@@ -934,8 +908,7 @@ function addPluginLocalFolderKeyPut(parent: Command, name: string, description: 
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

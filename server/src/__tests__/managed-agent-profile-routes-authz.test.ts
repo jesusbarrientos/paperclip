@@ -7,8 +7,6 @@ import { errorHandler } from "../middleware/index.js";
 import { managedAgentProfileRoutes } from "../routes/managed-agent-profiles.js";
 import { remoteAgentProfileRoutes } from "../routes/remote-agent-profiles.js";
 
-const COMPANY_ID = "10000000-0000-4000-8000-000000000001";
-const OTHER_COMPANY_ID = "10000000-0000-4000-8000-000000000002";
 
 const unusedDb = new Proxy({}, {
   get() {
@@ -37,36 +35,23 @@ function boardActor(role: "operator" | "viewer"): Express.Request["actor"] {
     userName: null,
     userEmail: null,
     isInstanceAdmin: false,
-    companyIds: [COMPANY_ID],
-    memberships: [{ companyId: COMPANY_ID, membershipRole: role, status: "active" }],
+    memberships: [{ membershipRole: role, status: "active" }],
   };
 }
 
 describe("managed provider profile route authorization", () => {
-  it("does not allow a board member to enumerate another company's profiles", async () => {
-    const app = createApp(boardActor("operator"));
-
-    await request(app)
-      .get(`/api/companies/${OTHER_COMPANY_ID}/managed-agent-profiles`)
-      .expect(403);
-    await request(app)
-      .get(`/api/companies/${OTHER_COMPANY_ID}/remote-agent-profiles`)
-      .expect(403);
-  });
-
   it("keeps profile management board-only", async () => {
     const app = createApp({
       type: "agent",
       source: "agent_key",
-      agentId: "agent-1",
-      companyId: COMPANY_ID,
+      agentId: "agent-1"
     });
 
     await request(app)
-      .get(`/api/companies/${COMPANY_ID}/managed-agent-profiles`)
+      .get(`/api/managed-agent-profiles`)
       .expect(403);
     await request(app)
-      .get(`/api/companies/${COMPANY_ID}/remote-agent-profiles`)
+      .get(`/api/remote-agent-profiles`)
       .expect(403);
   });
 
@@ -74,11 +59,11 @@ describe("managed provider profile route authorization", () => {
     const app = createApp(boardActor("viewer"));
 
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/managed-agent-profiles`)
+      .post(`/api/managed-agent-profiles`)
       .send({})
       .expect(403);
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/remote-agent-profiles`)
+      .post(`/api/remote-agent-profiles`)
       .send({})
       .expect(403);
   });
@@ -87,7 +72,7 @@ describe("managed provider profile route authorization", () => {
     const app = createApp(boardActor("operator"));
 
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/managed-agent-profiles`)
+      .post(`/api/managed-agent-profiles`)
       .send({
         profileKey: "managed",
         displayName: "Managed",
@@ -104,7 +89,7 @@ describe("managed provider profile route authorization", () => {
       .expect(422);
 
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/remote-agent-profiles`)
+      .post(`/api/remote-agent-profiles`)
       .send({
         profileKey: "agentcore",
         displayName: "AgentCore",
@@ -138,7 +123,7 @@ describe("managed provider profile route authorization", () => {
     const app = createApp(boardActor("operator"));
 
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/remote-agent-profiles`)
+      .post(`/api/remote-agent-profiles`)
       .send({
         profileKey: "wrong-store",
         displayName: "Wrong Store",
@@ -152,7 +137,7 @@ describe("managed provider profile route authorization", () => {
     const app = createApp(boardActor("operator"));
 
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/remote-agent-profiles`)
+      .post(`/api/remote-agent-profiles`)
       .send({
         profileKey: "agentcore",
         displayName: "AgentCore",

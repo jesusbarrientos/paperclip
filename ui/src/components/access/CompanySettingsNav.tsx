@@ -6,11 +6,11 @@ import { INSTANCE_SETTINGS_PATH_PREFIX } from "@/lib/instance-settings";
 import { useLocation, useNavigate } from "@/lib/router";
 
 const items = [
-  { value: "general", label: "General", href: "/company/settings" },
-  { value: "export", label: "Export", href: "/company/export" },
-  { value: "import", label: "Import", href: "/company/import" },
-  { value: "members", label: "Members", href: "/company/settings/members" },
-  { value: "secrets", label: "Secrets", href: "/company/settings/secrets" },
+  { value: "general", label: "General", href: "/organization/settings" },
+  { value: "export", label: "Export", href: "/organization/export" },
+  { value: "import", label: "Import", href: "/organization/import" },
+  { value: "members", label: "Members", href: "/organization/settings/members" },
+  { value: "secrets", label: "Secrets", href: "/organization/settings/secrets" },
   { value: "instance-profile", label: "Profile", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/profile` },
   { value: "instance-environments", label: "Environments", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/environments` },
   { value: "instance-access", label: "Access", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/access` },
@@ -64,28 +64,28 @@ export function getCompanySettingsTab(pathname: string): CompanySettingsTab {
     return "general";
   }
 
-  if (pathname.includes("/company/settings/environments")) {
+  if (pathname.includes("/organization/settings/environments")) {
     return "instance-environments";
   }
 
-  if (pathname.includes("/company/export")) {
+  if (pathname.includes("/organization/export")) {
     return "export";
   }
 
-  if (pathname.includes("/company/import")) {
+  if (pathname.includes("/organization/import")) {
     return "import";
   }
 
-  if (pathname.includes("/company/settings/members") || pathname.includes("/company/settings/access")) {
+  if (pathname.includes("/organization/settings/members") || pathname.includes("/organization/settings/access")) {
     return "members";
   }
 
-  if (pathname.includes("/company/settings/invites")) {
+  if (pathname.includes("/organization/settings/invites")) {
     // Invites live on the Members page now; the old URL redirects there.
     return "members";
   }
 
-  if (pathname.includes("/company/settings/secrets")) {
+  if (pathname.includes("/organization/settings/secrets")) {
     return "secrets";
   }
 

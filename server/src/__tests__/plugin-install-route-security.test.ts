@@ -102,7 +102,7 @@ async function createBuiltPluginFixture(parentDir: string, nameSuffix: string): 
     description: "Plugin fixture for install-route security floor coverage.",
     author: "Paperclip",
     categories: ["automation"],
-    capabilities: ["companies.read"],
+    capabilities: ["projects.read"],
     entrypoints: {
       worker: "./dist/worker.js",
     },
@@ -136,7 +136,6 @@ async function createInstallApp(db: ReturnType<typeof createDb>) {
       userId: "admin-1",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [],
     } as typeof req.actor;
     next();
   });

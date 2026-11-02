@@ -69,7 +69,6 @@ vi.mock("@/components/SearchableSelect", () => ({
 function storedToken(): ToolMcpGatewayToken {
   return {
     id: "token-1",
-    companyId: "company-1",
     gatewayId: "gateway-1",
     name: "research-client",
     tokenPrefix: "pcgw_abcd1234",
@@ -95,7 +94,6 @@ function storedToken(): ToolMcpGatewayToken {
 function gateway(token: ToolMcpGatewayToken): ToolMcpGatewayWithTokens {
   return {
     id: "gateway-1",
-    companyId: "company-1",
     gatewayPublicId: "public-1",
     name: "Research gateway",
     displaySlug: "research",

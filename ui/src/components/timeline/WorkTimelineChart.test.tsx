@@ -339,7 +339,7 @@ describe("WorkTimelineChart", () => {
     expect(onZoomScaleChange).toHaveBeenCalledTimes(1);
   });
 
-  it("opens task bars in a new company-prefixed window", () => {
+  it("opens task bars in a new window", () => {
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
     renderChart(timelineSample());
 
@@ -348,7 +348,7 @@ describe("WorkTimelineChart", () => {
       bar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(open).toHaveBeenCalledWith("/PAP/issues/issue-1", "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith("/issues/issue-1", "_blank", "noopener,noreferrer");
   });
 
   it("lets minimap edge handles resize the visible range and update zoom", () => {

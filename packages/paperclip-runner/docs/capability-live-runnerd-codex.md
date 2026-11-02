@@ -40,7 +40,7 @@ import {
   DurableCapabilityLiveSessionStore,
 } from "@paperclipai/paperclip-runner/live";
 
-const binding = { sessionId, runId, companyId, actorId, taskId };
+const binding = { sessionId, runId, actorId, taskId };
 const store = new DurableCapabilityLiveSessionStore({ directory, binding });
 const service = new CapabilityLiveSessionService({ store });
 const session = await service.create({ ...binding, attemptId, workingDirectory });

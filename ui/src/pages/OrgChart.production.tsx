@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
@@ -174,7 +173,6 @@ const defaultDotColor = "var(--hex-a3a3a3)";
 // ── Main component ──────────────────────────────────────────────────────
 
 export function OrgChart() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   // Import is floored server-side on cloud-managed instances (403 cloud_managed), so the
@@ -186,15 +184,13 @@ export function OrgChart() {
   const showExport = !hiddenSettings.has("company.export");
 
   const { data: orgTree, isLoading } = useQuery({
-    queryKey: queryKeys.org(selectedCompanyId!),
-    queryFn: () => agentsApi.org(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.org(),
+    queryFn: () => agentsApi.org(),
   });
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const agentMap = useMemo(() => {
@@ -438,9 +434,6 @@ export function OrgChart() {
     };
   }, [pan, zoom]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Network} message="Select a company to view the org chart." />;
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="org-chart" />;
@@ -454,7 +447,7 @@ export function OrgChart() {
     <div className="flex h-(--sz-calc-38) min-h-(--sz-420px) flex-col md:h-full md:min-h-0">
       <div className="mb-2 flex shrink-0 flex-wrap items-center justify-start gap-2">
         {showImport && (
-          <Link to="/company/import">
+          <Link to="/organization/import">
             <Button variant="outline" size="sm">
               <Upload className="mr-1.5 h-3.5 w-3.5" />
               Import company
@@ -462,7 +455,7 @@ export function OrgChart() {
           </Link>
         )}
         {showExport && (
-          <Link to="/company/export">
+          <Link to="/organization/export">
             <Button variant="outline" size="sm">
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export company

@@ -41,7 +41,6 @@ export interface PipelineConnections {
 
 export interface PipelineListItem {
   id: string;
-  companyId: string;
   key: string;
   name: string;
   description: string | null;
@@ -92,7 +91,6 @@ export interface PipelineDocumentPayload {
 
 export interface PipelineDocumentRevision {
   id: string;
-  companyId: string;
   documentId: string;
   pipelineId: string;
   key: string;
@@ -125,7 +123,6 @@ export interface PipelineIntakeForm {
 
 export interface PipelineCase {
   id: string;
-  companyId?: string;
   pipelineId: string;
   stageId: string | null;
   caseKey?: string | null;
@@ -223,7 +220,6 @@ export interface PipelineCaseDetail {
 
 export interface PipelineCaseIssueLink {
   id: string;
-  companyId: string;
   caseId: string;
   issueId: string;
   role: "origin" | "conversation" | "work" | "automation";
@@ -239,7 +235,6 @@ export interface PipelineCaseIssueLinkWithIssue {
 
 export interface PipelineCaseBlocker {
   id: string;
-  companyId: string;
   caseId: string;
   blockedByCaseId: string;
   createdAt: Date | string;
@@ -248,7 +243,6 @@ export interface PipelineCaseBlocker {
 
 export interface PipelineCaseEvent {
   id: string;
-  companyId: string;
   caseId: string;
   type: string;
   actorType: "user" | "agent" | "system";
@@ -458,11 +452,10 @@ export type PipelineBatchIngestResult =
     };
 
 export const pipelinesApi = {
-  list: (companyId: string) => api.get<PipelineListItem[]>(`/companies/${companyId}/pipelines`),
+  list: () => api.get<PipelineListItem[]>(`/pipelines`),
   create: (
-    companyId: string,
     data: { key: string; name: string; description?: string | null; projectId?: string | null },
-  ) => api.post<PipelineListItem & { stages?: PipelineStage[] }>(`/companies/${companyId}/pipelines`, data),
+  ) => api.post<PipelineListItem & { stages?: PipelineStage[] }>(`/pipelines`, data),
   get: (pipelineId: string) => api.get<PipelineDetail>(`/pipelines/${pipelineId}`),
   getHealth: (pipelineId: string) => api.get<PipelineHealthReport>(`/pipelines/${pipelineId}/health`),
   update: (
@@ -641,18 +634,18 @@ export const pipelinesApi = {
     }>;
   }) =>
     api.post<PipelineBatchIngestResult[]>(`/pipelines/${pipelineId}/cases/batch`, data),
-  listAttention: (companyId: string, options?: { limit?: number }) => {
+  listAttention: (options?: { limit?: number }) => {
     const params = new URLSearchParams();
     if (options?.limit !== undefined) params.set("limit", String(options.limit));
     const qs = params.toString();
-    return api.get<PipelineAttentionFeed>(`/companies/${companyId}/pipelines-attention${qs ? `?${qs}` : ""}`);
+    return api.get<PipelineAttentionFeed>(`/pipelines-attention${qs ? `?${qs}` : ""}`);
   },
-  listReviewCases: (companyId: string, filters?: { pipelineId?: string; parentCaseId?: string }) => {
+  listReviewCases: (filters?: { pipelineId?: string; parentCaseId?: string }) => {
     const params = new URLSearchParams();
     if (filters?.pipelineId) params.set("pipelineId", filters.pipelineId);
     if (filters?.parentCaseId) params.set("parentCaseId", filters.parentCaseId);
     const qs = params.toString();
-    return api.get<PipelineReviewCaseRow[]>(`/companies/${companyId}/review-cases${qs ? `?${qs}` : ""}`);
+    return api.get<PipelineReviewCaseRow[]>(`/review-cases${qs ? `?${qs}` : ""}`);
   },
   reviewCase: (
     caseId: string,
@@ -664,7 +657,6 @@ export const pipelinesApi = {
     },
   ) => api.post<unknown>(`/cases/${caseId}/review`, data),
   bulkReviewCases: (
-    companyId: string,
     data: {
       items: Array<{
         caseId: string;
@@ -673,9 +665,8 @@ export const pipelinesApi = {
         expectedVersion: number;
       }>;
     },
-  ) => api.post<PipelineBulkReviewResult>(`/companies/${companyId}/review-cases/bulk`, data),
+  ) => api.post<PipelineBulkReviewResult>(`/review-cases/bulk`, data),
   listCompanyCaseEvents: (
-    companyId: string,
     filters?: { types?: string; limit?: number; offset?: number },
   ) => {
     const params = new URLSearchParams();
@@ -683,6 +674,6 @@ export const pipelinesApi = {
     if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
     if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
     const qs = params.toString();
-    return api.get<PipelineCompanyCaseEventsPage>(`/companies/${companyId}/case-events${qs ? `?${qs}` : ""}`);
+    return api.get<PipelineCompanyCaseEventsPage>(`/case-events${qs ? `?${qs}` : ""}`);
   },
 };

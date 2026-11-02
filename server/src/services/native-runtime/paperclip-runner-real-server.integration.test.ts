@@ -30,7 +30,6 @@ const runnerBinaryIt = runnerBinariesAvailable ? it : it.skip;
 
 describe("paperclip-runner real server vertical slice", () => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
-  const companyId = "00000000-0000-4000-8000-000000000701";
   const agentId = "00000000-0000-4000-8000-000000000702";
   const issueId = "00000000-0000-4000-8000-000000000703";
   const runId = "00000000-0000-4000-8000-000000000704";
@@ -47,10 +46,9 @@ describe("paperclip-runner real server vertical slice", () => {
 
   runnerBinaryIt("runs Rust runnerd through Paperclip PRP and reads the real bound task", async () => {
     const db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Real runner slice", issuePrefix: "RRS" });
+    await db.insert(companies).values({ name: "Real runner slice", issuePrefix: "RRS" });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Real runner agent",
       adapterType: "paperclip_runner",
       adapterConfig: { provider: "codex" },
@@ -59,7 +57,6 @@ describe("paperclip-runner real server vertical slice", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: "RRS-1",
       title: "Read me through the real control plane",
       status: "in_progress",
@@ -68,7 +65,6 @@ describe("paperclip-runner real server vertical slice", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -79,7 +75,7 @@ describe("paperclip-runner real server vertical slice", () => {
     });
     await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
 
-    const authority = new PaperclipRunnerToolAuthority(db, { companyId, agentId, issueId, runId });
+    const authority = new PaperclipRunnerToolAuthority(db, { agentId, issueId, runId });
     const server = createServer();
     await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
     const address = server.address();
@@ -89,7 +85,7 @@ describe("paperclip-runner real server vertical slice", () => {
     });
     const stateDirectory = await mkdtemp(resolve(tmpdir(), "paperclip-runner-real-resume-"));
     const expectedContextFile = resolve(stateDirectory, "expected-context.json");
-    await writeFile(expectedContextFile, JSON.stringify({ companyId, actorId: agentId, taskId: issueId, runId, callId: "semantic-call-1" }));
+    await writeFile(expectedContextFile, JSON.stringify({ actorId: agentId, taskId: issueId, runId, callId: "semantic-call-1" }));
     const fakeArgs = ["--state-file", resolve(stateDirectory, "fake-provider-state.json"), "--emit-tool-call", "--durable-turn-ids", "--durable-tool-ids", "--expected-canonical-task-context-file", expectedContextFile];
     const bundle = createRunnerdCodexTransport({
       runnerBinary: defaultCapabilityRunnerdBinary(),
@@ -105,7 +101,7 @@ describe("paperclip-runner real server vertical slice", () => {
         turnId: "turn-real-server",
         itemId: "item-real-server",
       },
-      controlPlaneRegistration: (prp) => registerRunnerPrpAuthority({ companyId, runId, authority: prp }),
+      controlPlaneRegistration: (prp) => registerRunnerPrpAuthority({ runId, authority: prp }),
     });
     const observedResults: unknown[] = [];
     bundle.transport.setServerRequestHandler(async (request) => {
@@ -145,7 +141,6 @@ describe("paperclip-runner real server vertical slice", () => {
       await bundle.transport.close();
       await db.insert(heartbeatRuns).values({
         id: resumedRunId,
-        companyId,
         agentId,
         status: "running",
         runtimeMode: "native",
@@ -156,12 +151,11 @@ describe("paperclip-runner real server vertical slice", () => {
       });
       await db.update(issues).set({ executionRunId: resumedRunId }).where(eq(issues.id, issueId));
       const resumedAuthority = new PaperclipRunnerToolAuthority(db, {
-        companyId,
         agentId,
         issueId,
         runId: resumedRunId,
       });
-      await writeFile(expectedContextFile, JSON.stringify({ companyId, actorId: agentId, taskId: issueId, runId: resumedRunId, callId: "semantic-call-2" }));
+      await writeFile(expectedContextFile, JSON.stringify({ actorId: agentId, taskId: issueId, runId: resumedRunId, callId: "semantic-call-2" }));
       const restored = createRunnerdCodexTransport({
         runnerBinary: defaultCapabilityRunnerdBinary(),
         codexCommand: fakeCodexAppServer,
@@ -178,7 +172,6 @@ describe("paperclip-runner real server vertical slice", () => {
           itemId: "item-real-server-resumed",
         },
         controlPlaneRegistration: (prp) => registerRunnerPrpAuthority({
-          companyId,
           runId: resumedRunId,
           authority: prp,
         }),

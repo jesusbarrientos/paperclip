@@ -13,7 +13,6 @@ import {
 function closedQuestion(allowOther?: boolean): AskUserQuestionsInteraction {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "22222222-2222-4222-8222-222222222222",
     issueId: "33333333-3333-4333-8333-333333333333",
     kind: "ask_user_questions",
     status: "pending",

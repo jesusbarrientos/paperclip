@@ -139,7 +139,6 @@ export async function testEnvironment(
       runId,
       target,
       cwd,
-      companyId: ctx.companyId,
       env,
       installCommand: SANDBOX_INSTALL_COMMAND,
       detectCommand: command,

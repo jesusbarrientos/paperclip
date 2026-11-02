@@ -9,7 +9,7 @@ import type {
   HeartbeatRun,
 } from "@paperclipai/shared";
 import { AgentDetail } from "@/pages/AgentDetail";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { storybookAgentMap, storybookAgents, storybookIssues } from "../fixtures/paperclipData";
 
@@ -36,7 +36,6 @@ const agentDetailFixture: AgentDetailRecord = {
 
 const runtimeStateFixture: AgentRuntimeState = {
   agentId: AGENT_ID,
-  companyId: COMPANY_ID,
   adapterType: "codex_local",
   sessionId: "session-storybook",
   sessionDisplayId: "codex-session-7f2a",
@@ -121,7 +120,6 @@ const heartbeatRunsFixture: HeartbeatRun[] = [
 ];
 
 const budgetOverviewFixture: BudgetOverview = {
-  companyId: COMPANY_ID,
   policies: [],
   activeIncidents: [],
   pausedAgentCount: 0,
@@ -135,14 +133,14 @@ function seedAgentDetailData(queryClient: QueryClient) {
     agentDetailFixture,
   );
   queryClient.setQueryData(queryKeys.agents.runtimeState(AGENT_ID), runtimeStateFixture);
-  queryClient.setQueryData(queryKeys.heartbeats(COMPANY_ID, AGENT_ID), heartbeatRunsFixture);
+  queryClient.setQueryData(queryKeys.heartbeats(AGENT_ID), heartbeatRunsFixture);
   queryClient.setQueryData(
-    [...queryKeys.issues.list(COMPANY_ID), "participant-agent", AGENT_ID],
+    [...queryKeys.issues.list(), "participant-agent", AGENT_ID],
     storybookIssues.slice(0, 4),
   );
-  queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), storybookAgents);
-  queryClient.setQueryData(queryKeys.budgets.overview(COMPANY_ID), budgetOverviewFixture);
-  queryClient.setQueryData(queryKeys.resourceMemberships.mine(COMPANY_ID), {
+  queryClient.setQueryData(queryKeys.agents.list(), storybookAgents);
+  queryClient.setQueryData(queryKeys.budgets.overview(), budgetOverviewFixture);
+  queryClient.setQueryData(queryKeys.resourceMemberships.mine(), {
     projectMemberships: {},
     agentMemberships: {},
     starredProjects: [],
@@ -152,14 +150,13 @@ function seedAgentDetailData(queryClient: QueryClient) {
 
 /**
  * Mounts the real AgentDetail route page inside the preview's MemoryRouter
- * (fixed at /PAP/storybook): seed the QueryClient, then navigate to the
+ * (fixed at /storybook): seed the QueryClient, then navigate to the
  * canonical agent URL so useParams resolves the fixture agent.
  */
 function AgentDetailScenario() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   // Seed synchronously before the page's queries mount (staleTime: Infinity
   // in the preview QueryClient keeps these fixtures authoritative).
   useState(() => {
@@ -167,11 +164,8 @@ function AgentDetailScenario() {
     return true;
   });
 
-  useEffect(() => {
-    if (selectedCompanyId !== COMPANY_ID) setSelectedCompanyId(COMPANY_ID);
-  }, [selectedCompanyId, setSelectedCompanyId]);
 
-  const target = `/PAP/agents/${AGENT_ROUTE_REF}`;
+  const target = `/agents/${AGENT_ROUTE_REF}`;
   const onAgentRoute = location.pathname.startsWith(target);
   useEffect(() => {
     // One-way hop onto the agent route; the page owns the URL afterwards
@@ -179,11 +173,11 @@ function AgentDetailScenario() {
     if (!onAgentRoute) navigate(target, { replace: true });
   }, [onAgentRoute, navigate, target]);
 
-  if (selectedCompanyId !== COMPANY_ID || !onAgentRoute) return null;
+  if (!onAgentRoute) return null;
 
   return (
     <Routes>
-      <Route path="/:companyPrefix/agents/:agentId/:tab?" element={<AgentDetail />} />
+      <Route path="/agents/:agentId/:tab?" element={<AgentDetail />} />
       <Route path="*" element={null} />
     </Routes>
   );

@@ -22,17 +22,14 @@ import {
 } from "./common.js";
 
 interface SecretListOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface SecretDeclarationsOptions extends BaseClientOptions {
-  companyId?: string;
   include?: string;
   kind?: "all" | "secret" | "plain";
 }
 
 interface SecretCreateOptions extends BaseClientOptions {
-  companyId?: string;
   name?: string;
   key?: string;
   provider?: SecretProvider;
@@ -56,7 +53,6 @@ interface SecretDeleteOptions extends BaseClientOptions {
 }
 
 interface SecretLinkOptions extends BaseClientOptions {
-  companyId?: string;
   name?: string;
   key?: string;
   provider?: SecretProvider;
@@ -66,16 +62,13 @@ interface SecretLinkOptions extends BaseClientOptions {
 }
 
 interface SecretDoctorOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface SecretMigrateInlineEnvOptions extends BaseClientOptions {
-  companyId?: string;
   apply?: boolean;
 }
 
 interface SecretJsonOptions extends BaseClientOptions {
-  companyId?: string;
   payloadJson?: string;
 }
 
@@ -281,10 +274,9 @@ function asStringArray(value: unknown): string[] {
 }
 
 async function migrateInlineEnv(opts: SecretMigrateInlineEnvOptions): Promise<void> {
-  const ctx = resolveCommandContext(opts, { requireCompany: true });
-  const companyId = ctx.companyId!;
-  const agents = (await ctx.api.get<Agent[]>(apiPath`/api/companies/${companyId}/agents`)) ?? [];
-  const secrets = (await ctx.api.get<CompanySecret[]>(apiPath`/api/companies/${companyId}/secrets`)) ?? [];
+  const ctx = resolveCommandContext(opts);
+  const agents = (await ctx.api.get<Agent[]>(apiPath`/api/agents`)) ?? [];
+  const secrets = (await ctx.api.get<CompanySecret[]>(apiPath`/api/secrets`)) ?? [];
   const candidates = collectInlineSecretMigrationCandidates(agents, secrets);
 
   if (!opts.apply) {
@@ -321,7 +313,7 @@ async function migrateInlineEnv(opts: SecretMigrateInlineEnvOptions): Promise<vo
       continue;
     }
 
-    const created = await ctx.api.post<CompanySecret>(apiPath`/api/companies/${companyId}/secrets`, {
+    const created = await ctx.api.post<CompanySecret>(apiPath`/api/secrets`, {
       name: candidate.secretName,
       provider: "local_encrypted",
       value,
@@ -370,12 +362,11 @@ export function registerSecretCommands(program: Command): void {
   addCommonClientOptions(
     secrets
       .command("list")
-      .description("List secret metadata for a company")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .description("List secret metadata")
       .action(async (opts: SecretListOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const rows = (await ctx.api.get<CompanySecret[]>(apiPath`/api/companies/${ctx.companyId}/secrets`)) ?? [];
+          const ctx = resolveCommandContext(opts);
+          const rows = (await ctx.api.get<CompanySecret[]>(apiPath`/api/secrets`)) ?? [];
           printOutput(ctx.json ? rows : rows.map(renderSecret), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
@@ -387,18 +378,17 @@ export function registerSecretCommands(program: Command): void {
     secrets
       .command("declarations")
       .description("List portable env declarations emitted by company export")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .option("--include <values>", "Comma-separated include set: company,agents,projects,issues,tasks,skills", "company,agents,projects")
       .option("--kind <kind>", "Filter declarations: all | secret | plain", "all")
       .action(async (opts: SecretDeclarationsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const kind = opts.kind ?? "all";
           if (!["all", "secret", "plain"].includes(kind)) {
             throw new Error("Invalid --kind value. Use: all, secret, plain");
           }
           const preview = await ctx.api.post<CompanyPortabilityExportPreviewResult>(
-            apiPath`/api/companies/${ctx.companyId}/exports/preview`,
+            apiPath`/api/exports/preview`,
             { include: parseSecretsInclude(opts.include) },
           );
           const declarations = (preview?.manifest.envInputs ?? [])
@@ -414,7 +404,6 @@ export function registerSecretCommands(program: Command): void {
     secrets
       .command("create")
       .description("Create a Paperclip-managed secret")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--name <name>", "Secret display name")
       .option("--key <key>", "Portable secret key")
       .option("--provider <provider>", "Secret provider id")
@@ -423,8 +412,8 @@ export function registerSecretCommands(program: Command): void {
       .option("--description <text>", "Description")
       .action(async (opts: SecretCreateOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const created = await ctx.api.post<CompanySecret>(apiPath`/api/companies/${ctx.companyId}/secrets`, {
+          const ctx = resolveCommandContext(opts);
+          const created = await ctx.api.post<CompanySecret>(apiPath`/api/secrets`, {
             name: opts.name,
             key: opts.key,
             provider: opts.provider,
@@ -442,7 +431,6 @@ export function registerSecretCommands(program: Command): void {
     secrets
       .command("link")
       .description("Link an external provider-owned secret without storing its value in Paperclip")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--name <name>", "Secret display name")
       .requiredOption("--provider <provider>", "Secret provider id")
       .requiredOption("--external-ref <ref>", "Provider secret ARN/name/path/reference")
@@ -451,8 +439,8 @@ export function registerSecretCommands(program: Command): void {
       .option("--description <text>", "Description")
       .action(async (opts: SecretLinkOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const created = await ctx.api.post<CompanySecret>(apiPath`/api/companies/${ctx.companyId}/secrets`, {
+          const ctx = resolveCommandContext(opts);
+          const created = await ctx.api.post<CompanySecret>(apiPath`/api/secrets`, {
             name: opts.name,
             key: opts.key,
             provider: opts.provider,
@@ -556,12 +544,11 @@ export function registerSecretCommands(program: Command): void {
     secrets
       .command("doctor")
       .description("Run secret provider health checks through the Paperclip API")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .action(async (opts: SecretDoctorOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const health = await ctx.api.get<SecretProviderHealthResponse>(
-            apiPath`/api/companies/${ctx.companyId}/secret-providers/health`,
+            apiPath`/api/secret-providers/health`,
           );
           printProviderHealth(health?.providers ?? [], ctx.json);
         } catch (err) {
@@ -574,12 +561,11 @@ export function registerSecretCommands(program: Command): void {
     secrets
       .command("providers")
       .description("List configured secret provider descriptors")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .action(async (opts: SecretDoctorOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const rows = (await ctx.api.get<SecretProviderDescriptor[]>(
-            apiPath`/api/companies/${ctx.companyId}/secret-providers`,
+            apiPath`/api/secret-providers`,
           )) ?? [];
           printOutput(rows, { json: ctx.json });
         } catch (err) {
@@ -591,12 +577,11 @@ export function registerSecretCommands(program: Command): void {
   addCommonClientOptions(
     secrets
       .command("provider-configs")
-      .description("List company secret provider vault configs")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .description("List secret provider vault configs")
       .action(async (opts: SecretDoctorOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          printOutput(await ctx.api.get(apiPath`/api/companies/${ctx.companyId}/secret-provider-configs`), { json: ctx.json });
+          const ctx = resolveCommandContext(opts);
+          printOutput(await ctx.api.get(apiPath`/api/secret-provider-configs`), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
@@ -622,7 +607,6 @@ export function registerSecretCommands(program: Command): void {
     secrets
       .command("migrate-inline-env")
       .description("Migrate inline sensitive agent env values into secret references")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .option("--apply", "Persist changes; default is a dry run", false)
       .action(async (opts: SecretMigrateInlineEnvOptions) => {
         try {
@@ -639,12 +623,11 @@ function addCompanySecretJsonPost(parent: Command, name: string, description: st
     parent
       .command(name)
       .description(description)
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "JSON payload")
       .action(async (opts: SecretJsonOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          printOutput(await ctx.api.post(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`, parseJson(opts.payloadJson ?? "{}")), { json: ctx.json });
+          const ctx = resolveCommandContext(opts);
+          printOutput(await ctx.api.post(`/api/${path}`, parseJson(opts.payloadJson ?? "{}")), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }

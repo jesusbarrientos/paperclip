@@ -1013,7 +1013,7 @@ describe("sandbox callback bridge", () => {
     // The queue transport keeps its 415 gate for the attachment upload path
     // too: it carries a string envelope only, so it never admits a binary body.
     const attachmentOctetStreamResponse = await fetch(
-      `${bridge.baseUrl}/api/companies/co-1/issues/issue-1/attachments`,
+      `${bridge.baseUrl}/api/issues/issue-1/attachments`,
       {
         method: "POST",
         headers: {
@@ -1387,26 +1387,26 @@ describe("sandbox callback bridge", () => {
       { method: "GET", path: "/api/agents/agent-1/skills" },
       { method: "POST", path: "/api/agents/agent-1/skills/sync" },
       { method: "PATCH", path: "/api/agents/agent-1/instructions-path" },
-      { method: "GET", path: "/api/companies/co-1" },
-      { method: "GET", path: "/api/companies/co-1/dashboard" },
-      { method: "GET", path: "/api/companies/co-1/agents" },
-      { method: "GET", path: "/api/companies/co-1/issues" },
-      { method: "GET", path: "/api/companies/co-1/projects" },
-      { method: "GET", path: "/api/companies/co-1/goals" },
-      { method: "GET", path: "/api/companies/co-1/org" },
-      { method: "GET", path: "/api/companies/co-1/approvals" },
-      { method: "GET", path: "/api/companies/co-1/routines" },
-      { method: "GET", path: "/api/companies/co-1/skills" },
-      { method: "GET", path: "/api/companies/co-1/email/inboxes" },
-      { method: "GET", path: "/api/companies/co-1/email/tasks/issue-1" },
-      { method: "GET", path: "/api/companies/co-1/email/deliveries/send-1" },
-      { method: "POST", path: "/api/companies/co-1/email/send" },
+      { method: "GET", path: "/api/organization" },
+      { method: "GET", path: "/api/dashboard" },
+      { method: "GET", path: "/api/agents" },
+      { method: "GET", path: "/api/issues" },
+      { method: "GET", path: "/api/projects" },
+      { method: "GET", path: "/api/goals" },
+      { method: "GET", path: "/api/org" },
+      { method: "GET", path: "/api/approvals" },
+      { method: "GET", path: "/api/routines" },
+      { method: "GET", path: "/api/skills" },
+      { method: "GET", path: "/api/email/inboxes" },
+      { method: "GET", path: "/api/email/tasks/issue-1" },
+      { method: "GET", path: "/api/email/deliveries/send-1" },
+      { method: "POST", path: "/api/email/send" },
       // Hire skill (paperclip-create-agent): discovery + submit + issue linking
       { method: "GET", path: "/llms/agent-configuration.txt" },
       { method: "GET", path: "/llms/agent-configuration/claude_local.txt" },
       { method: "GET", path: "/llms/agent-icons.txt" },
-      { method: "GET", path: "/api/companies/co-1/agent-configurations" },
-      { method: "POST", path: "/api/companies/co-1/agent-hires" },
+      { method: "GET", path: "/api/agent-configurations" },
+      { method: "POST", path: "/api/agent-hires" },
       { method: "POST", path: "/api/issues/issue-1/approvals" },
       { method: "GET", path: "/api/projects/proj-1" },
       { method: "GET", path: "/api/goals/goal-1" },
@@ -1434,19 +1434,19 @@ describe("sandbox callback bridge", () => {
       { method: "POST", path: "/api/issues/issue-1/interactions/inter-1/respond" },
       { method: "POST", path: "/api/issues/issue-1/interactions/inter-1/verdicts" },
       { method: "POST", path: "/api/issues/issue-1/interactions/inter-1/withdraw" },
-      { method: "POST", path: "/api/companies/co-1/issues" },
+      { method: "POST", path: "/api/issues" },
       { method: "GET", path: "/api/approvals/ap-1" },
       { method: "GET", path: "/api/approvals/ap-1/issues" },
       { method: "GET", path: "/api/approvals/ap-1/comments" },
       { method: "POST", path: "/api/approvals/ap-1/comments" },
-      { method: "POST", path: "/api/companies/co-1/approvals" },
+      { method: "POST", path: "/api/approvals" },
       { method: "GET", path: "/api/execution-workspaces/ws-1" },
       { method: "POST", path: "/api/execution-workspaces/ws-1/runtime-services/start" },
       { method: "POST", path: "/api/execution-workspaces/ws-1/runtime-services/stop" },
       { method: "POST", path: "/api/execution-workspaces/ws-1/runtime-services/restart" },
       { method: "GET", path: "/api/routines/r-1" },
       { method: "GET", path: "/api/routines/r-1/runs" },
-      { method: "POST", path: "/api/companies/co-1/routines" },
+      { method: "POST", path: "/api/routines" },
       { method: "PATCH", path: "/api/routines/r-1" },
       { method: "POST", path: "/api/routines/r-1/run" },
       { method: "POST", path: "/api/routines/r-1/triggers" },
@@ -1458,38 +1458,38 @@ describe("sandbox callback bridge", () => {
     }
 
     const denied: Array<{ method: string; path: string }> = [
-      { method: "POST", path: "/api/companies/co-1/email/inboxes" },
-      { method: "POST", path: "/api/companies/co-1/email/connections" },
-      { method: "POST", path: "/api/companies/co-1/email/inspect" },
-      { method: "POST", path: "/api/companies/co-1/email/deliveries/send-1/resolve" },
+      { method: "POST", path: "/api/email/inboxes" },
+      { method: "POST", path: "/api/email/connections" },
+      { method: "POST", path: "/api/email/inspect" },
+      { method: "POST", path: "/api/email/deliveries/send-1/resolve" },
       { method: "POST", path: "/api/email/inboxes/inbox-1/reconnect" },
       { method: "POST", path: "/api/email/inboxes/inbox-1/control" },
-      { method: "DELETE", path: "/api/companies/co-1/email/tasks/issue-1" },
+      { method: "DELETE", path: "/api/email/tasks/issue-1" },
       { method: "DELETE", path: "/api/secrets" },
       // Pin the runtime-services regex to start/stop/restart only — anything
       // else (delete, reset, wipe, etc.) must stay denied even if the API
       // grows new actions later.
       { method: "POST", path: "/api/execution-workspaces/ws-1/runtime-services/delete" },
-      { method: "POST", path: "/api/companies/co-1/agents" },
+      { method: "POST", path: "/api/agents" },
       // The hire allowlist must not over-match: only the exact .txt discovery
       // files, only agent-hires (not /agents), and no sub-resources beyond it.
       { method: "GET", path: "/llms/agent-configuration" },
       { method: "GET", path: "/llms/secrets.txt" },
-      { method: "POST", path: "/api/companies/co-1/agent-hires/ap-1" },
+      { method: "POST", path: "/api/agent-hires/ap-1" },
       { method: "POST", path: "/api/issues/issue-1/approvals/ap-1" },
       { method: "POST", path: "/api/agents/agent-1/pause" },
       { method: "POST", path: "/api/agents/agent-1/terminate" },
       { method: "POST", path: "/api/agents/agent-1/keys" },
-      { method: "POST", path: "/api/companies/co-1/exports" },
-      { method: "POST", path: "/api/companies/co-1/imports/apply" },
-      { method: "POST", path: "/api/companies/co-1/archive" },
+      { method: "POST", path: "/api/exports" },
+      { method: "POST", path: "/api/imports/apply" },
+      { method: "POST", path: "/api/archive" },
       { method: "DELETE", path: "/api/issues/issue-1/documents/plan" },
       { method: "DELETE", path: "/api/issues/issue-1/approvals/ap-1" },
       { method: "DELETE", path: "/api/work-products/wp-1" },
       { method: "POST", path: "/api/approvals/ap-1/approve" },
       { method: "POST", path: "/api/approvals/ap-1/reject" },
-      { method: "POST", path: "/api/companies/co-1/logo" },
-      { method: "GET", path: "/api/companies/co-1/secrets" },
+      { method: "POST", path: "/api/logo" },
+      { method: "GET", path: "/api/secrets" },
       { method: "PATCH", path: "/api/secrets/secret-1" },
     ];
     for (const request of denied) {
@@ -1501,7 +1501,7 @@ describe("sandbox callback bridge", () => {
     // Both transports admit the full attachment workflow.
     const http2Allowed: Array<{ method: string; path: string }> = [
       { method: "GET", path: "/api/issues/issue-1/attachments" },
-      { method: "POST", path: "/api/companies/co-1/issues/issue-1/attachments" },
+      { method: "POST", path: "/api/issues/issue-1/attachments" },
       { method: "GET", path: "/api/attachments/att-1/content" },
     ];
     for (const request of http2Allowed) {
@@ -1512,10 +1512,10 @@ describe("sandbox callback bridge", () => {
 
     const http2Denied: Array<{ method: string; path: string }> = [
       // Wrong method for each attachment rule.
-      { method: "GET", path: "/api/companies/co-1/issues/issue-1/attachments" },
+      { method: "DELETE", path: "/api/issues/issue-1/attachments" },
       { method: "POST", path: "/api/attachments/att-1/content" },
       // Extra path segment for each attachment rule.
-      { method: "POST", path: "/api/companies/co-1/issues/issue-1/attachments/att-1" },
+      { method: "POST", path: "/api/issues/issue-1/attachments/att-1" },
       { method: "GET", path: "/api/attachments/att-1/content/extra" },
     ];
     for (const request of http2Denied) {
@@ -1528,7 +1528,7 @@ describe("sandbox callback bridge", () => {
   it("admits listing, uploads and downloads on the default queue route list", () => {
     const attachmentRequests: Array<{ method: string; path: string }> = [
       { method: "GET", path: "/api/issues/issue-1/attachments" },
-      { method: "POST", path: "/api/companies/co-1/issues/issue-1/attachments" },
+      { method: "POST", path: "/api/issues/issue-1/attachments" },
       { method: "GET", path: "/api/attachments/att-1/content" },
     ];
     for (const request of attachmentRequests) {
@@ -3711,7 +3711,7 @@ describe("sandbox callback bridge", () => {
     const gateway = mode === "queue"
       ? await startQueueGatewayForFileTest({ maxBodyBytes, handleRequest: handled })
       : { ...await startHttp2GatewayForTest({ bridgeToken, maxBodyBytes, forwardRequest: handled }), bridgeToken };
-    const post = (body: Buffer) => fetch(`${gateway.baseUrl}/api/companies/c/issues/i/attachments`, {
+    const post = (body: Buffer) => fetch(`${gateway.baseUrl}/api/issues/i/attachments`, {
       method: "POST", headers: { authorization: `Bearer ${gateway.bridgeToken}`, "content-type": "multipart/form-data; boundary=exact-boundary" }, body: new Uint8Array(body),
     });
     const response = await post(bytes);
@@ -3730,7 +3730,7 @@ describe("sandbox callback bridge", () => {
     const directories = sandboxCallbackBridgeDirectories(gateway.queueDir);
     for (const [id, bodyEncoding, body] of [["bad-base64", "base64", "YR=="], ["bad-encoding", "hex", "00"], ["too-big", "base64", Buffer.alloc(1025).toString("base64")]]) {
       await createFileSystemSandboxCallbackBridgeQueueClient().writeTextFile(path.join(directories.requestsDir, `${id}.json`), JSON.stringify({
-        id, method: "POST", path: "/api/companies/c/issues/i/attachments", query: "", headers: {}, bodyEncoding, body,
+        id, method: "POST", path: "/api/issues/i/attachments", query: "", headers: {}, bodyEncoding, body,
       }));
       const responsePath = path.join(directories.responsesDir, `${id}.json`);
       await vi.waitFor(async () => expect(JSON.parse(await readFile(responsePath, "utf8")).status).toBe(400));
@@ -3745,7 +3745,7 @@ describe("sandbox callback bridge", () => {
       JSON.stringify({ ...JSON.parse(body), bodyEncoding: "base64", body: "invalid" }), options);
     const handled = vi.fn(async () => ({ status: 201, body: Buffer.from("saved") }));
     const gateway = await startQueueGatewayForFileTest({ client, maxBodyBytes: 1024, handleRequest: handled });
-    const response = await fetch(`${gateway.baseUrl}/api/companies/c/issues/i/attachments`, {
+    const response = await fetch(`${gateway.baseUrl}/api/issues/i/attachments`, {
       method: "POST", headers: { authorization: `Bearer ${gateway.bridgeToken}`, "content-type": "multipart/form-data; boundary=boundary" }, body: Buffer.from([0xff]),
     });
     expect(response.status).toBe(409);

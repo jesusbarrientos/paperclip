@@ -19,8 +19,8 @@ const support = await getEmbeddedPostgresTestSupport();
   async function seed() {
     const companyId = randomUUID(), agentId = randomUUID();
     await db.insert(companies).values({ id: companyId, name: "Controller test", issuePrefix: `C${companyId.slice(0, 7)}` });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Agent", role: "general", adapterType: "claude_local", status: "idle" });
-    const [queued] = await db.insert(heartbeatRuns).values({ companyId, agentId }).returning();
+    await db.insert(agents).values({ id: agentId, name: "Agent", role: "general", adapterType: "claude_local", status: "idle" });
+    const [queued] = await db.insert(heartbeatRuns).values({ agentId }).returning();
     const [run] = await db.update(heartbeatRuns).set({ status: "running", ...legacyControllerClaim("legacy") })
       .where(eq(heartbeatRuns.id, queued.id)).returning();
     return run;
@@ -87,12 +87,6 @@ const support = await getEmbeddedPostgresTestSupport();
     await expire(run.id);
     const [saved] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, run.id));
     expect(await revokeExpiredLegacyController(db, saved)).toBe(true);
-  });
-  it("rejects foreign company renewal and revocation", async () => {
-    const run = await seed();
-    expect(await renewLegacyControllerLease(db, { ...run, companyId: randomUUID() })).toBe(false);
-    await expire(run.id);
-    expect(await revokeExpiredLegacyController(db, { ...run, companyId: randomUUID() })).toBe(false);
   });
   it("never turns a terminal run back into owned execution", async () => {
     const run = await seed();

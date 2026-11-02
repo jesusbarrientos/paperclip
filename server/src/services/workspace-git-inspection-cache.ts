@@ -5,7 +5,7 @@ export function createWorkspaceGitInspectionCache<T>(inspect: (workspace: Execut
   const entries = new Map<string, { expiresAt: number; promise: Promise<T> }>();
   return (workspace: ExecutionWorkspace): Promise<T> => {
     const key = JSON.stringify([
-      workspace.companyId, workspace.id, workspace.updatedAt, workspace.providerType,
+      workspace.id, workspace.updatedAt, workspace.providerType,
       workspace.providerRef, workspace.cwd, workspace.repoUrl, workspace.baseRef,
       workspace.branchName, workspace.metadata,
     ]);

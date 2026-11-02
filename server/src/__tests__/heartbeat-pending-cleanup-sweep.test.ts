@@ -99,11 +99,10 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    return { companyId, environmentId };
+    return { environmentId };
   }
 
   async function insertPendingCleanupLease(input: {
-    companyId: string;
     environmentId: string | null;
     updatedAt: Date;
     metadata?: Record<string, unknown>;
@@ -111,7 +110,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     const id = randomUUID();
     await db.insert(environmentLeases).values({
       id,
-      companyId: input.companyId,
       environmentId: input.environmentId,
       status: "pending_cleanup",
       leasePolicy: "reuse_by_environment",
@@ -137,7 +135,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // An orphan ephemeral lease that a failed acquire records. The sweep tears it
   // down through retryPendingSandboxTeardown, not through destroyRunLease.
   async function insertOrphanEphemeralLease(input: {
-    companyId: string;
     environmentId: string | null;
     updatedAt: Date;
     metadata?: Record<string, unknown>;
@@ -145,7 +142,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     const id = randomUUID();
     await db.insert(environmentLeases).values({
       id,
-      companyId: input.companyId,
       environmentId: input.environmentId,
       status: "pending_cleanup",
       leasePolicy: "ephemeral",
@@ -163,9 +159,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   }
 
   it("test_pending_cleanup_sweep_retries_and_destroys_lease", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -203,11 +198,10 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_respects_backoff_and_page_size", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // A lease touched inside the backoff window is not eligible yet.
     await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(),
     });
@@ -226,7 +220,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     const eligibleCount = 22;
     for (let index = 0; index < eligibleCount; index += 1) {
       await insertPendingCleanupLease({
-        companyId,
         environmentId,
         updatedAt: new Date(Date.now() - 60 * 60 * 1000),
       });
@@ -238,9 +231,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_continues_after_escalation_with_durable_backoff", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP },
@@ -272,8 +264,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("does not let malformed provider metadata defer cleanup forever", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    await insertPendingCleanupLease({ companyId, environmentId,
+    const { environmentId } = await seedCompanyAndEnvironment();
+    await insertPendingCleanupLease({ environmentId,
       updatedAt: new Date(Date.now() - 60 * 60_000), metadata: { pendingCleanupRetryAfterMs: 1e300 } });
     const destroy = vi.fn(async () => null);
     await heartbeatService(db, { environmentRuntime: fakeRuntime(destroy) }).sweepPendingCleanupLeases();
@@ -281,8 +273,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it.each([false, true])("uses the ownership deadline while cleanup is in flight (expired: %s)", async expired => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    await insertOrphanEphemeralLease({ companyId, environmentId, updatedAt: new Date(0), metadata: {
+    const { environmentId } = await seedCompanyAndEnvironment();
+    await insertOrphanEphemeralLease({ environmentId, updatedAt: new Date(0), metadata: {
       pendingCleanupAttemptId: "previous-boot", pendingCleanupInFlight: true,
       pendingCleanupLeaseExpiresAtMs: Date.now() + (expired ? -60_000 : 60_000),
       pendingCleanupRetryAfterMs: Date.now() + (expired ? 60_000 : -60_000),
@@ -296,8 +288,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("starts escalation and the long cooldown on the fifth failed attempt", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    const leaseId = await insertPendingCleanupLease({ companyId, environmentId,
+    const { environmentId } = await seedCompanyAndEnvironment();
+    const leaseId = await insertPendingCleanupLease({ environmentId,
       updatedAt: new Date(Date.now() - 60 * 60_000), metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP - 1 } });
     const runtime = fakeRuntime(vi.fn(async () => null));
     await heartbeatService(db, { environmentRuntime: runtime }).sweepPendingCleanupLeases();
@@ -307,8 +299,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("retries after a restart and cooldown when the provider recovers", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    const leaseId = await insertOrphanEphemeralLease({ companyId, environmentId,
+    const { environmentId } = await seedCompanyAndEnvironment();
+    const leaseId = await insertOrphanEphemeralLease({ environmentId,
       updatedAt: new Date(Date.now() - 60 * 60_000),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP, pendingCleanupRetryAfterMs: Date.now() - 1 },
     });
@@ -334,8 +326,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("does not start another cleanup while a previous attempt remains in flight", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    const leaseId = await insertOrphanEphemeralLease({ companyId, environmentId,
+    const { environmentId } = await seedCompanyAndEnvironment();
+    const leaseId = await insertOrphanEphemeralLease({ environmentId,
       updatedAt: new Date(Date.now() - 60 * 60_000),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP },
     });
@@ -358,22 +350,22 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it.each([false, true])("explicit Retry bypasses cooldown but preserves in-flight ownership (%s)", async inFlight => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const agentId = randomUUID(), runId = randomUUID();
-    await db.insert(agents).values({ id: agentId, companyId, name: "Cleanup owner" });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "failed" });
-    const leaseId = await insertOrphanEphemeralLease({ companyId, environmentId, updatedAt: new Date(0),
+    await db.insert(agents).values({ id: agentId, name: "Cleanup owner" });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "failed" });
+    const leaseId = await insertOrphanEphemeralLease({ environmentId, updatedAt: new Date(0),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP, pendingCleanupInFlight: inFlight,
         pendingCleanupAttemptId: "previous-attempt", pendingCleanupRetryAfterMs: Date.now() + 15 * 60_000 },
     });
     await db.update(environmentLeases).set({ heartbeatRunId: runId }).where(eq(environmentLeases.id, leaseId));
-    const unrelatedLease = await insertOrphanEphemeralLease({ companyId, environmentId, updatedAt: new Date(0) });
+    const unrelatedLease = await insertOrphanEphemeralLease({ environmentId, updatedAt: new Date(0) });
     const teardown = vi.fn(async () => {});
     const service = heartbeatService(db, { environmentRuntime: {
       retryPendingSandboxTeardown: teardown,
     } as unknown as HeartbeatEnvironmentRuntime });
     const result = await service.sweepPendingCleanupLeases({ explicitRetry: {
-      companyId, runId, actorId: "cleanup-reviewer",
+      runId, actorId: "cleanup-reviewer",
     } });
     expect(result.destroyed).toBe(inFlight ? 0 : 1);
     expect(teardown).toHaveBeenCalledTimes(inFlight ? 0 : 1);
@@ -389,8 +381,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("renews cleanup ownership while the provider remains blocked", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    const leaseId = await insertOrphanEphemeralLease({ companyId, environmentId, updatedAt: new Date(0) });
+    const { environmentId } = await seedCompanyAndEnvironment();
+    const leaseId = await insertOrphanEphemeralLease({ environmentId, updatedAt: new Date(0) });
     const started = Promise.withResolvers<void>(), finish = Promise.withResolvers<void>();
     const service = heartbeatService(db, { environmentRuntime: { retryPendingSandboxTeardown: async () => {
       started.resolve(); await finish.promise;
@@ -411,8 +403,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     { renewalFails: false, retryBeforeSettlement: true },
     { renewalFails: true, retryBeforeSettlement: true },
   ])("preserves progress and cooldown with hung renewal (fails: $renewalFails, retry first: $retryBeforeSettlement)", async ({ renewalFails, retryBeforeSettlement }) => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    const leaseId = await insertOrphanEphemeralLease({ companyId, environmentId, updatedAt: new Date(0),
+    const { environmentId } = await seedCompanyAndEnvironment();
+    const leaseId = await insertOrphanEphemeralLease({ environmentId, updatedAt: new Date(0),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP - 1, [CAP_WARNED_KEY]: true },
     });
     const providerStarted = Promise.withResolvers<void>(), providerFinished = Promise.withResolvers<void>();
@@ -480,8 +472,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it.each([false, true])("ignores a superseded cleanup completion (throws: %s)", async throws => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
-    const leaseId = await insertOrphanEphemeralLease({ companyId, environmentId, updatedAt: new Date(0) });
+    const { environmentId } = await seedCompanyAndEnvironment();
+    const leaseId = await insertOrphanEphemeralLease({ environmentId, updatedAt: new Date(0) });
     const started = Promise.withResolvers<void>(), finish = Promise.withResolvers<void>();
     const service = heartbeatService(db, { environmentRuntime: { retryPendingSandboxTeardown: async () => {
       started.resolve(); await finish.promise; if (throws) throw new Error("old attempt failed");
@@ -503,9 +495,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // attempt for two destroys. The atomic claim must let only one sweep destroy
   // the lease per attempt.
   it("test_pending_cleanup_overlapping_sweeps_destroy_lease_once", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -567,9 +558,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // claim must let only one sweep tear the sandbox down, and the winning sweep
   // must leave the lease in a final successful state.
   it("test_concurrent_unified_sweeps_tear_an_orphan_down_once", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertOrphanEphemeralLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -623,12 +613,11 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_tears_down_reusable_lease_after_environment_delete", async () => {
-    const { companyId } = await seedCompanyAndEnvironment();
+    const {} = await seedCompanyAndEnvironment();
     // A reuse_by_environment lease whose environment a delete removed. The
     // schema sets the environment reference to null and preserves the
     // pending_cleanup row, so the lease still points at a live provider sandbox.
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId: null,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -663,9 +652,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_keeps_reusable_lease_when_recorded_teardown_fails", async () => {
-    const { companyId } = await seedCompanyAndEnvironment();
+    const {} = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId: null,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -701,11 +689,10 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_skips_lease_while_plugin_worker_down_then_retries", async () => {
-    const { companyId } = await seedCompanyAndEnvironment();
+    const {} = await seedCompanyAndEnvironment();
     // An orphan ephemeral lease that a failed plugin acquire recorded. The sweep
     // tears it down through retryPendingSandboxTeardown.
     const leaseId = await insertOrphanEphemeralLease({
-      companyId,
       environmentId: null,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -754,11 +741,10 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_never_caps_while_provider_unavailable_then_cleans_up", async () => {
-    const { companyId } = await seedCompanyAndEnvironment();
+    const {} = await seedCompanyAndEnvironment();
     // An orphan ephemeral lease that a failed plugin acquire recorded. The sweep
     // tears it down through retryPendingSandboxTeardown.
     const leaseId = await insertOrphanEphemeralLease({
-      companyId,
       environmentId: null,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -811,7 +797,7 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("test_pending_cleanup_sweep_does_not_let_unavailable_leases_starve_ready_leases", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // Fill one whole page with the oldest leases, and make every one of them
     // unavailable. Their providers are not ready, so the sweep must not tear
@@ -820,7 +806,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     for (let index = 0; index < SWEEP_PAGE_SIZE; index += 1) {
       const id = await insertOrphanEphemeralLease({
-        companyId,
         environmentId: null,
         updatedAt: twoHoursAgo,
       });
@@ -830,7 +815,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     // Add one newer lease with a ready provider. It sorts after the page of
     // unavailable leases, so the first sweep never reaches it.
     const readyLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 30 * 60 * 1000),
     });
@@ -947,9 +931,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // on two clients, then asserts a single destroy and a single attempt
   // increment.
   it("test_concurrent_sweeps_destroy_a_lease_at_most_once", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -974,9 +957,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // increment. This test starts a lease at cap - 1, overlaps two sweeps, then
   // asserts one destroy, one increment to the cap, and at most one cap warning.
   it("test_concurrent_sweeps_never_exceed_attempt_cap", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP - 1 },
@@ -1055,9 +1037,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // or `code`, not only its message. The per-lease retry log must never
   // serialize any error-derived string.
   it("test_pending_cleanup_retry_log_omits_sentinel_in_error_name_and_code", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1109,9 +1090,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // The outer sweep catch logs a failure of the sweep itself. It must log a
   // constant errorKind only, never an error-derived string in the name or code.
   it("test_pending_cleanup_sweep_failure_log_omits_sentinel_in_error_name_and_code", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1171,9 +1151,8 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // writer that sets an unrelated metadata key between the sweep's read and its
   // claim must keep that key. A full copied-metadata write would lose it.
   it("test_pending_cleanup_claim_preserves_unrelated_concurrent_metadata_key", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
     const leaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1214,18 +1193,16 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // cast must read it as zero, not throw. One malformed lease must never abort
   // the page sweep, so the sweep still processes the other leases on the page.
   it("test_pending_cleanup_malformed_retry_metadata_does_not_abort_sweep", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // The malformed lease sorts first, so a throw would abort before the sweep
     // reaches the healthy lease.
     const malformedLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 120 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: "corrupt" },
     });
     const healthyLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1259,11 +1236,10 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // A lease that leaves pending_cleanup between the read and the claim must get
   // no warn-flag write, because the claim carries a status predicate.
   it("test_pending_cleanup_cap_warning_requires_pending_cleanup_status_and_cap", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // A lease at the cap. It leaves pending_cleanup right before the warn claim.
     const cappedLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP },
@@ -1307,7 +1283,6 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     // A lease below the cap gets no warn flag either. The retry path never
     // reaches the cap branch.
     const belowCapLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: ATTEMPT_CAP - 2 },
@@ -1332,18 +1307,16 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // TypeScript reader both clamp a negative value to zero, so the claim predicate
   // matches. The lease still claims one attempt and the destroy still runs.
   it("test_pending_cleanup_negative_attempts_metadata_normalizes_and_lease_still_destroys", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // The negative-attempts lease sorts first. A thrown or mismatched claim would
     // strand it before the sweep reaches the healthy lease.
     const negativeLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 120 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: -3 },
     });
     const healthyLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1393,18 +1366,16 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // never runs on the stored value. The sweep does not throw, and the malformed
   // lease normalizes into the cap behavior.
   it("test_pending_cleanup_out_of_range_attempts_metadata_does_not_abort_sweep", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // The out-of-range lease sorts first. A thrown cast would abort before the
     // sweep reaches the healthy lease.
     const outOfRangeLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 120 * 60 * 1000),
       metadata: { [ATTEMPTS_KEY]: 1e300 },
     });
     const healthyLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1441,18 +1412,16 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // non-object root, so the reader falls back to an empty object. The sweep does
   // not throw, and the lease still claims one attempt and destroys.
   it("test_pending_cleanup_scalar_metadata_root_does_not_abort_sweep", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // The scalar-root lease sorts first. A failed `jsonb_set` would abort before
     // the sweep reaches the healthy lease.
     const scalarLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 120 * 60 * 1000),
     });
     await setRawMetadataRoot(scalarLeaseId, "5");
     const healthyLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1492,18 +1461,16 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   // non-object root, so the reader falls back to an empty object. The sweep does
   // not throw, and the lease still claims one attempt and destroys.
   it("test_pending_cleanup_array_metadata_root_does_not_abort_sweep", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // The array-root lease sorts first. A failed `jsonb_set` would abort before
     // the sweep reaches the healthy lease.
     const arrayLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 120 * 60 * 1000),
     });
     await setRawMetadataRoot(arrayLeaseId, "[1, 2, 3]");
     const healthyLeaseId = await insertPendingCleanupLease({
-      companyId,
       environmentId,
       updatedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
@@ -1540,14 +1507,13 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   });
 
   it("flushes the in-process orphan buffer before the read, so a freshly landed row is swept the same tick", async () => {
-    const { companyId, environmentId } = await seedCompanyAndEnvironment();
+    const { environmentId } = await seedCompanyAndEnvironment();
 
     // The flush lands one durable orphan row, exactly as the runtime buffer does
     // after the database recovers. The sweep must run this flush before it reads
     // the rows, so the same tick tears the freshly-landed orphan down.
     const flushDeferredOrphanCleanups = vi.fn(async () => {
       await insertOrphanEphemeralLease({
-        companyId,
         environmentId,
         updatedAt: new Date(Date.now() - 60 * 60 * 1000),
       });

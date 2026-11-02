@@ -27,6 +27,7 @@ import { agentService } from "./agents.js";
 import { companyPortabilityService } from "./company-portability.js";
 import { companySkillService } from "./company-skills.js";
 import { logActivity } from "./activity-log.js";
+import { organizationService } from "./organization.js";
 import { normalizePortablePath } from "./portable-path.js";
 
 type CatalogManifestFile = CatalogManifest;
@@ -711,7 +712,6 @@ function withSafeCatalogAdapterDefaults(
 }
 
 function buildPortabilityInput(
-  companyId: string,
   source: CompanyPortabilitySource,
   options: CatalogTeamImportOptions,
 ): CompanyPortabilityPreview {
@@ -727,8 +727,7 @@ function buildPortabilityInput(
       company: false,
     },
     target: {
-      mode: "existing_company",
-      companyId,
+      mode: "existing_company"
     },
     agents: options.agents,
     collisionStrategy: options.collisionStrategy ?? "rename",
@@ -743,13 +742,12 @@ export function teamsCatalogService(db: Db) {
   const agents = agentService(db);
 
   async function resolveTargetManagerReference(
-    companyId: string,
     options: CatalogTeamImportOptions,
   ): Promise<CatalogTargetManagerReference | null> {
     if (options.targetManagerSlug) {
       const slug = normalizeAgentUrlKey(options.targetManagerSlug);
       if (!slug) throw unprocessable("Target manager slug is invalid.");
-      const managers = await agents.list(companyId);
+      const managers = await agents.list();
       const manager = managers.find((candidate) => normalizeAgentUrlKey(candidate.name) === slug);
       if (!manager) throw notFound("Target manager agent not found");
       return { agentId: manager.id, slug };
@@ -757,9 +755,6 @@ export function teamsCatalogService(db: Db) {
     if (!options.targetManagerAgentId) return null;
     const manager = await agents.getById(options.targetManagerAgentId);
     if (!manager) throw notFound("Target manager agent not found");
-    if (manager.companyId !== companyId) {
-      throw forbidden("Target manager agent must belong to the target company.");
-    }
     return {
       agentId: manager.id,
       slug: normalizeAgentUrlKey(manager.name) ?? manager.id,
@@ -767,7 +762,6 @@ export function teamsCatalogService(db: Db) {
   }
 
   async function prepareCatalogTeamSource(
-    companyId: string,
     catalogRef: string,
     options: CatalogTeamImportOptions = {},
   ): Promise<CatalogTeamPreparedSource> {
@@ -789,7 +783,7 @@ export function teamsCatalogService(db: Db) {
     warnings.push(...skillPrep.warnings);
     errors.push(...skillPrep.errors);
 
-    const targetManager = await resolveTargetManagerReference(companyId, options);
+    const targetManager = await resolveTargetManagerReference(options);
     const files = await readCatalogTeamSourceFiles(team);
     const existingExtension =
       typeof files[".paperclip.yaml"] === "string"
@@ -813,21 +807,21 @@ export function teamsCatalogService(db: Db) {
 
   async function logCatalogEvent(
     action: string,
-    companyId: string,
     team: CatalogTeam,
     actor: CatalogTeamActorContext | null | undefined,
     details: Record<string, unknown>,
   ) {
     if (!actor) return;
+    const organizationId = await organizationService(db).findId();
+    if (!organizationId) throw notFound("Organization not found");
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId ?? null,
       runId: actor.runId ?? null,
       action,
       entityType: "company",
-      entityId: companyId,
+      entityId: organizationId,
       details: {
         catalogId: team.id,
         catalogKey: team.key,
@@ -839,19 +833,17 @@ export function teamsCatalogService(db: Db) {
   }
 
   async function previewCatalogTeamImport(
-    companyId: string,
     catalogRef: string,
     options: CatalogTeamImportOptions = {},
   ): Promise<CatalogTeamImportPreviewResult> {
-    const prepared = await prepareCatalogTeamSource(companyId, catalogRef, options);
-    const previewInput = buildPortabilityInput(companyId, prepared.source, options);
+    const prepared = await prepareCatalogTeamSource(catalogRef, options);
+    const previewInput = buildPortabilityInput(prepared.source, options);
     const portabilityPreview = await portability.previewImport(previewInput, {
       mode: "agent_safe",
-      sourceCompanyId: companyId,
     });
     portabilityPreview.warnings.push(...prepared.warnings);
     portabilityPreview.errors.push(...prepared.errors);
-    await logCatalogEvent("company.team_catalog_previewed", companyId, prepared.team, options.actor, {
+    await logCatalogEvent("company.team_catalog_previewed", prepared.team, options.actor, {
       warningCount: portabilityPreview.warnings.length,
       errorCount: portabilityPreview.errors.length,
     });
@@ -864,7 +856,7 @@ export function teamsCatalogService(db: Db) {
     };
   }
 
-  async function prepareSkillInstalls(companyId: string, prepared: CatalogTeamPreparedSource) {
+  async function prepareSkillInstalls(prepared: CatalogTeamPreparedSource) {
     const warnings: string[] = [];
     for (const skill of prepared.skillPreparations) {
       if (skill.action === "blocked") {
@@ -877,7 +869,7 @@ export function teamsCatalogService(db: Db) {
           continue;
         }
         try {
-          const result = await companySkills.installFromCatalog(companyId, {
+          const result = await companySkills.installFromCatalog({
             catalogSkillId: skill.catalogSkillId,
           });
           warnings.push(...result.warnings);
@@ -889,7 +881,7 @@ export function teamsCatalogService(db: Db) {
       if (skill.action === "external_import_required") {
         const source = skill.sourceLocator ?? skill.ref;
         try {
-          const result = await companySkills.importFromSource(companyId, source);
+          const result = await companySkills.importFromSource(source);
           warnings.push(...result.warnings);
         } catch (error) {
           warnings.push(`External skill source ${source} could not be imported after team import: ${formatError(error)}`);
@@ -900,18 +892,17 @@ export function teamsCatalogService(db: Db) {
   }
 
   async function installCatalogTeam(
-    companyId: string,
     catalogRef: string,
     options: CatalogTeamImportOptions = {},
   ): Promise<CatalogTeamInstallResult> {
-    const prepared = await prepareCatalogTeamSource(companyId, catalogRef, options);
+    const prepared = await prepareCatalogTeamSource(catalogRef, options);
     if (prepared.errors.length > 0) {
       throw unprocessable(`Catalog team source preparation failed: ${prepared.errors.join("; ")}`);
     }
 
     const defaultAdapterType = defaultSafeCatalogAdapterType();
     const importInput: CompanyPortabilityImport = {
-      ...buildPortabilityInput(companyId, prepared.source, options),
+      ...buildPortabilityInput(prepared.source, options),
       adapterOverrides: withSafeCatalogAdapterDefaults(
         prepared.team.agentSlugs,
         options.adapterOverrides,
@@ -921,7 +912,6 @@ export function teamsCatalogService(db: Db) {
     };
     const importPreview = await portability.previewImport(importInput, {
       mode: "agent_safe",
-      sourceCompanyId: companyId,
     });
     if (importPreview.errors.length > 0) {
       throw unprocessable(`Catalog team import preview has errors: ${importPreview.errors.join("; ")}`);
@@ -943,12 +933,11 @@ export function teamsCatalogService(db: Db) {
       options.actor?.userId ?? (options.actor?.actorType === "user" ? options.actor.actorId : null),
       {
         mode: "agent_safe",
-        sourceCompanyId: companyId,
       },
     );
-    warnings.push(...await prepareSkillInstalls(companyId, prepared));
+    warnings.push(...await prepareSkillInstalls(prepared));
     result.warnings.push(...warnings);
-    await logCatalogEvent("company.team_catalog_installed", companyId, prepared.team, options.actor, {
+    await logCatalogEvent("company.team_catalog_installed", prepared.team, options.actor, {
       warningCount: result.warnings.length,
       agentCount: result.agents.length,
       projectCount: result.projects.length,
@@ -968,8 +957,8 @@ export function teamsCatalogService(db: Db) {
    * out-of-date badge from a real server signal (design
    * [PAP-10238 §3.2 + §5]).
    */
-  async function listInstalledCatalogTeams(companyId: string): Promise<InstalledCatalogTeam[]> {
-    const companyAgents = await agents.list(companyId);
+  async function listInstalledCatalogTeams(): Promise<InstalledCatalogTeam[]> {
+    const companyAgents = await agents.list();
     const currentTeams = await getCatalogTeams();
     const currentById = new Map(currentTeams.map((team) => [team.id, team]));
 

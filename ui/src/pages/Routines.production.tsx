@@ -10,7 +10,6 @@ import { projectsApi } from "../api/projects";
 import { issuesApi } from "../api/issues";
 import { heartbeatsApi } from "../api/heartbeats";
 import { accessApi } from "../api/access";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { buildMarkdownMentionOptions } from "../lib/company-members";
@@ -317,7 +316,6 @@ function RoutineSectionHeader({
 }
 
 export function Routines() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -361,9 +359,7 @@ export function Routines() {
     catchUpPolicy: "skip_missed",
     variables: [],
   });
-  const routineViewStateKey = selectedCompanyId
-    ? `paperclip:routines-view:${selectedCompanyId}`
-    : "paperclip:routines-view";
+  const routineViewStateKey = "paperclip:routines-view";
   const [routineViewState, setRoutineViewState] = useState<RoutineViewState>(() => getRoutineViewState(routineViewStateKey));
   const folderSelection = normalizeFolderSelection(searchParams.get("folder"));
 
@@ -376,48 +372,43 @@ export function Routines() {
   }, [routineViewStateKey]);
 
   const { data: routines, isLoading, error } = useQuery({
-    queryKey: queryKeys.routines.list(selectedCompanyId!),
-    queryFn: () => routinesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.routines.list(),
+    queryFn: () => routinesApi.list(),
   });
   const { data: routineFolders, isLoading: foldersLoading } = useQuery({
-    queryKey: queryKeys.folders.list(selectedCompanyId!, "routine"),
-    queryFn: () => foldersApi.list(selectedCompanyId!, "routine"),
-    enabled: !!selectedCompanyId && activeTab === "routines",
+    queryKey: queryKeys.folders.list("routine"),
+    queryFn: () => foldersApi.list("routine"),
+    enabled: activeTab === "routines",
   });
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const { data: routineExecutionIssues, isLoading: recentRunsLoading, error: recentRunsError } = useQuery({
-    queryKey: [...queryKeys.issues.list(selectedCompanyId!), "routine-executions"],
-    queryFn: () => issuesApi.list(selectedCompanyId!, { originKind: "routine_execution" }),
-    enabled: !!selectedCompanyId && activeTab === "runs",
+    queryKey: [...queryKeys.issues.list(), "routine-executions"],
+    queryFn: () => issuesApi.list({ originKind: "routine_execution" }),
+    enabled: activeTab === "runs",
   });
-  const liveRunsQueryKey = queryKeys.liveRuns(selectedCompanyId!);
+  const liveRunsQueryKey = queryKeys.liveRuns();
   const sharedLiveRuns = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
-    enabled: !!selectedCompanyId && activeTab === "runs",
+    enabled: activeTab === "runs",
     // Event-sourced via LiveUpdatesProvider (GitHub issue 9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
   const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
     queryKey: liveRunsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedLiveRuns.enabled,
     refetchInterval: sharedLiveRuns.refetchInterval,
   });
@@ -437,7 +428,7 @@ export function Routines() {
 
   const createRoutine = useMutation({
     mutationFn: () =>
-      routinesApi.create(selectedCompanyId!, buildRoutineMutationPayload(draft)),
+      routinesApi.create(buildRoutineMutationPayload(draft)),
     onSuccess: async (routine) => {
       setDraft({
         title: "",
@@ -452,7 +443,7 @@ export function Routines() {
       });
       setComposerOpen(false);
       setAdvancedOpen(false);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() });
       pushToast({
         title: "Routine created",
         body: routine.assigneeAgentId
@@ -465,21 +456,21 @@ export function Routines() {
   });
   const createFolder = useMutation({
     mutationFn: (payload: { name: string; color: string | null }) =>
-      foldersApi.create(selectedCompanyId!, { kind: "routine", ...payload }),
+      foldersApi.create({ kind: "routine", ...payload }),
     onSuccess: async (folder) => {
       setFolderDialogOpen(false);
       setFolderDialogTarget(null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list("routine") });
       if (moveAfterCreateIds.length > 0) {
         const ids = moveAfterCreateIds;
         setMoveAfterCreateIds([]);
         try {
           await Promise.all(ids.map((itemId) =>
-            foldersApi.moveItem(selectedCompanyId!, { kind: "routine", itemId, folderId: folder.id })
+            foldersApi.moveItem({ kind: "routine", itemId, folderId: folder.id })
           ));
           await Promise.all([
-            queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.folders.list("routine") }),
           ]);
         } catch (moveError) {
           pushToast({
@@ -504,11 +495,11 @@ export function Routines() {
   });
   const updateFolder = useMutation({
     mutationFn: ({ folderId, payload }: { folderId: string; payload: { name?: string; color?: string | null } }) =>
-      foldersApi.update(selectedCompanyId!, folderId, payload),
+      foldersApi.update(folderId, payload),
     onSuccess: async () => {
       setFolderDialogOpen(false);
       setFolderDialogTarget(null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list("routine") });
     },
     onError: (mutationError) => {
       pushToast({
@@ -519,13 +510,13 @@ export function Routines() {
     },
   });
   const deleteFolder = useMutation({
-    mutationFn: (folderId: string) => foldersApi.delete(selectedCompanyId!, folderId),
+    mutationFn: (folderId: string) => foldersApi.delete(folderId),
     onSuccess: async (_, folderId) => {
       if (folderSelection === folderId) setFolderSelection("all");
       setDeleteFolderTarget(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list("routine") }),
       ]);
       pushToast({ title: "Folder deleted", body: "Items moved to Unfiled.", tone: "success" });
     },
@@ -539,11 +530,11 @@ export function Routines() {
   });
   const moveRoutineToFolder = useMutation({
     mutationFn: ({ itemId, folderId }: { itemId: string; folderId: string | null }) =>
-      foldersApi.moveItem(selectedCompanyId!, { kind: "routine", itemId, folderId }),
+      foldersApi.moveItem({ kind: "routine", itemId, folderId }),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list("routine") }),
       ]);
     },
     onError: (mutationError) => {
@@ -558,7 +549,7 @@ export function Routines() {
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       issuesApi.update(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [...queryKeys.issues.list(selectedCompanyId!), "routine-executions"] });
+      await queryClient.invalidateQueries({ queryKey: [...queryKeys.issues.list(), "routine-executions"] });
     },
   });
 
@@ -569,7 +560,7 @@ export function Routines() {
     },
     onSuccess: async (_, variables) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(variables.id) }),
       ]);
     },
@@ -604,7 +595,7 @@ export function Routines() {
     onSuccess: async (_, { id }) => {
       setRunDialogRoutine(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(id) }),
       ]);
     },
@@ -752,12 +743,12 @@ export function Routines() {
     const ids = selectedRoutineIds;
     if (ids.length === 0) return;
     try {
-      await Promise.all(ids.map((itemId) => foldersApi.moveItem(selectedCompanyId!, { kind: "routine", itemId, folderId })));
+      await Promise.all(ids.map((itemId) => foldersApi.moveItem({ kind: "routine", itemId, folderId })));
       setSelectedRoutineIds([]);
       setSelectMode(false);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list("routine") }),
       ]);
       pushToast({ title: "Routines moved", body: `${ids.length} routine${ids.length === 1 ? "" : "s"} filed.`, tone: "success" });
     } catch (moveError) {
@@ -795,9 +786,6 @@ export function Routines() {
     });
   }
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Repeat} message="Select a company to view routines." />;
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="issues-list" />;
@@ -1263,7 +1251,7 @@ export function Routines() {
           ) : null}
           {routineViewState.groupBy === "folder" && !hasRoutineFolders && !foldersLoading && visibleRoutines.length > 0 ? (
             <AllUnfiledBanner
-              storageKey={`paperclip:routines-folder-nudge:${selectedCompanyId ?? "none"}`}
+              storageKey="paperclip:routines-folder-nudge"
               itemLabelPlural="routines"
               onCreateFolder={() => openCreateFolder()}
             />
@@ -1423,7 +1411,6 @@ export function Routines() {
         onOpenChange={(next) => {
           if (!next) setRunDialogRoutine(null);
         }}
-        companyId={selectedCompanyId}
         routineName={runDialogRoutine?.title ?? null}
         agents={agents ?? []}
         projects={projects ?? []}

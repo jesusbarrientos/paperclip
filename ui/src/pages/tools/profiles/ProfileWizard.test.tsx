@@ -20,6 +20,7 @@ vi.mock("@/lib/router", () => ({
   Link: ({ to, children }: { to: string; children: unknown }) => createElement("a", { href: to }, children as never),
 }));
 vi.mock("@/context/ToastContext", () => ({ useToast: () => ({ pushToast: vi.fn() }) }));
+vi.mock("@/context/OrganizationContext", () => ({ useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }) }));
 vi.mock("@/api/tools", () => ({ toolsApi: api }));
 vi.mock("./useProfilesData", () => ({ useProfilesData: () => profilesData.current }));
 
@@ -90,7 +91,7 @@ describe("ProfileWizard", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
-          <ProfileWizard companyId="c1" {...props} />
+          <ProfileWizard {...props} />
         </QueryClientProvider>,
       );
       await Promise.resolve();
@@ -115,7 +116,7 @@ describe("ProfileWizard", () => {
     });
 
     expect(api.createProfile).toHaveBeenCalledTimes(1);
-    const [, input] = api.createProfile.mock.calls[0];
+    const [input] = api.createProfile.mock.calls[0];
     expect(input.status).toBe("draft");
     expect(input.name).toBe("Everyday work");
     // Step 2 is now visible.
@@ -125,7 +126,6 @@ describe("ProfileWizard", () => {
   it("resumes a draft at the first unfinished step", async () => {
     const draft: ToolProfileWithDetails = {
       id: "d1",
-      companyId: "c1",
       profileKey: "everyday",
       name: "Everyday work",
       description: null,

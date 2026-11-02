@@ -23,7 +23,6 @@ describe("feedback trace share client", () => {
     await client.uploadTraceBundle({
       traceId: "trace-1",
       exportId: "export-1",
-      companyId: "company-1",
       issueId: "issue-1",
       issueIdentifier: "PAP-1",
       adapterType: "codex_local",
@@ -56,7 +55,6 @@ describe("feedback trace share client", () => {
     await client.uploadTraceBundle({
       traceId: "trace-1",
       exportId: "export-1",
-      companyId: "company-1",
       issueId: "issue-1",
       issueIdentifier: "PAP-1",
       adapterType: "codex_local",
@@ -94,7 +92,7 @@ describe("feedback trace share client", () => {
       objectKey: string;
       bundle: { envelope: { hello: string } };
     };
-    expect(parsed.objectKey).toContain("feedback-traces/company-1/");
+    expect(parsed.objectKey).toMatch(/^feedback-traces\/\d{4}\/\d{2}\/\d{2}\//);
     expect(parsed.objectKey.endsWith("/export-1.json")).toBe(true);
     expect(parsed.bundle.envelope).toEqual({ hello: "world" });
   });

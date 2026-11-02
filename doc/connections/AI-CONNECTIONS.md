@@ -85,7 +85,7 @@ grant through encrypted vault secret references, with existing consumer bindings
 Safe provider-reported account identity is optional; secret references, tokens,
 and authentication paths are never account labels.
 
-Company-scoped `/api/companies/:companyId/ai-connections` operations provide list,
+Company-scoped `/api/ai-connections` operations provide list,
 API-key creation/reconnect, personal defaults, completed login references, and
 active-run attribution. The list includes `canManageConnections`, evaluated by
 the same server permission check as creation, including custom
@@ -116,9 +116,9 @@ when requested; opening the account, listing connections, and starting either
 runner do not invoke this probe. There is no scheduling, provider selection,
 quota enforcement, credit purchase, or automatic retry attached to it.
 
-`aiConnectionService(db).probeUsage(companyId, userId, connectionId, grantId?)`
+`aiConnectionService(db).probeUsage(userId, connectionId, grantId?)`
 is the common server operation for legacy and native runner connections.
-`GET /api/companies/:companyId/ai-connections/:connectionId/usage?grantId=...`
+`GET /api/ai-connections/:connectionId/usage?grantId=...`
 exposes it to board users. The UI client calls `aiConnectionsApi.probeUsage`.
 The optional grant ID must belong to this connection; omit it only when exactly
 one authorized grant exists. The company membership, personal owner/shared human

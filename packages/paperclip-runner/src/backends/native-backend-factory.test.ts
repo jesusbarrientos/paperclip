@@ -44,7 +44,6 @@ function execution(
   return {
     schema: "paperclip.native-execution-input.v1",
     binding: {
-      companyId: "company",
       runId: "run",
       issueId: "issue",
       agentId: "agent",
@@ -336,7 +335,6 @@ describe("native backend factory", () => {
       identity: {
         runId: "run",
         sessionId: "session",
-        companyId: "company",
         issueId: "issue",
         agentId: "agent",
       },
@@ -383,7 +381,6 @@ describe("native backend factory", () => {
         identity: {
           runId: "run",
           sessionId: "session",
-          companyId: "company",
           issueId: "issue",
           agentId: "agent",
         },
@@ -574,7 +571,6 @@ describe("native backend factory", () => {
 
     await backend.openSession({
       identity: {
-        companyId: "company",
         agentId: "agent",
         runId: "run",
         sessionId: "session",

@@ -55,26 +55,26 @@ vi.mock("@/api/tools", () => ({
     syncAggregatorApps: (connectionId: string, force: boolean) => syncAggregatorAppsMock(connectionId, force),
     getConnection: (connectionId: string) => getConnectionMock(connectionId),
     getConnectionInstalls: (connectionId: string) => getConnectionInstallsMock(connectionId),
-    listApplications: (companyId: string) => listApplicationsMock(companyId),
-    listGallery: (companyId: string) => listGalleryMock(companyId),
-    listConnections: (companyId: string) => listConnectionsMock(companyId),
+    listApplications: () => listApplicationsMock(),
+    listGallery: () => listGalleryMock(),
+    listConnections: () => listConnectionsMock(),
     listCatalog: (connectionId: string) => listCatalogMock(connectionId),
-    listProfiles: (companyId: string) => listProfilesMock(companyId),
+    listProfiles: () => listProfilesMock(),
     deleteProfile: (profileId: string) => deleteProfileMock(profileId),
-    listPolicies: (companyId: string) => listPoliciesMock(companyId),
+    listPolicies: () => listPoliciesMock(),
     listConnectionActivity: (connectionId: string, limit: number) =>
       listConnectionActivityMock(connectionId, limit),
-    listActionRequests: (companyId: string, status: string) =>
-      listActionRequestsMock(companyId, status),
+    listActionRequests: (status: string) =>
+      listActionRequestsMock(status),
     listTestAgents: (connectionId: string) => listTestAgentsMock(connectionId),
     getTestAgentAccess: (connectionId: string, agentId: string) =>
       getTestAgentAccessMock(connectionId, agentId),
     updateConnection: (connectionId: string, input: unknown) =>
       updateConnectionMock(connectionId, input),
-    finishApp: (companyId: string, connectionId: string, input: unknown) =>
-      finishAppMock(companyId, connectionId, input),
-    finalizeOAuthAccess: (companyId: string, connectionId: string, input: unknown) =>
-      finalizeOAuthAccessMock(companyId, connectionId, input),
+    finishApp: (connectionId: string, input: unknown) =>
+      finishAppMock(connectionId, input),
+    finalizeOAuthAccess: (connectionId: string, input: unknown) =>
+      finalizeOAuthAccessMock(connectionId, input),
     putConnectionInstalls: (connectionId: string, installs: unknown) =>
       putConnectionInstallsMock(connectionId, installs),
     archiveConnection: vi.fn(),
@@ -95,8 +95,8 @@ vi.mock("@/api/tools", () => ({
     ) => revokeConnectionGrantDelegationMock(connectionId, grantId, delegationId),
     replaceConnectionGrantMembers: (connectionId: string, grantId: string, memberUserIds: string[]) =>
       replaceConnectionGrantMembersMock(connectionId, grantId, memberUserIds),
-    startPersonalAuthorization: (companyId: string, connectionId: string, input: unknown) =>
-      startPersonalAuthorizationMock(companyId, connectionId, input),
+    startPersonalAuthorization: (connectionId: string, input: unknown) =>
+      startPersonalAuthorizationMock(connectionId, input),
     reconnectConnection: (id: string, values: unknown) => reconnectConnectionMock(id, values),
   },
 }));
@@ -124,7 +124,7 @@ vi.mock("./AppLogo", () => ({
 
 vi.mock("@/api/access", () => ({
   accessApi: {
-    listUserDirectory: (companyId: string) => listUserDirectoryMock(companyId),
+    listUserDirectory: () => listUserDirectoryMock(),
   },
 }));
 
@@ -161,10 +161,9 @@ vi.mock("@/lib/router", () => ({
   ),
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
 }));
 
@@ -200,7 +199,6 @@ async function flushReact() {
 function connection(overrides: Record<string, unknown> = {}) {
   return {
     id: "conn-1",
-    companyId: "company-1",
     applicationId: "app-1",
     name: "GitHub",
     connectionKind: "managed",
@@ -240,7 +238,6 @@ function fullCapabilities(overrides: Record<string, unknown> = {}) {
 function organizationGrant(overrides: Record<string, unknown> = {}) {
   return {
     id: "grant-org",
-    companyId: "company-1",
     connectionId: "conn-1",
     kind: "organization",
     subjectUserId: null,
@@ -310,7 +307,6 @@ function dedicatedGitHubGrant(
 function catalogEntry(overrides: Record<string, unknown> = {}) {
   return {
     id: "catalog-read",
-    companyId: "company-1",
     connectionId: "conn-1",
     toolName: "read_repo",
     title: "Read repo",
@@ -737,17 +733,16 @@ describe("AppDetail", () => {
   });
 
   it.each([
-    ["company-1", "github", "active", true],
-    ["other-company", "github", "active", false],
-    ["company-1", "notion", "active", false],
-    ["company-1", "github", "pending", false],
-  ])("resumes a skill import only for its company's active GitHub callback (%s, %s, %s)", async (companyId, provider, status, returns) => {
-    rememberSkillSourceReturn("company-1", "new");
+    ["github", "active", true],
+    ["notion", "active", false],
+    ["github", "pending", false],
+  ])("resumes a skill import only for an active GitHub callback (%s, %s)", async (provider, status, returns) => {
+    rememberSkillSourceReturn("new");
     mockSearchParams.value = new URLSearchParams("success=1");
-    getConnectionMock.mockResolvedValue(connection({ companyId, status, config: { sourceTemplateKey: provider } }));
+    getConnectionMock.mockResolvedValue(connection({ status, config: { sourceTemplateKey: provider } }));
     await renderAppDetail();
     expect(mockNavigate).toHaveBeenCalledWith(returns ? "/skills/sources/new" : "/apps/conn-1/permissions", { replace: true });
-    expect(skillSourceReturnPath("company-1")).toBe(returns ? null : "/skills/sources/new");
+    expect(skillSourceReturnPath()).toBe(returns ? null : "/skills/sources/new");
   });
 
   it("normalizes the retired post-OAuth Setup URL into Permissions", async () => {
@@ -820,7 +815,7 @@ describe("AppDetail", () => {
     });
     await flushReact();
 
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(finishAppMock).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: expect.arrayContaining([
         "catalog-read",
         "catalog-write",
@@ -833,7 +828,7 @@ describe("AppDetail", () => {
       ]),
       access: "all_agents",
     });
-    const finishInput = finishAppMock.mock.calls.at(-1)?.[2] as { enabledCatalogEntryIds: string[] };
+    const finishInput = finishAppMock.mock.calls.at(-1)?.[1] as { enabledCatalogEntryIds: string[] };
     expect(finishInput.enabledCatalogEntryIds).not.toContain("catalog-quarantined-block");
   });
 
@@ -1004,7 +999,7 @@ describe("AppDetail", () => {
     });
     await flushReact();
 
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(finishAppMock).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: expect.arrayContaining(["catalog-read", "catalog-write"]),
       askFirstCatalogEntryIds: expect.arrayContaining(["catalog-read", "catalog-write"]),
       access: "all_agents",
@@ -1023,7 +1018,7 @@ describe("AppDetail", () => {
     });
     await flushReact();
 
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(finishAppMock).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: ["catalog-read"],
       askFirstCatalogEntryIds: [],
       access: "all_agents",
@@ -1107,7 +1102,7 @@ describe("AppDetail", () => {
     });
     await flushReact();
 
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(finishAppMock).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: ["catalog-read", "catalog-write"],
       askFirstCatalogEntryIds: ["catalog-write"],
       access: "all_agents",
@@ -1121,7 +1116,6 @@ describe("AppDetail", () => {
       connectionId: "conn-1",
       installs: [{
         id: "install-agent-1",
-        companyId: "company-1",
         connectionId: "conn-1",
         targetType: "agent",
         targetId: "agent-1",
@@ -1141,7 +1135,7 @@ describe("AppDetail", () => {
     });
     await flushReact();
 
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(finishAppMock).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: ["catalog-read", "catalog-write"],
       askFirstCatalogEntryIds: ["catalog-write"],
       access: { agentIds: ["agent-1"] },
@@ -1631,7 +1625,7 @@ describe("AppDetail", () => {
 
     // The subject is the signed-in user, so there is no path here to start
     // consent on a coworker's behalf.
-    expect(startPersonalAuthorizationMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(startPersonalAuthorizationMock).toHaveBeenCalledWith("conn-1", {
       subjectUserId: "user-1",
       returnTo: "/apps/conn-1/permissions",
     });
@@ -1913,7 +1907,7 @@ describe("AppDetail", () => {
     listConnectionGrantsMock.mockResolvedValue({
       connection: { id: "conn-1", uid: "conn-1" },
       grants: [organizationGrant({
-        members: [{ id: "m-1", companyId: "company-1", grantId: "grant-org", subjectType: "user", subjectId: "user-2", createdAt: new Date() }],
+        members: [{ id: "m-1", grantId: "grant-org", subjectType: "user", subjectId: "user-2", createdAt: new Date() }],
       })],
       capabilities: fullCapabilities(),
       currentUserId: "user-1",

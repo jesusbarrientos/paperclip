@@ -4,7 +4,6 @@ import { eq, sql, type SQLWrapper } from "drizzle-orm";
 import { HttpError } from "../errors.js";
 
 export interface CommittedChatResponseAuthorizationInput {
-  companyId: string;
   issueId: string;
   agentId: string;
   runId: string;
@@ -61,7 +60,6 @@ export async function authorizeCommittedChatResponse(
 export interface FailedChatRunRetryAuthorizationInput {
   phase: "admission" | "promotion" | "execution";
   wakeupRequestId: string | null;
-  companyId: string;
   agentId: string;
   issueId: string | null;
   runId?: string;
@@ -116,7 +114,7 @@ export async function authorizeFailedChatRunRetryWake(
 ): Promise<boolean> {
   const action = input.wakeupRequestId
     ? await tx
-        .select({ companyId: chatActions.companyId, kind: chatActions.kind })
+        .select({ kind: chatActions.kind })
         .from(chatActions)
         .where(eq(chatActions.id, input.wakeupRequestId))
         .limit(1)
@@ -132,7 +130,6 @@ export async function authorizeFailedChatRunRetryWake(
   const selector = input.contextSnapshot.chatFailedRunRetry;
   if (
     !authority ||
-    action.companyId !== input.companyId ||
     !input.issueId ||
     !input.wakeupRequestId ||
     !selector ||
@@ -164,32 +161,27 @@ export async function authorizeFailedChatRunRetryWake(
  * if its run subsequently fails or is cancelled; skipped was never admitted. */
 export function unadmittedChatWakeupCondition(
   issueId: SQLWrapper,
-  companyId: SQLWrapper,
 ) {
   return sql`exists (
     select 1 from chat_actions chat_unadmitted
-    where chat_unadmitted.company_id = ${companyId}
-      and chat_unadmitted.payload->>'issueId' = ${issueId}::text
+    where chat_unadmitted.payload->>'issueId' = ${issueId}::text
       and chat_unadmitted.kind = 'inbound_wakeup'
       and chat_unadmitted.status in ('preparing', 'issued', 'processing', 'failed')
       and not exists (
         select 1 from agent_wakeup_requests chat_admission
         where chat_admission.id = chat_unadmitted.id
-          and chat_admission.company_id = chat_unadmitted.company_id
           and chat_admission.agent_id::text = chat_unadmitted.payload->>'agentId'
           and chat_admission.status <> 'skipped'
       )
       and (chat_unadmitted.status <> 'failed' or not exists (
         select 1 from chat_actions chat_later
         join agent_wakeup_requests chat_later_admission on chat_later_admission.id = chat_later.id
-        where chat_later.company_id = chat_unadmitted.company_id
-          and chat_later.endpoint_id = chat_unadmitted.endpoint_id
+        where chat_later.endpoint_id = chat_unadmitted.endpoint_id
           and chat_later.conversation_id = chat_unadmitted.conversation_id
           and chat_later.payload->>'sessionGeneration' = chat_unadmitted.payload->>'sessionGeneration'
           and chat_later.payload->>'issueId' = chat_unadmitted.payload->>'issueId'
           and chat_later.kind = 'inbound_wakeup'
           and (chat_later.created_at, chat_later.id) > (chat_unadmitted.created_at, chat_unadmitted.id)
-          and chat_later_admission.company_id = chat_later.company_id
           and chat_later_admission.agent_id::text = chat_later.payload->>'agentId'
           and chat_later_admission.status <> 'skipped'
       ))
@@ -199,7 +191,6 @@ export function unadmittedChatWakeupCondition(
 /** Internal authority: this object cannot be supplied through a JSON API. */
 export interface DurableChatWakeupRequest {
   readonly id: string;
-  readonly companyId: string;
   readonly agentId: string;
   readonly issueId: string;
   readonly commentId: string;
@@ -220,7 +211,6 @@ export function createDurableChatWakeupRequest(
     .update(
       JSON.stringify([
         input.id,
-        input.companyId,
         input.agentId,
         input.issueId,
         input.commentId,
@@ -244,7 +234,6 @@ export function assertDurableChatWakeupRequest(
   request: DurableChatWakeupRequest,
   scope: {
     agentId: string;
-    companyId: string;
     issueId: string | null;
     commentId: string | null;
     requestedByActorType?: string;
@@ -252,10 +241,9 @@ export function assertDurableChatWakeupRequest(
   },
 ) {
   if (
-    !trustedRequests.has(request) ||
-    !scope.issueId ||
-    request.agentId !== scope.agentId ||
-    request.companyId !== scope.companyId ||
+    (!trustedRequests.has(request) ||
+          !scope.issueId ||
+          request.agentId !== scope.agentId) ||
     request.issueId !== scope.issueId ||
     request.commentId !== scope.commentId ||
     request.requestedByActorType !== scope.requestedByActorType ||
@@ -269,7 +257,6 @@ export function assertDurableChatWakeupReceipt(
   request: DurableChatWakeupRequest,
   receipt: {
     id: string;
-    companyId: string;
     agentId: string;
     idempotencyKey: string | null;
     requestedByActorType: string | null;
@@ -277,8 +264,7 @@ export function assertDurableChatWakeupReceipt(
   },
 ) {
   if (
-    receipt.id !== request.id ||
-    receipt.companyId !== request.companyId ||
+    (receipt.id !== request.id) ||
     receipt.agentId !== request.agentId ||
     receipt.idempotencyKey !== request.idempotencyKey ||
     receipt.requestedByActorType !== request.requestedByActorType ||

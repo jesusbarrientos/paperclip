@@ -1,6 +1,6 @@
 import { asc, count } from "drizzle-orm";
 import { companies, type Db } from "@paperclipai/db";
-import { conflict } from "../errors.js";
+import { conflict, notFound } from "../errors.js";
 
 export class MultipleOrganizationsError extends Error {
   constructor(readonly organizationCount: number) {
@@ -13,15 +13,22 @@ export class MultipleOrganizationsError extends Error {
 }
 
 export function organizationService(db: Pick<Db, "select">) {
+  const findId = async (): Promise<string | null> => {
+    const row = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .orderBy(asc(companies.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return row?.id ?? null;
+  };
   return {
-    findId: async (): Promise<string | null> => {
-      const row = await db
-        .select({ id: companies.id })
-        .from(companies)
-        .orderBy(asc(companies.createdAt))
-        .limit(1)
-        .then((rows) => rows[0] ?? null);
-      return row?.id ?? null;
+    findId,
+
+    requireId: async (): Promise<string> => {
+      const id = await findId();
+      if (!id) throw notFound("This instance has no organization yet", { code: "organization_missing" });
+      return id;
     },
 
     count: async (): Promise<number> => {

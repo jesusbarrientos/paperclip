@@ -16,12 +16,9 @@ const mockInstanceSettingsApi = vi.hoisted(() => ({
 }));
 
 const mockNavigate = vi.hoisted(() => vi.fn());
-const mockSetSelectedCompanyId = vi.hoisted(() => vi.fn());
 const mockSetSidebarOpen = vi.hoisted(() => vi.fn());
 const mockCompanyState = vi.hoisted(() => ({
-  companies: [{ id: "company-1", issuePrefix: "PAP", name: "Paperclip" }],
   selectedCompany: { id: "company-1", issuePrefix: "PAP", name: "Paperclip" },
-  selectedCompanyId: "company-1",
 }));
 const mockPluginSlots = vi.hoisted(() => ({
   slots: [] as Array<Record<string, unknown>>,
@@ -38,7 +35,7 @@ const mockSidebarState = vi.hoisted(() => ({
   collapsed: false,
   peeking: false,
 }));
-let currentPathname = "/PAP/dashboard";
+let currentPathname = "/dashboard";
 
 vi.mock("@/lib/router", () => ({
   Outlet: () => <div>Outlet content</div>,
@@ -51,14 +48,13 @@ vi.mock("@/lib/router", () => ({
   useNavigate: () => mockNavigate,
   useNavigationType: () => "PUSH",
   useParams: () => {
-    const [firstSegment, secondSegment, entityId] = currentPathname
+    const [firstSegment, entityId] = currentPathname
       .split("/")
       .filter(Boolean);
     return {
-      companyPrefix: firstSegment ?? "PAP",
-      pluginRoutePath: secondSegment,
-      agentId: secondSegment === "agents" ? entityId : undefined,
-      routineId: secondSegment === "routines" ? entityId : undefined,
+      pluginRoutePath: firstSegment,
+      agentId: firstSegment === "agents" ? entityId : undefined,
+      routineId: firstSegment === "routines" ? entityId : undefined,
     };
   },
 }));
@@ -71,8 +67,8 @@ vi.mock("./Sidebar", () => ({
   ),
 }));
 
-vi.mock("./CompanySettingsSidebar", () => ({
-  CompanySettingsSidebar: () => <div>Company settings sidebar</div>,
+vi.mock("./OrganizationSettingsSidebar", () => ({
+  OrganizationSettingsSidebar: () => <div>Company settings sidebar</div>,
 }));
 
 vi.mock("./AppsSidebar", () => ({
@@ -222,14 +218,10 @@ vi.mock("../context/PanelContext", () => ({
   }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: mockCompanyState.companies,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: mockCompanyState.selectedCompany,
     loading: false,
-    selectedCompany: mockCompanyState.selectedCompany,
-    selectedCompanyId: mockCompanyState.selectedCompanyId,
-    selectionSource: "manual",
-    setSelectedCompanyId: mockSetSelectedCompanyId,
   }),
 }));
 
@@ -253,24 +245,12 @@ vi.mock("../hooks/useKeyboardShortcuts", () => ({
   useKeyboardShortcuts: () => undefined,
 }));
 
-vi.mock("../hooks/useCompanyPageMemory", () => ({
-  useCompanyPageMemory: () => undefined,
-}));
-
 vi.mock("../api/health", () => ({
   healthApi: mockHealthApi,
 }));
 
 vi.mock("../api/instanceSettings", () => ({
   instanceSettingsApi: mockInstanceSettingsApi,
-}));
-
-vi.mock("../lib/company-selection", () => ({
-  shouldSyncCompanySelectionFromRoute: () => false,
-  // No bounce in the shared harness: these tests exercise layout chrome, not
-  // archived-company routing (covered by company-selection unit tests and the
-  // archived-company-url e2e).
-  resolveArchivedCompanyBounce: () => null,
 }));
 
 vi.mock("../lib/main-content-focus", () => ({
@@ -301,16 +281,12 @@ describe("Layout", () => {
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    currentPathname = "/PAP/dashboard";
-    mockCompanyState.companies = [
-      { id: "company-1", issuePrefix: "PAP", name: "Paperclip" },
-    ];
+    currentPathname = "/dashboard";
     mockCompanyState.selectedCompany = {
       id: "company-1",
       issuePrefix: "PAP",
       name: "Paperclip",
     };
-    mockCompanyState.selectedCompanyId = "company-1";
     mockHealthApi.get.mockResolvedValue({
       status: "ok",
       deploymentMode: "authenticated",
@@ -371,7 +347,7 @@ describe("Layout", () => {
   });
 
   it("scopes the Streamlined task-detail surface while preserving balanced horizontal gutters", async () => {
-    currentPathname = "/PAP/issues/PAP-1";
+    currentPathname = "/issues/PAP-1";
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({
       enableApps: true,
       enableStreamlinedUi: true,
@@ -523,7 +499,7 @@ describe("Layout", () => {
   });
 
   it("replaces the app sidebar with settings navigation on Streamlined settings routes", async () => {
-    currentPathname = "/PAP/company/settings/access";
+    currentPathname = "/organization/settings/access";
     mockPluginSlots.slots = [
       {
         type: "page",
@@ -578,7 +554,7 @@ describe("Layout", () => {
   });
 
   it("keeps the global sidebar beside legacy settings navigation when Streamlined UI is off", async () => {
-    currentPathname = "/PAP/company/settings/access";
+    currentPathname = "/organization/settings/access";
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({
       enableApps: true,
       enableStreamlinedUi: false,
@@ -608,7 +584,7 @@ describe("Layout", () => {
   });
 
   it("renders a mobile company settings selector on company settings routes", async () => {
-    currentPathname = "/PAP/company/settings/secrets";
+    currentPathname = "/organization/settings/secrets";
     mockSidebarState.isMobile = true;
     mockSidebarState.sidebarOpen = false;
     const root = createRoot(container);
@@ -649,7 +625,7 @@ describe("Layout", () => {
   });
 
   it("replaces the company nav on instance settings routes", async () => {
-    currentPathname = "/PAP/company/settings/instance/general";
+    currentPathname = "/organization/settings/instance/general";
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -675,7 +651,7 @@ describe("Layout", () => {
     });
   });
 
-  it.each(["/PAP/company/export", "/PAP/company/import"])(
+  it.each(["/organization/export", "/organization/import"])(
     "replaces the company nav with the shared settings sidebar on %s",
     async (pathname) => {
       currentPathname = pathname;
@@ -704,7 +680,7 @@ describe("Layout", () => {
   );
 
   it("keeps the company nav beside Apps navigation on legacy tools routes", async () => {
-    currentPathname = "/PAP/tools/runtime";
+    currentPathname = "/tools/runtime";
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -730,7 +706,7 @@ describe("Layout", () => {
   });
 
   it("mounts the Apps secondary sidebar regardless of the retired experimental flag", async () => {
-    currentPathname = "/PAP/apps";
+    currentPathname = "/apps";
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({
       enableApps: false,
     });
@@ -761,7 +737,7 @@ describe("Layout", () => {
   });
 
   it("keeps the Apps sidebar on the M8 advanced-setup tabs", async () => {
-    currentPathname = "/PAP/apps/advanced/paste-config";
+    currentPathname = "/apps/advanced/paste-config";
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -786,7 +762,7 @@ describe("Layout", () => {
   });
 
   it("keeps the Apps sidebar on legacy developer tabs behind the Advanced door", async () => {
-    currentPathname = "/PAP/apps/advanced/runtime";
+    currentPathname = "/apps/advanced/runtime";
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -815,7 +791,7 @@ describe("Layout", () => {
   it.each(["browse", "connections", "vercel-connect", "review", "chat"])(
     "keeps the Apps sidebar on the %s surface",
     async (route) => {
-      currentPathname = `/PAP/apps/${route}`;
+      currentPathname = `/apps/${route}`;
       const root = createRoot(container);
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
@@ -843,8 +819,8 @@ describe("Layout", () => {
 
   it("keeps the Apps sidebar on the gateways list and detail routes", async () => {
     for (const pathname of [
-      "/PAP/apps/gateways",
-      "/PAP/apps/gateways/gw-1/overview",
+      "/apps/gateways",
+      "/apps/gateways/gw-1/overview",
     ]) {
       currentPathname = pathname;
       const root = createRoot(container);
@@ -873,7 +849,7 @@ describe("Layout", () => {
   });
 
   it("uses the app connection sidebar on app detail routes", async () => {
-    currentPathname = "/PAP/apps/conn-1/permissions";
+    currentPathname = "/apps/conn-1/permissions";
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -901,7 +877,7 @@ describe("Layout", () => {
   });
 
   it("uses the app detail sidebar on not-connected app routes", async () => {
-    currentPathname = "/PAP/apps/app/app-1/permissions";
+    currentPathname = "/apps/app/app-1/permissions";
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -949,13 +925,13 @@ describe("Layout", () => {
     }
 
     for (const [pathname, sidebarText] of [
-      ["/PAP/skills/studio", "Skills sidebar"],
-      ["/PAP/agents/briefing-analyst/skills", "Agent sidebar briefing-analyst"],
+      ["/skills/studio", "Skills sidebar"],
+      ["/agents/briefing-analyst/skills", "Agent sidebar briefing-analyst"],
       [
-        "/PAP/agents/briefing-analyst/runs/run-1",
+        "/agents/briefing-analyst/runs/run-1",
         "Agent sidebar briefing-analyst",
       ],
-      ["/PAP/routines/routine-1/overview", "Routine sidebar routine-1"],
+      ["/routines/routine-1/overview", "Routine sidebar routine-1"],
     ] as const) {
       const root = await renderAt(pathname);
       expect(container.textContent).toContain(sidebarText);
@@ -987,8 +963,8 @@ describe("Layout", () => {
     });
 
     for (const pathname of [
-      "/PAP/agents/briefing-analyst/skills",
-      "/PAP/routines/routine-1/overview",
+      "/agents/briefing-analyst/skills",
+      "/routines/routine-1/overview",
     ]) {
       currentPathname = pathname;
       const root = createRoot(container);
@@ -1019,7 +995,7 @@ describe("Layout", () => {
   });
 
   it("keeps the global rail beside Skills navigation in the legacy shell", async () => {
-    currentPathname = "/PAP/skills/studio";
+    currentPathname = "/skills/studio";
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({
       enableApps: true,
       enableStreamlinedUi: false,
@@ -1050,9 +1026,9 @@ describe("Layout", () => {
 
   it("keeps Agent and Routine collection routes in global navigation", async () => {
     for (const pathname of [
-      "/PAP/agents/all",
-      "/PAP/agents/new",
-      "/PAP/routines",
+      "/agents/all",
+      "/agents/new",
+      "/routines",
     ]) {
       currentPathname = pathname;
       const root = createRoot(container);
@@ -1082,7 +1058,7 @@ describe("Layout", () => {
   });
 
   it("renders a route-scoped plugin sidebar for a matching plugin page route", async () => {
-    currentPathname = "/PAP/wiki";
+    currentPathname = "/wiki";
     mockPluginSlots.slots = [
       {
         type: "page",
@@ -1138,7 +1114,7 @@ describe("Layout", () => {
   });
 
   it("keeps the route-scoped plugin sidebar on nested plugin page routes", async () => {
-    currentPathname = "/PAP/wiki/page/templates";
+    currentPathname = "/wiki/page/templates";
     mockPluginSlots.slots = [
       {
         type: "page",
@@ -1179,10 +1155,7 @@ describe("Layout", () => {
     await flushReact();
 
     expect(mockUsePluginSlots).toHaveBeenCalledWith(
-      expect.objectContaining({
-        companyId: "company-1",
-        enabled: true,
-      }),
+      expect.objectContaining({ enabled: true }),
     );
     expect(container.textContent).toContain(
       "Plugin route sidebar: Wiki Sidebar",
@@ -1194,79 +1167,8 @@ describe("Layout", () => {
     });
   });
 
-  it("uses the route company context for plugin route sidebars on the first render", async () => {
-    currentPathname = "/ALT/wiki";
-    mockCompanyState.companies = [
-      { id: "company-1", issuePrefix: "PAP", name: "Paperclip" },
-      { id: "company-2", issuePrefix: "ALT", name: "Alternate" },
-    ];
-    mockCompanyState.selectedCompany = {
-      id: "company-1",
-      issuePrefix: "PAP",
-      name: "Paperclip",
-    };
-    mockCompanyState.selectedCompanyId = "company-1";
-    mockPluginSlots.slots = [
-      {
-        type: "page",
-        id: "wiki-page",
-        displayName: "Wiki Page",
-        exportName: "WikiPage",
-        routePath: "wiki",
-        pluginId: "plugin-1",
-        pluginKey: "wiki-plugin",
-        pluginDisplayName: "Wiki Plugin",
-        pluginVersion: "1.0.0",
-      },
-      {
-        type: "routeSidebar",
-        id: "wiki-route-sidebar",
-        displayName: "Wiki Sidebar",
-        exportName: "WikiSidebar",
-        routePath: "wiki",
-        pluginId: "plugin-1",
-        pluginKey: "wiki-plugin",
-        pluginDisplayName: "Wiki Plugin",
-        pluginVersion: "1.0.0",
-      },
-    ];
-    const root = createRoot(container);
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <Layout />
-        </QueryClientProvider>,
-      );
-    });
-    await flushReact();
-    await flushReact();
-
-    expect(mockUsePluginSlots).toHaveBeenCalledWith(
-      expect.objectContaining({
-        companyId: "company-2",
-        enabled: true,
-      }),
-    );
-    expect(mockPluginSlotContexts).toContainEqual({
-      companyId: "company-2",
-      companyPrefix: "ALT",
-    });
-    expect(mockPluginSlotContexts).not.toContainEqual({
-      companyId: "company-1",
-      companyPrefix: "PAP",
-    });
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
   it("keeps the normal company sidebar when a plugin page route is ambiguous", async () => {
-    currentPathname = "/PAP/wiki";
+    currentPathname = "/wiki";
     mockPluginSlots.slots = [
       {
         type: "page",

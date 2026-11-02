@@ -16,11 +16,11 @@ export function queuedInteractionId(payload: unknown): string | null {
     ? p.interactionId : null;
 }
 
-export async function readQueuedInteractionResponse(db: Db, companyId: string, issueId: string, payload: unknown) {
+export async function readQueuedInteractionResponse(db: Db, issueId: string, payload: unknown) {
   const id = queuedInteractionId(payload);
   if (!id) return null;
   const [interaction] = await db.select().from(issueThreadInteractions).where(and(
-    eq(issueThreadInteractions.id, id), eq(issueThreadInteractions.companyId, companyId),
+    eq(issueThreadInteractions.id, id),
     eq(issueThreadInteractions.issueId, issueId),
     inArray(issueThreadInteractions.status, ["accepted", "answered", "rejected"]),
   ));
@@ -36,7 +36,7 @@ export async function readQueuedInteractionResponse(db: Db, companyId: string, i
     payload: interaction.payload, result,
   }, null, 2)}`;
   const comment: IssueComment = {
-    id: interaction.id, companyId, issueId, authorType: interaction.resolvedByUserId ? "user" : "agent",
+    id: interaction.id, issueId, authorType: interaction.resolvedByUserId ? "user" : "agent",
     authorUserId: interaction.resolvedByUserId, authorAgentId: interaction.resolvedByAgentId,
     body, presentation: null, metadata: null,
     createdAt: interaction.resolvedAt ?? interaction.updatedAt, updatedAt: interaction.updatedAt,
@@ -49,16 +49,15 @@ export async function readQueuedInteractionResponse(db: Db, companyId: string, i
 }
 
 /** A saved answer is a live continuation, even though its card is no longer pending. */
-export async function hasQueuedInteractionResponse(db: Db, companyId: string, issueId: string, agentId?: string | null) {
+export async function hasQueuedInteractionResponse(db: Db, issueId: string, agentId?: string | null) {
   if (!agentId) return false;
   const [row] = await db.select({ id: agentWakeupRequests.id }).from(agentWakeupRequests)
     .innerJoin(issueThreadInteractions, and(
-      eq(issueThreadInteractions.companyId, agentWakeupRequests.companyId),
       sql`${issueThreadInteractions.id}::text = ${agentWakeupRequests.payload}->>'interactionId'`,
       eq(issueThreadInteractions.issueId, issueId),
       inArray(issueThreadInteractions.status, ["accepted", "answered", "rejected"]),
     )).where(and(
-      eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.agentId, agentId),
+      eq(agentWakeupRequests.agentId, agentId),
       inArray(agentWakeupRequests.status, ["deferred_issue_execution", "queued"]),
       sql`${agentWakeupRequests.payload}->>'issueId' = ${issueId}`,
       sql`${agentWakeupRequests.payload}->>'mutation' = 'interaction'`,

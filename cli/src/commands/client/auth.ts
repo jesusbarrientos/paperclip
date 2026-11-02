@@ -40,7 +40,6 @@ export function registerClientAuthCommands(auth: Command): void {
           const login = await loginBoardCli({
             apiBase: ctx.api.apiBase,
             requestedAccess: opts.instanceAdmin ? "instance_admin_required" : "board",
-            requestedCompanyId: ctx.companyId ?? null,
             command: "paperclipai auth login",
             openBrowser: opts.browser,
           });
@@ -56,8 +55,7 @@ export function registerClientAuthCommands(auth: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(

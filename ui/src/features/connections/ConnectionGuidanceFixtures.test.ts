@@ -12,9 +12,9 @@ it("keeps the directory and unimplemented connector requests inside the preview"
   const client = new QueryClient();
   const cleanup = installConnectionGuidanceFixtures(client, "Honcho", { setup: false, askFirst: false });
   try {
-    const directory = await window.fetch(`/api/companies/${GUIDANCE_COMPANY}/user-directory`);
+    const directory = await window.fetch(`/api/user-directory`);
     expect((await directory.json()).users[0].user.name).toBe("Riley Board");
-    const unknownOperation = await window.fetch(`/api/companies/${GUIDANCE_COMPANY}/tools/unsupported-operation`, { method: "POST" });
+    const unknownOperation = await window.fetch(`/api/tools/unsupported-operation`, { method: "POST" });
     expect(unknownOperation.status).toBe(422);
     const providerTest = await window.fetch(`/api/tool-connections/${GUIDANCE_CONNECTION}/test-action`, { method: "POST" });
     expect(providerTest.status).toBe(422);

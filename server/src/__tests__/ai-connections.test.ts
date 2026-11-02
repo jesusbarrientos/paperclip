@@ -25,13 +25,11 @@ import { membershipUpsert } from "./helpers/reset-organization.js";
 let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
 let db: ReturnType<typeof createDb>;
 let home: string;
-const companyId = randomUUID();
-const otherCompanyId = randomUUID();
 const agentId = randomUUID();
 let service: ReturnType<typeof aiConnectionService>;
 const binding = { provider: "anthropic", method: "api_key", mode: "responsible_user" } as const;
-const input = { companyId, agentId, adapterType: "claude_local", binding };
-const create = (userId: string, name: string, ownership: "personal" | "shared" = "personal") => service.save(companyId, userId, { provider: "anthropic", method: "api_key", ownership, name, apiKey: "fixture", agentIds: [], allAgents: true }, `fixture-${name}`);
+const input = { agentId, adapterType: "claude_local", binding };
+const create = (userId: string, name: string, ownership: "personal" | "shared" = "personal") => service.save(userId, { provider: "anthropic", method: "api_key", ownership, name, apiKey: "fixture", agentIds: [], allAgents: true }, `fixture-${name}`);
 
 beforeAll(async () => {
   home = await mkdtemp(path.join(os.tmpdir(), "paperclip-ai-tests-"));
@@ -40,8 +38,8 @@ beforeAll(async () => {
   database = await startEmbeddedPostgresTestDatabase("paperclip-ai-db-");
   db = createDb(database.connectionString);
   service = aiConnectionService(db);
-  await db.insert(companies).values([{ id: companyId, name: "AI connection tests", issuePrefix: "AIT" }, { id: otherCompanyId, name: "Other", issuePrefix: "AIO" }]);
-  await db.insert(agents).values({ id: agentId, companyId, name: "Nova", adapterType: "claude_local" });
+  await db.insert(companies).values({ name: "AI connection tests", issuePrefix: "AIT" });
+  await db.insert(agents).values({ id: agentId, name: "Nova", adapterType: "claude_local" });
   await db.insert(companyMemberships).values(["alice", "bob"].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
 }, 90000);
 afterAll(async () => { await database?.cleanup(); vi.unstubAllEnvs(); if (home) await rm(home, { recursive: true, force: true }); });
@@ -53,11 +51,11 @@ describe("managed AI connections", () => {
     if (manager) await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "tools:manage_connections" });
     const app = express();
     app.use((req, _res, next) => {
-      req.actor = { type: "board", source: "session", userId, companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "member" }] };
+      req.actor = { type: "board", source: "session", userId, memberships: [{ status: "active", membershipRole: "member" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db));
-    const response = await request(app).get(`/api/companies/${companyId}/ai-connections`);
+    const response = await request(app).get(`/api/ai-connections`);
     expect(response.status).toBe(200);
     expect(response.body.canManageConnections).toBe(manager);
   });
@@ -65,18 +63,18 @@ describe("managed AI connections", () => {
   it("probes only the requested authorized grant using its vaulted subscription token", async () => {
     const owner = "usage-probe-owner";
     await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
-    const account = await service.save(companyId, owner, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Usage probe account", loginSessionId: "fixture", agentIds: [], allAgents: true }, "usage-selected-secret");
+    const account = await service.save(owner, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Usage probe account", loginSessionId: "fixture", agentIds: [], allAgents: true }, "usage-selected-secret");
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ five_hour: { utilization: 42 }, seven_day: { utilization: 15 } })));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = req.header("x-agent")
-        ? { type: "agent", agentId, companyId, companyIds: [companyId], onBehalfOfUserId: owner }
-        : { type: "board", userId: req.header("x-test-user") ?? owner, companyIds: [companyId] };
+        ? { type: "agent", agentId, onBehalfOfUserId: owner }
+        : { type: "board", userId: req.header("x-test-user") ?? owner, memberships: [{ status: "active", membershipRole: "member" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
-    const url = `/api/companies/${companyId}/ai-connections/${account.connectionId}/usage?grantId=${account.grantId}`;
+    const url = `/api/ai-connections/${account.connectionId}/usage?grantId=${account.grantId}`;
     try {
       const result = await request(app).get(url);
       expect(result.status).toBe(200);
@@ -86,7 +84,6 @@ describe("managed AI connections", () => {
       expect(JSON.stringify(result.body)).not.toContain("usage-selected-secret");
       fetchSpy.mockClear();
       expect((await request(app).get(url).set("x-test-user", "bob")).status).toBe(404);
-      expect((await request(app).get(url.replace(companyId, otherCompanyId))).status).toBe(403);
       expect((await request(app).get(url.replace(account.grantId, randomUUID()))).status).toBe(404);
       expect((await request(app).get(url).set("x-agent", "yes")).status).toBe(403);
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -98,25 +95,25 @@ describe("managed AI connections", () => {
   });
 
   it("uses the same usage probe for shared accounts across legacy and native runner selections", async () => {
-    const account = await service.save(companyId, "alice", { provider: "anthropic", method: "subscription", ownership: "shared", name: "Shared usage account", loginSessionId: "fixture", agentIds: [], allAgents: true }, "shared-usage-secret");
+    const account = await service.save("alice", { provider: "anthropic", method: "subscription", ownership: "shared", name: "Shared usage account", loginSessionId: "fixture", agentIds: [], allAgents: true }, "shared-usage-secret");
     const selected = { provider: "anthropic", method: "subscription", mode: "shared", ...account } as const;
     const tools = toolAccessService(db);
     await tools.replaceConnectionGrantMembers(account.connectionId, account.grantId, ["alice"], { userId: "alice" });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ five_hour: { utilization: 100 }, extra_usage: { is_enabled: false } })));
     try {
-      await expect(service.probeUsage(companyId, "bob", account.connectionId)).rejects.toThrow("not found");
+      await expect(service.probeUsage("bob", account.connectionId)).rejects.toThrow("not found");
       expect(fetchSpy).not.toHaveBeenCalled();
       await tools.replaceConnectionGrantMembers(account.connectionId, account.grantId, ["bob"], { userId: "alice" });
       for (const config of [{ adapterType: "claude_local" }, { adapterType: "paperclip_runner", runnerProvider: "acpx", acpxAgent: "claude" }]) {
-        const row = await service.select({ companyId, userId: "bob", agentId, binding: selected, ...config });
-        expect(await service.probeUsage(companyId, "bob", row.connection.id, row.grant.id)).toMatchObject({ status: "ok", overage: { available: false }, limits: [{ limitReached: true }, { allowed: false }] });
+        const row = await service.select({ userId: "bob", agentId, binding: selected, ...config });
+        expect(await service.probeUsage("bob", row.connection.id, row.grant.id)).toMatchObject({ status: "ok", overage: { available: false }, limits: [{ limitReached: true }, { allowed: false }] });
       }
       // Unsupported methods do not resolve or send secrets.
       const owner = "usage-api-owner";
       await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
       const apiAccount = await create(owner, "Unsupported usage method");
       fetchSpy.mockClear();
-      expect(await service.probeUsage(companyId, owner, apiAccount.connectionId)).toMatchObject({ status: "unsupported" });
+      expect(await service.probeUsage(owner, apiAccount.connectionId)).toMatchObject({ status: "unsupported" });
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally { fetchSpy.mockRestore(); }
   });
@@ -131,11 +128,11 @@ describe("managed AI connections", () => {
     const adapterType = provider === "openai" ? "codex_local" : "claude_local";
     const selectedBinding = { provider, method: "api_key", mode: "responsible_user" } as const;
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
-    await db.insert(agents).values({ id, companyId, name: "Auth recovery", adapterType, runtimeConfig: { aiConnection: selectedBinding } });
-    await db.insert(issues).values({ id: issueId, companyId, title: "Fix provider login", status: "in_progress", assigneeAgentId: id });
-    const account = await service.save(companyId, userId, { provider, method: "api_key", ownership: "personal", name: "Recovery account", apiKey: "fixture", agentIds: [id], allAgents: false }, "fixture-recovery-key");
-    const runtime = await prepareManagedAiRuntime(db, { companyId, agentId: id, responsibleUserId: userId, adapterType, binding: selectedBinding, config: {} });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId: id, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: userId,
+    await db.insert(agents).values({ id, name: "Auth recovery", adapterType, runtimeConfig: { aiConnection: selectedBinding } });
+    await db.insert(issues).values({ id: issueId, title: "Fix provider login", status: "in_progress", assigneeAgentId: id });
+    const account = await service.save(userId, { provider, method: "api_key", ownership: "personal", name: "Recovery account", apiKey: "fixture", agentIds: [id], allAgents: false }, "fixture-recovery-key");
+    const runtime = await prepareManagedAiRuntime(db, { agentId: id, responsibleUserId: userId, adapterType, binding: selectedBinding, config: {} });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: id, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: userId,
       contextSnapshot: { issueId, aiConnection: { ...runtime.attribution, identity: runtime.identity } } });
     await runtime.cleanup();
     const intents = connectionIntentService(db);
@@ -147,22 +144,22 @@ describe("managed AI connections", () => {
     expect(setup.aiRepair).toMatchObject({ canReconnect: true, connection: { id: account.connectionId, status: "needs_attention" } });
     await expect(intents.complete(card!.interactionId!, account.connectionId, userId)).rejects.toThrow();
     // A stopped run's token cannot call the public request path.
-    await expect(intents.request({ sub: id, company_id: companyId, run_id: runId, responsible_user_id: userId }, provider, { purpose: "ai" })).rejects.toThrow("no longer active");
+    await expect(intents.request({ sub: id, run_id: runId, responsible_user_id: userId }, provider, { purpose: "ai" })).rejects.toThrow("no longer active");
     // Reverification can keep the same credential bytes; it still supersedes the failure.
     let repaired = account;
     if (switchMethod) {
       const token = provider === "openai" ? JSON.stringify({ tokens: { access_token: "fixture-subscription", refresh_token: "fixture-refresh", id_token: "fixture-id", account_id: "fixture-account" } }) : "fixture-subscription";
-      repaired = await service.save(companyId, userId, { provider, method: "subscription", ownership: "personal", name: "Recovery subscription", loginSessionId: "fixture", agentIds: [id], allAgents: false }, token);
-      await service.setDefault(companyId, userId, repaired.grantId);
+      repaired = await service.save(userId, { provider, method: "subscription", ownership: "personal", name: "Recovery subscription", loginSessionId: "fixture", agentIds: [id], allAgents: false }, token);
+      await service.setDefault(userId, repaired.grantId);
       const [original] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, account.grantId));
       expect(original.status).toBe("needs_reauthorization");
     } else {
-      await service.save(companyId, userId, { provider, method: "api_key", ownership: "personal", name: "Recovery account", connectionId: account.connectionId, apiKey: "fixture", agentIds: [id], allAgents: false }, provider === "openai" ? "fixture-recovery-key" : "fixture-repaired-key");
+      await service.save(userId, { provider, method: "api_key", ownership: "personal", name: "Recovery account", connectionId: account.connectionId, apiKey: "fixture", agentIds: [id], allAgents: false }, provider === "openai" ? "fixture-recovery-key" : "fixture-repaired-key");
     }
     expect((await intents.setupOptions(card!.interactionId!)).existingConnections.map(connection => connection.id)).toEqual([repaired.connectionId]);
     await intents.complete(card!.interactionId!, repaired.connectionId, userId);
     const wakeup = vi.fn(async (_agentId, opts) => {
-      await db.insert(agentWakeupRequests).values({ companyId, agentId: id, source: "automation", status: "queued", idempotencyKey: opts.idempotencyKey });
+      await db.insert(agentWakeupRequests).values({ agentId: id, source: "automation", status: "queued", idempotencyKey: opts.idempotencyKey });
       return null;
     });
     await connectionIntentDeliveryService(db, { wakeup } as never).deliver(card!.interactionId!);
@@ -170,23 +167,23 @@ describe("managed AI connections", () => {
     expect(wakeup).toHaveBeenCalledWith(id, expect.objectContaining({ contextSnapshot: expect.objectContaining({ forceFreshSession: true }) }));
     // Reprocessing an old failure cannot invalidate the newly saved credential.
     await intents.requestForRunAuthFailure(runId);
-    expect((await service.select({ companyId, agentId: id, userId, adapterType, binding: selectedBinding })).grant.status).toBe("active");
+    expect((await service.select({ agentId: id, userId, adapterType, binding: selectedBinding })).grant.status).toBe("active");
   });
 
   it("offers a compatible connection for legacy auth failures without silently adopting it", async () => {
     const id = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
-    await db.insert(agents).values({ id, companyId, name: "Legacy Codex", adapterType: "paperclip_runner", adapterConfig: { provider: "codex" } });
-    await db.insert(issues).values({ id: issueId, companyId, title: "Legacy auth", status: "in_progress", assigneeAgentId: id });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId: id, nativeIssueId: issueId, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: "alice", contextSnapshot: {} });
+    await db.insert(agents).values({ id, name: "Legacy Codex", adapterType: "paperclip_runner", adapterConfig: { provider: "codex" } });
+    await db.insert(issues).values({ id: issueId, title: "Legacy auth", status: "in_progress", assigneeAgentId: id });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: id, nativeIssueId: issueId, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: "alice", contextSnapshot: {} });
     const intents = connectionIntentService(db);
     const card = await intents.requestForRunAuthFailure(runId);
     expect(card).toMatchObject({ service: "openai", state: "needs_user_action" });
     expect(await intents.setupOptions(card!.interactionId!)).toMatchObject({ aiConnectionRequiresAdoption: true, aiConnection: { provider: "openai", mode: "responsible_user" } });
     const [unchanged] = await db.select().from(agents).where(eq(agents.id, id));
     expect(unchanged.runtimeConfig.aiConnection).toBeUndefined();
-    await db.insert(heartbeatRuns).values({ companyId, agentId: id, status: "succeeded", responsibleUserId: "alice", contextSnapshot: { issueId }, createdAt: new Date(Date.now() + 1000) });
+    await db.insert(heartbeatRuns).values({ agentId: id, status: "succeeded", responsibleUserId: "alice", contextSnapshot: { issueId }, createdAt: new Date(Date.now() + 1000) });
     expect(await intents.requestForRunAuthFailure(runId)).toBeNull();
   });
   it.each([
@@ -197,8 +194,8 @@ describe("managed AI connections", () => {
     const apiUser = `${provider}-api-user`;
     await db.insert(companyMemberships).values([subscriptionUser, apiUser].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
     const token = provider === "openai" ? JSON.stringify({ tokens: { access_token: "fixture-subscription", refresh_token: "fixture-refresh", id_token: "fixture-id", account_id: "fixture-account" } }) : "fixture-subscription";
-    const subscription = await service.save(companyId, subscriptionUser, { provider, method: "subscription", ownership: "personal", name: "Subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, token);
-    const api = await service.save(companyId, apiUser, { provider, method: "api_key", ownership: "personal", name: "API", apiKey: "fixture", allAgents: true, agentIds: [] }, "fixture-api");
+    const subscription = await service.save(subscriptionUser, { provider, method: "subscription", ownership: "personal", name: "Subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, token);
+    const api = await service.save(apiUser, { provider, method: "api_key", ownership: "personal", name: "API", apiKey: "fixture", allAgents: true, agentIds: [] }, "fixture-api");
     // This is the exact same saved bot config, including a legacy setup method.
     const bot = { ...input, adapterType, binding: { provider, method: "subscription", mode: "responsible_user" } as const, config: { model: "unchanged-model", env: { [apiEnv]: "ambient", CLAUDE_CODE_OAUTH_TOKEN: "ambient" } } };
     const original = structuredClone(bot);
@@ -230,47 +227,30 @@ describe("managed AI connections", () => {
     const userId = "provider-default-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const api = await create(userId, "Provider API");
-    const subscription = await service.save(companyId, userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Provider subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-provider-subscription");
+    const subscription = await service.save(userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Provider subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-provider-subscription");
     expect((await service.select({ ...input, userId })).grant.id).toBe(api.grantId);
-    expect((await service.list(companyId, userId)).filter(account => account.isDefault).map(account => account.grantId)).toEqual([api.grantId]);
+    expect((await service.list(userId)).filter(account => account.isDefault).map(account => account.grantId)).toEqual([api.grantId]);
     await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.id, api.grantId));
     await expect(service.select({ ...input, userId })).rejects.toThrow("Reconnect");
     await create(userId, "Another API");
     await expect(service.select({ ...input, userId })).rejects.toThrow("Reconnect");
-    await service.setDefault(companyId, userId, subscription.grantId);
+    await service.setDefault(userId, subscription.grantId);
     expect((await service.select({ ...input, userId })).attribution).toMatchObject({ method: "subscription", grantId: subscription.grantId });
-    expect((await service.list(companyId, userId)).filter(account => account.isDefault)).toHaveLength(1);
+    expect((await service.list(userId)).filter(account => account.isDefault)).toHaveLength(1);
     await expect(service.select({ ...input, userId, binding: { ...binding, mode: "delegated", ...subscription } })).rejects.toThrow("incompatible");
   });
 
-  it("backfills provider defaults repeatably without deleting old preferences or replacing an unavailable choice", async () => {
-    const userId = "provider-default-migration-user";
-    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
-    const api = await create(userId, "Migration API");
-    const subscription = await service.save(companyId, userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Migration subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-migration-subscription");
-    await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.id, api.grantId));
-    await db.update(aiConnectionDefaults).set({ updatedAt: new Date("2030-01-01") }).where(eq(aiConnectionDefaults.grantId, api.grantId));
-    await db.delete(aiProviderDefaults).where(and(eq(aiProviderDefaults.companyId, companyId), eq(aiProviderDefaults.userId, userId)));
-    const legacyRows = await db.select().from(aiConnectionDefaults).where(eq(aiConnectionDefaults.userId, userId));
-    const migration = await readFile(new URL("../../../packages/db/src/migrations/0277_uneven_lady_deathstrike.sql", import.meta.url), "utf8");
-    for (let pass = 0; pass < 2; pass++) for (const statement of migration.split("--> statement-breakpoint").filter(value => value.trim())) await db.execute(sql.raw(statement));
-    expect(await db.select().from(aiConnectionDefaults).where(eq(aiConnectionDefaults.userId, userId))).toEqual(legacyRows);
-    await expect(service.select({ ...input, userId })).rejects.toThrow("Reconnect");
-    await service.setDefault(companyId, userId, subscription.grantId);
-    for (const statement of migration.split("--> statement-breakpoint").filter(value => value.trim())) await db.execute(sql.raw(statement));
-    expect((await service.select({ ...input, userId })).grant.id).toBe(subscription.grantId);
-  });
   it("observes old-server default changes during rolling upgrades without treating new accounts as default changes", async () => {
     const userId = "rolling-upgrade-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const api = await create(userId, "Rolling API");
-    const subscription = await service.save(companyId, userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Rolling subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-rolling-subscription");
+    const subscription = await service.save(userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Rolling subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-rolling-subscription");
     expect((await service.select({ ...input, userId })).grant.id).toBe(api.grantId);
     // An older server updates only the legacy per-method row on Make default.
     await db.update(aiConnectionDefaults).set({ grantId: subscription.grantId, updatedAt: new Date() })
       .where(and(eq(aiConnectionDefaults.userId, userId), eq(aiConnectionDefaults.method, "subscription")));
     expect((await service.select({ ...input, userId })).attribution).toMatchObject({ grantId: subscription.grantId, method: "subscription" });
-    expect((await service.list(companyId, userId)).filter(account => account.isDefault).map(account => account.grantId)).toEqual([subscription.grantId]);
+    expect((await service.list(userId)).filter(account => account.isDefault).map(account => account.grantId)).toEqual([subscription.grantId]);
     await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.id, subscription.grantId));
     await create(userId, "Rolling second API");
     await expect(service.select({ ...input, userId })).rejects.toThrow("Reconnect");
@@ -299,30 +279,29 @@ describe("managed AI connections", () => {
     expect(a.grant.id).toBe(first.grantId); expect(b.grant.id).toBe(bob.grantId);
     expect(await service.credential(a)).toBe("fixture-Alice first");
     expect(await service.credential(b)).toBe("fixture-Bob first");
-    expect(JSON.stringify(await service.list(companyId, "alice"))).not.toContain("fixture-");
-    expect(await service.list(otherCompanyId, "alice")).toEqual([]);
+    expect(JSON.stringify(await service.list("alice"))).not.toContain("fixture-");
   });
   it("retains a revoked default without automatic fallback", async () => {
     const selected = await service.select({ ...input, userId: "alice" });
     await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.id, selected.grant.id));
     await create("alice", "Alice third");
-    expect(await toolAccessService(db).getConnection(selected.connection.id, companyId)).toMatchObject({ healthStatus: "missing_secret", requiresReauthorization: true });
-    expect((await toolAccessService(db).listConnections(companyId)).find(connection => connection.id === selected.connection.id)?.healthStatus).toBe("missing_secret");
+    expect(await toolAccessService(db).getConnection(selected.connection.id)).toMatchObject({ healthStatus: "missing_secret", requiresReauthorization: true });
+    expect((await toolAccessService(db).listConnections()).find(connection => connection.id === selected.connection.id)?.healthStatus).toBe("missing_secret");
     await expect(service.select({ ...input, userId: "alice" })).rejects.toThrow("Reconnect");
-    const second = (await service.list(companyId, "alice")).find(a => a.name === "Alice second")!;
-    await service.setDefault(companyId, "alice", second.grantId);
+    const second = (await service.list("alice")).find(a => a.name === "Alice second")!;
+    await service.setDefault("alice", second.grantId);
     expect((await service.select({ ...input, userId: "alice" })).grant.id).toBe(second.grantId);
-    await expect(service.setDefault(companyId, "bob", second.grantId)).rejects.toThrow("owner");
+    await expect(service.setDefault("bob", second.grantId)).rejects.toThrow("owner");
   });
   it("uses human access for every selection; an agent delegation cannot override Just me", async () => {
     const personal = await service.select({ ...input, userId: "alice" });
     const delegated = { ...binding, mode: "delegated" as const, connectionId: personal.connection.id, grantId: personal.grant.id };
     await expect(service.select({ ...input, userId: "bob", binding: delegated })).rejects.toThrow("not shared");
     // Existing delegation records no longer confer an independent AI permission.
-    await db.insert(connectionGrantDelegations).values({ companyId, grantId: personal.grant.id, agentId, createdByUserId: "alice" });
+    await db.insert(connectionGrantDelegations).values({ grantId: personal.grant.id, agentId, createdByUserId: "alice" });
     await expect(service.select({ ...input, userId: "bob", binding: delegated })).rejects.toThrow("not shared");
     expect((await service.select({ ...input, userId: "alice", binding: delegated })).grant.id).toBe(personal.grant.id);
-    expect((await service.list(companyId, "bob", agentId)).some(account => account.id === personal.connection.id)).toBe(false);
+    expect((await service.list("bob", agentId)).some(account => account.id === personal.connection.id)).toBe(false);
     await expect(toolAccessService(db).createConnectionGrantDelegation(personal.connection.id, personal.grant.id, agentId, "alice")).rejects.toThrow("human access settings");
   });
   it("applies the existing human audience editor to AI listing and execution without a second authorization", async () => {
@@ -331,10 +310,10 @@ describe("managed AI connections", () => {
     const tools = toolAccessService(db);
     await tools.replaceConnectionGrantMembers(shared.connectionId, shared.grantId, ["alice"], { userId: "alice" });
     await expect(service.select({ ...input, userId: "bob", binding: sharedBinding })).rejects.toThrow("not shared");
-    expect((await service.list(companyId, "bob", agentId)).some(account => account.id === shared.connectionId)).toBe(false);
+    expect((await service.list("bob", agentId)).some(account => account.id === shared.connectionId)).toBe(false);
     await tools.replaceConnectionGrantMembers(shared.connectionId, shared.grantId, ["bob"], { userId: "alice" });
     expect((await service.select({ ...input, userId: "bob", binding: sharedBinding })).grant.id).toBe(shared.grantId);
-    expect((await service.list(companyId, "bob", agentId)).some(account => account.id === shared.connectionId)).toBe(true);
+    expect((await service.list("bob", agentId)).some(account => account.id === shared.connectionId)).toBe(true);
     await expect(service.select({ ...input, userId: "alice", binding: sharedBinding })).rejects.toThrow("not shared");
     await tools.replaceConnectionGrantMembers(shared.connectionId, shared.grantId, [], { userId: "alice" });
     for (const userId of ["alice", "bob"]) {
@@ -360,7 +339,7 @@ describe("managed AI connections", () => {
     await expect(service.select({ ...input, userId: null })).rejects.toThrow("responsible user");
     await expect(service.select({ ...input, userId: "alice", adapterType: "codex_local" })).rejects.toThrow("compatible");
     const account = await service.select({ ...input, userId: "alice" });
-    await expect(service.select({ ...input, companyId: otherCompanyId, userId: "alice", binding: { ...binding, mode: "shared", connectionId: account.connection.id, grantId: account.grant.id } })).rejects.toThrow();
+    await expect(service.select({ ...input, userId: "alice", binding: { ...binding, mode: "shared", connectionId: account.connection.id, grantId: account.grant.id } })).rejects.toThrow();
   });
   it("resolves shared encrypted credentials through the existing secret binding system", async () => {
     const created = await create("alice", "Shared credential proof", "shared");
@@ -371,22 +350,22 @@ describe("managed AI connections", () => {
     const [environment] = await db.insert(environments).values({ name: "AI login test", driver: "sandbox" }).returning();
     const intent = { provider: "anthropic", method: "subscription", ownership: "personal", name: "Claude subscription", agentIds: [], allAgents: true } as const;
     const sessionId = randomUUID();
-    await db.insert(adapterAuthSessions).values({ companyId, environmentId: environment.id, adapterType: "claude_local", startedByUserId: "alice", publicSessionId: sessionId, status: "submitting", aiConnection: { ...intent, agentIds: [] }, expiresAt: new Date(Date.now() + 60000) });
-    const first = await service.save(companyId, "alice", { ...intent, agentIds: [] }, "fixture-subscription", sessionId);
-    expect(await service.save(companyId, "alice", { ...intent, agentIds: [] }, "fixture-subscription", sessionId)).toEqual(first);
+    await db.insert(adapterAuthSessions).values({ environmentId: environment.id, adapterType: "claude_local", startedByUserId: "alice", publicSessionId: sessionId, status: "submitting", aiConnection: { ...intent, agentIds: [] }, expiresAt: new Date(Date.now() + 60000) });
+    const first = await service.save("alice", { ...intent, agentIds: [] }, "fixture-subscription", sessionId);
+    expect(await service.save("alice", { ...intent, agentIds: [] }, "fixture-subscription", sessionId)).toEqual(first);
     const cancelled = randomUUID();
-    await db.insert(adapterAuthSessions).values({ companyId, environmentId: environment.id, adapterType: "claude_local", startedByUserId: "alice", publicSessionId: cancelled, status: "cancelled", expiresAt: new Date(Date.now() + 60000) });
-    await expect(service.save(companyId, "alice", { ...intent, agentIds: [] }, "fixture-never-save", cancelled)).rejects.toThrow("no longer active");
+    await db.insert(adapterAuthSessions).values({ environmentId: environment.id, adapterType: "claude_local", startedByUserId: "alice", publicSessionId: cancelled, status: "cancelled", expiresAt: new Date(Date.now() + 60000) });
+    await expect(service.save("alice", { ...intent, agentIds: [] }, "fixture-never-save", cancelled)).rejects.toThrow("no longer active");
   });
   it("preserves connection identity and defaults through reconnect; revocation wins over older attempts", async () => {
     const current = await service.select({ ...input, userId: "bob" });
     const reconnect = { ...binding, ownership: "personal" as const, name: current.connection.name, apiKey: "fixture", agentIds: [], allAgents: true, connectionId: current.connection.id };
-    const result = await service.save(companyId, "bob", reconnect, "fixture-reconnected");
+    const result = await service.save("bob", reconnect, "fixture-reconnected");
     expect(result.grantId).toBe(current.grant.id);
     expect(await service.credential(await service.select({ ...input, userId: "bob" }))).toBe("fixture-reconnected");
     const beforeRevocation = new Date(Date.now() - 1000);
     await db.update(connectionGrants).set({ status: "revoked", updatedAt: new Date() }).where(eq(connectionGrants.id, current.grant.id));
-    await expect(service.save(companyId, "bob", reconnect, "fixture-stale", undefined, beforeRevocation)).rejects.toThrow("changed");
+    await expect(service.save("bob", reconnect, "fixture-stale", undefined, beforeRevocation)).rejects.toThrow("changed");
     await expect(service.select({ ...input, userId: "bob" })).rejects.toThrow("Reconnect");
   });
   it("rejects invalid purpose/transport combinations in the database", async () => {
@@ -394,43 +373,12 @@ describe("managed AI connections", () => {
     await expect(db.update(toolConnections).set({ transport: "mcp_remote" }).where(eq(toolConnections.id, selected.connection.id))).rejects.toThrow();
     await expect(db.update(toolConnections).set({ connectionPurpose: "tool" }).where(eq(toolConnections.id, selected.connection.id))).rejects.toThrow();
   });
-  it("indexes only known user credentials, retains references, and is repeatable without adopting agents", async () => {
-    const selected = await service.select({ ...input, userId: "alice" });
-    const [emailConnection] = await db.insert(toolConnections).values({
-      companyId,
-      applicationId: selected.connection.applicationId,
-      name: "Existing AgentMail inbox",
-      uid: `agentmail-migration-${randomUUID()}`,
-      connectionPurpose: "channel",
-      transport: "rest_api",
-      authKind: "api_key",
-      config: { provider: "agentmail" },
-    }).returning();
-    const vault = secretService(db);
-    const definition = await vault.createUserSecretDefinition(companyId, { key: "legacy_claude", name: "Existing owned Claude key", provider: "local_encrypted" }, { userId: "alice" });
-    const secret = await vault.createCurrentUserSecretValue(companyId, "alice", { definitionId: definition.id, value: "fixture-legacy" }, { userId: "alice" });
-    await vault.syncUserSecretDeclarationsForTarget(companyId, { targetType: "agent", targetId: agentId }, [{ definitionKey: definition.key, configPath: "env.ANTHROPIC_API_KEY", envKey: "ANTHROPIC_API_KEY", required: true }]);
-    const migration = await readFile(new URL("../../../packages/db/src/migrations/0276_hard_mandroid.sql", import.meta.url), "utf8");
-    const adoption = migration.slice(migration.indexOf("DO $$", migration.indexOf("-- Only declared")));
-    await db.execute(sql.raw(adoption));
-    const before = await service.list(companyId, "alice");
-    for (const statement of migration.split("--> statement-breakpoint").filter(value => value.trim())) await db.execute(sql.raw(statement));
-    expect(await service.list(companyId, "alice")).toEqual(before);
-    const [preservedEmail] = await db.select().from(toolConnections).where(eq(toolConnections.id, emailConnection.id));
-    expect(preservedEmail).toEqual(emailConnection);
-    const indexed = before.find(account => account.name === secret.name)!;
-    expect(indexed.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, indexed.grantId));
-    expect(grant.credentialSecretRefs[0].secretId).toBe(secret.id);
-    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
-    expect(agent.runtimeConfig.aiConnection).toBeUndefined();
-  });
   it("runs two Claude subscription executions for the same grant at the same time", async () => {
     // Claude writes no auth file back to the grant, so two runs share no
     // mutable state and must not wait for each other.
     const subscription = { ...input, binding: { ...binding, method: "subscription" as const }, responsibleUserId: "alice", config: { model: "same-model" } };
-    const account = (await service.list(companyId, "alice")).find(account => account.provider === "anthropic" && account.method === "subscription")!;
-    await service.setDefault(companyId, "alice", account.grantId);
+    const account = (await service.list("alice")).find(account => account.provider === "anthropic" && account.method === "subscription")!;
+    await service.setDefault("alice", account.grantId);
     const [first, second] = await Promise.all([prepareManagedAiRuntime(db, subscription), prepareManagedAiRuntime(db, subscription)]);
     try {
       expect(second.identity).toBe(first.identity);
@@ -442,9 +390,8 @@ describe("managed AI connections", () => {
     const userId = "subscription-contention-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const credential = JSON.stringify({ tokens: { access_token: "fixture-access", refresh_token: "fixture-refresh", id_token: "fixture-id", account_id: "fixture-account" } });
-    const account = await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Contention fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, credential);
+    const account = await service.save(userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Contention fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, credential);
     const runInput = {
-      companyId,
       agentId,
       adapterType: "codex_local",
       responsibleUserId: userId,
@@ -465,7 +412,7 @@ describe("managed AI connections", () => {
   it("persists the freshest refreshed credential to its original grant across a same-account reconnect", async () => {
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
     const intent = { provider: "openai" as const, method: "subscription" as const, name: "Refresh test", ownership: "personal" as const, agentIds: [], allAgents: true, loginSessionId: "fixture" };
-    const saved = await service.save(companyId, "alice", intent, auth("first", 10));
+    const saved = await service.save("alice", intent, auth("first", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: "alice", binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
     const first = await prepareManagedAiRuntime(db, runInput);
     await writeFile(path.join(String(first.config.env.CODEX_HOME), "auth.json"), auth("refreshed", 11));
@@ -476,7 +423,7 @@ describe("managed AI connections", () => {
     expect(second.identity).not.toBe(first.identity);
     // A same-account reconnect writes an older last_refresh than the run
     // that is still open.
-    await service.save(companyId, "alice", { ...intent, connectionId: saved.connectionId }, auth("reconnect", 12));
+    await service.save("alice", { ...intent, connectionId: saved.connectionId }, auth("reconnect", 12));
     await writeFile(path.join(String(second.config.env.CODEX_HOME), "auth.json"), auth("later-refresh", 13));
     await second.cleanup();
     // The newer refresh persists to the grant it started from.
@@ -486,7 +433,7 @@ describe("managed AI connections", () => {
     const userId = "concurrent-freshness-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
-    await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
+    await service.save(userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
     // Two runs use the same OpenAI subscription grant at the same time.
     // Neither call below throws ai_connection_busy.
@@ -505,7 +452,7 @@ describe("managed AI connections", () => {
     const userId = "concurrent-freshness-reverse-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
-    await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Reverse freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
+    await service.save(userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Reverse freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
     // Two runs use the same OpenAI subscription grant at the same time.
     // Neither call below throws ai_connection_busy.
@@ -526,7 +473,7 @@ describe("managed AI connections", () => {
     const identityKey = "https://auth.x.ai::33333333-3333-3333-3333-333333333333";
     const auth = (marker: string, expiresAtMs: number) => JSON.stringify({ [identityKey]: { key: `key-${marker}`, refresh_token: `refresh-${marker}`, expires_at: new Date(expiresAtMs).toISOString() } });
     const now = Date.now();
-    await service.save(companyId, userId, { provider: "xai", method: "subscription", ownership: "personal", name: "Grok freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", now));
+    await service.save(userId, { provider: "xai", method: "subscription", ownership: "personal", name: "Grok freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", now));
     const runInput = { ...input, adapterType: "grok_local", responsibleUserId: userId, binding: { provider: "xai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
     // Two runs use the same xAI subscription grant at the same time.
     // Neither call below throws ai_connection_busy.
@@ -545,7 +492,7 @@ describe("managed AI connections", () => {
     const userId = "revoked-write-back-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
-    const saved = await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Revocation fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
+    const saved = await service.save(userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Revocation fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
     const run = await prepareManagedAiRuntime(db, runInput);
     const [grantBeforeCleanup] = await db.select().from(connectionGrants).where(eq(connectionGrants.id, saved.grantId));
@@ -566,7 +513,7 @@ describe("managed AI connections", () => {
     const userId = "credential-lock-race-user";
     await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
-    const saved = await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Credential lock race fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
+    const saved = await service.save(userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Credential lock race fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
     const run = await prepareManagedAiRuntime(db, runInput);
     // The run's own refresh looks newer than the value it started with, but
@@ -610,15 +557,15 @@ describe("managed AI connections", () => {
   it("does not let a forged delegation bypass human access or accept an expired subscription attempt", async () => {
     const selected = await service.select({ ...input, userId: "alice" });
     const otherAgent = randomUUID();
-    await db.insert(agents).values({ id: otherAgent, companyId, name: "Other" });
-    await db.insert(connectionGrantDelegations).values({ companyId, grantId: selected.grant.id, agentId: otherAgent, createdByUserId: "bob" });
+    await db.insert(agents).values({ id: otherAgent, name: "Other" });
+    await db.insert(connectionGrantDelegations).values({ grantId: selected.grant.id, agentId: otherAgent, createdByUserId: "bob" });
     await expect(service.select({ ...input, agentId: otherAgent, userId: "bob", binding: { ...binding, method: selected.attribution.method, mode: "delegated", connectionId: selected.connection.id, grantId: selected.grant.id } })).rejects.toThrow("not shared");
     const [environment] = await db.select().from(environments).limit(1);
     const sessionId = randomUUID();
     const intent = { provider: "anthropic", method: "subscription", ownership: "personal", name: "Expired", agentIds: [], allAgents: true } as const;
-    await db.insert(adapterAuthSessions).values({ companyId, environmentId: environment.id, adapterType: "claude_local", startedByUserId: "alice", publicSessionId: sessionId, status: "submitting", aiConnection: { ...intent, agentIds: [] }, expiresAt: new Date(Date.now() - 1000) });
-    await expect(service.save(companyId, "alice", { ...intent, agentIds: [] }, "fixture-never-save", sessionId)).rejects.toThrow("no longer active");
-    expect((await service.list(companyId, "alice")).some(account => account.name === "Expired")).toBe(false);
+    await db.insert(adapterAuthSessions).values({ environmentId: environment.id, adapterType: "claude_local", startedByUserId: "alice", publicSessionId: sessionId, status: "submitting", aiConnection: { ...intent, agentIds: [] }, expiresAt: new Date(Date.now() - 1000) });
+    await expect(service.save("alice", { ...intent, agentIds: [] }, "fixture-never-save", sessionId)).rejects.toThrow("no longer active");
+    expect((await service.list("alice")).some(account => account.name === "Expired")).toBe(false);
   });
   it("authorizes account creation, reconnect and defaults at the HTTP boundary before provider calls", async () => {
     const app = express();
@@ -626,14 +573,13 @@ describe("managed AI connections", () => {
     app.use((req, _res, next) => {
       const userId = String(req.headers["x-test-user"] ?? "alice");
       const role = req.headers["x-test-role"] === "viewer" ? "viewer" : "member";
-      req.actor = { type: "board", source: "session", userId, companyIds: [companyId], memberships: [{ companyId, membershipRole: role, status: "active" }] };
+      req.actor = { type: "board", source: "session", userId, memberships: [{ membershipRole: role, status: "active" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
     const personal = await service.select({ ...input, userId: "alice" });
-    const base = `/api/companies/${companyId}/ai-connections`;
-    expect((await request(app).get(`/api/companies/${otherCompanyId}/ai-connections`)).status).toBe(403);
+    const base = `/api/ai-connections`;
     expect((await request(app).put(`${base}/default`).set("x-test-user", "bob").send({ grantId: personal.grant.id })).status).toBe(403);
     expect((await request(app).put(`${base}/default`).set("x-test-role", "viewer").send({ grantId: personal.grant.id })).status).toBe(403);
     const payload = { provider: "anthropic", method: "api_key", name: "Fixture", ownership: "personal", apiKey: "fixture", allAgents: false, agentIds: [] };
@@ -650,12 +596,12 @@ describe("managed AI connections", () => {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
-      req.actor = { type: "board", source: req.headers["x-local"] === "yes" ? "local_implicit" : "session", userId: String(req.headers["x-test-user"] ?? "alice"), companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "member" }] };
+      req.actor = { type: "board", source: req.headers["x-local"] === "yes" ? "local_implicit" : "session", userId: String(req.headers["x-test-user"] ?? "alice"), memberships: [{ status: "active", membershipRole: "member" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
-    const url = `/api/companies/${companyId}/ai-connections/local`;
+    const url = `/api/ai-connections/local`;
     const payload = { provider: "anthropic", method: "subscription", name: "Local account test", ownership: "personal", agentIds: [agentId], allAgents: false };
     try {
       expect((await request(app).post(url).send(payload)).status).toBe(403);
@@ -665,7 +611,7 @@ describe("managed AI connections", () => {
       const checked = await request(app).post(`${url}/check`).set("x-local", "yes").send(payload);
       expect(checked.status).toBe(200);
       expect(checked.body).toEqual({ status: "ready" });
-      expect((await service.list(companyId, "alice")).some(c => c.name === payload.name)).toBe(false);
+      expect((await service.list("alice")).some(c => c.name === payload.name)).toBe(false);
       const connected = await request(app).post(url).set("x-local", "yes").send(payload);
       expect(connected.status).toBe(201);
       expect(JSON.stringify(connected.body)).not.toContain("fixture-local-token");
@@ -679,7 +625,7 @@ describe("managed AI connections", () => {
       reader.mockRejectedValueOnce(Object.assign(new Error("Sign in locally and retry"), { status: 422 }));
       const failed = await request(app).post(url).set("x-local", "yes").send({ ...payload, name: "Unsuccessful local login" });
       expect(failed.status).toBe(422);
-      expect((await service.list(companyId, "alice")).some(c => c.name === "Unsuccessful local login")).toBe(false);
+      expect((await service.list("alice")).some(c => c.name === "Unsuccessful local login")).toBe(false);
       const codex = { ...payload, provider: "openai", name: "Isolated terminal login" };
       const attempts = `${url}/attempts`;
       expect((await request(app).post(attempts).send(codex)).status).toBe(403); // This member cannot authorize agentId.
@@ -698,12 +644,12 @@ describe("managed AI connections", () => {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
-      req.actor = { type: "board", source: "session", userId: "alice", companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "member" }] };
+      req.actor = { type: "board", source: "session", userId: "alice", memberships: [{ status: "active", membershipRole: "member" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db, { deploymentMode: "authenticated", deploymentExposure: "public", trustedLocalStdioRuntimeHost: "" }));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
-    const base = `/api/companies/${companyId}/ai-connections/local`;
+    const base = `/api/ai-connections/local`;
     const intent = { provider, method: "subscription", ownership: "personal", name: "Hosted account", allAgents: false, agentIds: [] };
     try {
       for (const endpoint of [base, `${base}/attempts`, `${base}/check`]) {
@@ -721,12 +667,12 @@ describe("managed AI connections", () => {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
-      req.actor = { type: "board", source: "session", userId: String(req.headers["x-test-user"] ?? owner), companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: req.headers["x-viewer"] ? "viewer" : "member" }] };
+      req.actor = { type: "board", source: "session", userId: String(req.headers["x-test-user"] ?? owner), memberships: [{ status: "active", membershipRole: req.headers["x-viewer"] ? "viewer" : "member" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
-    const base = `/api/companies/${companyId}/ai-connections/local`;
+    const base = `/api/ai-connections/local`;
     const intent = { provider, method: "subscription", ownership: "personal", name: `Self-hosted ${provider}`, allAgents: false, agentIds: [] };
     try {
       expect((await request(app).post(`${base}/attempts`).set("x-viewer", "yes").send(intent)).status).toBe(403);
@@ -738,7 +684,6 @@ describe("managed AI connections", () => {
       const input = { ...intent, localSessionId: started.body.sessionId };
       for (const endpoint of [base, `${base}/check`]) {
         expect((await request(app).post(endpoint).set("x-test-user", "bob").send(input)).status).toBe(404);
-        expect((await request(app).post(endpoint.replace(companyId, otherCompanyId)).send(input)).status).toBe(403);
       }
       expect(reader).not.toHaveBeenCalled();
       const checked = await request(app).post(`${base}/check`).send(input);
@@ -748,7 +693,7 @@ describe("managed AI connections", () => {
       expect(saved.status).toBe(201);
       expect((await request(app).post(base).send(input)).body).toEqual(saved.body);
       expect(JSON.stringify(saved.body)).not.toContain("isolated-fixture-token");
-      expect((await service.list(companyId, owner)).filter(c => c.name === intent.name)).toHaveLength(1);
+      expect((await service.list(owner)).filter(c => c.name === intent.name)).toHaveLength(1);
     } finally { reader.mockRestore(); }
   });
   it("rejects invalid credentials without exposing the provider response", async () => {
@@ -768,46 +713,45 @@ describe("managed AI connections", () => {
   it("protects active-run attribution with the connection human audience", async () => {
     const account = await create("alice", "Private run attribution");
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", contextSnapshot: { aiConnection: { connectionId: account.connectionId, grantId: account.grantId } } });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running", contextSnapshot: { aiConnection: { connectionId: account.connectionId, grantId: account.grantId } } });
     const app = express();
     app.use((req, _res, next) => {
-      req.actor = { type: "board", source: "session", userId: String(req.headers["x-test-user"] ?? "alice"), companyIds: [companyId] };
+      req.actor = { type: "board", source: "session", userId: String(req.headers["x-test-user"] ?? "alice"), memberships: [{ status: "active", membershipRole: "member" }] };
       next();
     });
     app.use("/api", aiConnectionRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
-    const url = `/api/companies/${companyId}/ai-connections/${account.connectionId}/active-runs`;
+    const url = `/api/ai-connections/${account.connectionId}/active-runs`;
     const own = await request(app).get(url);
     expect(own.status).toBe(200);
     expect(own.headers["cache-control"]).toBe("no-store");
     expect(own.body).toEqual([expect.objectContaining({ id: runId, agentId })]);
     expect((await request(app).get(url).set("x-test-user", "bob")).status).toBe(404);
     await db.update(connectionGrants).set({ kind: "organization", subjectUserId: null }).where(eq(connectionGrants.id, account.grantId));
-    await db.insert(connectionGrantMembers).values({ companyId, grantId: account.grantId, subjectType: "user", subjectId: "alice" });
+    await db.insert(connectionGrantMembers).values({ grantId: account.grantId, subjectType: "user", subjectId: "alice" });
     expect((await request(app).get(url).set("x-test-user", "bob")).status).toBe(404);
-    await db.insert(connectionGrantMembers).values({ companyId, grantId: account.grantId, subjectType: "user", subjectId: "bob" });
+    await db.insert(connectionGrantMembers).values({ grantId: account.grantId, subjectType: "user", subjectId: "bob" });
     expect((await request(app).get(url).set("x-test-user", "bob")).body).toEqual(own.body);
-    expect((await request(app).get(url.replace(companyId, otherCompanyId))).status).toBe(403);
   });
   it("permits new-agent shared installation only for a connection configurator, without bypassing audience", async () => {
-    const account = await service.save(companyId, "alice", { provider: "anthropic", method: "api_key", ownership: "shared", name: "Restricted shared", apiKey: "fixture", agentIds: [], allAgents: false }, "fixture-restricted");
+    const account = await service.save("alice", { provider: "anthropic", method: "api_key", ownership: "shared", name: "Restricted shared", apiKey: "fixture", agentIds: [], allAgents: false }, "fixture-restricted");
     const selected = { provider: "anthropic", method: "api_key", mode: "shared", ...account } as const;
     const futureAgentId = randomUUID();
-    const req = (userId: string, role = "member") => ({ actor: { type: "board", source: "session", userId, companyIds: [companyId], memberships: [{ companyId, membershipRole: role, status: "active" }] } }) as express.Request;
-    expect(await canInstallSharedAiConnectionForNewAgent(db, req("alice"), companyId, selected)).toBe(true);
-    expect(await canInstallSharedAiConnectionForNewAgent(db, req("bob"), companyId, selected)).toBe(false);
-    expect(await canInstallSharedAiConnectionForNewAgent(db, req("alice", "viewer"), companyId, selected)).toBe(false);
-    expect(await canInstallSharedAiConnectionForNewAgent(db, { actor: { type: "agent", onBehalfOfUserId: "alice" } } as express.Request, companyId, selected)).toBe(false);
+    const req = (userId: string, role = "member") => ({ actor: { type: "board", source: "session", userId, memberships: [{ membershipRole: role, status: "active" }] } }) as express.Request;
+    expect(await canInstallSharedAiConnectionForNewAgent(db, req("alice"), selected)).toBe(true);
+    expect(await canInstallSharedAiConnectionForNewAgent(db, req("bob"), selected)).toBe(false);
+    expect(await canInstallSharedAiConnectionForNewAgent(db, req("alice", "viewer"), selected)).toBe(false);
+    expect(await canInstallSharedAiConnectionForNewAgent(db, { actor: { type: "agent", onBehalfOfUserId: "alice" } } as express.Request, selected)).toBe(false);
     const selectionInput = { ...input, agentId: futureAgentId, userId: "alice", binding: selected };
     await expect(service.select(selectionInput)).rejects.toThrow("not permitted for this agent");
-    const run = await prepareManagedAiRuntime(db, { companyId, agentId: futureAgentId, responsibleUserId: "alice", adapterType: "claude_local", binding: selected, config: { cwd: home, model: "same-model" }, allowUninstalledShared: true });
+    const run = await prepareManagedAiRuntime(db, { agentId: futureAgentId, responsibleUserId: "alice", adapterType: "claude_local", binding: selected, config: { cwd: home, model: "same-model" }, allowUninstalledShared: true });
     expect(run.config.model).toBe("same-model");
     await run.cleanup();
-    await db.insert(connectionGrantMembers).values({ companyId, grantId: account.grantId, subjectType: "user", subjectId: "bob" });
+    await db.insert(connectionGrantMembers).values({ grantId: account.grantId, subjectType: "user", subjectId: "bob" });
     await expect(service.select({ ...selectionInput, allowUninstalledShared: true })).rejects.toThrow("not shared with the responsible user");
     await db.delete(connectionGrantMembers).where(eq(connectionGrantMembers.grantId, account.grantId));
-    await db.insert(agents).values({ id: futureAgentId, companyId, name: "New shared agent", adapterType: "claude_local" });
-    await db.insert(toolConnectionInstalls).values({ companyId, connectionId: account.connectionId, targetType: "agent", targetId: futureAgentId, createdByUserId: "alice" });
+    await db.insert(agents).values({ id: futureAgentId, name: "New shared agent", adapterType: "claude_local" });
+    await db.insert(toolConnectionInstalls).values({ connectionId: account.connectionId, targetType: "agent", targetId: futureAgentId, createdByUserId: "alice" });
     expect((await service.select(selectionInput)).grant.id).toBe(account.grantId);
   });
 
@@ -822,15 +766,15 @@ describe("managed AI connections", () => {
     const [environment] = await db.insert(environments).values({ name: `Adoption sandbox ${inline}`, driver: "sandbox", config: { provider: "daytona" } }).returning();
     await settings.update({ defaultEnvironmentId: environment.id });
     const id = randomUUID();
-    await db.insert(agents).values({ id, companyId, name: "Runner adoption", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" } });
-    const account = await service.save(companyId, "alice", { provider: "openai", method: "api_key", ownership: "personal", name: "Runner adoption account", apiKey: "fixture-adoption-key", agentIds: inline ? [] : [id], allAgents: false }, "fixture-adoption-key");
-    await service.setDefault(companyId, "alice", account.grantId);
+    await db.insert(agents).values({ id, name: "Runner adoption", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" } });
+    const account = await service.save("alice", { provider: "openai", method: "api_key", ownership: "personal", name: "Runner adoption account", apiKey: "fixture-adoption-key", agentIds: inline ? [] : [id], allAgents: false }, "fixture-adoption-key");
+    await service.setDefault("alice", account.grantId);
     let interactionId: string | undefined;
     if (inline) {
       const issueId = randomUUID();
       const runId = randomUUID();
-      await db.insert(issues).values({ id: issueId, companyId, title: "Atomic adoption", status: "in_progress", assigneeAgentId: id });
-      await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId: id, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: "alice", contextSnapshot: { issueId } });
+      await db.insert(issues).values({ id: issueId, title: "Atomic adoption", status: "in_progress", assigneeAgentId: id });
+      await db.insert(heartbeatRuns).values({ id: runId, agentId: id, status: "failed", errorCode: "acpx_auth_required", responsibleUserId: "alice", contextSnapshot: { issueId } });
       interactionId = (await connectionIntentService(db).requestForRunAuthFailure(runId))!.interactionId!;
     }
     const target = { kind: "remote", transport: "sandbox", remoteCwd: "/workspace", providerKey: "daytona", runner: { execute: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "", timedOut: false })) } } as const;
@@ -841,7 +785,7 @@ describe("managed AI connections", () => {
     const probe = vi.spyOn(requireServerAdapter("paperclip_runner"), "testEnvironment").mockImplementation(async context => ({ adapterType: "paperclip_runner", status: context.executionTarget ? "pass" : "fail", testedAt: new Date().toISOString(), checks: [{ code: context.executionTarget ? "codex_hello_probe_passed" : "host_probe_failed", level: context.executionTarget ? "info" : "error", message: "fixture" }] }));
     const app = express();
     app.use(express.json());
-    app.use((req, _res, next) => { req.actor = { type: "board", source: "local_implicit", userId: "alice", companyIds: [companyId] }; next(); });
+    app.use((req, _res, next) => { req.actor = { type: "board", source: "local_implicit", userId: "alice" }; next(); });
     app.use("/api", agentRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
     const selected = { provider: "openai", method: "api_key", mode: "responsible_user" } as const;
@@ -887,7 +831,7 @@ describe("managed AI connections", () => {
         expect(await db.select().from(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, account.connectionId))).toHaveLength(1);
         expect((await adopt()).status).toBe(200);
       }
-      expect(acquire).toHaveBeenCalledWith(expect.objectContaining({ companyId, environment: expect.objectContaining({ id: environment.id }) }));
+      expect(acquire).toHaveBeenCalledWith(expect.objectContaining({ environment: expect.objectContaining({ id: environment.id }) }));
       expect(probe).toHaveBeenCalledWith(expect.objectContaining({ executionTarget: target, config: expect.objectContaining({ provider: "codex", model: "gpt-5.6-sol", managedAiConnection: expect.any(Object) }) }));
       expect(providerRequest).toHaveBeenCalledWith("https://api.openai.com/v1/models", expect.objectContaining({
         headers: { Authorization: "Bearer fixture-adoption-key" },
@@ -903,19 +847,19 @@ describe("managed AI connections", () => {
 
   it("creates and hires agents with an authorized restricted shared connection", async () => {
     const { agentRoutes } = await import("../routes/agents.js");
-    await db.update(companies).set({ requireBoardApprovalForNewAgents: false }).where(eq(companies.id, companyId));
-    const account = await service.save(companyId, "alice", { provider: "anthropic", method: "api_key", ownership: "shared", name: "Shared creation routes", apiKey: "fixture", agentIds: [], allAgents: false }, "fixture-create-routes");
+    await db.update(companies).set({ requireBoardApprovalForNewAgents: false });
+    const account = await service.save("alice", { provider: "anthropic", method: "api_key", ownership: "shared", name: "Shared creation routes", apiKey: "fixture", agentIds: [], allAgents: false }, "fixture-create-routes");
     const selected = { ...binding, mode: "shared", ...account } as const;
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
-      req.actor = { type: "board", source: "local_implicit", userId: "alice", companyIds: [companyId] };
+      req.actor = { type: "board", source: "local_implicit", userId: "alice" };
       next();
     });
     app.use("/api", agentRoutes(db));
     app.use((error: { status?: number; message: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(error.status ?? 500).json({ error: error.message }); });
     for (const endpoint of ["agents", "agent-hires"]) {
-      const response = await request(app).post(`/api/companies/${companyId}/${endpoint}`).send({ name: `Shared ${endpoint}`, role: "general", adapterType: "claude_local", adapterConfig: { model: "claude-sonnet-4-6" }, runtimeConfig: { aiConnection: selected } });
+      const response = await request(app).post(`/api/${endpoint}`).send({ name: `Shared ${endpoint}`, role: "general", adapterType: "claude_local", adapterConfig: { model: "claude-sonnet-4-6" }, runtimeConfig: { aiConnection: selected } });
       expect(response.status, JSON.stringify(response.body)).toBe(201);
       const agent = endpoint === "agents" ? response.body : response.body.agent;
       expect(agent.adapterConfig.model).toBe("claude-sonnet-4-6");
@@ -930,9 +874,9 @@ describe("managed AI connections", () => {
     try {
       for (const endpoint of ["agents", "agent-hires"]) {
         const name = `Rollback ${endpoint}`;
-        const response = await request(app).post(`/api/companies/${companyId}/${endpoint}`).send({ name, role: "general", adapterType: "claude_local", adapterConfig: { model: "claude-sonnet-4-6" }, runtimeConfig: { aiConnection: selected } });
+        const response = await request(app).post(`/api/${endpoint}`).send({ name, role: "general", adapterType: "claude_local", adapterConfig: { model: "claude-sonnet-4-6" }, runtimeConfig: { aiConnection: selected } });
         expect(response.status).toBe(500);
-        expect(await db.select().from(agents).where(and(eq(agents.companyId, companyId), eq(agents.name, name)))).toEqual([]);
+        expect(await db.select().from(agents).where(eq(agents.name, name))).toEqual([]);
       }
     } finally {
       await db.execute(sql`DROP TRIGGER reject_test_ai_install ON tool_connection_installs`);
@@ -951,18 +895,18 @@ describe("AI connection recovery delivery", () => {
       const issueId = randomUUID();
       const failedRunId = randomUUID();
       await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
-      await db.insert(agents).values({ id: recoveringAgentId, companyId, name: "Recovery agent", status: "active", adapterType: "claude_local", runtimeConfig: { aiConnection: binding } });
-      await db.insert(issues).values({ id: issueId, companyId, title: "Restore selected account", status: "in_progress", assigneeAgentId: recoveringAgentId });
-      await db.insert(heartbeatRuns).values({ id: failedRunId, companyId, agentId: recoveringAgentId, status: "running", responsibleUserId: userId, contextSnapshot: { issueId } });
+      await db.insert(agents).values({ id: recoveringAgentId, name: "Recovery agent", status: "active", adapterType: "claude_local", runtimeConfig: { aiConnection: binding } });
+      await db.insert(issues).values({ id: issueId, title: "Restore selected account", status: "in_progress", assigneeAgentId: recoveringAgentId });
+      await db.insert(heartbeatRuns).values({ id: failedRunId, agentId: recoveringAgentId, status: "running", responsibleUserId: userId, contextSnapshot: { issueId } });
       const intents = connectionIntentService(db);
-      const pending = await intents.request({ sub: recoveringAgentId, company_id: companyId, run_id: failedRunId, responsible_user_id: userId }, "anthropic", { purpose: "ai" });
+      const pending = await intents.request({ sub: recoveringAgentId, run_id: failedRunId, responsible_user_id: userId }, "anthropic", { purpose: "ai" });
       const account = await create(userId, `Recovered ${scenario}`);
       expect((await intents.setupOptions(pending.interactionId!)).existingConnections.map(connection => connection.id)).toEqual([account.connectionId]);
       await db.update(heartbeatRuns).set({ status: "failed", errorCode: "configuration_incomplete", resultJson: { configurationIncomplete: { reason: "ai_connection_unavailable" } } }).where(eq(heartbeatRuns.id, failedRunId));
       await db.update(issues).set({ status: "blocked" }).where(eq(issues.id, issueId));
-      await issueRecoveryActionService(db).upsertSourceScoped({ companyId, sourceIssueId: issueId, kind: "configuration_validation", cause: "configuration_incomplete", fingerprint: `ai:${issueId}`, nextAction: "Reconnect", ownerType: "board", evidence: { latestRunId: failedRunId } });
+      await issueRecoveryActionService(db).upsertSourceScoped({ sourceIssueId: issueId, kind: "configuration_validation", cause: "configuration_incomplete", fingerprint: `ai:${issueId}`, nextAction: "Reconnect", ownerType: "board", evidence: { latestRunId: failedRunId } });
       await intents.complete(pending.interactionId!, account.connectionId, userId);
-      if (scenario === "newer failure") await db.insert(heartbeatRuns).values({ companyId, agentId: recoveringAgentId, status: "failed", contextSnapshot: { issueId }, createdAt: new Date(Date.now() + 1000) });
+      if (scenario === "newer failure") await db.insert(heartbeatRuns).values({ agentId: recoveringAgentId, status: "failed", contextSnapshot: { issueId }, createdAt: new Date(Date.now() + 1000) });
       if (scenario === "different blocker") await db.update(issueRecoveryActions).set({ cause: "workspace_validation_failed" }).where(eq(issueRecoveryActions.sourceIssueId, issueId));
       if (scenario === "closed task") await db.update(issues).set({ status: "done" }).where(eq(issues.id, issueId));
       if (scenario === "revoked again") {
@@ -972,7 +916,7 @@ describe("AI connection recovery delivery", () => {
         expect(repairOptions.aiRepair).toMatchObject({ canReconnect: true, connection: { id: account.connectionId, grantId: account.grantId, isDefault: true, status: "revoked" } });
       }
       const wakeup = vi.fn(async (_agentId, opts) => {
-        await db.insert(agentWakeupRequests).values({ companyId, agentId: recoveringAgentId, source: "automation", status: "queued", idempotencyKey: opts.idempotencyKey });
+        await db.insert(agentWakeupRequests).values({ agentId: recoveringAgentId, source: "automation", status: "queued", idempotencyKey: opts.idempotencyKey });
         return null;
       });
       const delivery = connectionIntentDeliveryService(db, { wakeup } as never);
@@ -983,7 +927,7 @@ describe("AI connection recovery delivery", () => {
         expect(issue.status).toBe("in_progress");
         expect(wakeup).toHaveBeenCalledTimes(1);
         expect(wakeup).toHaveBeenCalledWith(recoveringAgentId, expect.objectContaining({ contextSnapshot: expect.objectContaining({ forceFreshSession: true }) }));
-        expect(await issueRecoveryActionService(db).getActiveForIssue(companyId, issueId)).toBeNull();
+        expect(await issueRecoveryActionService(db).getActiveForIssue(issueId)).toBeNull();
         const [receipt] = await db.select().from(connectionIntentDeliveries).where(eq(connectionIntentDeliveries.interactionId, pending.interactionId!));
         expect(receipt.deliveredAt).not.toBeNull();
       } else {

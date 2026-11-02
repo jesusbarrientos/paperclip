@@ -36,7 +36,7 @@ function createStorageService(files: Record<string, Buffer> = {}): StorageServic
   return {
     provider: "local_disk",
     putFile: vi.fn(),
-    getObject: vi.fn(async (_companyId, objectKey, options) => {
+    getObject: vi.fn(async (objectKey, options) => {
       const body = files[objectKey] ?? Buffer.alloc(0);
       const range = options?.range;
       const ranged = range ? body.subarray(range.start, range.end + 1) : body;
@@ -101,7 +101,6 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: "PAP-1534",
       title: "Bridge markdown work products",
       description: null,
@@ -110,7 +109,6 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "ReportWriter",
       role: "engineer",
       status: "idle",
@@ -121,7 +119,6 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     });
     await db.insert(assets).values({
       id: assetId,
-      companyId,
       provider: "local_disk",
       objectKey,
       contentType,
@@ -132,7 +129,6 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     });
     await db.insert(issueAttachments).values({
       id: attachmentId,
-      companyId,
       issueId,
       assetId,
     });
@@ -140,7 +136,6 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const contentPath = `/api/attachments/${attachmentId}/content`;
     const workProduct = {
       id: workProductId,
-      companyId,
       issueId,
       type: "artifact" as const,
       provider: "paperclip",
@@ -161,13 +156,13 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const files: Record<string, Buffer> = { [objectKey]: body };
     const storage = createStorageService(files);
     const svc = artifactReviewDocumentService(db, storage);
-    return { companyId, issueId, agentId, assetId, attachmentId, workProduct, files, objectKey, svc };
+    return { issueId, agentId, assetId, attachmentId, workProduct, files, objectKey, svc };
   }
 
   it("materializes a review document with promoted attribution", async () => {
     const fixture = await seedFixture();
     const result = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
 
@@ -191,11 +186,11 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
   it("is idempotent for unchanged content", async () => {
     const fixture = await seedFixture();
     const first = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
     const second = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
 
@@ -211,7 +206,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
   it("converges concurrent ensures onto one document", async () => {
     const fixture = await seedFixture();
     const input = {
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     };
     const [first, second] = await Promise.all([
@@ -229,13 +224,13 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
   it("writes a new revision when the attachment content changes", async () => {
     const fixture = await seedFixture();
     const first = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
 
     fixture.files[fixture.objectKey] = Buffer.from("# Report v2\n", "utf8");
     const second = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
 
@@ -250,12 +245,12 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
   it("synchronizes title and run provenance when the attachment body is unchanged", async () => {
     const fixture = await seedFixture();
     const first = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
 
     const renamed = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: { ...fixture.workProduct, title: "Renamed verification report" },
     });
     expect(renamed.created).toBe(false);
@@ -267,12 +262,11 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       status: "succeeded",
     });
     const reattributed = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: {
         ...fixture.workProduct,
         title: "Renamed verification report",
@@ -289,7 +283,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     expect(latestRevision?.createdByRunId).toBe(runId);
 
     const unchanged = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: {
         ...fixture.workProduct,
         title: "Renamed verification report",
@@ -304,13 +298,13 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const fixture = await seedFixture();
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: fixture.issueId, companyId: fixture.companyId },
+        issue: { id: fixture.issueId },
         workProduct: { ...fixture.workProduct, provider: "github" },
       }),
     ).rejects.toMatchObject({ status: 422 });
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: fixture.issueId, companyId: fixture.companyId },
+        issue: { id: fixture.issueId },
         workProduct: { ...fixture.workProduct, metadata: { attachmentId: "not-a-uuid" } },
       }),
     ).rejects.toMatchObject({ status: 422 });
@@ -320,7 +314,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const fixture = await seedFixture({ contentType: "application/pdf", originalFilename: "report.pdf" });
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: fixture.issueId, companyId: fixture.companyId },
+        issue: { id: fixture.issueId },
         workProduct: fixture.workProduct,
       }),
     ).rejects.toMatchObject({ status: 415 });
@@ -330,7 +324,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const fixture = await seedFixture();
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: randomUUID(), companyId: fixture.companyId },
+        issue: { id: randomUUID() },
         workProduct: fixture.workProduct,
       }),
     ).rejects.toMatchObject({ status: 404 });
@@ -338,7 +332,6 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const otherIssueId = randomUUID();
     await db.insert(issues).values({
       id: otherIssueId,
-      companyId: fixture.companyId,
       identifier: "PAP-1535",
       title: "Other issue",
       description: null,
@@ -347,7 +340,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     });
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: otherIssueId, companyId: fixture.companyId },
+        issue: { id: otherIssueId },
         workProduct: { ...fixture.workProduct, issueId: otherIssueId },
       }),
     ).rejects.toMatchObject({ status: 422 });
@@ -357,7 +350,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const fixture = await seedFixture({ byteSize: 512 * 1024 + 1 });
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: fixture.issueId, companyId: fixture.companyId },
+        issue: { id: fixture.issueId },
         workProduct: fixture.workProduct,
       }),
     ).rejects.toMatchObject({ status: 413 });
@@ -367,7 +360,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const fixture = await seedFixture({ body: Buffer.from([0x23, 0x20, 0xff, 0xfe, 0x00]) });
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: fixture.issueId, companyId: fixture.companyId },
+        issue: { id: fixture.issueId },
         workProduct: fixture.workProduct,
       }),
     ).rejects.toMatchObject({ status: 422 });
@@ -376,7 +369,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
   it("surfaces a conflict when the review document is locked and content changed", async () => {
     const fixture = await seedFixture();
     await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
     await documentService(db).lockIssueDocument({
@@ -387,7 +380,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
 
     // Unchanged content still resolves without a write.
     const unchanged = await fixture.svc.ensureForWorkProduct({
-      issue: { id: fixture.issueId, companyId: fixture.companyId },
+      issue: { id: fixture.issueId },
       workProduct: fixture.workProduct,
     });
     expect(unchanged.revisionChanged).toBe(false);
@@ -395,7 +388,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     fixture.files[fixture.objectKey] = Buffer.from("# Locked update\n", "utf8");
     await expect(
       fixture.svc.ensureForWorkProduct({
-        issue: { id: fixture.issueId, companyId: fixture.companyId },
+        issue: { id: fixture.issueId },
         workProduct: fixture.workProduct,
       }),
     ).rejects.toSatisfy((error: unknown) => error instanceof HttpError && error.status === 409);

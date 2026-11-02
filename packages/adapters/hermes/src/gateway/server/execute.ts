@@ -72,7 +72,7 @@ const SENSITIVE_KEY_PATTERN =
 const BEARER_TOKEN_PATTERN = /Bearer\s+\S+/gi;
 const HERMES_SESSION_KEY_HEADER_PATTERN = /(X-Hermes-Session-Key\s*[:=]\s*)([^\s,;]+)/gi;
 const PAPERCLIP_SESSION_KEY_PATTERN =
-  /\bpaperclip:(?:company:[A-Za-z0-9-]+:agent:[A-Za-z0-9-]+(?::(?:issue|run):[A-Za-z0-9-]+)?|run:[A-Za-z0-9-]+)\b/gi;
+  /\bpaperclip:(?:agent:[A-Za-z0-9-]+(?::(?:issue|run):[A-Za-z0-9-]+)?|run:[A-Za-z0-9-]+)\b/gi;
 
 const TERMINAL_STATUSES = new Set([
   "completed",
@@ -150,20 +150,19 @@ function issueIdFromContext(ctx: AdapterExecutionContext): string | null {
 
 export function resolveSessionKey(input: {
   strategy: SessionKeyStrategy;
-  companyId: string;
   agentId: string;
   runId: string;
   issueId: string | null;
 }): string | null {
   if (input.strategy === "none") return null;
   if (input.strategy === "agent") {
-    return `paperclip:company:${input.companyId}:agent:${input.agentId}`;
+    return `paperclip:agent:${input.agentId}`;
   }
   if (input.strategy === "run") {
     return `paperclip:run:${input.runId}`;
   }
   const issuePart = input.issueId ? `issue:${input.issueId}` : `run:${input.runId}`;
-  return `paperclip:company:${input.companyId}:agent:${input.agentId}:${issuePart}`;
+  return `paperclip:agent:${input.agentId}:${issuePart}`;
 }
 
 function stringifyForLog(value: unknown, maxChars = 4_000): string {
@@ -290,7 +289,6 @@ function buildInput(ctx: AdapterExecutionContext, paperclipApiUrl: string | null
     "",
     "Paperclip runtime identity:",
     `- Agent ID: ${ctx.agent.id}`,
-    `- Company ID: ${ctx.agent.companyId}`,
     `- Run ID: ${ctx.runId}`,
     ...(paperclipApiUrl ? [`- Paperclip API URL: ${paperclipApiUrl}`] : []),
     ...(issueWorkMode ? [`- Issue work mode: ${issueWorkMode}`] : []),
@@ -830,7 +828,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const strategy = normalizeSessionKeyStrategy(ctx.config.sessionKeyStrategy);
   const sessionKey = resolveSessionKey({
     strategy,
-    companyId: ctx.agent.companyId,
     agentId: ctx.agent.id,
     runId: ctx.runId,
     issueId: issueIdFromContext(ctx),

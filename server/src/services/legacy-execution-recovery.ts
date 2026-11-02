@@ -83,7 +83,7 @@ export async function terminalizeLegacyExecution(input: {
           .select()
           .from(issues)
           .where(
-            and(eq(issues.companyId, run.companyId), eq(issues.id, issueId)),
+            eq(issues.id, issueId),
           )
           .for("update")
       : [];
@@ -98,7 +98,6 @@ export async function terminalizeLegacyExecution(input: {
       .where(
         and(
           eq(heartbeatRuns.id, run.id),
-          eq(heartbeatRuns.companyId, run.companyId),
           inArray(heartbeatRuns.status, input.fromStatuses ?? [run.status]),
         ),
       )
@@ -132,7 +131,6 @@ export async function terminalizeLegacyExecution(input: {
       // and an existing unsafe-workspace hold instead of creating another one.
       const [reconciled] = await tx.select({ id: issueRecoveryActions.id })
         .from(issueRecoveryActions).where(and(
-          eq(issueRecoveryActions.companyId, run.companyId),
           eq(issueRecoveryActions.sourceIssueId, task.id),
           eq(issueRecoveryActions.status, "resolved"),
           or(
@@ -146,7 +144,6 @@ export async function terminalizeLegacyExecution(input: {
         )).limit(1);
       if (reconciled) return updated;
       await issueRecoveryActionService(tx as unknown as Db).upsertSourceScoped({
-        companyId: run.companyId,
         sourceIssueId: task.id,
         kind: "active_run_watchdog",
         ownerType: "board",
@@ -183,8 +180,8 @@ export async function settleInterruptedNativeBootstrap(
   const issueId = input.run.contextSnapshot?.issueId;
   if (typeof issueId !== "string") return null;
   return db.transaction(async tx => {
-    const [task] = await tx.select().from(issues).where(and(eq(issues.id, issueId), eq(issues.companyId, input.run.companyId))).for("update");
-    const [run] = await tx.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.id, input.run.id), eq(heartbeatRuns.companyId, input.run.companyId))).for("update");
+    const [task] = await tx.select().from(issues).where(eq(issues.id, issueId)).for("update");
+    const [run] = await tx.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, input.run.id)).for("update");
     if (!task || !run || run.runtimeMode !== "legacy" || run.runtimeModeResolvedAt ||
         run.contextSnapshot?.issueId !== task.id ||
         run.status !== "interrupted" || run.errorCode !== "server_shutdown_interrupted" ||
@@ -192,12 +189,12 @@ export async function settleInterruptedNativeBootstrap(
         hasWorkspaceRestoreFailure(run.resultJson) || executionFailureRetryCount(run) >= 2) return null;
     const [native] = await tx.select({ id: nativeRunFinalizations.runId }).from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, run.id)).limit(1);
     const [lease] = await tx.select({ id: environmentLeases.id }).from(environmentLeases).where(and(
-      eq(environmentLeases.companyId, run.companyId), eq(environmentLeases.heartbeatRunId, run.id),
+      eq(environmentLeases.heartbeatRunId, run.id),
       or(isNull(environmentLeases.releasedAt), eq(environmentLeases.status, "pending_cleanup"), eq(environmentLeases.cleanupStatus, "failed")),
     )).limit(1);
     if (native || lease) return null;
     const holds = await tx.select().from(issueRecoveryActions).where(and(
-      eq(issueRecoveryActions.companyId, run.companyId), eq(issueRecoveryActions.sourceIssueId, task.id),
+      eq(issueRecoveryActions.sourceIssueId, task.id),
       eq(issueRecoveryActions.cause, LEGACY_RECOVERY_CAUSE), eq(issueRecoveryActions.fingerprint, `legacy-execution:${run.id}`),
       sql`${issueRecoveryActions.evidence}->>'runId' = ${run.id}`,
       sql`not (${issueRecoveryActions.evidence} ? 'executionReconciliation')`,
@@ -230,7 +227,7 @@ export async function settleInterruptedNativeBootstrap(
       evidence: sql`jsonb_set(${issueRecoveryActions.evidence}, '{automaticRecovery,replay}', '"allowed"'::jsonb, false) ||
         ${JSON.stringify({ bootstrapPreparationSettledAt: now.toISOString() })}::jsonb`,
     }).where(inArray(issueRecoveryActions.id, holds.map(hold => hold.id))).returning({ id: issueRecoveryActions.id }) : [];
-    if (resolved.length) await logActivity(tx as unknown as Db, { companyId: run.companyId, actorType: "system", actorId: "system",
+    if (resolved.length) await logActivity(tx as unknown as Db, { actorType: "system", actorId: "system",
       action: "issue.recovery_action_resolved", entityType: "issue", entityId: task.id, agentId: run.agentId, runId: run.id,
       details: { reason: "native_bootstrap_stopped_before_provider", recoveryActionIds: resolved.map(r => r.id) },
     });

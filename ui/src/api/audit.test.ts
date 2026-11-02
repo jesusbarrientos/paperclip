@@ -22,7 +22,7 @@ describe("auditApi.exportAgentActionsCsv", () => {
       }),
     ));
 
-    const request = auditApi.exportAgentActionsCsv("company-1");
+    const request = auditApi.exportAgentActionsCsv();
     await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
 
     let settled = false;

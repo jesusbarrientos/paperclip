@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import type { ToolConnection } from "@paperclipai/shared";
 import { isConnectableAppSlug } from "@paperclipai/shared";
 import { Navigate, useNavigate, useParams } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { toolsApi } from "@/api/tools";
@@ -25,24 +24,23 @@ import { appApplicationTabHref, appTabHref, appTabLabel, isAppTabKey, type AppTa
 export function AppNotConnected() {
   const { applicationId = "", tab } = useParams<{ applicationId: string; tab?: string }>();
   const navigate = useNavigate();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const activeTab: AppTabKey | null = isAppTabKey(tab) ? tab : null;
 
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId && !!activeTab,
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
+    enabled: !!activeTab,
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: !!selectedCompanyId && !!activeTab,
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
+    enabled: !!activeTab,
   });
   const galleryQuery = useQuery({
-    queryKey: queryKeys.apps.gallery(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGallery(selectedCompanyId!),
-    enabled: !!selectedCompanyId && !!activeTab,
+    queryKey: queryKeys.apps.gallery(),
+    queryFn: () => toolsApi.listGallery(),
+    enabled: !!activeTab,
   });
 
   const application = useMemo(
@@ -91,9 +89,6 @@ export function AppNotConnected() {
   }
   if (tab === "setup" || tab === "test") {
     return <Navigate to={appApplicationTabHref(applicationId, "permissions")} replace />;
-  }
-  if (!selectedCompanyId) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an organization to manage apps.</div>;
   }
   if (!applicationId || !activeTab) {
     return <Navigate to={applicationId ? appApplicationTabHref(applicationId, "permissions") : "/apps"} replace />;

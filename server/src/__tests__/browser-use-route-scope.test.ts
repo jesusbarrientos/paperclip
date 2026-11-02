@@ -21,21 +21,20 @@ describe("browser task route scope", () => {
     "12345678-1234-7234-8234-123456789ABC",
     "00000000-0000-0000-0000-000000000000",
   ])("keeps canonical PostgreSQL task UUIDs queryable: %s", async (id) => {
-    const companyId = randomUUID();
-    const limit = vi.fn().mockResolvedValue([{ companyId }]);
+    const limit = vi.fn().mockResolvedValue([{ }]);
     const db = { select: () => ({ from: () => ({ where: () => ({ limit }) }) }) } as unknown as Db;
     const list = vi.fn().mockResolvedValue([]);
     const service = { list } as unknown as NonNullable<Parameters<typeof browserUseRoutes>[1]>;
     const app = express();
     app.use((req, _res, next) => {
-      req.actor = { type: "board", userId: "browser-reviewer", source: "session", companyIds: [companyId] };
+      req.actor = { type: "board", userId: "browser-reviewer", source: "session", memberships: [{ status: "active", membershipRole: "member" }] };
       next();
     });
     app.use(browserUseRoutes(db, service));
     app.use(errorHandler);
     expect((await http(app).get(`/issues/${id}/browsers`)).status).toBe(200);
     expect(limit).toHaveBeenCalledExactlyOnceWith(1);
-    expect(list).toHaveBeenCalledExactlyOnceWith(companyId, id, "browser-reviewer");
+    expect(list).toHaveBeenCalledExactlyOnceWith(id, "browser-reviewer");
   });
 
   it.each(routes)("rejects invalid task IDs before any query: $method $suffix", async ({ method, suffix }) => {
@@ -49,9 +48,9 @@ describe("browser task route scope", () => {
     const app = express();
     app.use((req, _res, next) => {
       req.actor = actorType === "board"
-        ? { type: "board", userId: "browser-reviewer", source: "session", companyIds: [] }
+        ? { type: "board", userId: "browser-reviewer", source: "session" }
         : actorType === "agent"
-          ? { type: "agent", companyId: randomUUID(), agentId: randomUUID(), source: "agent_key" }
+          ? { type: "agent", agentId: randomUUID(), source: "agent_key" }
           : { type: "none" };
       next();
     });

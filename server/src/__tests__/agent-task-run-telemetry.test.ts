@@ -31,7 +31,6 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 describeEmbeddedPostgres("emitAgentTaskRun", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
   let agentId!: string;
 
   beforeAll(async () => {
@@ -53,18 +52,15 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
   async function seedCompanyAndAgent(
     agentOverrides: Partial<typeof agents.$inferInsert> = {},
   ) {
-    companyId = randomUUID();
     agentId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "TEL",
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -74,7 +70,7 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
       permissions: {},
       ...agentOverrides,
     });
-    return { companyId, agentId };
+    return { agentId };
   }
 
   it("emits one agent.task_run event for each of the five terminal states", async () => {
@@ -85,7 +81,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
       const runId = randomUUID();
       const run = {
         id: runId,
-        companyId,
         agentId,
         status: state,
         startedAt: null,
@@ -108,7 +103,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     await seedCompanyAndAgent();
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "succeeded",
       startedAt: null,
@@ -129,7 +123,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     const finishedAt = new Date("2026-01-01T00:00:07.400Z");
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "succeeded",
       startedAt,
@@ -151,7 +144,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     const finishedAt = new Date("2026-01-01T00:00:05.000Z");
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "cancelled",
       startedAt,
@@ -170,7 +162,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     await seedCompanyAndAgent({ adapterConfig: {} });
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "failed",
       startedAt: null,
@@ -193,7 +184,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     await seedCompanyAndAgent();
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "succeeded",
       startedAt: null,
@@ -214,7 +204,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     await seedCompanyAndAgent();
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "succeeded",
       startedAt: null,
@@ -234,7 +223,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     const rawIssueId = randomUUID();
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "succeeded",
       startedAt: null,
@@ -257,7 +245,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     });
     const run = {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "succeeded",
       startedAt: null,
@@ -273,7 +260,6 @@ describeEmbeddedPostgres("emitAgentTaskRun", () => {
     await seedCompanyAndAgent();
     const run = {
       id: randomUUID(),
-      companyId,
       agentId: randomUUID(),
       status: "succeeded",
       startedAt: null,

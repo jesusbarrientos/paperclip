@@ -13,7 +13,6 @@ beforeEach(() => settings.getExperimental.mockResolvedValue({ enableChatConnecto
 
 const token = "synthetic-identity-preview-token-for-route-test";
 const preview = {
-  companyId: "company-a",
   companyName: "Private company",
   companyPrefix: "PVT",
   endpointId: "endpoint-a",
@@ -30,7 +29,7 @@ function fixture(
     type: "board",
     source: "session",
     userId: "viewer",
-    companyIds: ["company-a"],
+    memberships: [{ membershipRole: "viewer", status: "active" }],
   },
 ) {
   const previewIdentityLink = vi.fn().mockResolvedValue(preview);
@@ -75,41 +74,11 @@ describe("chat identity-link preview authority", () => {
     expect(previewIdentityLink).toHaveBeenCalledExactlyOnceWith(token, "viewer");
   });
 
-  it.each([false, true])(
-    "hides foreign previews identically to invalid or expired tokens (instance admin %s)",
-    async (isInstanceAdmin) => {
-      const { app, previewIdentityLink } = fixture({
-        type: "board",
-        source: "session",
-        userId: "other-user",
-        companyIds: ["company-b"],
-        isInstanceAdmin,
-      });
-      const foreign = await request(app)
-        .get("/api/chat-identity-links/preview")
-        .query({ token });
-      previewIdentityLink.mockRejectedValueOnce(
-        unprocessable("This identity-link request is invalid or expired"),
-      );
-      const missing = await request(app)
-        .get("/api/chat-identity-links/preview")
-        .query({ token: `${token}-missing` });
-      expect(foreign.status).toBe(404);
-      expect(missing.status).toBe(404);
-      expect(foreign.body).toEqual({
-        error: "Identity-link request not found",
-      });
-      expect(missing.body).toEqual(foreign.body);
-      expect(JSON.stringify(foreign.body)).not.toContain("Private");
-    },
-  );
-
   it.each(["none", "agent"] as const)(
     "rejects %s actors before looking up the token",
     async (type) => {
       const { app, previewIdentityLink } = fixture({
-        type,
-        companyId: "company-a",
+        type
       });
       await request(app)
         .get("/api/chat-identity-links/preview")

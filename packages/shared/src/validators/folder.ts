@@ -8,7 +8,6 @@ export const folderSlugSchema = z.string().trim().min(1).max(120).regex(
 
 export const folderSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   kind: folderKindSchema,
   parentId: z.string().guid().nullable(),
   name: z.string().min(1),

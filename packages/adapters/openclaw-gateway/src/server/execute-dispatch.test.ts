@@ -76,7 +76,6 @@ function createContext(input: {
     runId: "run-1",
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "OpenClaw Agent",
       adapterType: "openclaw_gateway",
       adapterConfig: {},

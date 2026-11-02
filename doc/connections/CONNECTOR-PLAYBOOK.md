@@ -109,8 +109,8 @@ invalid ownership layout with an actionable reconnect error.
 Verification must assert stored ownership and declarations, then execute a read
 and a write through a real run-scoped gateway. Cover generic and curated URL
 credentials, bearer/custom headers, shared identities, public endpoints, rotation,
-removal, failed-setup cleanup, owner reconnect of legacy credentials, another user,
-and another company. Fixture-backed MCP calls prove Paperclip behavior; they do
+removal, failed-setup cleanup, owner reconnect of legacy credentials, and another
+user. Fixture-backed MCP calls prove Paperclip behavior; they do
 not prove provider consent or account entitlements. Record account-bound live
 read/write proof separately and never describe metadata discovery as live proof.
 
@@ -490,7 +490,7 @@ Safe research may fetch public metadata, but it must not perform dynamic client
 registration. Paperclip's catalog preflight is intentionally non-registering:
 
 ```text
-GET /api/companies/:companyId/tools/apps/:galleryKey/preflight?methodKey=<method-key>
+GET /api/tools/apps/:galleryKey/preflight?methodKey=<method-key>
 ```
 
 Registration and consent happen only after an explicit Connect action. If the
@@ -658,7 +658,7 @@ home. Disconnecting returns to a runtime without those skills; another agent mus
 never inherit them. Preserve explicit model identity and normal session recovery.
 
 Required tests cover no assignment, credential access without a resource,
-authorized assignment, multiple resources with one skill, cross-company access,
+authorized assignment, multiple resources with one skill, access without organization membership,
 revocation during a retained run, disabled flags/connections, and reassignment.
 Verify skill installation and removal in both CLI/sandbox and native execution,
 including tool discovery, runtime cache changes, and absence of provider secrets.
@@ -1058,7 +1058,7 @@ Confirm the actual port with `pnpm dev:list` and verify health:
 
 ```sh
 curl -fsS http://localhost:<port>/api/health
-curl -fsS http://localhost:<port>/api/companies
+curl -fsS http://localhost:<port>/api/organization
 ```
 
 Walk the user path:
@@ -1135,7 +1135,7 @@ failures.
 Useful read-only endpoints after setup:
 
 ```text
-GET /api/companies/:companyId/tools/connections
+GET /api/tools/connections
 GET /api/tool-connections/:connectionId
 GET /api/tool-connections/:connectionId/catalog
 GET /api/tool-connections/:connectionId/activity?limit=50
@@ -1328,7 +1328,7 @@ Suggested PR verification block:
 | Config asks for project ID the provider does not require | Manifest UX | make it optional/advanced, add default, or remove it; test the zero-config path. |
 | Connected card still says Connect | Identity matching | application/source slug, retained app status, connection-to-definition association. |
 | New tool is classified read | Risk inference | annotations, namespaced/camelCase verb normalization, provider exception set, fixture. |
-| Connection from another company is visible | Authorization bug | stop; add company-scope negative tests before any further live testing. |
+| Connection visible to a caller without organization access | Authorization bug | stop; add organization-access negative tests before any further live testing. |
 | Raw credential appears anywhere | Security incident | stop, revoke/rotate it, remove evidence, trace every response/log/audit path, add a canary regression test. |
 
 When a bug appears on one provider, first reproduce it with a fixture or a
@@ -1529,7 +1529,7 @@ For each action, capture:
 - Redaction plan for arguments and results.
 - Expected audit fields.
 - Whether the action is enabled, disabled, or quarantined by default.
-- Negative access case: ungranted actor, disallowed resource, revoked connection, or cross-company attempt.
+- Negative access case: ungranted actor, disallowed resource, revoked connection, or caller without organization access.
 
 Risk classes:
 
@@ -1619,7 +1619,7 @@ connector proposal or PR. No separate private validation issue is required.
 | Authentication | The selected OAuth/app/key path succeeds and resolves the intended account/resource. | Redacted auth result, scopes, callback origin/path, credential-source and client-ownership mode; no secret values. |
 | Catalog and configuration | Discovery returns the reviewed actions; resource filters and selected access persist. | Tool names/count, schema hashes, risk/default-policy review, and saved filter names. |
 | Allowed execution | A narrow read succeeds through the gateway; writes follow the effective policy. | Tool, actor, decision, redacted result, and correlated call/audit record. Use a disposable resource for an authorized live write; otherwise mark write execution untested. |
-| Denied execution | Ungranted actors, another company, disallowed resources, revoked connections, and declared blocked/quarantined actions cannot execute. | Expected denial and reason code, with the automated or live test that exercised the boundary. Cover listing where the policy requires tools to be hidden. |
+| Denied execution | Ungranted actors, callers without organization access, disallowed resources, revoked connections, and declared blocked/quarantined actions cannot execute. | Expected denial and reason code, with the automated or live test that exercised the boundary. Cover listing where the policy requires tools to be hidden. |
 | Runtime delivery | An actual agent/run-scoped gateway call succeeds when runtime logic changes. Chat/email also routes an incoming message and its reply to the same task. | Redacted task/conversation and call correlation; identify live versus simulated events. |
 | Refresh and recovery | Catalog refresh, token refresh/reconnect, and recoverable failures preserve the correct identity and policy. | Before/after outcome, redacted error code, and successful retry; no duplicated connection. |
 | Revoke and reconnect | Revocation blocks subsequent execution; supported reconnect reuses the intended identity/history. | Removal or denial evidence followed by reconnect result. |
@@ -2108,7 +2108,7 @@ Auth endpoints (exact paths, from the live discovery chain):
 | Authorize | `https://mcp.notion.com/authorize` |
 | Token (exchange + refresh) | `https://mcp.notion.com/token` |
 | Registration (RFC 7591 DCR) | `https://mcp.notion.com/register` |
-| Paperclip connect (wizard) | `POST /api/companies/:companyId/tools/apps/connect` |
+| Paperclip connect (wizard) | `POST /api/tools/apps/connect` |
 | Paperclip OAuth start | `POST /api/tools/oauth/:connectionId/start` |
 | Paperclip callback | `GET /api/tools/oauth/callback` |
 
@@ -2124,7 +2124,7 @@ sequenceDiagram
     participant N as Notion web<br/>(app.notion.com, notion.com)
 
     U->>UI: Click "Connect" (deep link ?source=notion)
-    UI->>S: POST /companies/:id/tools/apps/connect { appKey: "notion" }
+    UI->>S: POST /tools/apps/connect { appKey: "notion" }
     S->>M: GET /.well-known/oauth-protected-resource (RFC 9728)
     M-->>S: authorization_servers → mcp.notion.com
     S->>M: GET /.well-known/oauth-authorization-server (RFC 8414)

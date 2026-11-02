@@ -768,7 +768,6 @@ describe("Codex app-server Codex driver", () => {
       fixtureName: "codex-conformance",
       identity: {
         schema: "paperclip.prp.identity.v1" as const,
-        companyId: "company-1",
         issueId: "issue-1",
         runId: "run-1",
         environmentLeaseId: "lease-1",

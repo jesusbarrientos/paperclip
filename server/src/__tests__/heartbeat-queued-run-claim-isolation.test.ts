@@ -84,7 +84,6 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Claim Isolation Agent",
       role: "engineer",
       status: "idle",
@@ -101,11 +100,10 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
       permissions: {},
     });
 
-    return { companyId, agentId };
+    return { agentId };
   }
 
   async function insertQueuedRun(
-    companyId: string,
     agentId: string,
     wake: Partial<typeof agentWakeupRequests.$inferInsert>,
     createdAt: Date,
@@ -115,7 +113,6 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
       agentId,
       source: "on_demand",
       triggerDetail: "manual",
@@ -125,7 +122,6 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -139,8 +135,8 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
 
   // A queued-comment interrupt wake whose receipt cannot be verified. The run
   // identity check rejects it with a 403 every time the run is claimed.
-  function insertUnverifiableInterruptRun(companyId: string, agentId: string, createdAt = new Date(Date.now() - 60_000)) {
-    return insertQueuedRun(companyId, agentId, {
+  function insertUnverifiableInterruptRun(agentId: string, createdAt = new Date(Date.now() - 60_000)) {
+    return insertQueuedRun(agentId, {
       reason: "issue_commented",
       idempotencyKey: `queued-comment-interrupt:${randomUUID()}`,
       requestedByActorType: "user",
@@ -150,8 +146,8 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
 
   // A system wake with no issue in a company without members. Its responsible
   // user cannot be resolved yet (422), but a user added later would fix that.
-  function insertUnresolvableOwnerRun(companyId: string, agentId: string, createdAt = new Date(Date.now() - 60_000)) {
-    return insertQueuedRun(companyId, agentId, {
+  function insertUnresolvableOwnerRun(agentId: string, createdAt = new Date(Date.now() - 60_000)) {
+    return insertQueuedRun(agentId, {
       source: "automation",
       triggerDetail: "system",
       requestedByActorType: "system",
@@ -161,8 +157,8 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
 
   // A manual wake from a user. It resolves its identity from the receipt, so it
   // can always be claimed.
-  function insertClaimableRun(companyId: string, agentId: string, createdAt = new Date()) {
-    return insertQueuedRun(companyId, agentId, {
+  function insertClaimableRun(agentId: string, createdAt = new Date()) {
+    return insertQueuedRun(agentId, {
       requestedByActorType: "user",
       requestedByActorId: "board-user",
       payload: { manualUserWake: true },
@@ -178,8 +174,8 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
   }
 
   it("cancels a queued run whose claim is rejected instead of failing recovery", async () => {
-    const { companyId, agentId } = await insertAgent();
-    const { runId, wakeupRequestId } = await insertUnverifiableInterruptRun(companyId, agentId);
+    const { agentId } = await insertAgent();
+    const { runId, wakeupRequestId } = await insertUnverifiableInterruptRun(agentId);
 
     await expect(heartbeat.resumeQueuedRuns()).resolves.toBeUndefined();
 
@@ -202,9 +198,9 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
   });
 
   it("claims the agent's next queued run after a rejected one", async () => {
-    const { companyId, agentId } = await insertAgent();
-    const { runId: rejectedRunId } = await insertUnverifiableInterruptRun(companyId, agentId);
-    const { runId: healthyRunId } = await insertClaimableRun(companyId, agentId);
+    const { agentId } = await insertAgent();
+    const { runId: rejectedRunId } = await insertUnverifiableInterruptRun(agentId);
+    const { runId: healthyRunId } = await insertClaimableRun(agentId);
 
     await expect(heartbeat.resumeQueuedRuns()).resolves.toBeUndefined();
     await heartbeat.drainActiveRunExecutions();
@@ -218,9 +214,9 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
   });
 
   it("keeps a recoverable rejection queued without blocking the runs behind it", async () => {
-    const { companyId, agentId } = await insertAgent();
-    const { runId: deferredRunId } = await insertUnresolvableOwnerRun(companyId, agentId);
-    const { runId: healthyRunId } = await insertClaimableRun(companyId, agentId);
+    const { agentId } = await insertAgent();
+    const { runId: deferredRunId } = await insertUnresolvableOwnerRun(agentId);
+    const { runId: healthyRunId } = await insertClaimableRun(agentId);
 
     await expect(heartbeat.resumeQueuedRuns()).resolves.toBeUndefined();
     await heartbeat.drainActiveRunExecutions();
@@ -233,8 +229,8 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
   it("keeps processing other agents' queued runs after one agent's run is rejected", async () => {
     const first = await insertAgent();
     const second = await insertAgent();
-    const { runId: rejectedRunId } = await insertUnverifiableInterruptRun(first.companyId, first.agentId);
-    const { runId: healthyRunId } = await insertClaimableRun(second.companyId, second.agentId);
+    const { runId: rejectedRunId } = await insertUnverifiableInterruptRun(first.agentId);
+    const { runId: healthyRunId } = await insertClaimableRun(second.agentId);
 
     await expect(heartbeat.resumeQueuedRuns()).resolves.toBeUndefined();
     await heartbeat.drainActiveRunExecutions();

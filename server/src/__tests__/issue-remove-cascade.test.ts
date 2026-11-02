@@ -78,14 +78,12 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     });
     await db.insert(goals).values({
       id: goalId,
-      companyId,
       title: "Delete safety",
       level: "task",
       status: "active",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Origin",
       role: "engineer",
       status: "active",
@@ -96,20 +94,18 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "manual",
       status: "succeeded",
     });
 
-    return { companyId, goalId, agentId, runId };
+    return { goalId, agentId, runId };
   }
 
-  async function seedIssue(companyId: string, goalId: string) {
+  async function seedIssue(goalId: string) {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       goalId,
       title: "Deletable issue",
       status: "in_progress",
@@ -119,12 +115,11 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
   }
 
   it("deletes an issue and cascades its dependent rows", async () => {
-    const { companyId, goalId, runId } = await seedCompanyAgentRun();
-    const issueId = await seedIssue(companyId, goalId);
+    const { goalId, runId } = await seedCompanyAgentRun();
+    const issueId = await seedIssue(goalId);
 
     await db.insert(feedbackVotes).values({
       id: randomUUID(),
-      companyId,
       issueId,
       targetType: "comment",
       targetId: "target-1",
@@ -133,14 +128,12 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     });
     await db.insert(issueComments).values({
       id: randomUUID(),
-      companyId,
       issueId,
       authorUserId: "board-user",
       body: "First comment.",
     });
     await db.insert(issueThreadInteractions).values({
       id: randomUUID(),
-      companyId,
       issueId,
       kind: "request_confirmation",
       sourceRunId: runId,
@@ -153,13 +146,11 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     });
     await db.insert(issueReadStates).values({
       id: randomUUID(),
-      companyId,
       issueId,
       userId: "board-user",
     });
     await db.insert(issueInboxArchives).values({
       id: randomUUID(),
-      companyId,
       issueId,
       userId: "board-user",
     });
@@ -179,13 +170,12 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
   });
 
   it("deletes an issue and keeps ledger rows with issueId set to null", async () => {
-    const { companyId, goalId, agentId } = await seedCompanyAgentRun();
-    const issueId = await seedIssue(companyId, goalId);
+    const { goalId, agentId } = await seedCompanyAgentRun();
+    const issueId = await seedIssue(goalId);
 
     const costEventId = randomUUID();
     await db.insert(costEvents).values({
       id: costEventId,
-      companyId,
       agentId,
       issueId,
       provider: "anthropic",
@@ -196,7 +186,6 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     const financeEventId = randomUUID();
     await db.insert(financeEvents).values({
       id: financeEventId,
-      companyId,
       agentId,
       issueId,
       costEventId,
@@ -222,12 +211,11 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
   });
 
   it("returns a 409 conflict when a restricted decisions row references the issue", async () => {
-    const { companyId, goalId, agentId, runId } = await seedCompanyAgentRun();
-    const issueId = await seedIssue(companyId, goalId);
+    const { goalId, agentId, runId } = await seedCompanyAgentRun();
+    const issueId = await seedIssue(goalId);
 
     await db.insert(decisions).values({
       id: randomUUID(),
-      companyId,
       originAgentId: agentId,
       originIssueId: issueId,
       originRunId: runId,

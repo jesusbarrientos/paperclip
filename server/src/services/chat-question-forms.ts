@@ -88,7 +88,6 @@ export interface ChatQuestionFormSubmitTokenPayload {
 }
 
 export interface ChatQuestionFormActionRecordContext {
-  companyId: string;
   conversationId: string;
   endpointId: string;
   publicationId: string;
@@ -351,7 +350,6 @@ export function chatQuestionFormActionRecords(
   context: ChatQuestionFormActionRecordContext,
 ) {
   const shared = {
-    companyId: context.companyId,
     endpointId: context.endpointId,
     conversationId: context.conversationId,
     status: "issued",
@@ -815,7 +813,6 @@ export function chatQuestionFormValidationResponse(
 export async function resolveChatQuestionFormOpen(
   db: ChatQuestionFormDb,
   args: {
-    companyId: string;
     conversationId: string;
     endpointId: string;
     interaction: AskUserQuestionsInteraction;
@@ -829,7 +826,6 @@ export async function resolveChatQuestionFormOpen(
     .from(chatActions)
     .where(
       and(
-        eq(chatActions.companyId, args.companyId),
         eq(chatActions.endpointId, args.endpointId),
         eq(chatActions.conversationId, args.conversationId),
         eq(chatActions.kind, "question_form_open"),
@@ -852,7 +848,6 @@ export async function resolveChatQuestionFormOpen(
     .from(chatActions)
     .where(
       and(
-        eq(chatActions.companyId, args.companyId),
         eq(chatActions.endpointId, args.endpointId),
         eq(chatActions.conversationId, args.conversationId),
         eq(chatActions.kind, "question_form_submit"),
@@ -902,7 +897,6 @@ export async function resolveChatQuestionFormSubmission(
   db: ChatQuestionFormDb,
   args: {
     callbackId: string;
-    companyId: string;
     conversationId?: string;
     endpointId: string;
     interaction: AskUserQuestionsInteraction;
@@ -913,7 +907,6 @@ export async function resolveChatQuestionFormSubmission(
 ): Promise<ResolvedChatQuestionFormSubmission | null> {
   const loaded = await loadChatQuestionFormSubmissionToken(db, {
     callbackId: args.callbackId,
-    companyId: args.companyId,
     endpointId: args.endpointId,
   });
   if (
@@ -946,7 +939,6 @@ export async function loadChatQuestionFormSubmissionToken(
   db: ChatQuestionFormDb,
   args: {
     callbackId: string;
-    companyId: string;
     endpointId: string;
     includeProcessed?: boolean;
   },
@@ -957,7 +949,6 @@ export async function loadChatQuestionFormSubmissionToken(
     .from(chatActions)
     .where(
       and(
-        eq(chatActions.companyId, args.companyId),
         eq(chatActions.endpointId, args.endpointId),
         eq(chatActions.kind, "question_form_submit"),
         eq(chatActions.providerActionId, args.callbackId),

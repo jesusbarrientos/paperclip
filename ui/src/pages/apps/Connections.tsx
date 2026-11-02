@@ -12,7 +12,7 @@ import {
   isToolConnectionAttentionHealth as isAttentionHealthStatus,
 } from "@paperclipai/shared";
 import { useNavigate } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
@@ -114,7 +114,7 @@ export function Connections() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const { selectedCompany, selectedCompanyId } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const reviewCount = useReviewCount();
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -134,36 +134,31 @@ export function Connections() {
   }, [setBreadcrumbs]);
 
   const galleryQuery = useQuery({
-    queryKey: queryKeys.apps.gallery(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGallery(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.apps.gallery(),
+    queryFn: () => toolsApi.listGallery(),
   });
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
   const profilesQuery = useQuery({
-    queryKey: queryKeys.tools.profiles(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listProfiles(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
   });
   const userDirectoryQuery = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId ?? "__none__"),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const connectorEnrollmentQuery = useQuery({
     queryKey: ["cloud-connector", "enrollment"],
     queryFn: () => toolsApi.getCloudConnectorEnrollment(),
   });
   const startConnectorEnrollment = useMutation({
-    mutationFn: () => toolsApi.startCloudConnectorEnrollment(selectedCompanyId!, selectedCompany?.name),
+    mutationFn: () => toolsApi.startCloudConnectorEnrollment(organization?.name),
     onSuccess: (status) => {
       if (status.verificationUrl) window.location.assign(status.verificationUrl);
     },
@@ -183,9 +178,9 @@ export function Connections() {
     }) =>
       toolsApi.archiveConnection(target.id),
     onSuccess: (_connection, target) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tools.connections(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tools.applications(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tools.connections() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tools.applications() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention() });
       pushToast({
         title: "Connection deleted",
         body: target.remainingConnectionCount > 0
@@ -303,9 +298,6 @@ export function Connections() {
   const rowsNeedingAttention = rows.filter(rowNeedsAttention);
   const visibleRows = filter === "attention" ? rowsNeedingAttention : rows;
 
-  if (!selectedCompanyId) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an organization to manage apps.</div>;
-  }
 
   const loading = applicationsQuery.isLoading || connectionsQuery.isLoading || galleryQuery.isLoading;
 

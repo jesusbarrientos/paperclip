@@ -13,7 +13,6 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { agentWakeupRequests } from "./agent_wakeup_requests.js";
 
@@ -21,7 +20,6 @@ export const heartbeatRuns = pgTable(
   "heartbeat_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     agentId: uuid("agent_id").notNull().references(() => agents.id),
     invocationSource: text("invocation_source").notNull().default("on_demand"),
     triggerDetail: text("trigger_detail"),
@@ -103,62 +101,51 @@ export const heartbeatRuns = pgTable(
     executionControlDeadlineIdx: index("heartbeat_runs_execution_control_deadline_idx")
       .on(table.executionControlDeadlineAt).where(sql`${table.executionControlDeadlineAt} is not null`),
     nativeReplacementPredecessorUq: uniqueIndex("heartbeat_runs_native_replacement_predecessor_uq")
-      .on(table.companyId, table.retryOfRunId)
+      .on(table.retryOfRunId)
       .where(sql`${table.scheduledRetryReason} = 'native_safe_replacement'`),
     companyNativeIssueRunUq: unique("heartbeat_runs_company_native_issue_id_uq").on(
-      table.companyId,
       table.nativeIssueId,
       table.id,
     ),
     companyNativeIssueRunContractUq: unique(
       "heartbeat_runs_company_native_issue_contract_id_uq",
     ).on(
-      table.companyId,
       table.nativeIssueId,
       table.id,
       table.completionContractId,
     ),
     companyAgentStartedIdx: index("heartbeat_runs_company_agent_started_idx").on(
-      table.companyId,
       table.agentId,
       table.startedAt,
     ),
     companyResponsibleUserIdx: index("heartbeat_runs_company_responsible_user_idx").on(
-      table.companyId,
       table.responsibleUserId,
       table.createdAt,
     ),
     companyLivenessIdx: index("heartbeat_runs_company_liveness_idx").on(
-      table.companyId,
       table.livenessState,
       table.createdAt,
     ),
     companyStatusLastOutputIdx: index("heartbeat_runs_company_status_last_output_idx").on(
-      table.companyId,
       table.status,
       table.lastOutputAt,
     ),
     companyStatusProcessStartedIdx: index("heartbeat_runs_company_status_process_started_idx").on(
-      table.companyId,
       table.status,
       table.processStartedAt,
     ),
     companyCreatedAtDescIdx: index("heartbeat_runs_company_created_at_desc_idx").on(
-      table.companyId,
       table.createdAt.desc(),
     ),
     companyCtxIssueCreatedIdx: index("heartbeat_runs_company_ctx_issue_created_idx").on(
-      table.companyId,
       sql`(${table.contextSnapshot} ->> 'issueId')`,
       table.createdAt.desc(),
     ),
     companyCtxTaskCreatedIdx: index("heartbeat_runs_company_ctx_task_created_idx").on(
-      table.companyId,
       sql`(${table.contextSnapshot} ->> 'taskId')`,
       table.createdAt.desc(),
     ),
     companyCtxTaskKeyCreatedIdx: index("heartbeat_runs_company_ctx_taskkey_created_idx").on(
-      table.companyId,
       sql`(${table.contextSnapshot} ->> 'taskKey')`,
       table.createdAt.desc(),
     ),

@@ -1,41 +1,6 @@
-type OnboardingRouteCompany = {
-  id: string;
-  issuePrefix: string;
-};
-
 export function isOnboardingPath(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
-
-  if (segments.length === 1) {
-    return segments[0]?.toLowerCase() === "onboarding";
-  }
-
-  if (segments.length === 2) {
-    return segments[1]?.toLowerCase() === "onboarding";
-  }
-
-  return false;
-}
-
-/**
- * The company prefix in an onboarding pathname, or undefined when there is
- * none.
- *
- * `OnboardingWizard` renders as a full-screen overlay beside `<Routes>` rather
- * than inside it (`App.tsx`), so it has no route match and `useParams()`
- * returns nothing there — `companyPrefix` was always undefined and the wizard
- * always opened at step 1, even when the URL named a company. `useLocation()`
- * needs only the router, not a match, so the pathname is the signal that
- * survives where params do not.
- *
- * Deliberately parses the same shape as {@link isOnboardingPath}: the prefix is
- * the first of exactly two segments. Anything else has no prefix to read.
- */
-export function companyPrefixFromOnboardingPath(pathname: string): string | undefined {
-  const segments = pathname.split("/").filter(Boolean);
-  if (segments.length !== 2) return undefined;
-  if (segments[1]?.toLowerCase() !== "onboarding") return undefined;
-  return segments[0];
+  return segments.length === 1 && segments[0]?.toLowerCase() === "onboarding";
 }
 
 /** The wizard step that asks for the company's mission. */
@@ -77,46 +42,20 @@ export function onboardingStepForCompany(): ExistingCompanyOnboardingStep {
 
 export function resolveRouteOnboardingOptions(params: {
   pathname: string;
-  companyPrefix?: string;
-  companies: OnboardingRouteCompany[];
+  organization: { id: string } | null;
   /**
-   * Whether this instance is a Cloud-managed stack. Company creation lives on
-   * Cloud there — POST /companies is a 403 floor — so a route that cannot name
-   * an existing company must never open the create wizard: it would be a dead
-   * end wearing a form. A managed stack holds exactly one company, so the
-   * useful reading of a bare `/onboarding` is that company's agent arc.
+   * Organization creation lives on Cloud for a managed stack (in-app creation
+   * is a 403 floor), so there a bare `/onboarding` must never open the create
+   * wizard: it would be a dead end wearing a form.
    */
   cloudManaged?: boolean;
 }): { initialStep: 1 | ExistingCompanyOnboardingStep; companyId?: string } | null {
-  const { pathname, companyPrefix, companies, cloudManaged } = params;
-
-  if (!isOnboardingPath(pathname)) return null;
-
-  const managedFallback = (): { initialStep: ExistingCompanyOnboardingStep; companyId?: string } | null =>
-    companies.length === 1
-      ? { initialStep: onboardingStepForCompany(), companyId: companies[0]!.id }
-      : null;
-
-  if (!companyPrefix) {
-    if (cloudManaged) return managedFallback();
-    return { initialStep: 1 };
+  if (!isOnboardingPath(params.pathname)) return null;
+  if (params.organization) {
+    return { initialStep: onboardingStepForCompany(), companyId: params.organization.id };
   }
-
-  const matchedCompany =
-    companies.find(
-      (company) =>
-        company.issuePrefix.toUpperCase() === companyPrefix.toUpperCase(),
-    ) ?? null;
-
-  if (!matchedCompany) {
-    if (cloudManaged) return managedFallback();
-    return { initialStep: 1 };
-  }
-
-  return {
-    initialStep: onboardingStepForCompany(),
-    companyId: matchedCompany.id,
-  };
+  if (params.cloudManaged) return null;
+  return { initialStep: 1 };
 }
 
 /**
@@ -191,13 +130,6 @@ export function canJumpToOnboardingStep(params: {
   return (
     params.targetStep < params.currentStep && params.targetStep >= params.entryStep
   );
-}
-
-export function shouldRedirectCompanylessRouteToOnboarding(params: {
-  pathname: string;
-  hasCompanies: boolean;
-}): boolean {
-  return !params.hasCompanies && !isOnboardingPath(params.pathname);
 }
 
 /**

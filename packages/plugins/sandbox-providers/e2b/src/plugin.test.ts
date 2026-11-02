@@ -170,7 +170,6 @@ describe("E2B sandbox provider plugin", () => {
 
     const lease = await plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: {
@@ -204,7 +203,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: {
@@ -225,7 +223,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentAcquireLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       config: {
@@ -248,7 +245,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentResumeLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       runId: "run-1",
       providerLeaseId: "sandbox-123",
@@ -284,7 +280,6 @@ describe("E2B sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -344,7 +339,6 @@ describe("E2B sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -388,7 +382,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -414,7 +407,6 @@ describe("E2B sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -443,7 +435,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -485,7 +476,6 @@ describe("E2B sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -530,7 +520,6 @@ describe("E2B sandbox provider plugin", () => {
 
     const result = await plugin.definition.onEnvironmentExecute?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -562,7 +551,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -574,7 +562,6 @@ describe("E2B sandbox provider plugin", () => {
     });
     await plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -598,7 +585,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentReleaseLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -620,7 +606,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentRealizeWorkspace?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",
@@ -655,7 +640,6 @@ describe("E2B sandbox provider plugin", () => {
 
     await expect(plugin.definition.onEnvironmentDestroyLease?.({
       driverKey: "e2b",
-      companyId: "company-1",
       environmentId: "env-1",
       config: {
         template: "base",

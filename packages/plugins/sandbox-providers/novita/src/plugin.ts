@@ -148,7 +148,6 @@ export function buildShellCommand(input: {
 async function createSandbox(params: PluginEnvironmentAcquireLeaseParams | PluginEnvironmentProbeParams, config: NovitaDriverConfig) {
   const metadata = {
     "paperclip-provider": "novita",
-    "paperclip-company-id": params.companyId,
     "paperclip-environment-id": params.environmentId,
     ...(params.issueId ? { "paperclip-issue-id": params.issueId } : {}),
     ...("runId" in params ? { "paperclip-run-id": params.runId } : {}),

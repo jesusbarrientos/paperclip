@@ -8,7 +8,6 @@ import {
 const secret = (overrides = {}) =>
   ({
     id: "s1",
-    companyId: "c1",
     key: "ANTHROPIC_API_KEY",
     name: "Claude",
     scope: "company",
@@ -19,7 +18,6 @@ const personal = (key = "ANTHROPIC_API_KEY.setup.abc", overrides = {}) =>
   ({
     definition: {
       id: "d1",
-      companyId: "c1",
       key,
       name: "My Claude",
       status: "active",
@@ -31,7 +29,6 @@ describe("saved provider keys", () => {
   it("reuses canonical and setup keys with references, including normalized organization keys", () => {
     expect(
       savedProviderKeys(
-        "c1",
         "ANTHROPIC_API_KEY",
         [personal()],
         [secret({ key: "anthropic_api_key" })],
@@ -53,20 +50,17 @@ describe("saved provider keys", () => {
       },
     ]);
   });
-  it("excludes unavailable, wrong-provider, and foreign-company credentials", () => {
+  it("excludes unavailable and wrong-provider credentials", () => {
     expect(
       savedProviderKeys(
-        "c1",
         "ANTHROPIC_API_KEY",
         [
           personal("OPENAI_API_KEY"),
           personal(undefined, { status: "disabled" }),
           { ...personal(), secret: null },
           { ...personal(), secret: secret({ status: "archived" }) },
-          personal(undefined, { companyId: "c2" }),
         ],
         [
-          secret({ companyId: "c2" }),
           secret({ status: "disabled" }),
           secret({ scope: "user" }),
           secret({ key: "ANTHROPIC_API_KEY_OTHER" }),
@@ -76,13 +70,12 @@ describe("saved provider keys", () => {
   });
 });
 
-it("lists only active company Codex account connections", () => {
+it("lists only active organization Codex account connections", () => {
   const account = secret({ name: "CODEX_HOME_team" });
   expect(
-    savedCodexSubscriptions("c1", [
+    savedCodexSubscriptions([
       account,
       { ...account, status: "disabled" },
-      { ...account, companyId: "c2" },
       secret(),
     ]),
   ).toEqual([

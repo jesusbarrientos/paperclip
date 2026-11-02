@@ -63,7 +63,7 @@ function TaskExecutionExample({
       id: "alex-run",
     });
     cache.setQueryData(
-      queryKeys.issues.listByDescendantRoot("demo", "task-parent"),
+      queryKeys.issues.listByDescendantRoot("task-parent"),
       [
         {
           id: "task-child",
@@ -84,7 +84,7 @@ function TaskExecutionExample({
     if (
       __liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(
         notificationCache,
-        "/PAP/issues/PAP-204",
+        "/issues/PAP-204",
         payload,
         { isForegrounded: true },
       )

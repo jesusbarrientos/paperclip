@@ -48,7 +48,6 @@ function issueContextId(contextSnapshot: unknown): string | null {
 function toRunSnapshot(row: typeof heartbeatRuns.$inferSelect): RunSnapshot {
   return {
     id: row.id,
-    companyId: row.companyId,
     agentId: row.agentId,
     status: row.status,
     lastOutputAt: row.lastOutputAt,
@@ -70,7 +69,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
   const recoveryActionsSvc = issueRecoveryActionService(db);
 
   async function findCandidateSilentRuns(input: {
-    companyId?: string;
     suspicionBefore: Date;
     issueCreatedAtGte?: Date | null;
   }): Promise<RunSnapshot[]> {
@@ -79,7 +77,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
       .from(heartbeatRuns)
       .where(
         and(
-          input.companyId ? eq(heartbeatRuns.companyId, input.companyId) : undefined,
           eq(heartbeatRuns.status, "running"),
           sql`coalesce(${heartbeatRuns.lastOutputAt}, ${heartbeatRuns.processStartedAt}, ${heartbeatRuns.startedAt}, ${heartbeatRuns.createdAt}) <= ${input.suspicionBefore.toISOString()}::timestamptz`,
         ),
@@ -110,16 +107,16 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
     return candidates;
   }
 
-  async function findRunForCompany(companyId: string, runId: string): Promise<RunSnapshot | null> {
+  async function findRunForCompany(runId: string): Promise<RunSnapshot | null> {
     const [row] = await db
       .select()
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.id, runId), eq(heartbeatRuns.companyId, companyId)))
+      .where(eq(heartbeatRuns.id, runId))
       .limit(1);
     return row ? toRunSnapshot(row) : null;
   }
 
-  async function findLatestDecision(companyId: string, runId: string, now: Date) {
+  async function findLatestDecision(runId: string, now: Date) {
     const [quietUntilRows, dismissedRows] = await Promise.all([
       db
         .select({
@@ -129,7 +126,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         .from(heartbeatRunWatchdogDecisions)
         .where(
           and(
-            eq(heartbeatRunWatchdogDecisions.companyId, companyId),
             eq(heartbeatRunWatchdogDecisions.runId, runId),
             inArray(heartbeatRunWatchdogDecisions.decision, ["snooze", "continue"]),
             gt(heartbeatRunWatchdogDecisions.snoozedUntil, now),
@@ -142,7 +138,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         .from(heartbeatRunWatchdogDecisions)
         .where(
           and(
-            eq(heartbeatRunWatchdogDecisions.companyId, companyId),
             eq(heartbeatRunWatchdogDecisions.runId, runId),
             eq(heartbeatRunWatchdogDecisions.decision, "dismissed_false_positive"),
           ),
@@ -164,20 +159,18 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
       identifier: issues.identifier,
       status: issues.status,
       assigneeAgentId: issues.assigneeAgentId,
-      companyId: issues.companyId,
       originKind: issues.originKind,
       originId: issues.originId,
       hiddenAt: issues.hiddenAt,
     };
   }
 
-  async function findOpenStaleRunEvaluation(companyId: string, runId: string): Promise<EvaluationIssueSnapshot | null> {
+  async function findOpenStaleRunEvaluation(runId: string): Promise<EvaluationIssueSnapshot | null> {
     const [row] = await db
       .select(selectEvaluationIssueSnapshot())
       .from(issues)
       .where(
         and(
-          eq(issues.companyId, companyId),
           eq(issues.originKind, STALE_ACTIVE_RUN_EVALUATION_ORIGIN_KIND),
           eq(issues.originId, runId),
           visibleIssueCondition(),
@@ -188,16 +181,16 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
     return row ?? null;
   }
 
-  async function findEvaluationIssueById(companyId: string, issueId: string): Promise<EvaluationIssueSnapshot | null> {
+  async function findEvaluationIssueById(issueId: string): Promise<EvaluationIssueSnapshot | null> {
     const [row] = await db
       .select(selectEvaluationIssueSnapshot())
       .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+      .where(eq(issues.id, issueId))
       .limit(1);
     return row ?? null;
   }
 
-  async function findLatestSameRunTerminalEvidence(companyId: string, input: {
+  async function findLatestSameRunTerminalEvidence(input: {
     runId: string;
     sourceIssueId: string;
     sourceIssueStatus: string;
@@ -205,7 +198,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
   }) {
     if (!isTerminalIssueStatus(input.sourceIssueStatus)) return null;
     const activityPredicates = [
-      eq(activityLog.companyId, companyId),
       eq(activityLog.runId, input.runId),
       eq(activityLog.action, "issue.updated"),
       eq(activityLog.entityType, "issue"),
@@ -227,29 +219,28 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
     return activity ? { kind: "activity" as const, id: activity.id, createdAt: activity.createdAt, action: activity.action } : null;
   }
 
-  async function findSourceIssue(companyId: string, issueId: string): Promise<SourceIssueSnapshot | null> {
+  async function findSourceIssue(issueId: string): Promise<SourceIssueSnapshot | null> {
     const [row] = await db
       .select({ id: issues.id, identifier: issues.identifier, status: issues.status, originKind: issues.originKind })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId), visibleIssueCondition()))
+      .where(and(eq(issues.id, issueId), visibleIssueCondition()))
       .limit(1);
     return row ? { ...row, isRecoveryOriginKind: isRecoveryOriginKind(row.originKind) } : null;
   }
 
-  async function findRunningAgent(companyId: string, agentId: string) {
+  async function findRunningAgent(agentId: string) {
     const [row] = await db
-      .select({ id: agents.id, companyId: agents.companyId, adapterType: agents.adapterType })
+      .select({ id: agents.id, adapterType: agents.adapterType })
       .from(agents)
-      .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
+      .where(eq(agents.id, agentId))
       .limit(1);
     return row ?? null;
   }
 
-  async function recordDecision(companyId: string, input: RecordDecisionInput): Promise<WatchdogDecisionRecord> {
+  async function recordDecision(input: RecordDecisionInput): Promise<WatchdogDecisionRecord> {
     const [row] = await db
       .insert(heartbeatRunWatchdogDecisions)
       .values({
-        companyId,
         runId: input.runId,
         evaluationIssueId: input.evaluationIssueId,
         decision: input.decision,
@@ -262,7 +253,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
       .returning();
 
     await logActivity(db, {
-      companyId,
       actorType: input.actor.type === "agent" ? "agent" : "user",
       actorId: input.actor.type === "agent"
         ? input.actor.agentId ?? "agent"
@@ -286,7 +276,7 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
     return { ...row, decision: row.decision as WatchdogDecisionRecord["decision"] };
   }
 
-  async function foldSourceResolvedRun(companyId: string, input: FoldSourceResolvedRunInput): Promise<FoldOutcome> {
+  async function foldSourceResolvedRun(input: FoldSourceResolvedRunInput): Promise<FoldOutcome> {
     const finalRunStatus = input.sourceIssue.status === "cancelled" ? "cancelled" : "succeeded";
     const postCommitIssueActions: IssuePostCommitAction[] = [];
     const resultJson = {
@@ -319,7 +309,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         })
         .where(and(
           eq(heartbeatRuns.id, input.run.id),
-          eq(heartbeatRuns.companyId, companyId),
           eq(heartbeatRuns.status, "running"),
         ))
         .returning();
@@ -336,7 +325,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
           })
           .where(and(
             eq(agentWakeupRequests.id, input.run.wakeupRequestId),
-            eq(agentWakeupRequests.companyId, companyId),
             // A late success fold cannot restore cancelled assignment authority.
             ne(agentWakeupRequests.status, "cancelled"),
           ));
@@ -352,7 +340,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         })
         .where(and(
           eq(issues.id, input.sourceIssue.id),
-          eq(issues.companyId, companyId),
           eq(issues.executionRunId, input.run.id),
         ));
 
@@ -378,13 +365,11 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
       }
 
       const activeRecoveryAction = await recoveryActionsSvc.getActiveForIssue(
-        companyId,
         input.sourceIssue.id,
         tx,
       );
       if (activeRecoveryAction?.kind === "active_run_watchdog") {
         await recoveryActionsSvc.resolveActiveForIssue({
-          companyId,
           sourceIssueId: input.sourceIssue.id,
           actionId: activeRecoveryAction.id,
           status: "resolved",
@@ -396,7 +381,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
       const [decision] = await tx
         .insert(heartbeatRunWatchdogDecisions)
         .values({
-          companyId,
           runId: input.run.id,
           evaluationIssueId: input.existingEvaluation?.id ?? null,
           decision: "dismissed_false_positive",
@@ -406,7 +390,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         .returning();
 
       await appendHeartbeatRunEvent(tx as unknown as Db, {
-        companyId,
         runId: input.run.id,
         agentId: input.run.agentId,
         eventType: "lifecycle",
@@ -417,7 +400,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
       });
 
       await logActivity(tx as unknown as Db, {
-        companyId,
         actorType: "system",
         actorId: "system",
         agentId: input.run.agentId,
@@ -443,7 +425,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         .select({ count: sql<number>`count(*)::int` })
         .from(heartbeatRuns)
         .where(and(
-          eq(heartbeatRuns.companyId, companyId),
           eq(heartbeatRuns.agentId, input.run.agentId),
           eq(heartbeatRuns.status, "running"),
         ));
@@ -454,7 +435,6 @@ export function createPostgresWatchdogAdapter(db: Db): WatchdogRunReader & Watch
         .set({ status: nextAgentStatus, lastHeartbeatAt: new Date(), updatedAt: new Date() })
         .where(and(
           eq(agents.id, input.run.agentId),
-          eq(agents.companyId, companyId),
           notInArray(agents.status, ["paused", "terminated"]),
         ));
 

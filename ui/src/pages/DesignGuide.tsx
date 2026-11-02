@@ -220,7 +220,6 @@ function sampleOutput(
   const contentPath = `/api/attachments/${attachmentId}/content`;
   return {
     id,
-    companyId: "demo-company",
     projectId: null,
     issueId: "demo-issue",
     executionWorkspaceId: null,
@@ -331,7 +330,6 @@ function TeamCardShowcase() {
 const DESIGN_GUIDE_SECRETS: CompanySecret[] = [
   {
     id: "dg-github",
-    companyId: "dg",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -355,7 +353,6 @@ const DESIGN_GUIDE_SECRETS: CompanySecret[] = [
   },
   {
     id: "dg-db",
-    companyId: "dg",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -1247,7 +1244,6 @@ export function DesignGuide() {
             {["running", "queued", "succeeded", "failed", "timed_out", "cancelled", "interrupted"].map((status) => (
               <AgentRunCard
                 key={status}
-                companyId="design-guide"
                 run={{
                   id: `design-guide-${status}`, agentId: "design-guide-agent", agentName: "CodexCoder",
                   status, adapterType: "codex_local", invocationSource: "on_demand", triggerDetail: "manual",
@@ -2062,8 +2058,8 @@ export function DesignGuide() {
       <Section title="Tools & Access">
         <SubSection title="EnforcementBanner — default / denied-detected">
           <div className="space-y-3">
-            <EnforcementBanner companyId="" forceVariant="default" recentDenialCount={0} />
-            <EnforcementBanner companyId="" forceVariant="denied-detected" recentDenialCount={3} />
+            <EnforcementBanner forceVariant="default" recentDenialCount={0} />
+            <EnforcementBanner forceVariant="denied-detected" recentDenialCount={3} />
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             Persistent at the top of the Tools &amp; Access surface. Tints to <code>denied-detected</code> when

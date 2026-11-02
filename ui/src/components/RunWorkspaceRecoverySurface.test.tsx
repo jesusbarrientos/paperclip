@@ -74,7 +74,6 @@ afterEach(() => {
 function buildRun(overrides: Partial<HeartbeatRun> = {}): HeartbeatRun {
   return {
     id: "run-aaaa1111",
-    companyId: "company-1",
     agentId: "agent-1",
     status: "failed",
     errorCode: "workspace_validation_failed",
@@ -88,7 +87,6 @@ function buildRun(overrides: Partial<HeartbeatRun> = {}): HeartbeatRun {
 function buildRecoveryAction(): IssueRecoveryAction {
   return {
     id: "action-1",
-    companyId: "company-1",
     sourceIssueId: "issue-1",
     recoveryIssueId: null,
     kind: "workspace_validation",
@@ -137,7 +135,6 @@ function buildIssue(action: IssueRecoveryAction | null): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-1405",
-    companyId: "company-1",
     title: "Do the thing",
     description: "body",
     priority: "medium",

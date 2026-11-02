@@ -20,7 +20,7 @@ const otherQuestion: AskUserQuestionsInteraction = {
     selectionMode: "single", required: true, options: [{ id: "friendly", label: "Friendly" }, { id: "formal", label: "Formal" }] }] },
 };
 function comment(id: string, body: string, at: string, agent = false): IssueComment {
-  return { id, companyId: question.companyId, issueId: question.issueId, body, authorType: agent ? "agent" : "user",
+  return { id, issueId: question.issueId, body, authorType: agent ? "agent" : "user",
     authorAgentId: agent ? question.createdByAgentId ?? null : null, authorUserId: agent ? null : "user-board",
     presentation: null, metadata: null, createdAt: new Date(at), updatedAt: new Date(at) };
 }

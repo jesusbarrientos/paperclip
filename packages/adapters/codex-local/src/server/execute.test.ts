@@ -141,7 +141,6 @@ describe("codex execute — outbound auth copy-back restore contribution", () =>
       onProviderStopped: input.onProviderStopped,
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -150,7 +149,7 @@ describe("codex execute — outbound auth copy-back restore contribution", () =>
       config: {
         command: "codex",
         engine: "cli",
-        // External CODEX_HOME (outside the managed company tree) so no managed
+        // External CODEX_HOME (outside the managed organization tree) so no managed
         // seeding rewrites auth.json before teardown; equals the shared host home.
         env: { CODEX_HOME: sharedHostHome },
       },

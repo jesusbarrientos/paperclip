@@ -114,24 +114,21 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Native chat runner",
         role: "engineer",
         adapterType: "paperclip_runner",
       });
       await db
         .insert(projects)
-        .values({ id: projectId, companyId, name: "Chat" });
+        .values({ id: projectId, name: "Chat" });
       await db.insert(issues).values({
         id: issueId,
-        companyId,
         projectId,
         title: "Chat turn",
         originKind: "chat_channel",
       });
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId,
         status: "running",
         contextSnapshot: {
@@ -145,13 +142,12 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
         },
       });
       await initializeRunIdentity(db, {
-        companyId,
         runId,
         responsibleUserId: "accepted-author",
         issueId,
         cause: "instruction",
       });
-      return { companyId, agentId, projectId, issueId, runId };
+      return { agentId, projectId, issueId, runId };
     }
 
     async function launch(input: Awaited<ReturnType<typeof seed>>) {
@@ -183,7 +179,6 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
         const input = await seed();
         const boundary = {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: input.companyId,
           rootIssueId: input.issueId,
           allowedAgentIds: [input.agentId],
           allowedToolClasses: ["read"],
@@ -304,7 +299,6 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
       expect(credentials.resolveManagedGitHubCredential).toHaveBeenCalledWith(
         db,
         {},
-        input.companyId,
         expect.objectContaining({
           responsibleUserId: "accepted-author",
           allowStandingDelegation: false,
@@ -320,7 +314,6 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: input.companyId,
             projectIds: [input.projectId],
           },
         },
@@ -351,10 +344,9 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
       expect(credentials.resolveManagedGitHubCredential).not.toHaveBeenCalled();
     });
 
-    it("fails closed for a wrong company, wrong agent, missing run, or inactive execution", async () => {
+    it("fails closed for a wrong agent, missing run, or inactive execution", async () => {
       const input = await seed();
       for (const overrides of [
-        { companyId: randomUUID() },
         { agentId: randomUUID() },
         { runId: randomUUID() },
       ]) {

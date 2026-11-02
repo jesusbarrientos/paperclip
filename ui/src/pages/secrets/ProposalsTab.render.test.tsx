@@ -41,7 +41,6 @@ const providerConfigs = [
 function makeSecretProposal(overrides: Partial<SecretProposalView> = {}): SecretProposalView {
   return {
     id: "prop-secret-1",
-    companyId: "company-1",
     kind: "secret",
     status: "pending",
     justification: "Need the GitHub token to open the PR.",
@@ -136,7 +135,6 @@ let activeRoot: ReturnType<typeof createRoot> | null = null;
 let activeContainer: HTMLDivElement | null = null;
 
 async function renderTab(
-  companyId = "company-1",
   configs: CompanySecretProviderConfig[] = providerConfigs as CompanySecretProviderConfig[],
 ) {
   const container = document.createElement("div");
@@ -150,7 +148,6 @@ async function renderTab(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <ProposalsTab
-            companyId={companyId}
             providerConfigs={configs}
           />
         </MemoryRouter>
@@ -232,7 +229,7 @@ describe("ProposalsTab", () => {
     await act(async () => findButton("Approve & create")?.click());
     await waitForReact(() => mockSecretsApi.approveProposal.mock.calls.length > 0);
 
-    expect(mockSecretsApi.approveProposal).toHaveBeenCalledWith("company-1", "prop-secret-1", {
+    expect(mockSecretsApi.approveProposal).toHaveBeenCalledWith("prop-secret-1", {
       overrides: {
         name: "dev/github/client-secret",
         description: null,
@@ -243,7 +240,7 @@ describe("ProposalsTab", () => {
 
   it("does not preselect a non-local default vault for secret approval", async () => {
     mockSecretsApi.listProposals.mockResolvedValue([makeSecretProposal()]);
-    await renderTab("company-1", [
+    await renderTab([
       { ...providerConfigs[0], id: "vault-aws", provider: "aws_secrets_manager" },
       { ...providerConfigs[0], isDefault: false },
     ] as CompanySecretProviderConfig[]);
@@ -254,7 +251,7 @@ describe("ProposalsTab", () => {
     await act(async () => findButton("Approve & create")?.click());
     await waitForReact(() => mockSecretsApi.approveProposal.mock.calls.length > 0);
 
-    expect(mockSecretsApi.approveProposal).toHaveBeenCalledWith("company-1", "prop-secret-1", {
+    expect(mockSecretsApi.approveProposal).toHaveBeenCalledWith("prop-secret-1", {
       overrides: {
         name: "dev/github/token",
         description: null,
@@ -281,7 +278,7 @@ describe("ProposalsTab", () => {
     await act(async () => findButton("Approve secret & bind")?.click());
     await waitForReact(() => mockSecretsApi.approveProposal.mock.calls.length > 0);
 
-    expect(mockSecretsApi.approveProposal).toHaveBeenCalledWith("company-1", "prop-binding-1", {
+    expect(mockSecretsApi.approveProposal).toHaveBeenCalledWith("prop-binding-1", {
       cascade: true,
     });
   });
@@ -315,7 +312,7 @@ describe("ProposalsTab", () => {
     await act(async () => dialogReject()?.click());
     await waitForReact(() => mockSecretsApi.rejectProposal.mock.calls.length > 0);
 
-    expect(mockSecretsApi.rejectProposal).toHaveBeenCalledWith("company-1", "prop-secret-1", {
+    expect(mockSecretsApi.rejectProposal).toHaveBeenCalledWith("prop-secret-1", {
       reason: "Not needed for this task.",
     });
   });

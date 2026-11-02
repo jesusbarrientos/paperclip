@@ -16,7 +16,6 @@ describe("application", () => {
   function makeRun(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
     return {
       id: "run-1",
-      companyId: "company-1",
       agentId: "agent-1",
       status: "running",
       lastOutputAt: null,
@@ -58,7 +57,6 @@ describe("application", () => {
           identifier: "PAP-9",
           status: "todo",
           assigneeAgentId: "agent-2",
-          companyId: "company-1",
           originKind: "stale_active_run_evaluation",
           originId: run.id,
           hiddenAt: null,
@@ -147,9 +145,8 @@ describe("application", () => {
         recordDecision: async () => {
           throw new Error("not used in this test");
         },
-        foldSourceResolvedRun: async (companyId, input) => {
+        foldSourceResolvedRun: async (input) => {
           calls.push("fold");
-          expect(companyId).toBe("company-1");
           expect(input.cleanup).toMatchObject({ outcome: "terminated" });
           return { kind: "folded", evaluationIssueId: null };
         },
@@ -206,9 +203,8 @@ describe("application", () => {
 
   function makeDecisionWriter(overrides: Partial<WatchdogWriter> = {}): WatchdogWriter {
     return {
-      recordDecision: async (companyId, input) => ({
+      recordDecision: async (input) => ({
         id: "decision-1",
-        companyId,
         runId: input.runId,
         evaluationIssueId: input.evaluationIssueId,
         decision: input.decision,
@@ -237,17 +233,15 @@ describe("application", () => {
       });
 
       const snooze = await recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "board" },
         decision: "snooze",
         snoozedUntil,
         now,
       });
-      expect(snooze).toMatchObject({ companyId: "company-1", runId: "run-1", decision: "snooze", snoozedUntil });
+      expect(snooze).toMatchObject({ runId: "run-1", decision: "snooze", snoozedUntil });
 
       const continueDecision = await recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "board" },
         decision: "continue",
@@ -256,7 +250,6 @@ describe("application", () => {
       expect(continueDecision.snoozedUntil?.toISOString()).toBe(new Date(now.getTime() + CONTINUE_REARM_MS).toISOString());
 
       const dismissed = await recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "board" },
         decision: "dismissed_false_positive",
@@ -273,7 +266,6 @@ describe("application", () => {
       });
 
       await expect(recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "agent", agentId: "agent-9" },
         decision: "continue",
@@ -289,7 +281,6 @@ describe("application", () => {
           identifier: "PAP-2",
           status: "todo",
           assigneeAgentId: "agent-1",
-          companyId: "company-1",
           originKind: "stale_active_run_evaluation",
           originId: "run-1",
           hiddenAt: null,
@@ -302,7 +293,6 @@ describe("application", () => {
       });
 
       await expect(recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "agent", agentId: "agent-9" },
         decision: "continue",
@@ -319,7 +309,6 @@ describe("application", () => {
           identifier: "PAP-2",
           status: "todo",
           assigneeAgentId: "agent-1",
-          companyId: "company-1",
           originKind: "stale_active_run_evaluation",
           originId: "run-1",
           hiddenAt: null,
@@ -332,7 +321,6 @@ describe("application", () => {
       });
 
       const decision = await recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "agent", agentId: "agent-1" },
         decision: "continue",
@@ -351,7 +339,6 @@ describe("application", () => {
       });
 
       await expect(recordWatchdogDecision({
-        companyId: "company-1",
         runId: "missing-run",
         actor: { type: "board" },
         decision: "snooze",
@@ -368,7 +355,6 @@ describe("application", () => {
       });
 
       const error = await recordWatchdogDecision({
-        companyId: "company-1",
         runId: "run-1",
         actor: { type: "board" },
         decision: "continue",
@@ -436,10 +422,9 @@ describe("application", () => {
         suspicionThresholdMs: SUSPICION_THRESHOLD_MS,
       });
 
-      await scanSilentActiveRuns({ now, companyId: "company-9", issueCreatedAtGte: cutoff });
+      await scanSilentActiveRuns({ now, issueCreatedAtGte: cutoff });
 
       expect(seenInput).toMatchObject({
-        companyId: "company-9",
         suspicionBefore: new Date(now.getTime() - SUSPICION_THRESHOLD_MS),
         issueCreatedAtGte: cutoff,
       });
@@ -449,7 +434,7 @@ describe("application", () => {
       const run = makeRun({ sourceIssueId: "issue-1" });
       const reader = makeReader({
         findCandidateSilentRuns: async () => [run],
-        findRunningAgent: async () => ({ id: "agent-1", companyId: "other-company", adapterType: "codex_local" }),
+        findRunningAgent: async () => ({ id: "agent-1", adapterType: "codex_local" }),
       });
       const scanSilentActiveRuns = createScanSilentActiveRuns({
         reader,
@@ -466,7 +451,7 @@ describe("application", () => {
       const run = makeRun({ sourceIssueId: "issue-1" });
       const reader = makeReader({
         findCandidateSilentRuns: async () => [run],
-        findRunningAgent: async () => ({ id: "agent-1", companyId: "company-1", adapterType: "codex_local" }),
+        findRunningAgent: async () => ({ id: "agent-1", adapterType: "codex_local" }),
         findSourceIssue: async () => ({
           id: "issue-1",
           identifier: "PAP-1",

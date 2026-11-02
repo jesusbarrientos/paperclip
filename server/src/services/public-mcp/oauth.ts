@@ -1,6 +1,6 @@
 import { instanceSettingsService } from "../instance-settings.js";
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, inArray, isNull, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, lte, notExists, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Request } from "express";
 import {
@@ -61,7 +61,6 @@ const authorizeSchema = z.object({
   state: z.string().max(2048).optional(),
   code_challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   code_challenge_method: z.literal("S256"),
-  company_id: z.string().uuid().optional(),
 }).strip();
 
 export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: { metadataFetch?: MetadataFetch } = {}) {
@@ -76,14 +75,14 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
   async function actorForGrant(grant: typeof mcpOauthGrants.$inferSelect): Promise<Request["actor"]> {
     if (grant.revokedAt || grant.resource !== config.resource) throw invalidGrant();
     const access = await boardAuth.resolveBoardAccess(grant.userId);
-    const membership = access.memberships.find((m) => m.companyId === grant.companyId && m.status === "active");
-    const [company] = await db.select({ status: companies.status }).from(companies).where(eq(companies.id, grant.companyId));
+    const membership = access.memberships.find((m) => m.status === "active");
+    const [company] = await db.select({ status: companies.status }).from(companies).limit(1);
     if (!access.user || !membership || !company || company.status === "archived") throw invalidGrant();
     return {
       type: "board", source: "mcp_oauth", userId: grant.userId,
       userName: access.user.name, userEmail: access.user.email,
-      // Even instance administrators get only the explicitly consented company.
-      companyIds: [grant.companyId], memberships: [membership], isInstanceAdmin: false,
+      // Instance administrators connect with their membership role, never as admins.
+      memberships: [membership], isInstanceAdmin: false,
     };
   }
 
@@ -170,30 +169,29 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     }
   }
 
-  async function consentContext(actor: Request["actor"], requestedCompanyId: string | null) {
+  async function consentContext(actor: Request["actor"]) {
     const signedIn = actor.type === "board" && !!actor.userId && ["session", "cloud_tenant"].includes(actor.source ?? "");
     const access = signedIn ? await boardAuth.resolveBoardAccess(actor.userId!) : null;
-    const available = access?.user && access.companyIds.length ? await db.select({ id: companies.id, name: companies.name, status: companies.status, logoAssetId: companyLogos.assetId })
-      .from(companies).leftJoin(companyLogos, eq(companyLogos.companyId, companies.id)).where(inArray(companies.id, access.companyIds)) : [];
+    const available = access?.user && access.memberships.length ? await db.select({ id: companies.id, name: companies.name, status: companies.status, logoAssetId: companyLogos.assetId })
+      .from(companies).leftJoin(companyLogos, eq(companyLogos.companyId, companies.id)).limit(1) : [];
     return { requiresSignIn: !access?.user, companies: available.flatMap((company) => {
-      if (requestedCompanyId && company.id !== requestedCompanyId) return [];
-      const membership = access?.memberships.find((m) => m.companyId === company.id);
+      const membership = access?.memberships[0];
       return membership?.status === "active" && company.status !== "archived"
         ? [{ id: company.id, name: company.name, logoUrl: company.logoAssetId ? `/api/assets/${company.logoAssetId}/content` : null, canWrite: membership.membershipRole !== "viewer" }] : [];
     }) };
   }
 
-  async function approveGrant(tx: Db, actor: Request["actor"], request: { requestedCompanyId: string | null; clientId: string; resource: string; scopes: string[] }, input: { companyId?: string; allowWrites: boolean }) {
+  async function approveGrant(tx: Db, actor: Request["actor"], request: { clientId: string; resource: string; scopes: string[] }, input: { allowWrites: boolean }) {
     if (actor.type !== "board" || !actor.userId || !["session", "cloud_tenant"].includes(actor.source ?? "")) throw new McpOAuthError("access_denied", "Sign in to approve an assistant connection.", 401);
     const access = await boardAuth.resolveBoardAccess(actor.userId);
-    const membership = access.memberships.find(m => m.companyId === input.companyId && m.status === "active");
-    if (!access.user || !membership || (request.requestedCompanyId && request.requestedCompanyId !== input.companyId)) throw new McpOAuthError("access_denied", "Choose an available organization for this request.", 403);
-    const [company] = await tx.select({ status: companies.status }).from(companies).where(eq(companies.id, input.companyId!));
+    const membership = access.memberships.find(m => m.status === "active");
+    if (!access.user || !membership) throw new McpOAuthError("access_denied", "You are not an active member of this organization.", 403);
+    const [company] = await tx.select({ status: companies.status }).from(companies).limit(1);
     if (!company || company.status === "archived") throw new McpOAuthError("access_denied", "This organization is no longer available.", 403);
     if (input.allowWrites && membership.membershipRole === "viewer") throw new McpOAuthError("access_denied", "Viewer access is read-only.", 403);
     const scopes = request.scopes.filter(s => s !== "paperclip:write" || input.allowWrites);
-    const [grant] = await tx.insert(mcpOauthGrants).values({ companyId: input.companyId!, userId: actor.userId, clientId: request.clientId, resource: request.resource, scopes }).returning();
-    await tx.insert(activityLog).values({ companyId: grant!.companyId, actorType: "user", actorId: actor.userId,
+    const [grant] = await tx.insert(mcpOauthGrants).values({ userId: actor.userId, clientId: request.clientId, resource: request.resource, scopes }).returning();
+    await tx.insert(activityLog).values({ actorType: "user", actorId: actor.userId,
       action: "mcp.connection_authorized", entityType: "mcp_connection", entityId: grant!.id, details: { clientId: grant!.clientId, scopes } });
     return grant!;
   }
@@ -228,7 +226,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     config, isEnabled, assertEnabled,
     async deviceAuthorize(input: unknown, source = "unknown") {
       await assertEnabled();
-      const p = z.object({ client_id: z.string().min(1).max(2048), resource: z.literal(config.resource), scope: z.string().max(200).default("paperclip:read"), company_id: z.uuid().optional() }).safeParse(input);
+      const p = z.object({ client_id: z.string().min(1).max(2048), resource: z.literal(config.resource), scope: z.string().max(200).default("paperclip:read") }).safeParse(input);
       if (!p.success) throw new McpOAuthError("invalid_request", "Supply a registered client and the exact Paperclip resource.");
       const scopes = [...new Set(p.data.scope.split(/\s+/).filter(Boolean))];
       if (!scopes.includes("paperclip:read") || scopes.some(s => !(PUBLIC_MCP_SCOPES as readonly string[]).includes(s))) throw new McpOAuthError("invalid_scope", "Unsupported Paperclip scope.");
@@ -248,7 +246,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
         if (!count || count.total >= 1000 || count.source >= 10) throw new McpOAuthError("temporarily_unavailable", "Too many device connection attempts. Try again later.", 429);
         await retainMetadataClient(tx as unknown as Db, client, source);
         await tx.insert(mcpOauthDeviceRequests).values({ clientId: client.id, deviceCodeHash: hashMcpSecret(deviceCode), userCodeHash: deviceHash(userCode),
-          resource: config.resource, scopes, requestedCompanyId: p.data.company_id ?? null, sourceHash, expiresAt: new Date(now.getTime() + 10 * minute) });
+          resource: config.resource, scopes, sourceHash, expiresAt: new Date(now.getTime() + 10 * minute) });
       });
       return { device_code: deviceCode, user_code: userCode, verification_uri: config.origin + "/mcp-device", verification_uri_complete: config.origin + "/mcp-device?user_code=" + userCode, expires_in: 600, interval: 5 };
     },
@@ -259,10 +257,11 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
         .where(and(eq(mcpOauthDeviceRequests.userCodeHash, deviceHash(userCode)), eq(mcpOauthDeviceRequests.status, "pending"), gt(mcpOauthDeviceRequests.expiresAt, new Date())));
       if (!row) throw new McpOAuthError("invalid_request", "This code is expired, already decided, or invalid. Start a new connection from your assistant.", 404);
       return { id: row.request.id, clientName: row.client.name, redirectOrigin: "", clientOrigin: row.client.id.startsWith("https://") ? new URL(row.client.id).origin : null,
-        requestedWrite: row.request.scopes.includes("paperclip:write"), offlineAccess: row.request.scopes.includes("offline_access"), requestedCompanyId: row.request.requestedCompanyId,
-        setupUrl: null, ...await consentContext(actor, row.request.requestedCompanyId) };
+        requestedWrite: row.request.scopes.includes("paperclip:write"), offlineAccess: row.request.scopes.includes("offline_access"),
+        setupUrl: null, ...await consentContext(actor) };
     },
-    async consentDevice(userCode: string, actor: Request["actor"], input: { decision: "approve" | "deny"; companyId?: string; allowWrites: boolean }) {
+    async consentDevice(userCode: string, actor: Request["actor"], input: { decision: "approve" | "deny";
+ allowWrites: boolean }) {
       await assertEnabled();
       if (actor.type !== "board" || !actor.userId || !["session", "cloud_tenant"].includes(actor.source ?? "")) throw new McpOAuthError("access_denied", "Sign in to approve a connection.", 401);
       return db.transaction(async tx => {
@@ -316,7 +315,6 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
         await retainMetadataClient(tx as unknown as Db, client, source);
         await tx.insert(mcpOauthRequests).values({
           id, clientId: client.id, redirectUri: p.redirect_uri, resource: p.resource, scopes,
-          requestedCompanyId: p.company_id ?? null,
           state: p.state ?? null, challenge: p.code_challenge, expiresAt: new Date(now.getTime() + 10 * minute),
         });
       });
@@ -332,19 +330,19 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
         id, clientName: row.client.name, redirectOrigin: new URL(row.request.redirectUri).origin,
         clientOrigin: row.client.id.startsWith("https://") ? new URL(row.client.id).origin : null,
         requestedWrite: row.request.scopes.includes("paperclip:write"), offlineAccess: row.request.scopes.includes("offline_access"),
-        requestedCompanyId: row.request.requestedCompanyId,
-        ...await consentContext(actor, row.request.requestedCompanyId), setupUrl,
+        ...await consentContext(actor), setupUrl,
       };
     },
-    async consent(id: string, actor: Request["actor"], input: { decision: "approve" | "deny"; companyId?: string; allowWrites: boolean }) {
+    async consent(id: string, actor: Request["actor"], input: { decision: "approve" | "deny";
+ allowWrites: boolean }) {
       await assertEnabled();
       if (actor.type !== "board" || !actor.userId || !["session", "cloud_tenant"].includes(actor.source ?? "")) {
         throw new McpOAuthError("access_denied", "Sign in to approve an assistant connection.", 401);
       }
       const access = await boardAuth.resolveBoardAccess(actor.userId);
-      const membership = access.memberships.find((m) => m.companyId === input.companyId && m.status === "active");
+      const membership = access.memberships.find((m) => m.status === "active");
       if (!access.user || (input.decision === "approve" && !membership)) {
-        throw new McpOAuthError("access_denied", "Choose a company you belong to.", 403);
+        throw new McpOAuthError("access_denied", "You are not an active member of this organization.", 403);
       }
       const result = await db.transaction(async (tx) => {
         const [row] = await tx.select().from(mcpOauthRequests).where(eq(mcpOauthRequests.id, id)).for("update");
@@ -356,9 +354,6 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
           await tx.update(mcpOauthRequests).set({ decidedAt: new Date() }).where(eq(mcpOauthRequests.id, id));
           redirect.searchParams.set("error", "access_denied");
           return { redirectUrl: redirect.toString(), grant: null };
-        }
-        if (row.requestedCompanyId && input.companyId !== row.requestedCompanyId) {
-          throw new McpOAuthError("access_denied", "This request is for a different organization. Start a new connection to change organizations.", 403);
         }
         const grant = await approveGrant(tx as unknown as Db, actor, row, input);
         const code = secret("pcmcp_code_");
@@ -404,7 +399,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
           if (token.usedAt) {
             await tx.update(mcpOauthGrants).set({ revokedAt: new Date() }).where(eq(mcpOauthGrants.id, grant.id));
             await tx.insert(activityLog).values({
-              companyId: grant.companyId, actorType: "system", actorId: "mcp_oauth",
+              actorType: "system", actorId: "mcp_oauth",
               action: "mcp.connection_revoked", entityType: "mcp_connection", entityId: grant.id,
               details: { clientId: grant.clientId, reason: "refresh_token_replay" },
             });
@@ -426,7 +421,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     async authorizeGrant(grantId: string): Promise<McpPrincipal> {
       await assertEnabled();
       const [row] = await db.select({ grant: mcpOauthGrants, company: { id: companies.id, name: companies.name, issuePrefix: companies.issuePrefix, status: companies.status } })
-        .from(mcpOauthGrants).innerJoin(companies, eq(mcpOauthGrants.companyId, companies.id))
+        .from(mcpOauthGrants).innerJoin(companies, sql`true`)
         .where(eq(mcpOauthGrants.id, grantId));
       if (!row || !row.grant.scopes.includes("paperclip:read")) throw invalidGrant();
       return { ...row, actor: await actorForGrant(row.grant) };
@@ -435,7 +430,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
       await assertEnabled();
       const [row] = await db.select({ token: mcpOauthTokens, grant: mcpOauthGrants, company: { id: companies.id, name: companies.name, issuePrefix: companies.issuePrefix, status: companies.status } })
         .from(mcpOauthTokens).innerJoin(mcpOauthGrants, eq(mcpOauthTokens.grantId, mcpOauthGrants.id))
-        .innerJoin(companies, eq(companies.id, mcpOauthGrants.companyId))
+        .innerJoin(companies, sql`true`)
         .where(and(eq(mcpOauthTokens.tokenHash, hashMcpSecret(token)), eq(mcpOauthTokens.kind, "access"),
           gt(mcpOauthTokens.expiresAt, new Date()), isNull(mcpOauthGrants.revokedAt)));
       if (!row) throw new McpOAuthError("invalid_token", "Connect Paperclip again.", 401);
@@ -451,7 +446,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
         const [revoked] = await tx.update(mcpOauthGrants).set({ revokedAt: new Date() })
           .where(and(eq(mcpOauthGrants.id, row.grant.id), isNull(mcpOauthGrants.revokedAt))).returning();
         if (revoked) await tx.insert(activityLog).values({
-          companyId: revoked.companyId, actorType: "user", actorId: revoked.userId,
+          actorType: "user", actorId: revoked.userId,
           action: "mcp.connection_revoked", entityType: "mcp_connection", entityId: revoked.id,
           details: { clientId, reason: "oauth_revocation" },
         });
@@ -460,10 +455,10 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     async listConnections(userId: string) {
       const rows = await db.select({ grant: mcpOauthGrants, clientName: mcpOauthClients.name, companyName: companies.name })
         .from(mcpOauthGrants).innerJoin(mcpOauthClients, eq(mcpOauthGrants.clientId, mcpOauthClients.id))
-        .innerJoin(companies, eq(companies.id, mcpOauthGrants.companyId))
+        .innerJoin(companies, sql`true`)
         .where(eq(mcpOauthGrants.userId, userId));
       return rows.map(({ grant, clientName, companyName }) => ({
-        id: grant.id, companyId: grant.companyId, clientName, companyName, scopes: grant.scopes,
+        id: grant.id, clientName, companyName, scopes: grant.scopes,
         createdAt: grant.createdAt.toISOString(), revokedAt: grant.revokedAt?.toISOString() ?? null,
       }));
     },
@@ -471,7 +466,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
       const [grant] = await db.update(mcpOauthGrants).set({ revokedAt: new Date() })
         .where(and(eq(mcpOauthGrants.id, id), eq(mcpOauthGrants.userId, userId), isNull(mcpOauthGrants.revokedAt))).returning();
       if (grant) await logActivity(db, {
-        companyId: grant.companyId, actorType: "user", actorId: userId, action: "mcp.connection_revoked",
+        actorType: "user", actorId: userId, action: "mcp.connection_revoked",
         entityType: "mcp_connection", entityId: grant.id, details: { clientId: grant.clientId },
       });
     },

@@ -95,33 +95,32 @@ describe("batched run secret redaction", () => {
     const contextSnapshot = { paperclipSecretRedactions: [{ fingerprintSha256: "shared", material: { value: secret } }] };
     const rows = Array.from({ length: 200 }, (_, i) => ({ id: `run-${i}`, contextSnapshot }));
     const { registry, select, where } = fixture(rows);
-    const result = await registry.redactForRuns("company-1", rows.map(row => ({ ...row, stdoutExcerpt: secret })));
+    const result = await registry.redactForRuns(rows.map(row => ({ ...row, stdoutExcerpt: secret })));
     expect(select).toHaveBeenCalledTimes(1);
     expect(resolveVersion).toHaveBeenCalledTimes(1);
     expect(result.every(run => run.stdoutExcerpt === REDACTED_EVENT_VALUE)).toBe(true);
     expect(result[0].contextSnapshot).toEqual({});
     const dialect = new PgDialect();
     const predicate = dialect.sqlToQuery(where.mock.calls[0][0]);
-    expect(predicate.params).toContain("company-1");
-    expect(predicate.sql).toContain('"company_id"');
+    expect(predicate.params).toContain("run-0");
     expect(dialect.sqlToQuery(select.mock.calls[0][0].contextSnapshot).sql).toContain("-> 'paperclipSecretRedactions'");
   });
 
   it("keeps each run's registry separate and observes new registrations on the next request", async () => {
     const rows = [{ id: "a", contextSnapshot: { paperclipSecretRedactions: [{ fingerprintSha256: "one", material: { value: secret } }] } }];
     const { registry } = fixture(rows);
-    expect(await registry.redactForRuns("company", [{ id: "a", text: secret }, { id: "b", text: secret }]))
+    expect(await registry.redactForRuns([{ id: "a", text: secret }, { id: "b", text: secret }]))
       .toEqual([{ id: "a", text: REDACTED_EVENT_VALUE }, { id: "b", text: secret }]);
     rows[0].contextSnapshot.paperclipSecretRedactions.push({ fingerprintSha256: "two", material: { value: "new-secret" } });
-    expect(await registry.redactForRuns("company", [{ id: "a", text: "new-secret" }]))
+    expect(await registry.redactForRuns([{ id: "a", text: "new-secret" }]))
       .toEqual([{ id: "a", text: REDACTED_EVENT_VALUE }]);
   });
 
   it("does not query for an empty list and fails closed on decryption failure", async () => {
     const { registry, select } = fixture([{ id: "a", contextSnapshot: { paperclipSecretRedactions: [{ fingerprintSha256: "one", material: {} }] } }]);
-    expect(await registry.redactForRuns("company", [])).toEqual([]);
+    expect(await registry.redactForRuns([])).toEqual([]);
     expect(select).not.toHaveBeenCalled();
     resolveVersion.mockRejectedValueOnce(new Error("unavailable"));
-    await expect(registry.redactForRuns("company", [{ id: "a", text: secret }])).rejects.toThrow("unavailable");
+    await expect(registry.redactForRuns([{ id: "a", text: secret }])).rejects.toThrow("unavailable");
   });
 });

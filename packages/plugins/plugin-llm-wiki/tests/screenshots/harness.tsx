@@ -125,7 +125,7 @@ const MANAGED_SKILL = {
   details: {
     name: "LLM Wiki Maintainer",
     key: "plugin/paperclipai-plugin-llm-wiki/wiki-maintainer",
-    description: "Use the LLM Wiki plugin tools to maintain a cited local company wiki.",
+    description: "Use the LLM Wiki plugin tools to maintain a cited local wiki.",
   },
 };
 const MANAGED_SKILLS = [
@@ -272,8 +272,6 @@ Before answering or editing:
 };
 
 const HOST_CONTEXT = {
-  companyId: "company-demo",
-  companyPrefix: "PAP",
   projectId: null,
   entityId: null,
   entityType: null,
@@ -500,7 +498,6 @@ const SPACES = {
   spaces: [
     {
       id: "space-default",
-      companyId: HOST_CONTEXT.companyId,
       wikiId: "default",
       slug: "default",
       displayName: "default",
@@ -520,7 +517,6 @@ const SPACES = {
     },
     {
       id: "space-team-research",
-      companyId: HOST_CONTEXT.companyId,
       wikiId: "default",
       slug: "team-research",
       displayName: "team-research",
@@ -540,7 +536,6 @@ const SPACES = {
     },
     {
       id: "space-customer-feedback",
-      companyId: HOST_CONTEXT.companyId,
       wikiId: "default",
       slug: "customer-feedback",
       displayName: "customer-feedback",

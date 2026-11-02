@@ -9,7 +9,6 @@ import {
 } from "./common.js";
 
 interface SkillOptions extends BaseClientOptions {
-  companyId?: string;
   payloadJson?: string;
   path?: string;
 }
@@ -24,16 +23,14 @@ export function registerSkillCommands(program: Command): void {
       .command("get")
       .description("Get company skill details")
       .argument("<skillId>", "Skill ID")
-      .option("-C, --company-id <id>", "Company ID")
       .action(async (skillId: string, opts: SkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          printOutput(await ctx.api.get(apiPath`/api/companies/${ctx.companyId}/skills/${skillId}`), { json: ctx.json });
+          const ctx = resolveCommandContext(opts);
+          printOutput(await ctx.api.get(apiPath`/api/skills/${skillId}`), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -41,18 +38,16 @@ export function registerSkillCommands(program: Command): void {
       .command("file")
       .description("Read a company skill file")
       .argument("<skillId>", "Skill ID")
-      .option("-C, --company-id <id>", "Company ID")
       .option("--path <path>", "Skill-relative file path", "SKILL.md")
       .action(async (skillId: string, opts: SkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const query = new URLSearchParams({ path: opts.path ?? "SKILL.md" });
-          printOutput(await ctx.api.get(`${apiPath`/api/companies/${ctx.companyId}/skills/${skillId}/files`}?${query.toString()}`), { json: ctx.json });
+          printOutput(await ctx.api.get(`${apiPath`/api/skills/${skillId}/files`}?${query.toString()}`), { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCompanyPost(skill, "create", "Create a local company skill", "skills", true);
@@ -64,20 +59,18 @@ export function registerSkillCommands(program: Command): void {
       .command("file:update")
       .description("Update a company skill file")
       .argument("<skillId>", "Skill ID")
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "CompanySkillFileUpdate JSON payload")
       .action(async (skillId: string, opts: SkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           printOutput(
-            await ctx.api.patch(apiPath`/api/companies/${ctx.companyId}/skills/${skillId}/files`, parseJson(opts.payloadJson ?? "{}")),
+            await ctx.api.patch(apiPath`/api/skills/${skillId}/files`, parseJson(opts.payloadJson ?? "{}")),
             { json: ctx.json },
           );
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addSkillAction(skill, "update-status", "Get company skill update status", "update-status", "GET");
@@ -87,20 +80,19 @@ export function registerSkillCommands(program: Command): void {
 
 function addCompanyGet(parent: Command, name: string, description: string, path: string): void {
   addCommonClientOptions(
-    parent.command(name).description(description).option("-C, --company-id <id>", "Company ID").action(async (opts: SkillOptions) => {
+    parent.command(name).description(description).action(async (opts: SkillOptions) => {
       try {
-        const ctx = resolveCommandContext(opts, { requireCompany: true });
-        printOutput(await ctx.api.get(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`), { json: ctx.json });
+        const ctx = resolveCommandContext(opts);
+        printOutput(await ctx.api.get(`/api/${path}`), { json: ctx.json });
       } catch (err) {
         handleCommandError(err);
       }
-    }),
-    { includeCompany: false },
+    })
   );
 }
 
 function addCompanyPost(parent: Command, name: string, description: string, path: string, requirePayload = false): void {
-  const command = parent.command(name).description(description).option("-C, --company-id <id>", "Company ID");
+  const command = parent.command(name).description(description);
   if (requirePayload) {
     command.requiredOption("--payload-json <json>", "JSON payload");
   } else {
@@ -109,13 +101,12 @@ function addCompanyPost(parent: Command, name: string, description: string, path
   addCommonClientOptions(
     command.action(async (opts: SkillOptions) => {
       try {
-        const ctx = resolveCommandContext(opts, { requireCompany: true });
-        printOutput(await ctx.api.post(`${apiPath`/api/companies/${ctx.companyId}`}/${path}`, parseJson(opts.payloadJson ?? "{}")), { json: ctx.json });
+        const ctx = resolveCommandContext(opts);
+        printOutput(await ctx.api.post(`/api/${path}`, parseJson(opts.payloadJson ?? "{}")), { json: ctx.json });
       } catch (err) {
         handleCommandError(err);
       }
-    }),
-    { includeCompany: false },
+    })
   );
 }
 
@@ -125,11 +116,10 @@ function addSkillAction(parent: Command, name: string, description: string, suff
       .command(name)
       .description(description)
       .argument("<skillId>", "Skill ID")
-      .option("-C, --company-id <id>", "Company ID")
       .action(async (skillId: string, opts: SkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const path = `${apiPath`/api/companies/${ctx.companyId}/skills/${skillId}`}${suffix ? `/${suffix}` : ""}`;
+          const ctx = resolveCommandContext(opts);
+          const path = `${apiPath`/api/skills/${skillId}`}${suffix ? `/${suffix}` : ""}`;
           const result =
             method === "GET"
               ? await ctx.api.get(path)
@@ -140,8 +130,7 @@ function addSkillAction(parent: Command, name: string, description: string, suff
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

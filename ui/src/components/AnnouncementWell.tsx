@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useAccountIdentity } from "@/api/companies-query";
+import { useAccountIdentity } from "@/api/account-identity";
 import type { HealthStatus } from "@/api/health";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useDialogState } from "@/context/DialogContext";
 import { useOptionalToastActions, useOptionalToastState } from "@/context/ToastContext";
 import { useAnnouncement } from "@/hooks/useAnnouncement";
@@ -24,14 +24,14 @@ function useModalOpen(enabled: boolean) {
 
 export function AnnouncementWell({ health }: { health?: HealthStatus }) {
   const { userId: accountId, settled } = useAccountIdentity();
-  const { selectedCompanyId, loading } = useCompany();
+  const { loading } = useOrganization();
   const { onboardingOpen } = useDialogState();
   const toastActions = useOptionalToastActions();
   const toasts = useOptionalToastState();
   const userId = health?.deploymentMode === "local_trusted" ? "local-board" : (settled ? accountId : null);
   const { announcement, dismiss } = useAnnouncement({
-    userId, companyId: selectedCompanyId,
-    enabled: Boolean(userId && !loading && selectedCompanyId && !onboardingOpen),
+    userId,
+    enabled: Boolean(userId && !loading && !onboardingOpen),
     onSaveFailure: (savedLocally) => toastActions?.pushToast({
       title: savedLocally ? "Dismissed in this browser" : "Dismissed for this visit",
       body: "Couldn’t save across devices. We’ll retry when you reconnect or return.",

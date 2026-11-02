@@ -36,9 +36,8 @@ import { issueRoutes } from "../../routes/issues.js";
 type Db = ReturnType<typeof createDb>;
 
 export interface PaperclipSemanticConformanceIds {
-  readonly companyId: string;
   readonly actorId: string;
-  readonly foreignCompanyId: string;
+  readonly organizationId: string;
   readonly foreignTaskId: string;
   readonly blockerTaskId: string;
   readonly worlds: Readonly<Record<string, { taskId: string; runId: string; capabilities: readonly string[] }>>;
@@ -109,13 +108,9 @@ export async function seedPaperclipSemanticConformance(
   db: Db,
   ids: PaperclipSemanticConformanceIds,
 ): Promise<void> {
-  await db.insert(companies).values([
-    { id: ids.companyId, name: "Semantic Conformance", issuePrefix: "SCF" },
-    { id: ids.foreignCompanyId, name: "Foreign Conformance", issuePrefix: "FRN" },
-  ]);
+  await db.insert(companies).values({ id: ids.organizationId, name: "Semantic Conformance", issuePrefix: "SCF" });
   await db.insert(agents).values({
     id: ids.actorId,
-    companyId: ids.companyId,
     name: "Conformance Approver",
     role: "approver",
     status: "active",
@@ -129,7 +124,6 @@ export async function seedPaperclipSemanticConformance(
     sequence += 1;
     await db.insert(issues).values({
       id: world.taskId,
-      companyId: ids.companyId,
       identifier: `SCF-${sequence}`,
       title: `${worldId} semantic conformance`,
       status: "in_progress",
@@ -139,7 +133,6 @@ export async function seedPaperclipSemanticConformance(
     });
     await db.insert(heartbeatRuns).values({
       id: world.runId,
-      companyId: ids.companyId,
       agentId: ids.actorId,
       status: "running",
       invocationSource: "assignment",
@@ -153,7 +146,6 @@ export async function seedPaperclipSemanticConformance(
   }
   await db.insert(issues).values({
     id: ids.blockerTaskId,
-    companyId: ids.companyId,
     identifier: "SCF-90",
     title: "Unresolved semantic blocker",
     status: "todo",
@@ -163,14 +155,12 @@ export async function seedPaperclipSemanticConformance(
   const blockedTerminal = ids.worlds["terminal-blocked"];
   if (blockedTerminal === undefined) throw new Error("semantic_conformance_blocked_terminal_world_missing");
   await db.insert(issueRelations).values({
-    companyId: ids.companyId,
     issueId: ids.blockerTaskId,
     relatedIssueId: blockedTerminal.taskId,
     type: "blocks",
   });
   await db.insert(issues).values({
     id: ids.foreignTaskId,
-    companyId: ids.foreignCompanyId,
     identifier: "FRN-1",
     title: "Foreign semantic task",
     status: "todo",
@@ -199,7 +189,7 @@ class PaperclipRouteSemanticPort {
     return {
       schema: "paperclip.capability.run-context.v1",
       company: {
-        id: this.ids.companyId,
+        id: this.ids.organizationId,
         name: "Semantic Conformance",
         issuePrefix: "SCF",
         status: "active",
@@ -263,7 +253,6 @@ class PaperclipRouteSemanticPort {
     const revisions = linkedDocuments.length === 0
       ? []
       : await this.db.select().from(documentRevisions)
-        .where(eq(documentRevisions.companyId, this.ids.companyId))
         .orderBy(asc(documentRevisions.revisionNumber));
     const interactions = await this.db.select().from(issueThreadInteractions)
       .where(eq(issueThreadInteractions.issueId, issue.id))
@@ -271,17 +260,13 @@ class PaperclipRouteSemanticPort {
     const relations = await this.db.select().from(issueRelations)
       .where(and(eq(issueRelations.relatedIssueId, issue.id), eq(issueRelations.type, "blocks")));
     const audit = await this.db.select().from(activityLog)
-      .where(and(
-        eq(activityLog.companyId, this.ids.companyId),
-        eq(activityLog.runId, this.binding.runId),
-      ))
+      .where(eq(activityLog.runId, this.binding.runId))
       .orderBy(asc(activityLog.createdAt), asc(activityLog.id));
 
     const state = createCapabilityFixtureState({
-      company: { id: this.ids.companyId, name: "Semantic Conformance", issuePrefix: "SCF" },
+      company: { id: this.ids.organizationId, name: "Semantic Conformance", issuePrefix: "SCF" },
       actors: [{
         id: this.ids.actorId,
-        companyId: this.ids.companyId,
         name: "Conformance Approver",
         role: "approver",
         status: "active",
@@ -290,7 +275,6 @@ class PaperclipRouteSemanticPort {
       }],
       tasks: [{
         id: issue.id,
-        companyId: issue.companyId,
         identifier: issue.identifier,
         title: issue.title,
         description: issue.description,
@@ -354,7 +338,6 @@ class PaperclipRouteSemanticPort {
     state.activeRunId = run.id;
     state.runs = [{
       id: run.id,
-      companyId: run.companyId,
       actorId: run.agentId,
       taskId: issue.id,
       sessionId: run.sessionIdAfter ?? run.sessionIdBefore ?? run.externalRunId ?? run.id,
@@ -533,7 +516,6 @@ function createProductionAuthorityApp(db: Db, ids: PaperclipSemanticConformanceI
     req.actor = {
       type: "agent",
       agentId: ids.actorId,
-      companyId: ids.companyId,
       runId: req.header("X-Paperclip-Run-Id") ?? undefined,
       source: "agent_jwt",
     };

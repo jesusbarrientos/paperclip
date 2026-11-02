@@ -48,7 +48,6 @@ const variables: RoutineVariable[] = [
 const triggers: RoutineTrigger[] = [
   {
     id: "trigger-schedule",
-    companyId: COMPANY_ID,
     routineId: ROUTINE_ID,
     kind: "schedule",
     label: "schedule",
@@ -74,7 +73,6 @@ const triggers: RoutineTrigger[] = [
 
 const routine: RoutineDetailType = {
   id: ROUTINE_ID,
-  companyId: COMPANY_ID,
   projectId: storybookProjects[0]?.id ?? null,
   goalId: null,
   parentIssueId: null,
@@ -112,7 +110,6 @@ const routine: RoutineDetailType = {
 
 const routineDescriptionDocument: RoutineDescriptionDocument = {
   id: "routine-description-doc",
-  companyId: COMPANY_ID,
   routineId: ROUTINE_ID,
   key: "description",
   title: "Description",
@@ -131,7 +128,6 @@ const routineDescriptionDocument: RoutineDescriptionDocument = {
 const routineAnnotationThreads: DocumentAnnotationThreadWithComments[] = [
   {
     id: "routine-thread-1",
-    companyId: COMPANY_ID,
     issueId: null,
     routineId: ROUTINE_ID,
     documentId: routineDescriptionDocument.id,
@@ -168,7 +164,6 @@ const routineAnnotationThreads: DocumentAnnotationThreadWithComments[] = [
     comments: [
       {
         id: "routine-comment-1",
-        companyId: COMPANY_ID,
         threadId: "routine-thread-1",
         issueId: null,
         routineId: ROUTINE_ID,

@@ -174,7 +174,6 @@ describe("bootstrap invite first-admin acceptance", () => {
   function createBootstrapInvite() {
     return {
       id: "invite-1",
-      companyId: null,
       inviteType: "bootstrap_ceo",
       allowedJoinTypes: "human",
       tokenHash: hashToken("pcp_invite_test"),

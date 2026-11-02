@@ -3,7 +3,6 @@ import type { BillingType, CostStatus } from "../constants.js";
 
 export interface CostEvent {
   id: string;
-  companyId: string;
   agentId: string;
   issueId: string | null;
   projectId: string | null;
@@ -24,7 +23,6 @@ export interface CostEvent {
 }
 
 export interface CostSummary {
-  companyId: string;
   spendCents: number;
   budgetCents: number;
   utilizationPercent: number;

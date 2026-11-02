@@ -6,12 +6,10 @@ vi.unmock("http");
 vi.unmock("node:http");
 
 const agentId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
 const keyId = "33333333-3333-4333-8333-333333333333";
 
 const baseAgent = {
   id: agentId,
-  companyId,
   name: "Builder",
   urlKey: "builder",
   role: "engineer",
@@ -37,7 +35,6 @@ const baseAgent = {
 const baseKey = {
   id: keyId,
   agentId,
-  companyId,
   name: "exploit",
   createdAt: new Date("2026-04-11T00:00:00.000Z"),
   revokedAt: null,
@@ -131,38 +128,36 @@ vi.mock("../routes/authz.js", async () => {
     }
   }
 
-  function assertCompanyAccess(req: Express.Request, expectedCompanyId: string) {
+  function activeMembership(req: Express.Request) {
+    return req.actor.memberships?.find((item) => item.status === "active") ?? null;
+  }
+
+  function assertOrgAccess(req: Express.Request) {
     assertAuthenticated(req);
-    if (req.actor.type === "agent" && req.actor.companyId !== expectedCompanyId) {
-      throw forbidden("Agent key cannot access another company");
-    }
-    if (req.actor.type === "board" && req.actor.source !== "local_implicit") {
-      const allowedCompanies = req.actor.companyIds ?? [];
-      if (!allowedCompanies.includes(expectedCompanyId)) {
-        throw forbidden("User does not have access to this company");
-      }
+    if (req.actor.type === "board" && req.actor.source !== "local_implicit" && !activeMembership(req)) {
+      throw forbidden("User is not an active member of this organization");
     }
   }
 
-  function hasCompanyAccess(req: Express.Request, expectedCompanyId: string): boolean {
+  function hasOrgAccess(req: Express.Request): boolean {
     if (req.actor.type === "none") return false;
-    if (req.actor.type === "agent") return req.actor.companyId === expectedCompanyId;
+    if (req.actor.type === "agent") return true;
     if (req.actor.source === "local_implicit") return true;
-    return (req.actor.companyIds ?? []).includes(expectedCompanyId);
+    return activeMembership(req) !== null;
   }
 
-  async function getAccessibleResource<T extends { companyId: string }>(
+  async function getAccessibleResource<T>(
     req: Express.Request,
     res: { status(code: number): { json(body: unknown): unknown } },
     resource: T | null | undefined | Promise<T | null | undefined>,
     notFoundMessage: string,
   ): Promise<T | null> {
     const resolved = await resource;
-    if (!resolved || !hasCompanyAccess(req, resolved.companyId)) {
+    if (!resolved || !hasOrgAccess(req)) {
       res.status(404).json({ error: notFoundMessage });
       return null;
     }
-    assertCompanyAccess(req, resolved.companyId);
+    assertOrgAccess(req);
     return resolved;
   }
 
@@ -195,11 +190,11 @@ vi.mock("../routes/authz.js", async () => {
   return {
     assertAuthenticated,
     assertBoard,
-    assertCompanyAccess,
+    assertOrgAccess,
     assertInstanceAdmin,
     getAccessibleResource,
     getActorInfo,
-    hasCompanyAccess,
+    hasOrgAccess,
   };
 });
 
@@ -246,10 +241,7 @@ async function createApp(actor: Record<string, unknown>) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
-      ...actor,
-      companyIds: Array.isArray(actor.companyIds) ? [...actor.companyIds] : actor.companyIds,
-    };
+    (req as any).actor = { ...actor };
     next();
   });
   app.use("/api", agentRoutes({} as any));
@@ -348,11 +340,11 @@ describe("agent cross-tenant route authorization", () => {
     resetMockDefaults();
   });
 
-  it("enforces company boundaries before mutating or reading agent keys", async () => {
-    const crossTenantActor = {
+  it("hides agents from non-members before mutating or reading agent keys", async () => {
+    const nonMemberActor = {
       type: "board",
       userId: "mallory",
-      companyIds: [],
+      memberships: [],
       source: "session",
       isInstanceAdmin: false,
     };
@@ -391,7 +383,7 @@ describe("agent cross-tenant route authorization", () => {
 
     for (const deniedCase of deniedCases) {
       resetMockDefaults();
-      const app = await createApp(crossTenantActor);
+      const app = await createApp(nonMemberActor);
       const res = await deniedCase.request(app);
 
       expect(res.status, `${deniedCase.label}: ${JSON.stringify(res.body)}`).toBe(404);
@@ -409,7 +401,7 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -426,7 +418,6 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       runId: "run-1",
     });
 
@@ -451,7 +442,7 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: true,
     });
@@ -463,7 +454,6 @@ describe("agent cross-tenant route authorization", () => {
     expect(res.status).toBe(200);
     expect(mockAgentService.resume).toHaveBeenCalledWith(agentId);
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId,
       actorType: "user",
       actorId: "board-user",
       agentId: null,
@@ -475,7 +465,7 @@ describe("agent cross-tenant route authorization", () => {
     }));
   });
 
-  it("allows a same-company agent with a direct agents:configure grant to resume", async () => {
+  it("allows an agent with a direct agents:configure grant to resume", async () => {
     mockAccessService.decide.mockResolvedValue({
       allowed: true,
       action: "agent_config:update",
@@ -486,7 +476,6 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "44444444-4444-4444-8444-444444444444",
-      companyId,
       runId: "55555555-5555-4555-8555-555555555555",
       keyId: "66666666-6666-4666-8666-666666666666",
       source: "agent_key",
@@ -499,7 +488,7 @@ describe("agent cross-tenant route authorization", () => {
     expect(res.status).toBe(200);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "agent_config:update",
-      resource: { type: "agent", companyId, agentId },
+      resource: { type: "agent", agentId },
       scope: { requiresChangeGrant: true },
     }));
     expect(mockAgentService.resume).toHaveBeenCalledWith(agentId);
@@ -518,7 +507,6 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: actorAgentId,
-      companyId,
       runId: "55555555-5555-4555-8555-555555555555",
       source: "agent_key",
     });
@@ -547,7 +535,6 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "44444444-4444-4444-8444-444444444444",
-      companyId,
       runId: "55555555-5555-4555-8555-555555555555",
       source: "agent_key",
     });
@@ -558,25 +545,6 @@ describe("agent cross-tenant route authorization", () => {
 
     expect(res.status).toBe(403);
     expect(res.body.details).toEqual({ reason: "deny_missing_consent" });
-    expect(mockAgentService.resume).not.toHaveBeenCalled();
-  });
-
-  it("does not disclose a cross-company resume target", async () => {
-    const app = await createApp({
-      type: "agent",
-      agentId: "44444444-4444-4444-8444-444444444444",
-      companyId: "77777777-7777-4777-8777-777777777777",
-      runId: "55555555-5555-4555-8555-555555555555",
-      source: "agent_key",
-    });
-
-    const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).post(`/api/agents/${agentId}/resume`).send({}),
-    );
-
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("Agent not found");
-    expect(mockAccessService.decide).not.toHaveBeenCalled();
     expect(mockAgentService.resume).not.toHaveBeenCalled();
   });
 
@@ -600,7 +568,6 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "44444444-4444-4444-8444-444444444444",
-      companyId,
       runId: "55555555-5555-4555-8555-555555555555",
       source: "agent_key",
     });
@@ -629,7 +596,6 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: actorAgentId,
-      companyId,
       runId,
       keyId: actorKeyId,
       source: "agent_key",
@@ -641,7 +607,6 @@ describe("agent cross-tenant route authorization", () => {
 
     expect(res.status).toBe(200);
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), {
-      companyId,
       actorType: "agent",
       actorId: actorAgentId,
       agentId: actorAgentId,
@@ -671,7 +636,7 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: true,
     });
@@ -689,7 +654,6 @@ describe("agent cross-tenant route authorization", () => {
     });
     expect(mockAgentService.clearError).toHaveBeenCalledWith(agentId);
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId,
       actorType: "user",
       actorId: "board-user",
       action: "agent.error_cleared",
@@ -711,7 +675,7 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: true,
     });
@@ -735,7 +699,7 @@ describe("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: true,
     });

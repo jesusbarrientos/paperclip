@@ -35,7 +35,7 @@ const manifest: PaperclipPluginManifestV1 = {
             type: "string",
             format: "secret-ref",
             description:
-              "Bearer token used by the provider plugin when calling the Cloudflare bridge. Pasted values are stored as company secrets.",
+              "Bearer token used by the provider plugin when calling the Cloudflare bridge. Pasted values are stored as Paperclip secrets.",
           },
           reuseLease: {
             type: "boolean",

@@ -126,41 +126,35 @@ function isWorktreeMode(env: NodeJS.ProcessEnv): boolean {
   return TRUTHY_ENV_RE.test(env.PAPERCLIP_IN_WORKTREE ?? "");
 }
 
-export function resolveManagedCodexHomeDir(
-  env: NodeJS.ProcessEnv,
-  companyId?: string,
-): string {
+function resolveOrganizationRoot(env: NodeJS.ProcessEnv): string {
   const instanceRoot = resolvePaperclipInstanceRootForAdapter({
     homeDir: nonEmpty(env.PAPERCLIP_HOME) ?? undefined,
     instanceId: nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? undefined,
     env,
   });
-  return companyId
-    ? path.resolve(instanceRoot, "companies", companyId, "codex-home")
-    : path.resolve(instanceRoot, "codex-home");
+  return path.resolve(instanceRoot, "organization");
+}
+
+export function resolveManagedCodexHomeDir(
+  env: NodeJS.ProcessEnv,
+): string {
+  return path.resolve(resolveOrganizationRoot(env), "codex-home");
 }
 
 /**
- * True when `homePath` lives under the Paperclip-managed company tree
- * (`<instanceRoot>/companies/<companyId>/...`). This covers both the shared
- * company `codex-home` and the per-agent `agents/<agentId>/codex-home` set by
+ * True when `homePath` lives under the Paperclip-managed organization tree
+ * (`<instanceRoot>/organization/...`). This covers both the shared
+ * `codex-home` and the per-agent `agents/<agentId>/codex-home` set by
  * the server-side isolation guard. A path outside that tree is a genuine
  * external/user-supplied override that Paperclip must not seed or overwrite.
  */
 export function isManagedCodexHomePath(
   env: NodeJS.ProcessEnv,
-  companyId: string | undefined,
   homePath: string,
 ): boolean {
-  if (!companyId) return false;
-  const instanceRoot = resolvePaperclipInstanceRootForAdapter({
-    homeDir: nonEmpty(env.PAPERCLIP_HOME) ?? undefined,
-    instanceId: nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? undefined,
-    env,
-  });
-  const companyRoot = path.resolve(instanceRoot, "companies", companyId);
+  const organizationRoot = resolveOrganizationRoot(env);
   const resolved = path.resolve(homePath);
-  return resolved === companyRoot || resolved.startsWith(companyRoot + path.sep);
+  return resolved === organizationRoot || resolved.startsWith(organizationRoot + path.sep);
 }
 
 /**
@@ -231,7 +225,7 @@ export async function ensureSymlink(target: string, source: string): Promise<voi
     // single-use, so a stale copy fails with refresh_token_reused on the next
     // run (#5028). Replace the regular file with a symlink so the CLI follows
     // the live source. Safe to delete: target is always under the
-    // Paperclip-managed company home, never the user's real ~/.codex.
+    // Paperclip-managed home, never the user's real ~/.codex.
     // Directories are left alone — `fs.unlink` would throw EISDIR on Unix
     // (and behave inconsistently on Windows). A directory at this path is not
     // a Paperclip-written stale copy and warrants operator inspection rather
@@ -604,7 +598,7 @@ export async function stageCodexHomeForSync(
  * `auth.json` holding a subscription identity the shared source does not hold,
  * or the same identity with a `last_refresh` the shared source has not strictly
  * moved past — is kept authoritative: it is neither removed nor replaced by the
- * shared symlink. Used both for the default company home and for the per-agent
+ * shared symlink. Used both for the default managed home and for the per-agent
  * home set by the server isolation guard.
  */
 export async function seedManagedCodexHome(
@@ -632,7 +626,7 @@ export async function seedManagedCodexHome(
   await fs.mkdir(targetHome, { recursive: true });
 
   // A regular-file auth.json in the target home is one of two very different
-  // things. The device-login promotion writes the company credential as a
+  // things. The device-login promotion writes the managed credential as a
   // regular file, and that file is the durable outcome of an interactive login,
   // so it must survive re-seeding. Everything else — an apikey-mode file left by
   // a previous run, a stale pre-symlink copy of the shared credential (#5028),
@@ -646,7 +640,7 @@ export async function seedManagedCodexHome(
   // the SAME identity but the shared source is not strictly fresher by
   // `last_refresh`. A device login for the account the host is also signed in
   // to promotes a file strictly newer than the host copy; swapping that file
-  // for the symlink would sign the company back in with the very credential the
+  // for the symlink would sign the agents back in with the very credential the
   // login just replaced — the failing one that made the user sign in. The
   // #5028 stale copy is the strictly-older direction of the same comparison,
   // and it still heals: the live host credential refreshes on use, so as soon
@@ -655,9 +649,9 @@ export async function seedManagedCodexHome(
   // shared merge decision predicate uses — because deleting a promoted
   // credential is irreversible while keeping it self-corrects on the next seed
   // once the source has provably moved past it. A different-identity (or
-  // source-less) subscription file is the promoted company credential; on a
+  // source-less) subscription file is the promoted managed credential; on a
   // server with no shared login there is nothing to symlink at all, and
-  // deleting it would silently sign the company out right after a successful
+  // deleting it would silently sign the agents out right after a successful
   // device login.
   let keepPromotedAuth = false;
   if (!apiKey && seedFromShared && !credentialStoreEntry) {
@@ -771,10 +765,9 @@ export async function seedManagedCodexHome(
 export async function prepareManagedCodexHome(
   env: NodeJS.ProcessEnv,
   onLog: AdapterExecutionContext["onLog"],
-  companyId?: string,
   options: { apiKey?: string | null } = {},
 ): Promise<string> {
-  const targetHome = resolveManagedCodexHomeDir(env, companyId);
+  const targetHome = resolveManagedCodexHomeDir(env);
   await seedManagedCodexHome(targetHome, env, onLog, options);
   return targetHome;
 }
@@ -787,7 +780,6 @@ export type ReconcileManagedCodexHomeStatus =
   | "seeded";
 
 export interface ReconcileManagedCodexHomeInput {
-  companyId: string | undefined;
   configuredCodexHome: string | null | undefined;
   apiKey?: string | null;
   /**
@@ -827,7 +819,7 @@ export async function reconcileManagedCodexHome(
   if (!configured) return { status: "no_managed_home", home: null };
 
   const resolved = path.resolve(configured);
-  if (!isManagedCodexHomePath(env, input.companyId, resolved)) {
+  if (!isManagedCodexHomePath(env, resolved)) {
     return { status: "external_override", home: resolved };
   }
 
@@ -866,7 +858,6 @@ export type CodexCredentialAuthMode = "api" | "subscription";
 
 export interface CodexCredentialReadinessInput {
   env?: NodeJS.ProcessEnv;
-  companyId: string | undefined;
   /** `config.env.CODEX_HOME` for the run, if any. */
   configuredCodexHome: string | null | undefined;
   /** Resolved `config.env.OPENAI_API_KEY` value (after secret resolution). */
@@ -909,9 +900,9 @@ export async function evaluateCodexCredentialReadiness(
   const sharedSourceHome = resolveSharedCodexHomeDir(env);
 
   const configuredHomeIsManaged =
-    configuredCodexHome != null && isManagedCodexHomePath(env, input.companyId, configuredCodexHome);
+    configuredCodexHome != null && isManagedCodexHomePath(env, configuredCodexHome);
   const effectiveHomeIsManaged = configuredCodexHome == null || configuredHomeIsManaged;
-  const effectiveHome = configuredCodexHome ?? resolveManagedCodexHomeDir(env, input.companyId);
+  const effectiveHome = configuredCodexHome ?? resolveManagedCodexHomeDir(env);
 
   if (!effectiveHomeIsManaged) {
     // Genuine external override: Paperclip never seeds or inspects it.

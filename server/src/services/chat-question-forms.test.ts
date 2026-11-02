@@ -22,7 +22,6 @@ function interaction(
 ): AskUserQuestionsInteraction {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "22222222-2222-4222-8222-222222222222",
     issueId: "33333333-3333-4333-8333-333333333333",
     kind: "ask_user_questions",
     status: "pending",
@@ -112,7 +111,6 @@ describe("chat question forms", () => {
     })!;
     expect(native.fields[1]).toMatchObject({ maxLength: 4000 });
     const record = chatQuestionFormActionRecords(native, {
-      companyId: current.companyId,
       endpointId: "endpoint",
       conversationId: "conversation",
       publicationId: "publication",
@@ -196,7 +194,6 @@ describe("chat question forms", () => {
     const draft = createChatQuestionFormDraft(current, { now })!;
     const payload = parseChatQuestionFormSubmitTokenPayload(
       chatQuestionFormActionRecords(draft, {
-        companyId: current.companyId,
         endpointId: "44444444-4444-4444-8444-444444444444",
         conversationId: "55555555-5555-4555-8555-555555555555",
         publicationId: "66666666-6666-4666-8666-666666666666",
@@ -370,7 +367,6 @@ describe("chat question forms", () => {
     });
 
     const rows = chatQuestionFormActionRecords(draft!, {
-      companyId: "22222222-2222-4222-8222-222222222222",
       endpointId: "44444444-4444-4444-8444-444444444444",
       conversationId: "55555555-5555-4555-8555-555555555555",
       publicationId: "66666666-6666-4666-8666-666666666666",
@@ -394,7 +390,6 @@ describe("chat question forms", () => {
     const current = interaction();
     const draft = createChatQuestionFormDraft(current)!;
     const submitPayload = chatQuestionFormActionRecords(draft, {
-      companyId: current.companyId,
       endpointId: "44444444-4444-4444-8444-444444444444",
       conversationId: "55555555-5555-4555-8555-555555555555",
       publicationId: "66666666-6666-4666-8666-666666666666",
@@ -469,7 +464,6 @@ describe("chat question forms", () => {
     const draft = createChatQuestionFormDraft(current)!;
     const payload = parseChatQuestionFormSubmitTokenPayload(
       chatQuestionFormActionRecords(draft, {
-        companyId: current.companyId,
         endpointId: "44444444-4444-4444-8444-444444444444",
         conversationId: "55555555-5555-4555-8555-555555555555",
         publicationId: "66666666-6666-4666-8666-666666666666",
@@ -540,7 +534,6 @@ describe("chat question forms", () => {
     const draft = createChatQuestionFormDraft(current)!;
     const payload = parseChatQuestionFormSubmitTokenPayload(
       chatQuestionFormActionRecords(draft, {
-        companyId: current.companyId,
         endpointId: "44444444-4444-4444-8444-444444444444",
         conversationId: "55555555-5555-4555-8555-555555555555",
         publicationId: "66666666-6666-4666-8666-666666666666",
@@ -595,7 +588,6 @@ describe("chat question forms", () => {
     })!;
     const payload = parseChatQuestionFormSubmitTokenPayload(
       chatQuestionFormActionRecords(draft, {
-        companyId: current.companyId,
         endpointId: "44444444-4444-4444-8444-444444444444",
         conversationId: "55555555-5555-4555-8555-555555555555",
         publicationId: "66666666-6666-4666-8666-666666666666",
@@ -676,7 +668,6 @@ describe("chat question forms", () => {
     const draft = createChatQuestionFormDraft(interaction())!;
     const payload = parseChatQuestionFormSubmitTokenPayload(
       chatQuestionFormActionRecords(draft, {
-        companyId: "22222222-2222-4222-8222-222222222222",
         endpointId: "44444444-4444-4444-8444-444444444444",
         conversationId: "55555555-5555-4555-8555-555555555555",
         publicationId: "66666666-6666-4666-8666-666666666666",

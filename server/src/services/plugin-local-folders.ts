@@ -591,8 +591,8 @@ export async function deletePluginLocalFolderFile(
   });
 }
 
-export function defaultLocalFolderBasePath(pluginKey: string, companyId: string) {
-  return path.join(os.homedir(), ".paperclip", "plugin-data", companyId, pluginKey);
+export function defaultLocalFolderBasePath(pluginKey: string) {
+  return path.join(os.homedir(), ".paperclip", "plugin-data", pluginKey);
 }
 
 export function assertConfiguredLocalFolder(status: PluginLocalFolderStatus) {

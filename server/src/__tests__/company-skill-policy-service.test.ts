@@ -46,14 +46,13 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Policy Agent",
       role,
       adapterType: "process",
       adapterConfig: {},
       status: "idle",
     });
-    return { companyId, agentId, principal: { type: "agent" as const, id: agentId, role } };
+    return { agentId, principal: { type: "agent" as const, id: agentId, role } };
   }
 
   it("allows every canonical action when no explicit policy exists", async () => {
@@ -70,7 +69,6 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
       "skills.remove",
     ] as const) {
       await expect(service.evaluate({
-        companyId: seeded.companyId,
         principal: seeded.principal,
         action,
       })).resolves.toMatchObject({ allowed: true, action, reason: "no_policy_default", policyRevision: 0 });
@@ -82,7 +80,6 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     const service = companySkillPolicyService(db);
     const protectedSkillId = randomUUID();
     await service.replace({
-      companyId: seeded.companyId,
       expectedRevision: 0,
       policy: {
         schemaVersion: 1,
@@ -126,19 +123,16 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     });
 
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.edit",
       resource: { skillId: protectedSkillId },
     })).resolves.toMatchObject({ allowed: true, matchedRuleId: "security-override" });
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.remove",
       resource: { skillId: protectedSkillId },
     })).resolves.toMatchObject({ allowed: false, reason: "explicit_rule", matchedRuleId: "protected-skill" });
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.install",
       resource: { sourceType: "external_package" },
@@ -149,7 +143,6 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     const seeded = await seedAgent();
     const service = companySkillPolicyService(db);
     await db.insert(companySkillPolicies).values({
-      companyId: seeded.companyId,
       schemaVersion: 1,
       revision: 3,
       defaultEffect: "deny",
@@ -169,12 +162,10 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     });
 
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.edit",
     })).resolves.toMatchObject({ allowed: true, reason: "legacy_compatibility" });
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.remove",
     })).resolves.toMatchObject({ allowed: false, reason: "explicit_rule" });
@@ -184,7 +175,6 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     const seeded = await seedAgent();
     const service = companySkillPolicyService(db);
     await service.replace({
-      companyId: seeded.companyId,
       expectedRevision: 0,
       policy: {
         schemaVersion: 1,
@@ -204,19 +194,16 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     const stored = await service.get(seeded.companyId);
     expect(stored.rules[0]!.resources!.sourceLocators).toEqual(["https://github.com/owner/repo"]);
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.import",
       resource: { sourceType: "git", sourceLocator: "https://github.com/owner/repo" },
     })).resolves.toMatchObject({ allowed: false, reason: "explicit_rule", matchedRuleId: "deny-repo" });
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.import",
       resource: { sourceType: "git", sourceLocator: "https://github.com/Owner/Repo.git" },
     })).resolves.toMatchObject({ allowed: false, reason: "explicit_rule", matchedRuleId: "deny-repo" });
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.import",
       resource: { sourceType: "git", sourceLocator: "https://github.com/owner/other-repo" },
@@ -227,7 +214,6 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     const seeded = await seedAgent();
     const service = companySkillPolicyService(db);
     await db.insert(companySkillPolicies).values({
-      companyId: seeded.companyId,
       schemaVersion: 1,
       revision: 2,
       defaultEffect: "allow",
@@ -242,28 +228,16 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
     });
 
     await expect(service.evaluate({
-      companyId: seeded.companyId,
       principal: seeded.principal,
       action: "skills.import",
       resource: { sourceType: "git", sourceLocator: "https://github.com/owner/repo" },
     })).resolves.toMatchObject({ allowed: false, reason: "explicit_rule", matchedRuleId: "legacy-deny-repo" });
   });
 
-  it("rejects cross-company simulation principals", async () => {
-    const first = await seedAgent();
-    const second = await seedAgent();
-    const service = companySkillPolicyService(db);
-    await expect(service.resolveAgentPrincipal(first.companyId, second.agentId)).rejects.toMatchObject({
-      status: 403,
-      details: { code: "skill_company_boundary_denied" },
-    });
-  });
-
   it("rolls back policy replacement when the required activity record cannot persist", async () => {
     const seeded = await seedAgent();
     const service = companySkillPolicyService(db);
     await expect(service.replace({
-      companyId: seeded.companyId,
       expectedRevision: 0,
       policy: { schemaVersion: 1, defaultEffect: "deny", rules: [] },
       activity: {

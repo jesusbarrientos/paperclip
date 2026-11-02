@@ -27,7 +27,6 @@ vi.mock("../../context/ToastContext", () => ({
 function definition(overrides: Partial<UserSecretDefinition> = {}): UserSecretDefinition {
   return {
     id: "def-1",
-    companyId: "c1",
     key: "PERSONAL_GH_TOKEN",
     name: "Personal GitHub token",
     description: "Used for private repo access",
@@ -51,7 +50,6 @@ function definition(overrides: Partial<UserSecretDefinition> = {}): UserSecretDe
 function secret(): CompanySecret {
   return {
     id: "sec-1",
-    companyId: "c1",
     scope: "user",
     ownerUserId: "u1",
     userSecretDefinitionId: "def-1",
@@ -113,7 +111,7 @@ function render() {
     root.render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
-          <MissingUserSecretsBanner companyId="c1" />
+          <MissingUserSecretsBanner />
         </MemoryRouter>
       </QueryClientProvider>,
     );

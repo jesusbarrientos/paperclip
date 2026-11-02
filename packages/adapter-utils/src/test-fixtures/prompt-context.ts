@@ -20,7 +20,6 @@ export function createPromptContextFixture() {
   }));
   const executionContinuation: ExecutionContinuationEnvelope = {
     version: 1,
-    companyId: "company-1",
     issueId: "issue-1",
     trigger: { reason: "issue_commented", interactionId: null, sourceRunId: null },
     originCommentIds: messages.map(({ id }) => id),

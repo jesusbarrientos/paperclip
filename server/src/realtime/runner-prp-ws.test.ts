@@ -25,7 +25,6 @@ describe("runner PRP websocket route", () => {
     const handleUpgrade = vi.fn();
     const runId = "00000000-0000-4000-8000-000000000777";
     const registration = await registerRunnerPrpAuthority({
-      companyId: "company-1",
       runId,
       authority: { handleUpgrade } as unknown as DurablePrpControlPlane,
     });
@@ -35,7 +34,6 @@ describe("runner PRP websocket route", () => {
     );
     expect(
       runnerPrpWebSocketInternals.activeRegistration({
-        companyId: "company-1",
         runId,
       }),
     ).toBe(true);
@@ -54,7 +52,6 @@ describe("runner PRP websocket route", () => {
     await registration.release();
     expect(
       runnerPrpWebSocketInternals.activeRegistration({
-        companyId: "company-1",
         runId,
       }),
     ).toBe(false);
@@ -86,12 +83,11 @@ describe("runner PRP websocket route", () => {
       handleUpgrade: vi.fn(),
     } as unknown as DurablePrpControlPlane;
     const first = await registerRunnerPrpAuthority({
-      companyId: "company-1",
       runId,
       authority,
     });
     await expect(
-      registerRunnerPrpAuthority({ companyId: "company-2", runId, authority }),
+      registerRunnerPrpAuthority({ runId, authority }),
     ).rejects.toThrow("runner_prp_authority_already_registered");
     await first.release();
     server.close();
@@ -111,7 +107,6 @@ describe("runner PRP websocket route", () => {
       controllerSeq: 2,
     }));
     const oldRegistration = await registerRunnerPrpAuthority({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
       runId: oldRunId,
@@ -121,7 +116,6 @@ describe("runner PRP websocket route", () => {
       } as unknown as DurablePrpControlPlane,
     });
     const newRegistration = await registerRunnerPrpAuthority({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
       runId: newRunId,
@@ -133,7 +127,6 @@ describe("runner PRP websocket route", () => {
 
     expect(
       queueLiveRunnerPrpCommand({
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
         type: "session.goal.get",
@@ -145,7 +138,6 @@ describe("runner PRP websocket route", () => {
     await oldRegistration.release();
     expect(
       queueLiveRunnerPrpCommand({
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
         type: "session.goal.get",
@@ -156,7 +148,6 @@ describe("runner PRP websocket route", () => {
     await newRegistration.release();
     expect(
       queueLiveRunnerPrpCommand({
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
         type: "session.goal.get",
@@ -165,13 +156,12 @@ describe("runner PRP websocket route", () => {
     server.close();
   });
 
-  it("queues one company-bound, idempotent runtime request resolution", async () => {
+  it("queues one run-bound, idempotent runtime request resolution", async () => {
     const server = createServer();
     setupRunnerPrpWebSocketServer(server, { apiUrl: "http://127.0.0.1:3213" });
     const queueCommand = vi.fn(() => ({ commandId: "command-resolution-1" }));
     const runId = "00000000-0000-4000-8000-000000000780";
     const registration = await registerRunnerPrpAuthority({
-      companyId: "company-1",
       runId,
       authority: {
         queueCommand,
@@ -179,10 +169,8 @@ describe("runner PRP websocket route", () => {
       } as unknown as DurablePrpControlPlane,
     });
     const input = {
-      companyId: "company-1",
       runId,
       pendingRequest: {
-        companyId: "company-1",
         runId,
         requestId: "request-1",
         requestKind: "command_approval" as const,
@@ -224,12 +212,6 @@ describe("runner PRP websocket route", () => {
     expect(() =>
       queueRunnerPrpRuntimeRequestResolution({
         ...input,
-        companyId: "company-2",
-      }),
-    ).toThrowError("runner_prp_authority_not_active");
-    expect(() =>
-      queueRunnerPrpRuntimeRequestResolution({
-        ...input,
         resolution: { action: "decline" },
       }),
     ).toThrowError(RunnerPrpRuntimeRequestResolutionError);
@@ -244,15 +226,10 @@ describe("runner PRP websocket route", () => {
         },
       }),
     ).toThrowError("native_runtime_request_resolver_denied");
-    for (const pendingRequest of [
-      { ...input.pendingRequest, companyId: "company-2" },
-      { ...input.pendingRequest, runId: "00000000-0000-4000-8000-000000000783" },
-    ]) {
-      expect(() => queueRunnerPrpRuntimeRequestResolution({
-        ...input,
-        pendingRequest,
-      })).toThrowError("runner_prp_authority_not_active");
-    }
+    expect(() => queueRunnerPrpRuntimeRequestResolution({
+      ...input,
+      pendingRequest: { ...input.pendingRequest, runId: "00000000-0000-4000-8000-000000000783" },
+    })).toThrowError("runner_prp_authority_not_active");
     expect(queueCommand).toHaveBeenCalledTimes(1);
 
     await registration.release();
@@ -290,21 +267,17 @@ describe("runner PRP websocket route", () => {
           expectedRunnerDigest: `sha256:${"a".repeat(64)}`,
         });
         const oldRoute = await registerRunnerPrpAuthority({
-          companyId: "company-1",
           runId: identity.runId,
           authority,
         });
         // Warm attach registers the next route before rotating the same core.
         const nextRoute = await registerRunnerPrpAuthority({
-          companyId: "company-1",
           runId: nextIdentity.runId,
           authority,
         });
         const input = {
-          companyId: "company-1",
           runId: identity.runId,
           pendingRequest: {
-            companyId: "company-1",
             runId: identity.runId,
             requestId: "request-old",
             requestKind: "command_approval" as const,
@@ -367,7 +340,6 @@ describe("runner PRP websocket route", () => {
         await oldRoute.release();
         expect(
           runnerPrpWebSocketInternals.activeRegistration({
-            companyId: "company-1",
             runId: nextIdentity.runId,
           }),
         ).toBe(true);

@@ -5,7 +5,7 @@
   "name": "Budget cost stop reason",
   "description": "A terminal budget hard stop carries a safe usage aggregate, decision id, and stable stop receipt.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_budget_stop", "issueId": "issue_budget_stop", "runId": "run_budget_stop",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_budget_stop", "runId": "run_budget_stop",
     "environmentLeaseId": "lease_budget_stop", "runnerInstanceId": "runner_budget_stop", "normalizedSessionId": "session_budget_stop", "driverSessionId": "driver_budget_stop"
   },
   "capabilities": {

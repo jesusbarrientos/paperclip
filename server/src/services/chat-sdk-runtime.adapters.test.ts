@@ -48,10 +48,9 @@ function capturingLogger(entries: unknown[]): Logger {
 function memoryPersistence(): ChatSdkStatePersistence {
   const rows = new Map<string, ChatSdkStateRecord>();
   const keyFor = (input: {
-    companyId: string;
     endpointId: string;
     key: string;
-  }) => `${input.companyId}:${input.endpointId}:${input.key}`;
+  }) => `${input.endpointId}:${input.key}`;
   return {
     async compareAndSet(input) {
       const key = keyFor(input);
@@ -139,7 +138,6 @@ describe("Chat SDK published adapter integration", () => {
     const runtimes = providerConfigs.map((providerConfig, index) =>
       createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-1",
         endpointId: `endpoint-${index}`,
         logger: "silent",
         persistence,
@@ -175,7 +173,6 @@ describe("Chat SDK published adapter integration", () => {
     vi.stubGlobal("fetch", providerFetch);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-github-timeout",
       endpointId: "endpoint-github-timeout",
       logger: "silent",
       persistence,
@@ -212,7 +209,6 @@ describe("Chat SDK published adapter integration", () => {
     vi.stubGlobal("fetch", providerFetch);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-telegram-timeout",
       endpointId: "endpoint-telegram-timeout",
       logger: "silent",
       persistence,
@@ -248,7 +244,6 @@ describe("Chat SDK published adapter integration", () => {
   it("configures a bounded Teams HTTP client reused by scoped egress", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-timeout",
       endpointId: "endpoint-teams-timeout",
       logger: "silent",
       persistence,
@@ -292,7 +287,6 @@ describe("Chat SDK published adapter integration", () => {
     vi.stubGlobal("fetch", providerFetch);
     const slackRuntime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-fetch-timeout",
       endpointId: "endpoint-slack-fetch-timeout",
       logger: "silent",
       persistence,
@@ -304,7 +298,6 @@ describe("Chat SDK published adapter integration", () => {
     });
     const discordRuntime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-discord-fetch-timeout",
       endpointId: "endpoint-discord-fetch-timeout",
       logger: "silent",
       persistence,
@@ -390,7 +383,6 @@ describe("Chat SDK published adapter integration", () => {
     vi.stubGlobal("fetch", providerFetch);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-github-token-refresh",
       endpointId: "endpoint-github-token-refresh",
       logger: "silent",
       persistence,
@@ -437,7 +429,6 @@ describe("Chat SDK published adapter integration", () => {
     const onAction = vi.fn();
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onAction, onMessage() {} },
-      companyId: "company-slack-action-envelope",
       endpointId: "endpoint-slack-action-envelope",
       logger: "silent",
       persistence,
@@ -510,7 +501,6 @@ describe("Chat SDK published adapter integration", () => {
     const onSlashCommand = vi.fn(async () => undefined);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {}, onSlashCommand },
-      companyId: "company-slack-slash-ack",
       endpointId: "endpoint-slack-slash-ack",
       logger: "silent",
       persistence,
@@ -605,7 +595,6 @@ describe("Chat SDK published adapter integration", () => {
         onMessageDeleted,
         onMessageUpdated,
       },
-      companyId: "company-slack-lifecycle-envelope",
       endpointId: "endpoint-slack-lifecycle-envelope",
       logger: "silent",
       persistence,
@@ -841,7 +830,6 @@ describe("Chat SDK published adapter integration", () => {
         const onMessageDeleted = vi.fn(async () => undefined);
         const runtime = createChatSdkEndpointRuntime({
           callbacks: { onMessage, onMessageUpdated, onMessageDeleted },
-          companyId: "company-slack-file-lifecycle",
           endpointId: "endpoint-slack-file-lifecycle",
           logger: "silent",
           persistence: memoryPersistence(),
@@ -975,7 +963,6 @@ describe("Chat SDK published adapter integration", () => {
     >(async () => undefined);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {}, onReaction },
-      companyId: "company-slack-reaction-envelope",
       endpointId: "endpoint-slack-reaction-envelope",
       logger: "silent",
       persistence,
@@ -1071,7 +1058,6 @@ describe("Chat SDK published adapter integration", () => {
   it("falls back from unavailable Slack native streaming to bounded post and edit", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-stream-fallback",
       endpointId: "endpoint-slack-stream-fallback",
       logger: "silent",
       persistence,
@@ -1169,7 +1155,6 @@ describe("Chat SDK published adapter integration", () => {
   it("uses one Slack provider call for a file-only publication", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-only",
       endpointId: "endpoint-slack-file-only",
       logger: "silent",
       persistence,
@@ -1250,7 +1235,6 @@ describe("Chat SDK published adapter integration", () => {
   it("resolves a sparse Slack upload response to its exact private thread share", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-identity",
       endpointId: "endpoint-slack-file-identity",
       logger: "silent",
       persistence,
@@ -1336,7 +1320,6 @@ describe("Chat SDK published adapter integration", () => {
   it("records accepted Slack file IDs before the share lookup and preserves Thread.post", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-receipt",
       endpointId: "endpoint-slack-file-receipt",
       logger: "silent",
       persistence,
@@ -1434,7 +1417,6 @@ describe("Chat SDK published adapter integration", () => {
   it("isolates concurrent Slack upload receipt callbacks and restores the ordinary post context", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-concurrent",
       endpointId: "endpoint-slack-file-concurrent",
       logger: "silent",
       persistence,
@@ -1568,7 +1550,6 @@ describe("Chat SDK published adapter integration", () => {
     async (failure) => {
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-slack-file-callback-failure",
         endpointId: "endpoint-slack-file-callback-failure",
         logger: "silent",
         persistence,
@@ -1643,7 +1624,6 @@ describe("Chat SDK published adapter integration", () => {
   it("resolves a captured Slack file receipt with metadata reads only", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-recovery",
       endpointId: "endpoint-slack-file-recovery",
       logger: "silent",
       persistence,
@@ -1702,7 +1682,6 @@ describe("Chat SDK published adapter integration", () => {
   it("rejects a Slack file upload whose provider message identity stays ambiguous", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-ambiguous",
       endpointId: "endpoint-slack-file-ambiguous",
       logger: "silent",
       persistence,
@@ -1783,7 +1762,6 @@ describe("Chat SDK published adapter integration", () => {
   it("bounds a stalled Slack file identity lookup without uploading again", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-timeout",
       endpointId: "endpoint-slack-file-timeout",
       logger: "silent",
       persistence,
@@ -1854,7 +1832,6 @@ describe("Chat SDK published adapter integration", () => {
   it("does not start a Slack file lookup after token resolution exceeds the deadline", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-slack-file-late-token",
       endpointId: "endpoint-slack-file-late-token",
       logger: "silent",
       persistence,
@@ -1953,7 +1930,6 @@ describe("Chat SDK published adapter integration", () => {
     async ({ caseName, infoResult }) => {
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: `company-slack-file-${caseName}`,
         endpointId: `endpoint-slack-file-${caseName}`,
         logger: "silent",
         persistence,
@@ -2024,7 +2000,6 @@ describe("Chat SDK published adapter integration", () => {
   it("parses attachments carried by a Telegram slash-command caption", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-telegram-caption-file",
       endpointId: "endpoint-telegram-caption-file",
       logger: "silent",
       persistence,
@@ -2118,7 +2093,6 @@ describe("Chat SDK published adapter integration", () => {
       vi.stubGlobal("fetch", providerFetch);
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: `company-telegram-download-${contentLength ?? "absent"}`,
         endpointId: `endpoint-telegram-download-${contentLength ?? "absent"}`,
         logger: "silent",
         persistence,
@@ -2180,7 +2154,6 @@ describe("Chat SDK published adapter integration", () => {
     vi.stubGlobal("fetch", providerFetch);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-telegram-native-output",
       endpointId: "endpoint-telegram-native-output",
       logger: "silent",
       persistence,
@@ -2317,7 +2290,6 @@ describe("Chat SDK published adapter integration", () => {
       vi.stubGlobal("fetch", providerFetch);
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-telegram-durable-part",
         endpointId: "endpoint-telegram-durable-part",
         logger: "silent",
         persistence,
@@ -2361,7 +2333,6 @@ describe("Chat SDK published adapter integration", () => {
       // only the final HTTP methods are replaced. No live tenant/UI claim.
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-teams-close-edit",
         endpointId: `endpoint-teams-close-${scope}`,
         logger: "silent",
         persistence: memoryPersistence(),
@@ -2486,7 +2457,6 @@ describe("Chat SDK published adapter integration", () => {
   it("parses verified Teams edit, delete, and restore envelopes through the public adapter contract", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-message-update",
       endpointId: "endpoint-teams-message-update",
       logger: "silent",
       persistence,
@@ -2584,7 +2554,6 @@ describe("Chat SDK published adapter integration", () => {
     async ({ description, expected, status }) => {
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-telegram-errors",
         endpointId: `endpoint-telegram-${status}`,
         logger: "silent",
         persistence,
@@ -2661,7 +2630,6 @@ describe("Chat SDK published adapter integration", () => {
     async ({ providerCode, rawError }) => {
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-teams-errors",
         endpointId: `endpoint-teams-${providerCode}`,
         logger: "silent",
         persistence,
@@ -2717,7 +2685,6 @@ describe("Chat SDK published adapter integration", () => {
   it("keeps a Teams 401 as an endpoint authentication error", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-auth-error",
       endpointId: "endpoint-teams-auth-error",
       logger: "silent",
       persistence,
@@ -2853,7 +2820,6 @@ describe("Chat SDK published adapter integration", () => {
       vi.stubGlobal("fetch", providerFetch);
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-signature-test",
         endpointId: `endpoint-${providerConfig.provider}`,
         logger: "silent",
         persistence,
@@ -2907,7 +2873,6 @@ describe("Chat SDK published adapter integration", () => {
     const onMessage = vi.fn(async (_event: unknown) => undefined);
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage },
-      companyId: "company-github-links",
       endpointId: "endpoint-github-links",
       logger: "silent",
       persistence,
@@ -2977,7 +2942,6 @@ describe("Chat SDK published adapter integration", () => {
     const logEntries: unknown[] = [];
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-log-boundary",
       endpointId: "endpoint-teams-log-boundary",
       logger: capturingLogger(logEntries),
       persistence,
@@ -3127,7 +3091,6 @@ describe("Chat SDK published adapter integration", () => {
     for (const [index, testCase] of cases.entries()) {
       const runtime = createChatSdkEndpointRuntime({
         callbacks: { onMessage() {} },
-        companyId: "company-attachment-recovery",
         endpointId: `endpoint-attachment-${index}`,
         logger: "silent",
         persistence,
@@ -3166,7 +3129,6 @@ describe("Chat SDK published adapter integration", () => {
   it("fails closed for cross-provider and bearer-style Teams attachment locators", () => {
     const teams = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-attachment-recovery",
       endpointId: "endpoint-teams-attachment",
       logger: "silent",
       persistence,
@@ -3190,7 +3152,6 @@ describe("Chat SDK published adapter integration", () => {
 
     const slack = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-attachment-recovery",
       endpointId: "endpoint-slack-attachment",
       logger: "silent",
       persistence,
@@ -3213,7 +3174,6 @@ describe("Chat SDK published adapter integration", () => {
   it("isolates concurrent Teams sends by verified thread service URL", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-egress",
       endpointId: "endpoint-teams-egress",
       logger: "silent",
       persistence,
@@ -3296,7 +3256,6 @@ describe("Chat SDK published adapter integration", () => {
     const state = memoryPersistence();
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-route-refresh",
       endpointId: "endpoint-teams-route-refresh",
       logger: "silent",
       persistence: state,
@@ -3359,7 +3318,6 @@ describe("Chat SDK published adapter integration", () => {
     const appId = "00000000-0000-4000-8000-000000000611";
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-admitted-metadata",
       endpointId: "endpoint-teams-admitted-metadata",
       logger: "silent",
       persistence: state,
@@ -3465,7 +3423,6 @@ describe("Chat SDK published adapter integration", () => {
   it("scopes direct Teams edit, reaction, and delete calls to signed Microsoft service URLs", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-direct-api",
       endpointId: "endpoint-teams-direct-api",
       logger: "silent",
       persistence,
@@ -3567,7 +3524,6 @@ describe("Chat SDK published adapter integration", () => {
     const state = memoryPersistence();
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-open-dm",
       endpointId: "endpoint-teams-open-dm",
       logger: "silent",
       persistence: state,
@@ -3689,7 +3645,6 @@ describe("Chat SDK published adapter integration", () => {
   it("restores the Teams API client after a scoped outbound failure", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-egress-failure",
       endpointId: "endpoint-teams-egress-failure",
       logger: "silent",
       persistence,
@@ -3729,7 +3684,6 @@ describe("Chat SDK published adapter integration", () => {
   it("accepts canonical Microsoft first-party Teams service URL suffixes", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-egress-first-party",
       endpointId: "endpoint-teams-egress-first-party",
       logger: "silent",
       persistence,
@@ -3780,7 +3734,6 @@ describe("Chat SDK published adapter integration", () => {
   it("rejects unsafe Teams thread service URLs before transport", async () => {
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-egress-untrusted",
       endpointId: "endpoint-teams-egress-untrusted",
       logger: "silent",
       persistence,
@@ -3837,7 +3790,6 @@ describe("Chat SDK published adapter integration", () => {
     const configuredApiUrl = "https://connector.example.test:8443/custom";
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-teams-custom-api",
       endpointId: "endpoint-teams-custom-api",
       logger: "silent",
       persistence,

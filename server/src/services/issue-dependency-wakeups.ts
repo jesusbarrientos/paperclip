@@ -189,7 +189,6 @@ function wakeCoversIssueBlockersResolvedReadyState(
 export async function findExistingIssueBlockersResolvedWakeForReadyState(
   db: Db,
   input: {
-    companyId: string;
     dependentIssueId: string;
     blockerIssueIds: string[];
     blockedTransitionAt?: IssueBlockersResolvedWakeCycleInput;
@@ -221,10 +220,7 @@ export async function findExistingIssueBlockersResolvedWakeForReadyState(
     })
     .from(agentWakeupRequests)
     .where(
-      and(
-        eq(agentWakeupRequests.companyId, input.companyId),
-        inArray(agentWakeupRequests.idempotencyKey, lookupKeys),
-      ),
+      inArray(agentWakeupRequests.idempotencyKey, lookupKeys),
     );
 
   const covering = rows.find((row) =>

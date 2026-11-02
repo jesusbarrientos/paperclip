@@ -24,7 +24,7 @@ These are aggregated per agent per month (UTC calendar month).
 Set an overall monthly budget for the company:
 
 ```
-PATCH /api/companies/{companyId}
+PATCH /api/organization
 { "budgetMonthlyCents": 100000 }
 ```
 
@@ -57,9 +57,9 @@ The dashboard shows current month spend vs budget for the company and each agent
 ### Cost Breakdown API
 
 ```
-GET /api/companies/{companyId}/costs/summary     # Company total
-GET /api/companies/{companyId}/costs/by-agent     # Per-agent breakdown
-GET /api/companies/{companyId}/costs/by-project   # Per-project breakdown
+GET /api/costs/summary     # Company total
+GET /api/costs/by-agent     # Per-agent breakdown
+GET /api/costs/by-project   # Per-project breakdown
 ```
 
 ## Best Practices

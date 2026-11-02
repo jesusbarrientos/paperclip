@@ -46,7 +46,7 @@ describe("routine operations", () => {
     list.mockResolvedValue(issues);
     render();
     await vi.waitFor(() => expect(renderList.mock.lastCall?.[0].issues).toEqual(issues));
-    expect(list).toHaveBeenCalledWith("company-1", { originKind: "routine_execution", originId: "routine-1" });
+    expect(list).toHaveBeenCalledWith({ originKind: "routine_execution", originId: "routine-1" });
     expect(renderList.mock.lastCall?.[0].searchFilters).toEqual({ originKind: "routine_execution", originId: "routine-1" });
     expect(renderList.mock.lastCall?.[0].issueLinkState.issueDetailBreadcrumb.href).toBe("/routines/routine-1/runs");
   });

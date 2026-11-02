@@ -80,7 +80,7 @@ describe(`durable file delivery (${liveDaytona ? "Daytona" : "local processes"})
     const fixture = await server.fixture({ apiToolsEnabled: false });
     await server.db.update(agents).set({ adapterType: "codex_local" }).where(eq(agents.id, fixture.agentId));
     await server.db.update(heartbeatRuns).set({ runtimeMode: "legacy" }).where(eq(heartbeatRuns.id, fixture.runId));
-    const token = createLocalAgentJwt(fixture.agentId, fixture.companyId, "codex_local", fixture.runId)!;
+    const token = createLocalAgentJwt(fixture.agentId, "codex_local", fixture.runId)!;
     const remote = await execution(fixture.workspace);
     const installedHelper = await remote.write("paperclip-upload-artifact.sh", await readFile(helper));
     const target: AdapterSandboxExecutionTarget = {
@@ -100,7 +100,7 @@ describe(`durable file delivery (${liveDaytona ? "Daytona" : "local processes"})
     });
     expect(bridge?.env.PAPERCLIP_API_BRIDGE_MODE).toBe(duplex ? "http2_v1" : "queue_v1");
     const env = { ...bridge!.env, PAPERCLIP_RUN_ID: fixture.runId,
-      PAPERCLIP_COMPANY_ID: fixture.companyId, PAPERCLIP_TASK_ID: fixture.issueId,
+      PAPERCLIP_TASK_ID: fixture.issueId,
       PAPERCLIP_HELPER_STATE_DIR: path.join(remote.workspace, ".helper-state") };
     const headers = { authorization: `Bearer ${bridge!.env.PAPERCLIP_API_KEY}` };
     const receipts: Array<{ attachment: { id: string; contentPath: string; downloadPath: string } }> = [];
@@ -120,9 +120,6 @@ describe(`durable file delivery (${liveDaytona ? "Daytona" : "local processes"})
         expect(Buffer.from(await download.arrayBuffer())).toEqual(file.body);
         receipts.push(receipt);
       }
-      const foreign = await server.fixture();
-      const denied = await remote.fetch(`${bridge!.env.PAPERCLIP_API_URL}/api/issues/${foreign.issueId}/attachments`, headers);
-      expect(denied.status).toBe(404);
       const unauthorized = await remote.fetch(`${bridge!.env.PAPERCLIP_API_URL}/api/issues/${fixture.issueId}/attachments`, { authorization: "Bearer wrong-token" });
       expect(unauthorized.status).toBe(401);
       expect(await server.db.select().from(issueAttachments).where(eq(issueAttachments.issueId, fixture.issueId))).toHaveLength(2);
@@ -147,7 +144,7 @@ describe(`durable file delivery (${liveDaytona ? "Daytona" : "local processes"})
     });
     expect(authority.definitions().some(definition => definition.name === "register_deliverable")).toBe(true);
     expect(authority.definitions().some(definition => definition.name === "api_post")).toBe(false);
-    const token = createLocalAgentJwt(fixture.agentId, fixture.companyId, "paperclip_runner", fixture.runId)!;
+    const token = createLocalAgentJwt(fixture.agentId, "paperclip_runner", fixture.runId)!;
     const receipts: Array<{ downloadPath: string }> = [];
     for (const file of files) {
       await remote.write(`out/${file.name}`, file.body);

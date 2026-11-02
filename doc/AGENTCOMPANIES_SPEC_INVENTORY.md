@@ -46,7 +46,7 @@ These define the contract between server, CLI, and UI.
 
 | File | Endpoints |
 |---|---|
-| `server/src/routes/companies.ts` | `POST /api/companies/:companyId/export` — legacy export bundle<br>`POST /api/companies/:companyId/exports/preview` — export preview<br>`POST /api/companies/:companyId/exports` — export package<br>`POST /api/companies/import/preview` — import preview<br>`POST /api/companies/import` — perform import |
+| `server/src/routes/companies.ts` | `POST /api/organization/export` — legacy export bundle<br>`POST /api/organization/exports/preview` — export preview<br>`POST /api/organization/exports` — export package<br>`POST /api/organization/import/preview` — import preview<br>`POST /api/organization/import` — perform import |
 
 Route registration lives in `server/src/app.ts` via `companyRoutes(db, storage)`.
 
@@ -61,7 +61,7 @@ Route registration lives in `server/src/app.ts` via `companyRoutes(db, storage)`
 
 | File | Commands |
 |---|---|
-| `cli/src/commands/client/company.ts` | `company export` — exports a company package to disk (flags: `--out`, `--include`, `--projects`, `--issues`, `--projectIssues`).<br>`company import <fromPathOrUrl>` — imports a company package from a file or folder (flags: positional source path/URL or GitHub shorthand, `--include`, `--target`, `--companyId`, `--newCompanyName`, `--agents`, `--collision`, `--ref`, `--dryRun`).<br>Reads/writes portable file entries and handles `.paperclip.yaml` filtering. |
+| _(removed)_ | The `company export`/`company import` commands (`cli/src/commands/client/company.ts`) were removed when Paperclip moved to one organization per instance. The CLI now only has `organization get|update`; package export/import goes through the `/api/organization/...` endpoints. |
 
 ## 7. UI — Pages
 
@@ -88,7 +88,7 @@ Route registration lives in `server/src/app.ts` via `companyRoutes(db, storage)`
 
 | File | Functions |
 |---|---|
-| `ui/src/api/companies.ts` | `companiesApi.exportBundle`, `companiesApi.exportPreview`, `companiesApi.exportPackage`, `companiesApi.importPreview`, `companiesApi.importBundle` — typed fetch wrappers for the portability endpoints. |
+| `ui/src/api/organization.ts` | `organizationApi.exportBundle`, `organizationApi.exportPreview`, `organizationApi.exportFidelity`, `organizationApi.importPreview`, `organizationApi.importBundle`, `organizationApi.importBundleAsync` — typed fetch wrappers for the portability endpoints. |
 
 ## 11. Skills & Agent Instructions
 

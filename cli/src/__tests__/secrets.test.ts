@@ -15,7 +15,6 @@ import {
 function agent(partial: Partial<Agent>): Agent {
   return {
     id: "agent-12345678",
-    companyId: "company-1",
     name: "Coder",
     urlKey: "coder",
     role: "engineer",
@@ -45,7 +44,6 @@ function agent(partial: Partial<Agent>): Agent {
 function secret(partial: Partial<CompanySecret>): CompanySecret {
   return {
     id: "secret-1",
-    companyId: "company-1",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -280,28 +278,28 @@ describe("secrets API parity commands", () => {
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse()));
     vi.stubGlobal("fetch", fetchMock);
 
-    await runSecretCommand(["secrets", "provider-configs", "--company-id", "company-1"]);
-    await runSecretCommand(["secrets", "provider-config:create", "--company-id", "company-1", "--payload-json", "{}"]);
-    await runSecretCommand(["secrets", "provider-config:discovery-preview", "--company-id", "company-1", "--payload-json", "{}"]);
+    await runSecretCommand(["secrets", "provider-configs"]);
+    await runSecretCommand(["secrets", "provider-config:create", "--payload-json", "{}"]);
+    await runSecretCommand(["secrets", "provider-config:discovery-preview", "--payload-json", "{}"]);
     await runSecretCommand(["secrets", "provider-config:get", "config-1"]);
     await runSecretCommand(["secrets", "provider-config:update", "config-1", "--payload-json", "{}"]);
     await runSecretCommand(["secrets", "provider-config:default", "config-1"]);
     await runSecretCommand(["secrets", "provider-config:health", "config-1"]);
     await runSecretCommand(["secrets", "provider-config:delete", "config-1"]);
-    await runSecretCommand(["secrets", "remote-import:preview", "--company-id", "company-1", "--payload-json", "{}"]);
-    await runSecretCommand(["secrets", "remote-import", "--company-id", "company-1", "--payload-json", "{}"]);
+    await runSecretCommand(["secrets", "remote-import:preview", "--payload-json", "{}"]);
+    await runSecretCommand(["secrets", "remote-import", "--payload-json", "{}"]);
 
     expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
-      ["GET", "http://localhost:3100/api/companies/company-1/secret-provider-configs"],
-      ["POST", "http://localhost:3100/api/companies/company-1/secret-provider-configs"],
-      ["POST", "http://localhost:3100/api/companies/company-1/secret-provider-configs/discovery/preview"],
+      ["GET", "http://localhost:3100/api/secret-provider-configs"],
+      ["POST", "http://localhost:3100/api/secret-provider-configs"],
+      ["POST", "http://localhost:3100/api/secret-provider-configs/discovery/preview"],
       ["GET", "http://localhost:3100/api/secret-provider-configs/config-1"],
       ["PATCH", "http://localhost:3100/api/secret-provider-configs/config-1"],
       ["POST", "http://localhost:3100/api/secret-provider-configs/config-1/default"],
       ["POST", "http://localhost:3100/api/secret-provider-configs/config-1/health"],
       ["DELETE", "http://localhost:3100/api/secret-provider-configs/config-1"],
-      ["POST", "http://localhost:3100/api/companies/company-1/secrets/remote-import/preview"],
-      ["POST", "http://localhost:3100/api/companies/company-1/secrets/remote-import"],
+      ["POST", "http://localhost:3100/api/secrets/remote-import/preview"],
+      ["POST", "http://localhost:3100/api/secrets/remote-import"],
     ]);
   });
 

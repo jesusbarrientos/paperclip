@@ -35,7 +35,6 @@ describe("issueDetailBreadcrumb", () => {
   function createIssue(overrides: Partial<Issue> = {}): Issue {
     return {
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       projectId: "project-1",
       projectWorkspaceId: null,
       goalId: null,
@@ -73,7 +72,6 @@ describe("issueDetailBreadcrumb", () => {
       hiddenAt: null,
       project: {
         id: "project-1",
-        companyId: "company-1",
         urlKey: "paperclip-app",
         goalId: null,
         goalIds: [],

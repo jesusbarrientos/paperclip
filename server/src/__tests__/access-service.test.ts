@@ -98,7 +98,6 @@ describeEmbeddedPostgres("access service", () => {
 
     await expect(
       access.updateMemberAndPermissions(
-        company.id,
         owner.id,
         { membershipRole: "admin", grants: [] },
         "admin-user",
@@ -118,7 +117,7 @@ describeEmbeddedPostgres("access service", () => {
     const access = accessService(db);
 
     await expect(
-      access.updateMember(company.id, owner.id, { status: "suspended" }),
+      access.updateMember(owner.id, { status: "suspended" }),
     ).rejects.toThrow("Cannot remove the last active owner");
 
     const unchanged = await db
@@ -150,7 +149,6 @@ describeEmbeddedPostgres("access service", () => {
     const openIssue = await db
       .insert(issues)
       .values({
-        companyId: company.id,
         title: "Open assigned issue",
         status: "in_progress",
         assigneeUserId: member.principalId,
@@ -160,7 +158,6 @@ describeEmbeddedPostgres("access service", () => {
     const doneIssue = await db
       .insert(issues)
       .values({
-        companyId: company.id,
         title: "Historical assigned issue",
         status: "done",
         assigneeUserId: member.principalId,
@@ -169,7 +166,7 @@ describeEmbeddedPostgres("access service", () => {
       .then((rows) => rows[0]!);
 
     const access = accessService(db);
-    const result = await access.archiveMember(company.id, member.id, {
+    const result = await access.archiveMember(member.id, {
       reassignment: { assigneeUserId: owner.principalId },
     });
 
@@ -255,21 +252,18 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
-      companyId: company.id,
       name: "Instance access delegated agent",
       role: "worker",
       adapterType: "process",
       adapterConfig: {},
     }).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `instance-access-${randomUUID()}`,
       name: "Instance access app",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Instance access connection",
       uid: `instance-access-${randomUUID()}`,
@@ -282,14 +276,12 @@ describeEmbeddedPostgres("access service", () => {
       enabled: true,
     }).returning().then((rows) => rows[0]!);
     const grant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "user",
       subjectUserId: member.principalId,
       status: "active",
     }).returning().then((rows) => rows[0]!);
     await db.insert(connectionGrantDelegations).values({
-      companyId: company.id,
       grantId: grant.id,
       agentId: agent.id,
       createdByUserId: member.principalId,
@@ -315,21 +307,18 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
-      companyId: company.id,
       name: "Delegated agent",
       role: "worker",
       adapterType: "process",
       adapterConfig: {},
     }).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `app-${randomUUID()}`,
       name: "Personal mail",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Mail",
       uid: `mail-${randomUUID()}`,
@@ -342,12 +331,10 @@ describeEmbeddedPostgres("access service", () => {
       enabled: true,
     }).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
-      companyId: company.id,
       key: `oauth-${randomUUID()}`,
       name: "Personal OAuth token",
     }).returning().then((rows) => rows[0]!);
     const secret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: member.principalId,
       userSecretDefinitionId: definition.id,
@@ -358,19 +345,17 @@ describeEmbeddedPostgres("access service", () => {
       credentialSecretRefs: [{ secretId: secret.id, configPath: "oauth.access_token" }],
     }).where(eq(toolConnections.id, connection.id));
     const grant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "user",
       subjectUserId: member.principalId,
       credentialSecretRefs: [{ secretId: secret.id, configPath: "oauth.access_token" }],
     }).returning().then((rows) => rows[0]!);
     await db.insert(connectionGrantDelegations).values({
-      companyId: company.id,
       grantId: grant.id,
       agentId: agent.id,
       createdByUserId: member.principalId,
     });
-    await accessService(db).archiveMember(company.id, member.id, {
+    await accessService(db).archiveMember(member.id, {
       reassignment: { assigneeUserId: owner.principalId },
     });
 
@@ -408,14 +393,12 @@ describeEmbeddedPostgres("access service", () => {
       },
     ]).onConflictDoUpdate(membershipUpsert).returning();
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `shared-personal-${randomUUID()}`,
       name: "Shared personal app",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Shared personal connection",
       uid: `shared-personal-${randomUUID()}`,
@@ -428,12 +411,10 @@ describeEmbeddedPostgres("access service", () => {
       enabled: true,
     }).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
-      companyId: company.id,
       key: `shared-personal-${randomUUID()}`,
       name: "Shared personal token",
     }).returning().then((rows) => rows[0]!);
     const secret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: departing!.principalId,
       userSecretDefinitionId: definition.id,
@@ -444,7 +425,6 @@ describeEmbeddedPostgres("access service", () => {
     await db.update(toolConnections).set({ credentialSecretRefs }).where(eq(toolConnections.id, connection.id));
     const [departingGrant, survivingGrant] = await db.insert(connectionGrants).values([
       {
-        companyId: company.id,
         connectionId: connection.id,
         kind: "user" as const,
         subjectUserId: departing!.principalId,
@@ -452,7 +432,6 @@ describeEmbeddedPostgres("access service", () => {
         credentialSecretRefs,
       },
       {
-        companyId: company.id,
         connectionId: connection.id,
         kind: "user" as const,
         subjectUserId: surviving!.principalId,
@@ -461,7 +440,7 @@ describeEmbeddedPostgres("access service", () => {
       },
     ]).returning();
 
-    await accessService(db).archiveMember(company.id, departing!.id, {
+    await accessService(db).archiveMember(departing!.id, {
       reassignment: { assigneeUserId: owner.principalId },
     });
 
@@ -484,19 +463,16 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `mixed-${randomUUID()}`,
       name: "Mixed credential app",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
-      companyId: company.id,
       key: `mixed-personal-${randomUUID()}`,
       name: "Mixed personal token",
     }).returning().then((rows) => rows[0]!);
     const personalSecret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: departing.principalId,
       userSecretDefinitionId: definition.id,
@@ -504,7 +480,6 @@ describeEmbeddedPostgres("access service", () => {
       name: "Mixed personal token",
     }).returning().then((rows) => rows[0]!);
     const organizationSecret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "company",
       key: `mixed-organization-${randomUUID()}`,
       name: "Mixed organization token",
@@ -512,7 +487,6 @@ describeEmbeddedPostgres("access service", () => {
     const personalRef = { secretId: personalSecret.id, configPath: "credentials.personal" };
     const organizationRef = { secretId: organizationSecret.id, configPath: "credentials.organization" };
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Mixed credential connection",
       uid: `mixed-${randomUUID()}`,
@@ -527,14 +501,12 @@ describeEmbeddedPostgres("access service", () => {
       credentialSecretRefs: [personalRef, organizationRef],
     }).returning().then((rows) => rows[0]!);
     const personalGrant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "user",
       subjectUserId: departing.principalId,
       credentialSecretRefs: [personalRef],
     }).returning().then((rows) => rows[0]!);
     const organizationGrant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "organization",
       status: "active",
@@ -542,7 +514,7 @@ describeEmbeddedPostgres("access service", () => {
       credentialSecretRefs: [organizationRef],
     }).returning().then((rows) => rows[0]!);
 
-    await accessService(db).archiveMember(company.id, departing.id, {
+    await accessService(db).archiveMember(departing.id, {
       reassignment: { assigneeUserId: owner.principalId },
     });
 
@@ -573,14 +545,12 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `shared-org-${randomUUID()}`,
       name: "Shared organization app",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Shared organization connection",
       uid: `shared-org-${randomUUID()}`,
@@ -593,12 +563,10 @@ describeEmbeddedPostgres("access service", () => {
       enabled: true,
     }).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
-      companyId: company.id,
       key: `shared-org-${randomUUID()}`,
       name: "Shared organization token",
     }).returning().then((rows) => rows[0]!);
     const secret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: departing.principalId,
       userSecretDefinitionId: definition.id,
@@ -608,7 +576,6 @@ describeEmbeddedPostgres("access service", () => {
     const credentialSecretRefs = [{ secretId: secret.id, configPath: "oauth.access_token" }];
     await db.update(toolConnections).set({ credentialSecretRefs }).where(eq(toolConnections.id, connection.id));
     await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "user",
       subjectUserId: departing.principalId,
@@ -616,7 +583,6 @@ describeEmbeddedPostgres("access service", () => {
       credentialSecretRefs,
     });
     const organizationGrant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "organization",
       status: "active",
@@ -624,13 +590,12 @@ describeEmbeddedPostgres("access service", () => {
       credentialSecretRefs,
     }).returning().then((rows) => rows[0]!);
     await db.insert(connectionGrantMembers).values({
-      companyId: company.id,
       grantId: organizationGrant.id,
       subjectType: "user",
       subjectId: departing.principalId,
     });
 
-    await accessService(db).archiveMember(company.id, departing.id, {
+    await accessService(db).archiveMember(departing.id, {
       reassignment: { assigneeUserId: owner.principalId },
     });
 
@@ -662,21 +627,18 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
-      companyId: company.id,
       name: "Delegated agent",
       role: "worker",
       adapterType: "process",
       adapterConfig: {},
     }).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `app-${randomUUID()}`,
       name: "Personal mail",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Mail",
       uid: `mail-${randomUUID()}`,
@@ -687,12 +649,10 @@ describeEmbeddedPostgres("access service", () => {
       credentialPolicy: "per_user",
     }).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
-      companyId: company.id,
       key: `oauth-${randomUUID()}`,
       name: "Personal OAuth token",
     }).returning().then((rows) => rows[0]!);
     const secret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: member.principalId,
       userSecretDefinitionId: definition.id,
@@ -700,20 +660,18 @@ describeEmbeddedPostgres("access service", () => {
       name: `OAuth ${randomUUID()}`,
     }).returning().then((rows) => rows[0]!);
     const grant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "user",
       subjectUserId: member.principalId,
       credentialSecretRefs: [{ secretId: secret.id, configPath: "oauth.access_token" }],
     }).returning().then((rows) => rows[0]!);
     await db.insert(connectionGrantDelegations).values({
-      companyId: company.id,
       grantId: grant.id,
       agentId: agent.id,
       createdByUserId: member.principalId,
     });
 
-    await accessService(db).updateMember(company.id, member.id, { status: "suspended" });
+    await accessService(db).updateMember(member.id, { status: "suspended" });
 
     expect(await db.select().from(connectionGrantDelegations)).toHaveLength(0);
     expect(await db.select().from(companySecrets).where(eq(companySecrets.id, secret.id))).toHaveLength(0);
@@ -730,19 +688,17 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
-      companyId: company.id,
       applicationKey: `app-${randomUUID()}`,
       name: "Personal shared credentials",
       type: "mcp",
       status: "active",
     }).returning().then((rows) => rows[0]!);
     const definitions = await db.insert(userSecretDefinitions).values([
-      { companyId: company.id, key: `agent-declared-${randomUUID()}`, name: "Agent-declared credential" },
-      { companyId: company.id, key: `environment-declared-${randomUUID()}`, name: "Environment-declared credential" },
-      { companyId: company.id, key: `bound-${randomUUID()}`, name: "Bound credential" },
+      { key: `agent-declared-${randomUUID()}`, name: "Agent-declared credential" },
+      { key: `environment-declared-${randomUUID()}`, name: "Environment-declared credential" },
+      { key: `bound-${randomUUID()}`, name: "Bound credential" },
     ]).returning();
     const secrets = await db.insert(companySecrets).values(definitions.map((definition, index) => ({
-      companyId: company.id,
       scope: "user",
       ownerUserId: member.principalId,
       userSecretDefinitionId: definition.id,
@@ -750,7 +706,6 @@ describeEmbeddedPostgres("access service", () => {
       name: `Shared credential ${index}`,
     }))).returning();
     const connection = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: "Shared personal connection",
       uid: `shared-${randomUUID()}`,
@@ -767,7 +722,6 @@ describeEmbeddedPostgres("access service", () => {
       })),
     }).returning().then((rows) => rows[0]!);
     const grant = await db.insert(connectionGrants).values({
-      companyId: company.id,
       connectionId: connection.id,
       kind: "user",
       subjectUserId: member.principalId,
@@ -778,7 +732,6 @@ describeEmbeddedPostgres("access service", () => {
     }).returning().then((rows) => rows[0]!);
     await db.insert(userSecretDeclarations).values([
       {
-        companyId: company.id,
         userSecretDefinitionId: definitions[0]!.id,
         targetType: "agent",
         targetId: `surviving-agent-${randomUUID()}`,
@@ -786,7 +739,6 @@ describeEmbeddedPostgres("access service", () => {
         envKey: "AGENT_TOKEN",
       },
       {
-        companyId: company.id,
         userSecretDefinitionId: definitions[1]!.id,
         targetType: "environment",
         targetId: `surviving-environment-${randomUUID()}`,
@@ -796,14 +748,12 @@ describeEmbeddedPostgres("access service", () => {
     ]);
     await db.insert(companySecretBindings).values([
       ...secrets.map((secret, index) => ({
-        companyId: company.id,
         secretId: secret.id,
         targetType: "tool_connection",
         targetId: connection.id,
         configPath: `credentials.shared_${index}`,
       })),
       {
-        companyId: company.id,
         secretId: secrets[2]!.id,
         targetType: "environment",
         targetId: `surviving-environment-${randomUUID()}`,
@@ -811,7 +761,7 @@ describeEmbeddedPostgres("access service", () => {
       },
     ]);
 
-    await accessService(db).updateMember(company.id, member.id, { status: "suspended" });
+    await accessService(db).updateMember(member.id, { status: "suspended" });
 
     expect(await db.select().from(companySecrets).where(inArray(companySecrets.id, secrets.map((secret) => secret.id))))
       .toHaveLength(3);
@@ -841,12 +791,10 @@ describeEmbeddedPostgres("access service", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
-      companyId: company.id,
       key: `oauth-${randomUUID()}`,
       name: "Personal OAuth token",
     }).returning().then((rows) => rows[0]!);
     const unrelatedSecret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: member.principalId,
       userSecretDefinitionId: definition.id,
@@ -854,7 +802,6 @@ describeEmbeddedPostgres("access service", () => {
       name: "Environment API key",
     }).returning().then((rows) => rows[0]!);
     const otherUserSecret = await db.insert(companySecrets).values({
-      companyId: company.id,
       scope: "user",
       ownerUserId: "another-user",
       userSecretDefinitionId: definition.id,
@@ -862,7 +809,7 @@ describeEmbeddedPostgres("access service", () => {
       name: "Another user's credential",
     }).returning().then((rows) => rows[0]!);
 
-    await accessService(db).updateMember(company.id, member.id, { status: "suspended" });
+    await accessService(db).updateMember(member.id, { status: "suspended" });
 
     expect(await db.select().from(companySecrets).where(eq(companySecrets.id, unrelatedSecret.id)))
       .toHaveLength(1);
@@ -887,7 +834,6 @@ describeEmbeddedPostgres("access service", () => {
       .returning();
 
     await access.setPrincipalGrants(
-      company.id,
       "user",
       owner.principalId,
       grantsForHumanRole("owner"),
@@ -895,7 +841,6 @@ describeEmbeddedPostgres("access service", () => {
     );
     for (const member of members) {
       await access.setPrincipalGrants(
-        company.id,
         "user",
         member.principalId,
         grantsForHumanRole(member.membershipRole as "admin" | "operator" | "viewer"),
@@ -907,10 +852,10 @@ describeEmbeddedPostgres("access service", () => {
     const operator = members.find((member) => member.membershipRole === "operator")!;
     const viewer = members.find((member) => member.membershipRole === "viewer")!;
 
-    await expect(access.canUser(company.id, owner.principalId, "environments:manage")).resolves.toBe(true);
-    await expect(access.canUser(company.id, admin.principalId, "environments:manage")).resolves.toBe(true);
-    await expect(access.canUser(company.id, operator.principalId, "environments:manage")).resolves.toBe(false);
-    await expect(access.canUser(company.id, viewer.principalId, "environments:manage")).resolves.toBe(false);
+    await expect(access.canUser(owner.principalId, "environments:manage")).resolves.toBe(true);
+    await expect(access.canUser(admin.principalId, "environments:manage")).resolves.toBe(true);
+    await expect(access.canUser(operator.principalId, "environments:manage")).resolves.toBe(false);
+    await expect(access.canUser(viewer.principalId, "environments:manage")).resolves.toBe(false);
   });
 
   it("backfills pre-upgrade human memberships with missing role grants without replacing custom grants", async () => {
@@ -963,10 +908,10 @@ describeEmbeddedPostgres("access service", () => {
 
     expect(first.humanGrantsInserted).toBeGreaterThan(0);
     expect(second.humanGrantsInserted).toBe(0);
-    await expect(accessService(db).canUser(company.id, admin.principalId, "environments:manage")).resolves.toBe(true);
-    await expect(accessService(db).canUser(company.id, operator.principalId, "tasks:assign")).resolves.toBe(true);
-    await expect(accessService(db).canUser(company.id, legacyMember.principalId, "tasks:assign")).resolves.toBe(true);
-    await expect(accessService(db).canUser(company.id, viewer.principalId, "tasks:assign")).resolves.toBe(false);
+    await expect(accessService(db).canUser(admin.principalId, "environments:manage")).resolves.toBe(true);
+    await expect(accessService(db).canUser(operator.principalId, "tasks:assign")).resolves.toBe(true);
+    await expect(accessService(db).canUser(legacyMember.principalId, "tasks:assign")).resolves.toBe(true);
+    await expect(accessService(db).canUser(viewer.principalId, "tasks:assign")).resolves.toBe(false);
 
     const ownerEnvironmentGrants = await db
       .select()
@@ -988,7 +933,6 @@ describeEmbeddedPostgres("access service", () => {
       .insert(agents)
       .values([
         {
-          companyId: company.id,
           name: `Idle ${randomUUID()}`,
           role: "engineer",
           status: "idle",
@@ -997,7 +941,6 @@ describeEmbeddedPostgres("access service", () => {
           runtimeConfig: {},
         },
         {
-          companyId: company.id,
           name: `Running ${randomUUID()}`,
           role: "engineer",
           status: "running",
@@ -1006,7 +949,6 @@ describeEmbeddedPostgres("access service", () => {
           runtimeConfig: {},
         },
         {
-          companyId: company.id,
           name: `Pending ${randomUUID()}`,
           role: "engineer",
           status: "pending_approval",
@@ -1015,7 +957,6 @@ describeEmbeddedPostgres("access service", () => {
           runtimeConfig: {},
         },
         {
-          companyId: company.id,
           name: `Terminated ${randomUUID()}`,
           role: "engineer",
           status: "terminated",

@@ -25,7 +25,6 @@ import type {
 } from "./semantic-conformance.js";
 
 export const CAPABILITY_SEMANTIC_CONFORMANCE_IDS = Object.freeze({
-  companyId: "10000000-0000-4000-8000-000000000001",
   actorId: "10000000-0000-4000-8000-000000000002",
   defaultTaskId: "10000000-0000-4000-8000-000000000003",
   crossCompanyTaskId: "10000000-0000-4000-8000-000000000004",
@@ -395,7 +394,6 @@ function mockWorld(
   const ids = CAPABILITY_SEMANTIC_CONFORMANCE_IDS;
   const activeTask = {
     id: taskId,
-    companyId: ids.companyId,
     identifier: `SCF-${id}`,
     title: `${id} semantic fixture`,
     description: null,
@@ -412,10 +410,9 @@ function mockWorld(
   return {
     id,
     seed: {
-      company: { id: ids.companyId, name: "Semantic Conformance", issuePrefix: "SCF" },
+      company: { name: "Semantic Conformance", issuePrefix: "SCF" },
       actors: [{
         id: ids.actorId,
-        companyId: ids.companyId,
         name: "Conformance Engineer",
         role: "approver",
         status: "active",
@@ -441,7 +438,6 @@ function mockWorld(
     },
     run: {
       identity: {
-        companyId: ids.companyId,
         agentId: ids.actorId,
         issueId: taskId,
         runId,

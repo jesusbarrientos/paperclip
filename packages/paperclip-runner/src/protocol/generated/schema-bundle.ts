@@ -7,7 +7,6 @@ export const identitySchema = {
   "type": "object",
   "required": [
     "schema",
-    "companyId",
     "issueId",
     "runId",
     "environmentLeaseId",
@@ -18,9 +17,6 @@ export const identitySchema = {
   "properties": {
     "schema": {
       "const": "paperclip.prp.identity.v1"
-    },
-    "companyId": {
-      "$ref": "#/$defs/stableId"
     },
     "issueId": {
       "$ref": "#/$defs/stableId"

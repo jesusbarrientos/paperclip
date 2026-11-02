@@ -31,7 +31,6 @@ const MAX_COLLECTION_ATTEMPTS = 3;
 // Only orchestration can register a live target; tools and HTTP callers cannot
 // supply one. These handles are optional: durable captured bytes survive restart.
 const liveTargets = new Map<string, AdapterExecutionTarget>();
-const targetKey = (companyId: string, runId: string) => `${companyId}:${runId}`;
 
 export function instructionWorkingCopyGuidance(copy: Pick<Copy, "executionRoot" | "entryFile" | "receipt">) {
   if (isAgentDirectoryCopy(copy)) return `Your persistent agent directory is ${copy.executionRoot} (AGENT_HOME). Your instruction entry is ${copy.executionRoot}/${copy.entryFile}. Read and write your own files and subfolders there. This directory belongs to this agent across tasks and sessions; task files belong in the task working directory. Paperclip restores this directory before execution and saves validated changes at turn boundaries. A warm native Codex session keeps the same writable directory between turns. Other sessions collect after the provider stops. Regular files, including binary files, persist; symlinks and special files are unsupported. Check the agent-files save receipt before claiming persistence; Only files you change or delete are synchronized. If another run changes the same file, the last completed synchronization wins. Temporary copies are removed when the owning session stops; there is no per-run file history. Storage allows 256 MiB per file, 2 GiB total, and 100,000 entries; the instruction entry must remain UTF-8 and at most 1 MiB. Reaching a storage limit never prevents this or future tasks from running. Remove or shrink files to free space; changes that exceed the limits will not be saved.${typeof copy.receipt?.storageWarning === "string" ? `\n\n${copy.receipt.storageWarning}` : ""}`;
@@ -55,21 +54,21 @@ export function instructionCollectionScript(root: string, entry: string) {
 
 export function agentInstructionWorkingCopyService(db: Db, options: { environmentRuntime?: EnvironmentRuntimeService } = {}) {
   const revisions = agentInstructionRevisionService(db);
-  const scope = (companyId: string, runId: string) => and(eq(copies.companyId, companyId), eq(copies.runId, runId));
-  async function get(companyId: string, runId: string) {
-    const [row] = await db.select().from(copies).where(scope(companyId, runId));
+  const scope = (runId: string) => eq(copies.runId, runId);
+  async function get(runId: string) {
+    const [row] = await db.select().from(copies).where(scope(runId));
     return row ?? null;
   }
   async function patch(row: Copy, values: Partial<typeof copies.$inferInsert>) {
     const [updated] = await db.update(copies).set({ ...values, updatedAt: new Date() }).where(and(
-      scope(row.companyId, row.runId), eq(copies.state, row.state), eq(copies.attempts, row.attempts), eq(copies.baseHash, row.baseHash),
+      scope(row.runId), eq(copies.state, row.state), eq(copies.attempts, row.attempts), eq(copies.baseHash, row.baseHash),
     )).returning();
     // A late cleanup must not overwrite an explicit resolution or a newer
     // baseline. Canonical content has its own independent head CAS.
-    return updated ?? (await get(row.companyId, row.runId))!;
+    return updated ?? (await get(row.runId))!;
   }
   function actorFor(row: Copy): AuthorizationActor {
-    return { type: "agent", companyId: row.companyId, agentId: row.agentId, runId: row.runId, onBehalfOfUserId: row.responsibleUserId };
+    return { type: "agent", agentId: row.agentId, runId: row.runId, onBehalfOfUserId: row.responsibleUserId };
   }
   const directories = agentDirectoryWorkingCopyService(db, get, patch, options.environmentRuntime);
   async function recoverDirectoryCleanup(row: Copy, cleanup: () => Promise<unknown>) {
@@ -87,8 +86,8 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
       logger.warn({ err: error, runId: row.runId }, "Agent file cleanup deferred; save receipt unchanged");
     }
   }
-  async function prepare(input: { companyId: string; agentId: string; runId: string; target?: AdapterExecutionTarget | null; cwd: string; legacy?: boolean; warm?: boolean; reuseRunId?: string; onWarmHandoff?: (copy: Copy) => void }) {
-    const existing = await get(input.companyId, input.runId);
+  async function prepare(input: { agentId: string; runId: string; target?: AdapterExecutionTarget | null; cwd: string; legacy?: boolean; warm?: boolean; reuseRunId?: string; onWarmHandoff?: (copy: Copy) => void }) {
+    const existing = await get(input.runId);
     if (isAgentDirectoryCopy(existing) || (!existing && !input.legacy)) return directories.prepare(input);
     let refreshStoppedCopy = false;
     const workspace = await fs.realpath(input.cwd);
@@ -104,7 +103,7 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
       if (["conflict", "pending_commit", "unavailable"].includes(existing.state)) {
         throw conflict("Resolve this run's preserved instruction candidate before editing its working copy again");
       }
-      if (input.target) liveTargets.set(targetKey(input.companyId, input.runId), input.target);
+      if (input.target) liveTargets.set(input.runId, input.target);
       if (completed.has(existing.state) && existing.processStoppedAt) {
         const privateBytes = await readCandidate(existing, input.target);
         // Refresh only bytes whose previous lifecycle is complete. A changed
@@ -114,7 +113,7 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
           // A failed staging attempt can already have replaced the file before
           // the completed row advances. Exact current canonical bytes are also
           // accounted for; any other private edit still keeps its old fence.
-          const current = await revisions.readCommittedForRuntime({ companyId: input.companyId, agentId: input.agentId });
+          const current = await revisions.readCommittedForRuntime({ agentId: input.agentId });
           refreshStoppedCopy = current?.revision.entryFile === existing.entryFile
             && current.revision.contentHash === hash(privateBytes);
         }
@@ -128,18 +127,18 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
         return existing;
       }
     }
-    const [agent] = await db.select().from(agents).where(and(eq(agents.id, input.agentId), eq(agents.companyId, input.companyId)));
+    const [agent] = await db.select().from(agents).where(eq(agents.id, input.agentId));
     if (!agent) throw notFound("Agent not found");
     if (agentInstructionsBundleMode(agent) !== "managed") return null;
-    const bound = await resolveInstructionActor(db, { type: "agent", companyId: input.companyId, agentId: input.agentId, runId: input.runId });
+    const bound = await resolveInstructionActor(db, { type: "agent", agentId: input.agentId, runId: input.runId });
     const baseline = existing?.baseRevisionId && !refreshStoppedCopy
-      ? await revisions.readRevision({ companyId: input.companyId, agentId: input.agentId, entryFile: existing.entryFile, revisionId: existing.baseRevisionId }, bound).catch(async (error) => {
+      ? await revisions.readRevision({ agentId: input.agentId, entryFile: existing.entryFile, revisionId: existing.baseRevisionId }, bound).catch(async (error) => {
           if ((error as { status?: number }).status !== 404) throw error;
-          const current = await revisions.readCurrent({ companyId: input.companyId, agentId: input.agentId }, bound);
+          const current = await revisions.readCurrent({ agentId: input.agentId }, bound);
           if (current?.revision.id !== existing.baseRevisionId) throw conflict("The instruction baseline changed during preparation");
           return current;
         })
-      : await revisions.readCurrent({ companyId: input.companyId, agentId: input.agentId }, bound);
+      : await revisions.readCurrent({ agentId: input.agentId }, bound);
     if (!baseline) return null;
     const exported = await agentInstructionsService().exportFiles(agent, { rejectSymlinks: true });
     const entryFile = instructionPath(baseline?.revision.entryFile ?? exported.entryFile);
@@ -151,13 +150,13 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
       : localRoot;
     if (!existing) {
       await db.insert(copies).values({
-        runId: input.runId, companyId: input.companyId, agentId: input.agentId,
+        runId: input.runId, agentId: input.agentId,
         responsibleUserId: bound.onBehalfOfUserId!, entryFile,
         baseRevisionId: baseline?.revision.id ?? null, baseHash: hash(content),
         localRoot, executionRoot, location, state: "preparing",
       });
     }
-    const row = (await get(input.companyId, input.runId))!;
+    const row = (await get(input.runId))!;
     await assertInstructionPathSafe(localRoot, entryFile);
     await execFile(process.execPath, ["-e", instructionGitExcludeProgram, workspace], { timeout: 15_000 });
     await fs.mkdir(localRoot, { recursive: true, mode: 0o700 });
@@ -189,7 +188,7 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
       candidateBase64: null, candidateHash: null, receipt: null, processStoppedAt: null,
       attempts: 0, nextAttemptAt: null, errorCode: null, errorMessage: null,
     } : {}) });
-    if (input.target) liveTargets.set(targetKey(input.companyId, input.runId), input.target);
+    if (input.target) liveTargets.set(input.runId, input.target);
     return prepared;
   }
 
@@ -209,8 +208,8 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
 
   /** A terminal-turn probe is not a save: changed/invalid copies require a
    * stopped provider before capture. Unchanged warm providers remain reusable. */
-  async function hasChanges(input: { companyId: string; runId: string; target?: AdapterExecutionTarget | null }) {
-    const row = await get(input.companyId, input.runId);
+  async function hasChanges(input: { runId: string; target?: AdapterExecutionTarget | null }) {
+    const row = await get(input.runId);
     if (!row || completed.has(row.state)) return false;
     if (isAgentDirectoryCopy(row)) return directories.hasChanges(row, input.target);
     try {
@@ -224,20 +223,20 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
       return true;
     } catch { return true; }
   }
-  async function checkpointWarm(input: { companyId: string; runId: string; target?: AdapterExecutionTarget | null }) {
-    const row = await get(input.companyId, input.runId);
+  async function checkpointWarm(input: { runId: string; target?: AdapterExecutionTarget | null }) {
+    const row = await get(input.runId);
     return row && isAgentDirectoryCopy(row) ? directories.checkpointWarm(row, input.target) : row;
   }
 
-  async function acknowledgeExplicitSave(input: { companyId: string; agentId: string; runId: string; entryFile: string; revisionId: string; contentHash: string }) {
-    const row = await get(input.companyId, input.runId);
+  async function acknowledgeExplicitSave(input: { agentId: string; runId: string; entryFile: string; revisionId: string; contentHash: string }) {
+    const row = await get(input.runId);
     if (!row || isAgentDirectoryCopy(row) || row.agentId !== input.agentId || row.entryFile !== input.entryFile || row.state !== "prepared") return;
-    const target = liveTargets.get(targetKey(row.companyId, row.runId));
+    const target = liveTargets.get(row.runId);
     const content = await readCandidate(row, target).catch(() => null);
     // Never advance a stale local edit past an unrelated explicit update.
     if (content === null || hash(content) !== input.contentHash) return;
     await db.update(copies).set({ baseRevisionId: input.revisionId, baseHash: input.contentHash, updatedAt: new Date() })
-      .where(and(scope(row.companyId, row.runId), eq(copies.state, "prepared"), eq(copies.baseHash, row.baseHash)));
+      .where(and(scope(row.runId), eq(copies.state, "prepared"), eq(copies.baseHash, row.baseHash)));
   }
 
   async function commitCandidate(row: Copy) {
@@ -245,7 +244,7 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
     if (row.candidateBase64 === null || completed.has(row.state) || row.state === "conflict") return row;
     try {
       const receipt = await revisions.commit({
-        companyId: row.companyId, agentId: row.agentId, entryFile: row.entryFile,
+        agentId: row.agentId, entryFile: row.entryFile,
         baseRevisionId: row.baseRevisionId, content: Buffer.from(row.candidateBase64, "base64"), source: "cleanup",
       }, actorFor(row));
       return patch(row, { state: "saved", receipt: { ...receipt }, errorCode: null, errorMessage: null, nextAttemptAt: null });
@@ -263,8 +262,8 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
   }
 
   /** Caller must have joined the owned provider process before granting this proof. */
-  async function collectStopped(input: { companyId: string; runId: string; target?: AdapterExecutionTarget | null }) {
-    let row = await get(input.companyId, input.runId);
+  async function collectStopped(input: { runId: string; target?: AdapterExecutionTarget | null }) {
+    let row = await get(input.runId);
     if (!row) return row;
     if (isAgentDirectoryCopy(row)) return directories.collectStopped(row, input.target);
     if (completed.has(row.state) || row.state === "conflict") return row;
@@ -313,7 +312,7 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
    * receipts mean the environment is stopped; do not restart it just to read. */
   async function recoverStopped() {
     const pending = await db.select({ copy: copies, runtimeMode: heartbeatRuns.runtimeMode }).from(copies)
-      .innerJoin(heartbeatRuns, and(eq(heartbeatRuns.companyId, copies.companyId), eq(heartbeatRuns.id, copies.runId)))
+      .innerJoin(heartbeatRuns, eq(heartbeatRuns.id, copies.runId))
       .where(and(or(and(or(inArray(copies.state, ["prepared", "pending_collection", "warm_saved"]),
           and(eq(copies.state, "preparing"), sql`${copies.receipt}->>'schema' = 'paperclip.agent-files.v1'`)),
           lte(copies.attempts, MAX_COLLECTION_ATTEMPTS - 1)),
@@ -331,14 +330,14 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
         await directories.release(await patch(row, { state: "unavailable", processStoppedAt: new Date(),
           errorCode: "AGENT_FILES_PREPARE_FAILED", errorMessage: "Agent-file preparation was interrupted. The temporary copy was discarded.", nextAttemptAt: null }));
       } else if (row.location === "local" && (row.processStoppedAt || runtimeMode === "native" &&
-          await hasNativeLocalProcessStop(db, row.companyId, row.runId))) {
-        const result = await collectStopped({ companyId: row.companyId, runId: row.runId });
+          await hasNativeLocalProcessStop(db, row.runId))) {
+        const result = await collectStopped({ runId: row.runId });
         if (result && isAgentDirectoryCopy(result) && completed.has(result.state)) await directories.release(result);
-      } else if (row.location !== "local" && await remoteExecutionHasStopped(db, row.companyId, row.runId)) {
+      } else if (row.location !== "local" && await remoteExecutionHasStopped(db, row.runId)) {
         const unavailable = row.receipt?.warm === true
           ? await patch(row, { state: "unavailable", errorCode: "AGENT_FILES_FINAL_COLLECTION_UNAVAILABLE",
             errorMessage: "The last completed checkpoint remains saved. Files changed afterwards could not be collected after remote termination.", nextAttemptAt: null })
-          : await reportUnavailable(row.companyId, row.runId);
+          : await reportUnavailable(row.runId);
         if (unavailable && isAgentDirectoryCopy(unavailable)) {
           await directories.release(await patch(unavailable, { processStoppedAt: unavailable.processStoppedAt ?? new Date() }));
         }
@@ -354,9 +353,9 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
     return pending.length;
   }
 
-  async function list(companyId: string, agentId: string, actor: AuthorizationActor) {
-    await revisions.readCurrent({ companyId, agentId }, actor);
-    const rows = await db.select().from(copies).where(and(eq(copies.companyId, companyId), eq(copies.agentId, agentId), inArray(copies.state, ["conflict", "pending_collection", "pending_commit", "unavailable"]))).orderBy(desc(copies.createdAt)).limit(50);
+  async function list(agentId: string, actor: AuthorizationActor) {
+    await revisions.readCurrent({ agentId }, actor);
+    const rows = await db.select().from(copies).where(and(eq(copies.agentId, agentId), inArray(copies.state, ["conflict", "pending_collection", "pending_commit", "unavailable"]))).orderBy(desc(copies.createdAt)).limit(50);
     return rows.map(row => ({ runId: row.runId, entryFile: row.entryFile, baseRevisionId: row.baseRevisionId,
       baseHash: row.baseHash, state: row.state as "conflict" | "pending_collection" | "pending_commit" | "unavailable",
       candidateHash: row.candidateHash, contract: isAgentDirectoryCopy(row) ? "agent_files" : "legacy",
@@ -364,26 +363,26 @@ export function agentInstructionWorkingCopyService(db: Db, options: { environmen
       errorCode: row.errorCode, errorMessage: row.errorMessage, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
   }
 
-  async function resolve(input: { companyId: string; agentId: string; runId: string; baseRevisionId: string | null; content: string }, actor: AuthorizationActor) {
-    const row = await get(input.companyId, input.runId);
+  async function resolve(input: { agentId: string; runId: string; baseRevisionId: string | null; content: string }, actor: AuthorizationActor) {
+    const row = await get(input.runId);
     if (!row || row.agentId !== input.agentId) throw notFound("Instruction candidate not found");
     if (completed.has(row.state)) throw conflict("This instruction candidate has already been resolved");
     if (isAgentDirectoryCopy(row)) throw conflict("Agent-file synchronization failures have no preserved candidate");
-    const receipt = await revisions.commit({ companyId: input.companyId, agentId: input.agentId, entryFile: row.entryFile, content: input.content, baseRevisionId: input.baseRevisionId, source: "api" }, actor);
+    const receipt = await revisions.commit({ agentId: input.agentId, entryFile: row.entryFile, content: input.content, baseRevisionId: input.baseRevisionId, source: "api" }, actor);
     await patch(row, { state: "resolved", receipt: { ...receipt }, nextAttemptAt: null });
     return receipt;
   }
 
   /** A controller may report loss before disposal, never fabricate a save or
    * read a possibly live provider. Already captured candidates remain intact. */
-  async function reportUnavailable(companyId: string, runId: string) {
-    const row = await get(companyId, runId);
+  async function reportUnavailable(runId: string) {
+    const row = await get(runId);
     if (!row || completed.has(row.state) || ["unchanged_turn", "warm_saved", "superseded"].includes(row.state) || row.candidateBase64 !== null || (isAgentDirectoryCopy(row) && row.candidateHash !== null) || row.state === "conflict") return row;
     if (isAgentDirectoryCopy(row) && row.state === "unavailable") return row;
     return patch(row, { state: "unavailable", errorCode: "INSTRUCTION_COLLECTION_UNAVAILABLE",
       errorMessage: "The registered instruction copy could not be retrieved safely before environment release. No instruction save is claimed.", nextAttemptAt: null });
   }
 
-  async function release(companyId: string, runId: string) { liveTargets.delete(targetKey(companyId, runId)); const row = await get(companyId, runId); if (row && isAgentDirectoryCopy(row)) await directories.release(row); }
+  async function release(runId: string) { liveTargets.delete(runId); const row = await get(runId); if (row && isAgentDirectoryCopy(row)) await directories.release(row); }
   return { prepare, get, hasChanges, checkpointWarm, canReuseWarm: directories.canReuse, acknowledgeExplicitSave, collectStopped, recoverCaptured, recoverStopped, list, resolve, reportUnavailable, release };
 }

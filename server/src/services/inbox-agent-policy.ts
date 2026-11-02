@@ -4,19 +4,15 @@ import type { InboxAgentPolicy, UpdateInboxAgentPolicy } from "@paperclipai/shar
 import { unprocessable } from "../errors.js";
 
 export function inboxAgentPolicyService(db: Db) {
-  async function get(companyId: string, userId: string): Promise<InboxAgentPolicy> {
+  async function get(userId: string): Promise<InboxAgentPolicy> {
     const row = await db
       .select()
       .from(userInboxAgentPolicies)
-      .where(and(
-        eq(userInboxAgentPolicies.companyId, companyId),
-        eq(userInboxAgentPolicies.userId, userId),
-      ))
+      .where(eq(userInboxAgentPolicies.userId, userId))
       .then((rows) => rows[0] ?? null);
     return row
       ? { ...row, materialized: true }
       : {
-          companyId,
           userId,
           mode: "open",
           allowedAgentIds: [],
@@ -26,13 +22,13 @@ export function inboxAgentPolicyService(db: Db) {
         };
   }
 
-  async function update(companyId: string, userId: string, input: UpdateInboxAgentPolicy): Promise<InboxAgentPolicy> {
+  async function update(userId: string, input: UpdateInboxAgentPolicy): Promise<InboxAgentPolicy> {
     const allowedAgentIds = input.mode === "allowlist" ? [...new Set(input.allowedAgentIds)] : [];
     if (allowedAgentIds.length > 0) {
       const companyAgentIds = await db
         .select({ id: agents.id })
         .from(agents)
-        .where(and(eq(agents.companyId, companyId), inArray(agents.id, allowedAgentIds)))
+        .where(inArray(agents.id, allowedAgentIds))
         .then((rows) => new Set(rows.map((row) => row.id)));
       const invalidAgentIds = allowedAgentIds.filter((agentId) => !companyAgentIds.has(agentId));
       if (invalidAgentIds.length > 0) {
@@ -45,9 +41,9 @@ export function inboxAgentPolicyService(db: Db) {
     const now = new Date();
     const [row] = await db
       .insert(userInboxAgentPolicies)
-      .values({ companyId, userId, mode: input.mode, allowedAgentIds, updatedAt: now })
+      .values({ userId, mode: input.mode, allowedAgentIds, updatedAt: now })
       .onConflictDoUpdate({
-        target: [userInboxAgentPolicies.companyId, userInboxAgentPolicies.userId],
+        target: [userInboxAgentPolicies.userId],
         set: { mode: input.mode, allowedAgentIds, updatedAt: now },
       })
       .returning();

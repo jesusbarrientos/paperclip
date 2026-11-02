@@ -25,7 +25,6 @@ const opaque = z
 const summarySchema = z
   .object({
     id: z.uuid(),
-    companyId: z.uuid(),
     endpointId: z.uuid(),
     conversationId: z.uuid(),
     issueId: z.uuid(),
@@ -102,7 +101,6 @@ export async function projectTeamsFilePublication(
     .where(
       and(
         eq(chatPublications.id, s.publicationId),
-        eq(chatPublications.companyId, s.companyId),
         eq(chatPublications.endpointId, s.endpointId),
         eq(chatPublications.conversationId, s.conversationId),
         eq(chatPublications.issueId, s.issueId),
@@ -114,7 +112,6 @@ export async function projectTeamsFilePublication(
   const transfer = await tx
     .select({
       id: chatTeamsFileTransfers.id,
-      companyId: chatTeamsFileTransfers.companyId,
       endpointId: chatTeamsFileTransfers.endpointId,
       conversationId: chatTeamsFileTransfers.conversationId,
       issueId: chatTeamsFileTransfers.issueId,
@@ -137,10 +134,7 @@ export async function projectTeamsFilePublication(
     })
     .from(chatTeamsFileTransfers)
     .where(
-      and(
-        eq(chatTeamsFileTransfers.id, s.id),
-        eq(chatTeamsFileTransfers.companyId, s.companyId),
-      ),
+      eq(chatTeamsFileTransfers.id, s.id),
     )
     .for("update")
     .then((rows) => rows[0]);
@@ -148,7 +142,6 @@ export async function projectTeamsFilePublication(
   const expected: TeamsFileTransferSummary = {
     ...s,
     id: transfer.id,
-    companyId: transfer.companyId,
     endpointId: transfer.endpointId,
     conversationId: transfer.conversationId,
     issueId: transfer.issueId,
@@ -174,10 +167,7 @@ export async function projectTeamsFilePublication(
     .select({ id: chatEndpoints.id, provider: chatEndpoints.provider })
     .from(chatEndpoints)
     .where(
-      and(
-        eq(chatEndpoints.id, s.endpointId),
-        eq(chatEndpoints.companyId, s.companyId),
-      ),
+      eq(chatEndpoints.id, s.endpointId),
     )
     .for("no key update")
     .then((rows) => rows[0]);
@@ -187,7 +177,6 @@ export async function projectTeamsFilePublication(
     .where(
       and(
         eq(chatConversations.id, s.conversationId),
-        eq(chatConversations.companyId, s.companyId),
         eq(chatConversations.endpointId, s.endpointId),
         eq(chatConversations.issueId, s.issueId),
       ),
@@ -197,7 +186,7 @@ export async function projectTeamsFilePublication(
   const issue = await tx
     .select({ id: issues.id })
     .from(issues)
-    .where(and(eq(issues.id, s.issueId), eq(issues.companyId, s.companyId)))
+    .where(eq(issues.id, s.issueId))
     .then((rows) => rows[0]);
   if (
     !endpoint ||
@@ -220,10 +209,9 @@ export async function projectTeamsFilePublication(
     .then((rows) => rows[0]);
   if (
     (comment &&
-      (comment.companyId !== s.companyId || comment.issueId !== s.issueId)) ||
+      (comment.issueId !== s.issueId)) ||
     (attachment &&
-      (attachment.companyId !== s.companyId ||
-        attachment.issueId !== s.issueId ||
+      ((attachment.issueId !== s.issueId) ||
         attachment.issueCommentId !== transfer.commentId)) ||
     (publication.commentId !== null &&
       publication.commentId !== transfer.commentId) ||
@@ -272,7 +260,6 @@ export async function projectTeamsFilePublication(
     const inserted = await tx
       .insert(chatActions)
       .values({
-        companyId: s.companyId,
         endpointId: s.endpointId,
         conversationId: s.conversationId,
         kind: "teams_file_effect_intent",
@@ -289,7 +276,6 @@ export async function projectTeamsFilePublication(
         .from(chatActions)
         .where(
           and(
-            eq(chatActions.companyId, s.companyId),
             eq(chatActions.endpointId, s.endpointId),
             eq(chatActions.conversationId, s.conversationId),
             eq(chatActions.kind, "teams_file_effect_intent"),
@@ -307,7 +293,6 @@ export async function projectTeamsFilePublication(
     const inserted = await tx
       .insert(chatMessageLinks)
       .values({
-        companyId: s.companyId,
         endpointId: s.endpointId,
         conversationId: s.conversationId,
         publicationId: s.publicationId,
@@ -331,7 +316,6 @@ export async function projectTeamsFilePublication(
         .then((rows) => rows[0]);
       if (
         !prior ||
-        prior.companyId !== s.companyId ||
         prior.publicationId !== s.publicationId ||
         prior.direction !== "outbound" ||
         (prior.commentId !== null && prior.commentId !== transfer.commentId)
@@ -388,10 +372,7 @@ export async function projectTeamsFilePublication(
         updatedAt: now,
       })
       .where(
-        and(
-          eq(chatPublications.id, s.publicationId),
-          eq(chatPublications.companyId, s.companyId),
-        ),
+        eq(chatPublications.id, s.publicationId),
       );
   }
   if (actualFinalId && publication.providerMessageId === null) {
@@ -402,10 +383,7 @@ export async function projectTeamsFilePublication(
         updatedAt: now,
       })
       .where(
-        and(
-          eq(chatEndpoints.id, s.endpointId),
-          eq(chatEndpoints.companyId, s.companyId),
-        ),
+        eq(chatEndpoints.id, s.endpointId),
       );
   }
 }

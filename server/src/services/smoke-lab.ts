@@ -30,6 +30,7 @@ import type {
 } from "@paperclipai/shared";
 import { badRequest, conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { organizationService } from "./organization.js";
 
 export const SMOKE_LAB_DEMO_EMAIL = "smoke@paperclip.test";
 export const SMOKE_LAB_DEMO_PASSWORD = "smoke-password";
@@ -159,7 +160,6 @@ type SmokeLabActorInfo = {
 };
 
 type OAuthCodeRecord = {
-  companyId: string;
   code: string;
   clientId: string;
   redirectUri: string;
@@ -169,7 +169,6 @@ type OAuthCodeRecord = {
 };
 
 type OAuthTokenRecord = {
-  companyId: string;
   token: string;
   scope: string;
   refreshToken: string;
@@ -440,7 +439,6 @@ function appendRedirectParam(redirectUri: string, params: Record<string, string>
 function toSmokeRun(row: typeof smokeRuns.$inferSelect): SmokeRun {
   return {
     id: row.id,
-    companyId: row.companyId,
     trigger: row.trigger,
     status: row.status,
     startedAt: row.startedAt,
@@ -454,7 +452,6 @@ function toSmokeRun(row: typeof smokeRuns.$inferSelect): SmokeRun {
 function toSmokeRunStep(row: typeof smokeRunSteps.$inferSelect): SmokeRunStep {
   return {
     id: row.id,
-    companyId: row.companyId,
     runId: row.runId,
     path: row.path,
     scenarioStep: row.scenarioStep,
@@ -503,7 +500,6 @@ export function smokeLabService(db: Db, options: {
   }
 
   function oauthAuthorizePage(input: {
-    companyId: string;
     clientId: string;
     redirectUri: string;
     state?: string;
@@ -530,7 +526,7 @@ export function smokeLabService(db: Db, options: {
   <main>
     <h1>Paperclip Smoke OAuth login + consent</h1>
     <p>This deterministic provider accepts <code>${SMOKE_LAB_DEMO_EMAIL}</code> / <code>${SMOKE_LAB_DEMO_PASSWORD}</code>.</p>
-    <form method="post" action="/api/companies/${escapeHtml(input.companyId)}/smoke-lab/oauth/authorize">
+    <form method="post" action="/api/smoke-lab/oauth/authorize">
       ${hidden}
       <label>Email <input name="email" type="email" value="${SMOKE_LAB_DEMO_EMAIL}" /></label>
       <label>Password <input name="password" type="password" /></label>
@@ -542,7 +538,6 @@ export function smokeLabService(db: Db, options: {
   }
 
   function completeAuthorize(input: {
-    companyId: string;
     clientId: string;
     redirectUri: string;
     state?: string;
@@ -559,12 +554,10 @@ export function smokeLabService(db: Db, options: {
     const scope = normalizeSmokeOAuthScope(input.scope);
     const code = smokeFixtureToken("code", {
       clientId: input.clientId,
-      companyId: input.companyId,
       redirectUri: input.redirectUri,
       scope,
     });
     codes.set(code, {
-      companyId: input.companyId,
       code,
       clientId: input.clientId,
       redirectUri: input.redirectUri,
@@ -579,7 +572,6 @@ export function smokeLabService(db: Db, options: {
   }
 
   function issueToken(input: {
-    companyId: string;
     grantType?: string;
     code?: string;
     refreshToken?: string;
@@ -589,7 +581,7 @@ export function smokeLabService(db: Db, options: {
     assertFakeOAuthRunning();
     if (input.grantType === "authorization_code") {
       const code = input.code ? codes.get(input.code) : null;
-      if (!code || code.companyId !== input.companyId || code.consumed || code.expiresAt < Date.now()) {
+      if (!code || code.consumed || code.expiresAt < Date.now()) {
         throw badRequest("Invalid or expired authorization code");
       }
       if (input.clientId && input.clientId !== code.clientId) throw badRequest("client_id does not match authorization code");
@@ -600,18 +592,15 @@ export function smokeLabService(db: Db, options: {
       const accessToken = smokeFixtureToken("access", {
         clientId: code.clientId,
         code: code.code,
-        companyId: input.companyId,
         redirectUri: code.redirectUri,
         scope: code.scope,
       });
       const refreshToken = smokeFixtureToken("refresh", {
         clientId: code.clientId,
-        companyId: input.companyId,
         redirectUri: code.redirectUri,
         scope: code.scope,
       });
       const record: OAuthTokenRecord = {
-        companyId: input.companyId,
         token: accessToken,
         refreshToken,
         scope: code.scope,
@@ -629,11 +618,10 @@ export function smokeLabService(db: Db, options: {
     }
     if (input.grantType === "refresh_token") {
       const existing = input.refreshToken ? refreshTokens.get(input.refreshToken) : null;
-      if (!existing || existing.companyId !== input.companyId || existing.revoked) {
+      if (!existing || existing.revoked) {
         throw badRequest("Invalid refresh token");
       }
       const accessToken = smokeFixtureToken("access", {
-        companyId: input.companyId,
         refreshToken: existing.refreshToken,
         scope: existing.scope,
       });
@@ -651,11 +639,11 @@ export function smokeLabService(db: Db, options: {
     throw badRequest("Unsupported grant_type");
   }
 
-  function userinfo(input: { companyId: string; authorization?: string }) {
+  function userinfo(input: { authorization?: string }) {
     assertFakeOAuthRunning();
     const token = input.authorization?.replace(/^Bearer\s+/i, "").trim();
     const record = token ? accessTokens.get(token) : null;
-    if (!record || record.companyId !== input.companyId || record.revoked) {
+    if (!record || record.revoked) {
       throw forbidden("Invalid smoke OAuth access token");
     }
     return {
@@ -667,27 +655,23 @@ export function smokeLabService(db: Db, options: {
     };
   }
 
-  function revoke(input: { companyId: string; token?: string }) {
+  function revoke(input: { token?: string }) {
     assertFakeOAuthRunning();
     if (!input.token) return { revoked: false };
     const records = [accessTokens.get(input.token), refreshTokens.get(input.token)].filter(Boolean) as OAuthTokenRecord[];
     for (const record of records) {
-      if (record.companyId === input.companyId) record.revoked = true;
+      if (true) record.revoked = true;
     }
     return { revoked: records.length > 0 };
   }
 
   async function ensureApplication(input: {
-    companyId: string;
     applicationKey: string;
     name: string;
     description: string;
     type: "mcp_http" | "mcp_stdio";
   }) {
-    const [existing] = await db.select().from(toolApplications).where(and(
-      eq(toolApplications.companyId, input.companyId),
-      eq(toolApplications.applicationKey, input.applicationKey),
-    ));
+    const [existing] = await db.select().from(toolApplications).where(eq(toolApplications.applicationKey, input.applicationKey));
     const now = new Date();
     if (existing) {
       const [updated] = await db.update(toolApplications).set({
@@ -701,7 +685,6 @@ export function smokeLabService(db: Db, options: {
       return { row: updated ?? existing, created: false };
     }
     const [created] = await db.insert(toolApplications).values({
-      companyId: input.companyId,
       applicationKey: input.applicationKey,
       name: input.name,
       description: input.description,
@@ -715,7 +698,6 @@ export function smokeLabService(db: Db, options: {
   }
 
   async function ensureConnection(input: {
-    companyId: string;
     applicationId: string;
     name: string;
     transport: "local_stdio" | "mcp_remote";
@@ -723,10 +705,7 @@ export function smokeLabService(db: Db, options: {
     transportConfig?: Record<string, unknown>;
     actor?: SmokeLabActorInfo;
   }) {
-    const [existing] = await db.select().from(toolConnections).where(and(
-      eq(toolConnections.companyId, input.companyId),
-      eq(toolConnections.name, input.name),
-    ));
+    const [existing] = await db.select().from(toolConnections).where(eq(toolConnections.name, input.name));
     const now = new Date();
     const values = {
       applicationId: input.applicationId,
@@ -744,14 +723,12 @@ export function smokeLabService(db: Db, options: {
     };
     const ensureDefaultOrganizationGrant = async (connectionId: string) => {
       const [existingGrant] = await db.select({ id: connectionGrants.id }).from(connectionGrants).where(and(
-        eq(connectionGrants.companyId, input.companyId),
         eq(connectionGrants.connectionId, connectionId),
         eq(connectionGrants.kind, "organization"),
         eq(connectionGrants.isDefault, true),
       ));
       if (existingGrant) return;
       await db.insert(connectionGrants).values({
-        companyId: input.companyId,
         connectionId,
         kind: "organization",
         status: "active",
@@ -767,7 +744,6 @@ export function smokeLabService(db: Db, options: {
       return { row: updated ?? existing, created: false };
     }
     const [created] = await db.insert(toolConnections).values({
-      companyId: input.companyId,
       name: input.name,
       uid: `smoke-lab/${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
       ...values,
@@ -779,7 +755,7 @@ export function smokeLabService(db: Db, options: {
     return { row: created, created: true };
   }
 
-  async function ensureStdioTemplate(companyId: string, actor?: SmokeLabActorInfo) {
+  async function ensureStdioTemplate(actor?: SmokeLabActorInfo) {
     const now = new Date();
     const tools = FIXTURE_TOOLS
       .filter((tool) => tool.transport === "stdio")
@@ -806,16 +782,12 @@ export function smokeLabService(db: Db, options: {
       disabledAt: null,
       updatedAt: now,
     };
-    const [existing] = await db.select().from(toolStdioCommandTemplates).where(and(
-      eq(toolStdioCommandTemplates.companyId, companyId),
-      eq(toolStdioCommandTemplates.templateKey, STDIO_TEMPLATE_KEY),
-    ));
+    const [existing] = await db.select().from(toolStdioCommandTemplates).where(eq(toolStdioCommandTemplates.templateKey, STDIO_TEMPLATE_KEY));
     if (existing) {
       const [updated] = await db.update(toolStdioCommandTemplates).set(values).where(eq(toolStdioCommandTemplates.id, existing.id)).returning();
       return { row: updated ?? existing, created: false };
     }
     const [created] = await db.insert(toolStdioCommandTemplates).values({
-      companyId,
       templateKey: STDIO_TEMPLATE_KEY,
       ...values,
       createdByAgentId: actor?.actorType === "agent" ? actor.agentId ?? null : null,
@@ -825,7 +797,7 @@ export function smokeLabService(db: Db, options: {
     return { row: created, created: true };
   }
 
-  async function syncCatalog(companyId: string, applicationId: string, connectionId: string, transport: FixtureTool["transport"]) {
+  async function syncCatalog(applicationId: string, connectionId: string, transport: FixtureTool["transport"]) {
     const now = new Date();
     const tools = FIXTURE_TOOLS.filter((tool) => tool.transport === transport);
     const rows: Array<typeof toolCatalogEntries.$inferSelect> = [];
@@ -867,7 +839,6 @@ export function smokeLabService(db: Db, options: {
         rows.push(updated ?? existing);
       } else {
         const [created] = await db.insert(toolCatalogEntries).values({
-          companyId,
           connectionId,
           name,
           ...values,
@@ -881,15 +852,11 @@ export function smokeLabService(db: Db, options: {
   }
 
   async function syncProfile(input: {
-    companyId: string;
     catalogEntries: Array<typeof toolCatalogEntries.$inferSelect>;
     actor?: SmokeLabActorInfo;
   }) {
     const now = new Date();
-    const [existingProfile] = await db.select().from(toolProfiles).where(and(
-      eq(toolProfiles.companyId, input.companyId),
-      eq(toolProfiles.profileKey, PROFILE_KEY),
-    ));
+    const [existingProfile] = await db.select().from(toolProfiles).where(eq(toolProfiles.profileKey, PROFILE_KEY));
     const profileValues = {
       name: "Smoke Lab fixture profile",
       description: "Allows deterministic read-only smoke tools and denies write/external-write tools by default.",
@@ -902,21 +869,16 @@ export function smokeLabService(db: Db, options: {
     const profile = existingProfile
       ? (await db.update(toolProfiles).set(profileValues).where(eq(toolProfiles.id, existingProfile.id)).returning())[0] ?? existingProfile
       : (await db.insert(toolProfiles).values({
-        companyId: input.companyId,
         profileKey: PROFILE_KEY,
         ...profileValues,
         createdAt: now,
       }).returning())[0];
 
-    await db.delete(toolProfileEntries).where(and(
-      eq(toolProfileEntries.companyId, input.companyId),
-      eq(toolProfileEntries.profileId, profile.id),
-    ));
+    await db.delete(toolProfileEntries).where(eq(toolProfileEntries.profileId, profile.id));
     const readEntries = input.catalogEntries.filter((entry) => entry.riskLevel === "read");
     const profileEntries = readEntries.length === 0
       ? []
       : await db.insert(toolProfileEntries).values(readEntries.map((entry) => ({
-        companyId: input.companyId,
         profileId: profile.id,
         selectorType: "catalog_entry" as const,
         effect: "include" as const,
@@ -931,23 +893,22 @@ export function smokeLabService(db: Db, options: {
       }))).returning();
 
     const [existingBinding] = await db.select().from(toolProfileBindings).where(and(
-      eq(toolProfileBindings.companyId, input.companyId),
       eq(toolProfileBindings.profileId, profile.id),
       eq(toolProfileBindings.targetType, "company"),
-      eq(toolProfileBindings.targetId, input.companyId),
     ));
     const bindingValues = {
       priority: 50,
       metadata: { smokeLab: true },
       updatedAt: now,
     };
+    const organizationId = existingBinding ? null : await organizationService(db).findId();
+    if (!existingBinding && !organizationId) throw new Error("Smoke Lab requires an organization");
     const profileBinding = existingBinding
       ? (await db.update(toolProfileBindings).set(bindingValues).where(eq(toolProfileBindings.id, existingBinding.id)).returning())[0] ?? existingBinding
       : (await db.insert(toolProfileBindings).values({
-        companyId: input.companyId,
         profileId: profile.id,
         targetType: "company" as const,
-        targetId: input.companyId,
+        targetId: organizationId!,
         ...bindingValues,
         createdByAgentId: input.actor?.actorType === "agent" ? input.actor.agentId : null,
         createdByUserId: input.actor?.actorType === "user" ? input.actor.actorId : null,
@@ -957,11 +918,8 @@ export function smokeLabService(db: Db, options: {
     return { profile, profileEntries, profileBinding };
   }
 
-  async function updateHttpConnectionUrl(companyId: string) {
-    const [connection] = await db.select().from(toolConnections).where(and(
-      eq(toolConnections.companyId, companyId),
-      eq(toolConnections.name, HTTP_CONNECTION_NAME),
-    ));
+  async function updateHttpConnectionUrl() {
+    const [connection] = await db.select().from(toolConnections).where(eq(toolConnections.name, HTTP_CONNECTION_NAME));
     if (!connection || !httpSidecar) return;
     const now = new Date();
     await db.update(toolConnections).set({
@@ -979,7 +937,7 @@ export function smokeLabService(db: Db, options: {
     }).where(eq(toolConnections.id, connection.id));
   }
 
-  async function startHttpSidecar(companyId?: string) {
+  async function startHttpSidecar() {
     if (httpSidecar && !httpSidecar.child.killed) return httpSidecar;
     httpSidecarError = null;
     const fixturePath = smokeLabFixturePath("http-fixture.mjs");
@@ -1025,7 +983,7 @@ export function smokeLabService(db: Db, options: {
       url: `http://${ready.host}:${ready.port}`,
       startedAt: new Date(),
     };
-    if (companyId) await updateHttpConnectionUrl(companyId);
+    await updateHttpConnectionUrl();
     return httpSidecar;
   }
 
@@ -1078,10 +1036,10 @@ export function smokeLabService(db: Db, options: {
       return { services: listServices(baseUrl) };
     },
 
-    async startServices(companyId: string, baseUrl: string) {
+    async startServices(baseUrl: string) {
       await assertEnabled();
       fakeOAuthRunning = true;
-      await startHttpSidecar(companyId);
+      await startHttpSidecar();
       return { services: listServices(baseUrl) };
     },
 
@@ -1092,24 +1050,21 @@ export function smokeLabService(db: Db, options: {
       return { services: listServices(baseUrl) };
     },
 
-    async installFixtures(companyId: string, actor?: SmokeLabActorInfo) {
+    async installFixtures(actor?: SmokeLabActorInfo) {
       await assertEnabled();
       const httpApp = await ensureApplication({
-        companyId,
         applicationKey: HTTP_APP_KEY,
         name: "Smoke Lab HTTP MCP fixture",
         description: "Deterministic loopback HTTP MCP fixture for Paperclip smoke scenarios.",
         type: "mcp_http",
       });
       const stdioApp = await ensureApplication({
-        companyId,
         applicationKey: STDIO_APP_KEY,
         name: "Smoke Lab stdio MCP fixture",
         description: "Deterministic stdio MCP fixture for Paperclip smoke scenarios.",
         type: "mcp_stdio",
       });
       const httpConnection = await ensureConnection({
-        companyId,
         applicationId: httpApp.row.id,
         name: HTTP_CONNECTION_NAME,
         transport: "mcp_remote",
@@ -1128,9 +1083,8 @@ export function smokeLabService(db: Db, options: {
         transportConfig: { loopbackOnly: true, managedBy: "smoke-lab-sidecar" },
         actor,
       });
-      const stdioTemplate = await ensureStdioTemplate(companyId, actor);
+      const stdioTemplate = await ensureStdioTemplate(actor);
       const stdioConnection = await ensureConnection({
-        companyId,
         applicationId: stdioApp.row.id,
         name: STDIO_CONNECTION_NAME,
         transport: "local_stdio",
@@ -1143,10 +1097,10 @@ export function smokeLabService(db: Db, options: {
         actor,
       });
       const catalog = [
-        ...await syncCatalog(companyId, httpApp.row.id, httpConnection.row.id, "http"),
-        ...await syncCatalog(companyId, stdioApp.row.id, stdioConnection.row.id, "stdio"),
+        ...await syncCatalog(httpApp.row.id, httpConnection.row.id, "http"),
+        ...await syncCatalog(stdioApp.row.id, stdioConnection.row.id, "stdio"),
       ];
-      const profile = await syncProfile({ companyId, catalogEntries: catalog, actor });
+      const profile = await syncProfile({ catalogEntries: catalog, actor });
       return {
         created: httpApp.created || stdioApp.created || httpConnection.created || stdioConnection.created || stdioTemplate.created,
         applications: [httpApp.row, stdioApp.row],
@@ -1158,11 +1112,10 @@ export function smokeLabService(db: Db, options: {
       };
     },
 
-    async createRun(companyId: string, input: CreateSmokeRun) {
+    async createRun(input: CreateSmokeRun) {
       await assertEnabled();
       const now = new Date();
       const [row] = await db.insert(smokeRuns).values({
-        companyId,
         trigger: input.trigger,
         status: "running",
         summary: input.summary,
@@ -1173,26 +1126,23 @@ export function smokeLabService(db: Db, options: {
       return toSmokeRun(row);
     },
 
-    async listRuns(companyId: string) {
+    async listRuns() {
       await assertEnabled();
-      const rows = await db.select().from(smokeRuns).where(eq(smokeRuns.companyId, companyId)).orderBy(desc(smokeRuns.startedAt));
+      const rows = await db.select().from(smokeRuns).orderBy(desc(smokeRuns.startedAt));
       return { runs: rows.map(toSmokeRun) };
     },
 
-    async getRun(companyId: string, runId: string) {
+    async getRun(runId: string) {
       await assertEnabled();
-      const [run] = await db.select().from(smokeRuns).where(and(eq(smokeRuns.companyId, companyId), eq(smokeRuns.id, runId)));
+      const [run] = await db.select().from(smokeRuns).where(eq(smokeRuns.id, runId));
       if (!run) throw notFound("Smoke run not found");
-      const steps = await db.select().from(smokeRunSteps).where(and(
-        eq(smokeRunSteps.companyId, companyId),
-        eq(smokeRunSteps.runId, runId),
-      ));
+      const steps = await db.select().from(smokeRunSteps).where(eq(smokeRunSteps.runId, runId));
       return { run: toSmokeRun(run), steps: steps.map(toSmokeRunStep) };
     },
 
-    async updateRun(companyId: string, runId: string, input: UpdateSmokeRun) {
+    async updateRun(runId: string, input: UpdateSmokeRun) {
       await assertEnabled();
-      const [existing] = await db.select().from(smokeRuns).where(and(eq(smokeRuns.companyId, companyId), eq(smokeRuns.id, runId)));
+      const [existing] = await db.select().from(smokeRuns).where(eq(smokeRuns.id, runId));
       if (!existing) throw notFound("Smoke run not found");
       if (existing.status !== "running") throw conflict("Smoke run is already finished");
       const now = new Date();
@@ -1206,14 +1156,13 @@ export function smokeLabService(db: Db, options: {
       return toSmokeRun(row ?? existing);
     },
 
-    async recordStep(companyId: string, runId: string, input: RecordSmokeRunStep) {
+    async recordStep(runId: string, input: RecordSmokeRunStep) {
       await assertEnabled();
-      const [run] = await db.select().from(smokeRuns).where(and(eq(smokeRuns.companyId, companyId), eq(smokeRuns.id, runId)));
+      const [run] = await db.select().from(smokeRuns).where(eq(smokeRuns.id, runId));
       if (!run) throw notFound("Smoke run not found");
       if (run.status !== "running") throw conflict("Cannot record steps on a finished smoke run");
       const now = new Date();
       const [step] = await db.insert(smokeRunSteps).values({
-        companyId,
         runId,
         path: input.path,
         scenarioStep: input.scenarioStep,
@@ -1224,7 +1173,7 @@ export function smokeLabService(db: Db, options: {
         createdAt: now,
         updatedAt: now,
       }).returning();
-      const steps = await db.select().from(smokeRunSteps).where(and(eq(smokeRunSteps.companyId, companyId), eq(smokeRunSteps.runId, runId)));
+      const steps = await db.select().from(smokeRunSteps).where(eq(smokeRunSteps.runId, runId));
       const summary = {
         ...asRecord(run.summary),
         totalSteps: steps.length,
@@ -1236,19 +1185,16 @@ export function smokeLabService(db: Db, options: {
       return { step: toSmokeRunStep(step), summary };
     },
 
-    async reset(companyId: string) {
+    async reset() {
       await assertEnabled();
       await stopHttpSidecar();
       fakeOAuthRunning = true;
       codes.clear();
       accessTokens.clear();
       refreshTokens.clear();
-      await db.delete(smokeRuns).where(eq(smokeRuns.companyId, companyId));
-      await db.delete(toolApplications).where(and(
-        eq(toolApplications.companyId, companyId),
-        inArray(toolApplications.applicationKey, [HTTP_APP_KEY, STDIO_APP_KEY]),
-      ));
-      await db.delete(toolProfiles).where(and(eq(toolProfiles.companyId, companyId), eq(toolProfiles.profileKey, PROFILE_KEY)));
+      await db.delete(smokeRuns);
+      await db.delete(toolApplications).where(inArray(toolApplications.applicationKey, [HTTP_APP_KEY, STDIO_APP_KEY]));
+      await db.delete(toolProfiles).where(eq(toolProfiles.profileKey, PROFILE_KEY));
       return { reset: true };
     },
   };

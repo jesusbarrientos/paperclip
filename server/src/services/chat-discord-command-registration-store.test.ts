@@ -63,7 +63,7 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
       agentId = randomUUID();
     const application = randomUUID(),
       connection = randomUUID();
-    const scope = { companyId, endpointId, applicationId, guildId: appId() };
+    const scope = { endpointId, applicationId, guildId: appId() };
     await db.insert(companies).values({
       id: companyId,
       name: "Registration fixture",
@@ -71,16 +71,14 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Discord agent",
       adapterType: "codex_local",
     });
     await db
       .insert(toolApplications)
-      .values({ id: application, companyId, name: "Discord", type: "chat" });
+      .values({ id: application, name: `Discord ${application}`, type: "chat" });
     await db.insert(toolConnections).values({
       id: connection,
-      companyId,
       applicationId: application,
       uid: randomUUID(),
       name: "Discord",
@@ -91,7 +89,6 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
     });
     await db.insert(chatEndpoints).values({
       id: endpointId,
-      companyId,
       connectionId: connection,
       provider: "discord",
       publicId: randomUUID(),
@@ -113,10 +110,7 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
           .select()
           .from(chatEndpoints)
           .where(
-            and(
-              eq(chatEndpoints.id, endpointId),
-              eq(chatEndpoints.companyId, companyId),
-            ),
+            eq(chatEndpoints.id, endpointId),
           )
           .for("update");
         const [current] = await tx
@@ -209,7 +203,6 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
           eq(chatDiscordCommandOwners.applicationId, f.scope.applicationId),
         );
       expect(owner).toMatchObject({
-        companyId: f.scope.companyId,
         endpointId: f.scope.endpointId,
       });
       const [action] = await tx
@@ -417,8 +410,8 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
     },
   );
 
-  it.each(["archive", "delete_company", "delete_endpoint"] as const)(
-    "retains app ownership across %s and refuses a different company",
+  it.each(["archive", "delete_endpoint"] as const)(
+    "retains app ownership across %s and refuses a different endpoint",
     async (mode) => {
       const old = await fixture();
       old.beforeResponse(async (method) => {
@@ -436,17 +429,7 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
           .update(chatEndpoints)
           .set({ status: "archived" })
           .where(eq(chatEndpoints.id, old.scope.endpointId));
-      else if (mode === "delete_company") {
-        // Respect the current endpoint -> assigned-agent RESTRICT relation while
-        // removing all company-owned fixture data; the instance tombstone alone survives.
-        await db
-          .delete(chatEndpoints)
-          .where(eq(chatEndpoints.companyId, old.scope.companyId));
-        await db
-          .delete(agents)
-          .where(eq(agents.companyId, old.scope.companyId));
-        await db.delete(companies).where(eq(companies.id, old.scope.companyId));
-      } else
+      else
         await db
           .delete(chatEndpoints)
           .where(eq(chatEndpoints.id, old.scope.endpointId));

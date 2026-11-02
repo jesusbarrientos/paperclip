@@ -31,8 +31,7 @@ function conversationRunPredicate() {
     sql`${heartbeatRuns.resultJson}->>'conversationContinuation' = ${CONVERSATION_CONTINUATION_POLICY}`,
     sql`exists (
       select 1 from ${heartbeatRunEvents}
-      where ${heartbeatRunEvents.companyId} = ${heartbeatRuns.companyId}
-        and ${heartbeatRunEvents.runId} = ${heartbeatRuns.id}
+      where ${heartbeatRunEvents.runId} = ${heartbeatRuns.id}
         and ${heartbeatRunEvents.eventType} = 'adapter.invoke'
         and ${inArray(sql`${heartbeatRunEvents.payload}->>'adapterType'`, [...CONVERSATION_ADAPTER_TYPES])}
     )`,
@@ -44,7 +43,7 @@ export async function historicalAdapterType(db: Db, run: typeof heartbeatRuns.$i
   const selected = claimedAdapterType(run);
   if (selected) return selected;
   const [invocation] = await db.select({ payload: heartbeatRunEvents.payload }).from(heartbeatRunEvents)
-    .where(and(eq(heartbeatRunEvents.companyId, run.companyId), eq(heartbeatRunEvents.runId, run.id),
+    .where(and(eq(heartbeatRunEvents.runId, run.id),
       eq(heartbeatRunEvents.eventType, "adapter.invoke")))
     .orderBy(desc(heartbeatRunEvents.seq)).limit(1);
   const adapterType = invocation?.payload?.adapterType;
@@ -67,8 +66,7 @@ export function conversationRecoveryActionPredicate() {
     eq(issueRecoveryActions.cause, "legacy_execution_requires_reconciliation"),
     sql`exists (
       select 1 from ${heartbeatRuns}
-      where ${heartbeatRuns.companyId} = ${issueRecoveryActions.companyId}
-        and ${heartbeatRuns.id}::text = ${issueRecoveryActions.evidence}->>'runId'
+      where ${heartbeatRuns.id}::text = ${issueRecoveryActions.evidence}->>'runId'
         and coalesce(${heartbeatRuns.nativeIssueId}::text, ${heartbeatRuns.contextSnapshot}->>'issueId') = ${issueRecoveryActions.sourceIssueId}::text
         and ${heartbeatRuns.runtimeMode} = 'legacy'
         and coalesce(${heartbeatRuns.resultJson}->>'workspaceRestoreFailure', '') <> 'restore_unsafe_archive'
@@ -97,16 +95,15 @@ function processMayBeAlive(pid: number): boolean {
 /** A terminal conversation row does not prove that its execution authority ended.
  * Other adapters keep their existing bootstrap and ownership protocols.
  */
-export async function getConversationOwnershipBlocker(db: Db, companyId: string, issueId: string) {
+export async function getConversationOwnershipBlocker(db: Db, issueId: string) {
   const activeLease = sql`exists (select 1 from ${environmentLeases}
-    where ${environmentLeases.companyId} = "heartbeat_runs"."company_id"
-      and ${environmentLeases.heartbeatRunId} = "heartbeat_runs"."id"
+    where ${environmentLeases.heartbeatRunId} = "heartbeat_runs"."id"
       and (${environmentLeases.releasedAt} is null
         or ${environmentLeases.status} = 'pending_cleanup'
         or ${environmentLeases.cleanupStatus} = 'failed'))`;
   const candidates = await db.select({ run: heartbeatRuns, activeLease }).from(heartbeatRuns)
     .where(and(
-      eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.runtimeMode, "legacy"),
+      eq(heartbeatRuns.runtimeMode, "legacy"),
       conversationRunPredicate(),
       sql`coalesce(${heartbeatRuns.nativeIssueId}::text, ${heartbeatRuns.contextSnapshot}->>'issueId') = ${issueId}`,
       inArray(heartbeatRuns.status, ["failed", "timed_out", "interrupted", "cancelled"]),

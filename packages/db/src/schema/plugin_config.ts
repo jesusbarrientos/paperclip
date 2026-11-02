@@ -1,5 +1,4 @@
 import { pgTable, uuid, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { plugins } from "./plugins.js";
 
 /**
@@ -19,9 +18,6 @@ export const pluginConfig = pgTable(
     pluginId: uuid("plugin_id")
       .notNull()
       .references(() => plugins.id, { onDelete: "cascade" }),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id, { onDelete: "cascade" }),
     configJson: jsonb("config_json").$type<Record<string, unknown>>().notNull().default({}),
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -29,8 +25,7 @@ export const pluginConfig = pgTable(
   },
   (table) => ({
     pluginCompanyIdx: uniqueIndex("plugin_config_plugin_company_idx").on(
-      table.pluginId,
-      table.companyId,
+      table.pluginId
     ),
   }),
 );

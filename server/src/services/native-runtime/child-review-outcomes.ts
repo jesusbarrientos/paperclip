@@ -5,7 +5,6 @@ import type { ExecutionContinuationEnvelope } from "@paperclipai/shared";
 /** Recorded decisions are evidence for the parent, never new review authority. */
 export async function childReviewOutcomes(
   db: Db,
-  companyId: string,
   parentIssueId: string,
 ): Promise<ExecutionContinuationEnvelope["interactionOutcomes"]> {
   const rows = await db.select({
@@ -21,24 +20,18 @@ export async function childReviewOutcomes(
     reviewerRunId: issueThreadInteractions.resolvedByRunId,
     resolvedAt: issueThreadInteractions.resolvedAt,
   }).from(issues)
-    .innerJoin(issueThreadInteractions, and(
-      eq(issueThreadInteractions.issueId, issues.id),
-      eq(issueThreadInteractions.companyId, issues.companyId),
-    ))
+    .innerJoin(issueThreadInteractions, eq(issueThreadInteractions.issueId, issues.id))
     .innerJoin(statusDecisions, and(
       eq(statusDecisions.issueId, issues.id),
-      eq(statusDecisions.companyId, issues.companyId),
       eq(statusDecisions.runId, issueThreadInteractions.sourceRunId),
       sql`${statusDecisions.id}::text = ${issueThreadInteractions.payload}->'target'->>'revisionId'`,
       eq(statusDecisions.applicationState, "applied"),
     ))
     .innerJoin(heartbeatRuns, and(
       eq(heartbeatRuns.id, statusDecisions.runId),
-      eq(heartbeatRuns.companyId, issues.companyId),
       eq(heartbeatRuns.nativeIssueId, issues.id),
     ))
     .where(and(
-      eq(issues.companyId, companyId),
       eq(issues.parentId, parentIssueId),
       eq(issueThreadInteractions.kind, "request_confirmation"),
       inArray(issueThreadInteractions.status, ["accepted", "rejected"]),

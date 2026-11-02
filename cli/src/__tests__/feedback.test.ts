@@ -16,7 +16,6 @@ import {
 function makeTrace(overrides: Partial<FeedbackTrace> = {}): FeedbackTrace {
   return {
     id: "trace-12345678",
-    companyId: "company-123",
     feedbackVoteId: "vote-12345678",
     issueId: "issue-123",
     projectId: "project-123",
@@ -70,7 +69,6 @@ describe("registerFeedbackCommands", () => {
     const feedback = program.commands.find((command) => command.name() === "feedback");
     expect(feedback).toBeDefined();
     expect(feedback?.commands.map((command) => command.name())).toEqual(["report", "export", "trace", "bundle"]);
-    expect(feedback?.commands[0]?.options.filter((option) => option.long === "--company-id")).toHaveLength(1);
   });
 });
 
@@ -113,7 +111,6 @@ describe("renderFeedbackReport", () => {
 
     const report = renderFeedbackReport({
       apiBase: "http://127.0.0.1:3100",
-      companyId: "company-123",
       traces,
       summary: summarizeFeedbackTraces(traces),
       includePayloads: false,
@@ -150,7 +147,6 @@ describe("writeFeedbackExportBundle", () => {
 
     const exported = await writeFeedbackExportBundle({
       apiBase: "http://127.0.0.1:3100",
-      companyId: "company-123",
       traces,
       outputDir,
     });

@@ -7,20 +7,17 @@ import { NATIVE_PROVIDER_CAPACITY_MAX_RETRIES, NATIVE_PROVIDER_OVERLOADED_CODE, 
 /** Called under the finalizer's issue/coordinator locks, in the status-effect transaction. */
 export async function materializeNativeProviderCapacityRetry(input: {
   tx: Db;
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
 }) {
   const [run] = await input.tx.select().from(heartbeatRuns).where(and(
-    eq(heartbeatRuns.companyId, input.companyId), eq(heartbeatRuns.id, input.runId),
+    eq(heartbeatRuns.id, input.runId),
     eq(heartbeatRuns.agentId, input.agentId), eq(heartbeatRuns.nativeIssueId, input.issueId),
   )).for("update");
   if (!run || run.runtimeMode !== "native") throw new Error("native_capacity_retry_run_binding_mismatch");
   // Share the predecessor claim with every other failure-retry lane.
-  const [existing] = await input.tx.select().from(heartbeatRuns).where(and(
-    eq(heartbeatRuns.companyId, input.companyId), eq(heartbeatRuns.retryOfRunId, run.id),
-  )).limit(1);
+  const [existing] = await input.tx.select().from(heartbeatRuns).where(eq(heartbeatRuns.retryOfRunId, run.id)).limit(1);
   if (existing) return existing.id;
   const attempt = executionFailureRetryCount(run) + 1;
   if (attempt > NATIVE_PROVIDER_CAPACITY_MAX_RETRIES) throw new Error("native_capacity_retry_exhausted");
@@ -50,14 +47,14 @@ export async function materializeNativeProviderCapacityRetry(input: {
     executionRetryAccounting: accountingForScheduledRetry(run, NATIVE_PROVIDER_OVERLOADED_CODE, attempt),
   };
   const [wake] = await input.tx.insert(agentWakeupRequests).values({
-    companyId: run.companyId, agentId: run.agentId, source: "automation", triggerDetail: "system",
+    agentId: run.agentId, source: "automation", triggerDetail: "system",
     reason: NATIVE_PROVIDER_OVERLOADED_CODE, status: "queued", runId: retryId,
-    idempotencyKey: `native-capacity:${run.companyId}:${run.id}`,
+    idempotencyKey: `native-capacity:${run.id}`,
     requestedByActorType: "system", requestedByActorId: "native_finalizer",
     payload: contextSnapshot,
   }).returning({ id: agentWakeupRequests.id });
   await input.tx.insert(heartbeatRuns).values({
-    id: retryId, companyId: run.companyId, agentId: run.agentId,
+    id: retryId, agentId: run.agentId,
     invocationSource: "automation", triggerDetail: "system", status: "scheduled_retry",
     responsibleUserId: run.responsibleUserId, wakeupRequestId: wake.id,
     retryOfRunId: run.id, scheduledRetryReason: NATIVE_PROVIDER_OVERLOADED_CODE,

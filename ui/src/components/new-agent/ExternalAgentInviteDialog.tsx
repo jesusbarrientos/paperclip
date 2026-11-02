@@ -10,8 +10,7 @@ import { Textarea } from "../ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 
 /** Preserve the existing agent-only invitation path beside the setup wizard. */
-export function ExternalAgentInviteDialog({ companyId, onClose, onBack }: {
-  companyId: string;
+export function ExternalAgentInviteDialog({ onClose, onBack }: {
   onClose: () => void;
   onBack: () => void;
 }) {
@@ -26,12 +25,12 @@ export function ExternalAgentInviteDialog({ companyId, onClose, onBack }: {
   const prompt = result?.prompt;
   const createInvite = useMutation({
     mutationFn: async () => {
-      const invite = await accessApi.createCompanyInvite(companyId, {
+      const invite = await accessApi.createCompanyInvite({
         allowedJoinTypes: "agent",
         humanRole: null,
         agentMessage: message.trim() || null,
       });
-      void cache.invalidateQueries({ queryKey: queryKeys.access.invites(companyId, "all", 5) });
+      void cache.invalidateQueries({ queryKey: queryKeys.access.invites("all", 5) });
       const path = invite.onboardingTextUrl ?? invite.onboardingTextPath ?? `/api/invites/${invite.token}/onboarding.txt`;
       const onboardingTextUrl = new URL(path, window.location.origin).href;
       const manifest = await accessApi.getInviteOnboarding(invite.token).catch(() => null);

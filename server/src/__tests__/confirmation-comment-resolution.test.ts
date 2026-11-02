@@ -31,18 +31,18 @@ const support = await getEmbeddedPostgresTestSupport();
       await db.insert(authUsers).values({ id: "operator", name: "Operator", email: "operator@example.test", createdAt: new Date(), updatedAt: new Date() }).onConflictDoNothing();
       await db.insert(companyMemberships).values({ principalType: "user", principalId: "operator", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     }
-    await db.insert(agents).values({ id: agentId, companyId, name: "Planner", adapterType: "paperclip_runner" });
-    const [issue] = await db.insert(issues).values({ id: issueId, companyId, title: "Proposal", status: "in_progress", assigneeAgentId: agentId,
+    await db.insert(agents).values({ id: agentId, name: "Planner", adapterType: "paperclip_runner" });
+    const [issue] = await db.insert(issues).values({ id: issueId, title: "Proposal", status: "in_progress", assigneeAgentId: agentId,
       ...(conversation ? { conversationAgentId: agentId, conversationUserId: "operator", conversationState: "active", conversationSessionGeneration: 1 } : {}) }).returning();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, nativeIssueId: issueId, status: "running", runtimeMode: "native", contextSnapshot: { issueId, conversationSessionGeneration: 1 } });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, nativeIssueId: issueId, status: "running", runtimeMode: "native", contextSnapshot: { issueId, conversationSessionGeneration: 1 } });
     await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
     const svc = issueThreadInteractionService(db);
     const card = await svc.create(issue, checkbox ? {
       kind: "request_checkbox_confirmation", payload: { version: 1, prompt: "Approve selected work?", options: [{ id: "note", label: "Welcome note" }, { id: "poster", label: "Poster" }], minSelected: 1, defaultSelectedOptionIds: ["poster"] },
     } : { kind: "request_confirmation", payload: { version: 1, prompt: "Approve the welcome note?" } }, { agentId });
-    const [comment] = await db.insert(issueComments).values({ companyId, issueId, authorUserId: "operator", authorType: "user", body: "Yes, write the welcome note." }).returning();
-    const args = { companyId, issueId, interactionId: card.id, actor: { agentId, runId }, input: { commentId: comment.id, decision: "accept" as const, ...(checkbox ? { selectedOptionIds: ["note"] } : {}) } };
-    return { args, card, issue, comment, svc, companyId, issueId, agentId, runId };
+    const [comment] = await db.insert(issueComments).values({ issueId, authorUserId: "operator", authorType: "user", body: "Yes, write the welcome note." }).returning();
+    const args = { issueId, interactionId: card.id, actor: { agentId, runId }, input: { commentId: comment.id, decision: "accept" as const, ...(checkbox ? { selectedOptionIds: ["note"] } : {}) } };
+    return { args, card, issue, comment, svc, issueId, agentId, runId };
   }
 
   beforeEach(async () => {
@@ -66,7 +66,6 @@ const support = await getEmbeddedPostgresTestSupport();
     else if (kind !== "ordinary-task") await db.update(issueThreadInteractions).set({ payload: { ...f.card.payload, [kind]: {} } }).where(eq(issueThreadInteractions.id, f.card.id));
     expect(await pendingNativeGovernance({ db, ...f, executionState: null })).toEqual({ kind: "interaction", id: f.card.id });
     expect(await pendingNativeGovernance({ db, ...f, executionState: { status: "pending" } })).toEqual({ kind: "execution_stage", id: f.runId });
-    expect(await pendingNativeGovernance({ db, ...f, companyId: randomUUID(), executionState: null })).toBeNull();
   });
 
   it.each([true, false])("preserves historical questions only in agent chat (conversation=%s)", async conversation => {
@@ -98,10 +97,9 @@ const support = await getEmbeddedPostgresTestSupport();
     await resolveConfirmationFromComment(db, f.args);
     expect(await getConversationConfirmationContext({ db, ...f })).toEqual({ truncated: false, cards: [] });
   });
-  it.each(["ordinary-task", "other-company", "other-agent"])("does not supply confirmation context for %s", async kind => {
+  it.each(["ordinary-task", "other-agent"])("does not supply confirmation context for %s", async kind => {
     const f = await seed(false, kind !== "ordinary-task");
     expect(await getConversationConfirmationContext({ db, ...f,
-      ...(kind === "other-company" ? { companyId: randomUUID() } : {}),
       ...(kind === "other-agent" ? { agentId: randomUUID() } : {}),
     })).toBeNull();
   });
@@ -115,10 +113,10 @@ const support = await getEmbeddedPostgresTestSupport();
   it("excludes prior-session cards and preserves the current card's human-only policy", async () => {
     const f = await seed(false, true);
     const boundaryAt = new Date(Date.now() + 1000);
-    const [boundary] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId,
+    const [boundary] = await db.insert(issueComments).values({ issueId: f.issueId,
       authorType: "user", authorUserId: "operator", body: "/new", createdAt: boundaryAt }).returning();
     await db.update(issues).set({ conversationBoundaryCommentId: boundary.id }).where(eq(issues.id, f.issueId));
-    const [current] = await db.insert(issueThreadInteractions).values({ companyId: f.companyId, issueId: f.issueId,
+    const [current] = await db.insert(issueThreadInteractions).values({ issueId: f.issueId,
       kind: "request_confirmation", effectiveResolverPolicy: "human_only", payload: { version: 1, prompt: "Current proposal" },
       createdAt: new Date(boundaryAt.getTime() + 1000) }).returning();
     expect(await getConversationConfirmationContext({ db, ...f })).toMatchObject({ cards: [{ id: current.id, resolverPolicy: "human_only" }] });
@@ -126,7 +124,7 @@ const support = await getEmbeddedPostgresTestSupport();
   it("bounds card and proposal data and declares truncation instead of hiding it", async () => {
     const f = await seed(false, true);
     await db.update(issueThreadInteractions).set({ payload: { version: 1, prompt: "x".repeat(2500) } }).where(eq(issueThreadInteractions.id, f.card.id));
-    await db.insert(issueThreadInteractions).values(Array.from({ length: 13 }, () => ({ companyId: f.companyId, issueId: f.issueId,
+    await db.insert(issueThreadInteractions).values(Array.from({ length: 13 }, () => ({ issueId: f.issueId,
       kind: "request_confirmation", payload: { version: 1 as const, prompt: "Another proposal" }, createdAt: new Date(Date.now() + 1000) })));
     const snapshot = await getConversationConfirmationContext({ db, ...f });
     expect(snapshot?.truncated).toBe(true);
@@ -192,14 +190,14 @@ const support = await getEmbeddedPostgresTestSupport();
       : kind === "wrong-user" ? { authorUserId: "somebody-else" }
       : kind === "reset-command" ? { body: "/new" } : {};
     if (kind === "other-task") {
-      const [otherIssue] = await db.insert(issues).values({ companyId: f.companyId, title: "Other proposal", status: "in_progress" }).returning();
-      const [otherComment] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: otherIssue.id, authorUserId: "operator", authorType: "user", body: "Yes, go ahead." }).returning();
+      const [otherIssue] = await db.insert(issues).values({ title: "Other proposal", status: "in_progress" }).returning();
+      const [otherComment] = await db.insert(issueComments).values({ issueId: otherIssue.id, authorUserId: "operator", authorType: "user", body: "Yes, go ahead." }).returning();
       f.args.input.commentId = otherComment.id;
     } else if (kind === "other-company") {
       const other = await seed();
       f.args.input.commentId = other.comment.id;
     } else if (kind === "newer-message") {
-      await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId, authorUserId: "operator", authorType: "user", body: "Wait, do not proceed.", createdAt: new Date(Date.now() + 1000) });
+      await db.insert(issueComments).values({ issueId: f.issueId, authorUserId: "operator", authorType: "user", body: "Wait, do not proceed.", createdAt: new Date(Date.now() + 1000) });
     } else await db.update(issueComments).set(change).where(eq(issueComments.id, f.comment.id));
     await expect(resolveConfirmationFromComment(db, f.args)).rejects.toThrow();
     expect((await readCard(f.card.id)).status).toBe("pending");
@@ -212,7 +210,7 @@ const support = await getEmbeddedPostgresTestSupport();
     if (kind === "wrong-run-task") await db.update(heartbeatRuns).set({ nativeIssueId: null, contextSnapshot: {} }).where(eq(heartbeatRuns.id, f.runId));
     if (kind === "reset-generation") await db.update(issues).set({ conversationSessionGeneration: 2 }).where(eq(issues.id, f.issueId));
     if (kind === "old-card") {
-      const [boundary] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId, authorType: "user", authorUserId: "operator", body: "/new" }).returning();
+      const [boundary] = await db.insert(issueComments).values({ issueId: f.issueId, authorType: "user", authorUserId: "operator", body: "/new" }).returning();
       await db.update(issues).set({ conversationBoundaryCommentId: boundary.id }).where(eq(issues.id, f.issueId));
     }
     await expect(resolveConfirmationFromComment(db, f.args)).rejects.toThrow();
@@ -258,9 +256,9 @@ const support = await getEmbeddedPostgresTestSupport();
   it("rejects an obsolete plan revision", async () => {
     const f = await seed();
     const documentId = randomUUID(), revisionId = randomUUID(), nextRevisionId = randomUUID();
-    await db.insert(documents).values({ id: documentId, companyId: f.companyId, latestBody: "New plan", latestRevisionId: nextRevisionId });
-    await db.insert(documentRevisions).values([{ id: revisionId, documentId, companyId: f.companyId, revisionNumber: 1, body: "Old plan" }, { id: nextRevisionId, documentId, companyId: f.companyId, revisionNumber: 2, body: "New plan" }]);
-    await db.insert(issueDocuments).values({ companyId: f.companyId, issueId: f.issueId, documentId, key: "plan" });
+    await db.insert(documents).values({ id: documentId, latestBody: "New plan", latestRevisionId: nextRevisionId });
+    await db.insert(documentRevisions).values([{ id: revisionId, documentId, revisionNumber: 1, body: "Old plan" }, { id: nextRevisionId, documentId, revisionNumber: 2, body: "New plan" }]);
+    await db.insert(issueDocuments).values({ issueId: f.issueId, documentId, key: "plan" });
     await db.update(issueThreadInteractions).set({ payload: { ...f.card.payload, target: { type: "issue_document", key: "plan", revisionId } } }).where(eq(issueThreadInteractions.id, f.card.id));
     await expect(resolveConfirmationFromComment(db, f.args)).rejects.toThrow();
     expect((await readCard(f.card.id)).status).not.toBe("accepted");

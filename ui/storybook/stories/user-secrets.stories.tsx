@@ -13,19 +13,17 @@ import { UserSecretDefinitionsTab } from "@/pages/secrets/UserSecretDefinitionsT
 import { MissingUserSecretsBanner } from "@/pages/secrets/MissingUserSecretsBanner";
 import { EnvironmentVariablesEditor } from "@/components/environment-variables-editor";
 import type { MyUserSecretEntry } from "@/api/secrets";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { queryKeys } from "@/lib/queryKeys";
 
 const COMPANY_ID = "company-storybook";
 
 if (typeof window !== "undefined") {
-  window.localStorage.setItem("paperclip.selectedCompanyId", COMPANY_ID);
 }
 
 function makeDefinition(overrides: Partial<UserSecretDefinition>): UserSecretDefinition {
   return {
     id: "def-x",
-    companyId: COMPANY_ID,
     key: "USER_SECRET",
     name: "User secret",
     description: null,
@@ -49,7 +47,6 @@ function makeDefinition(overrides: Partial<UserSecretDefinition>): UserSecretDef
 function makeValue(definitionId: string): CompanySecret {
   return {
     id: `sec-${definitionId}`,
-    companyId: COMPANY_ID,
     scope: "user",
     ownerUserId: "user-me",
     userSecretDefinitionId: definitionId,
@@ -109,20 +106,14 @@ const myEntries: MyUserSecretEntry[] = [
 
 function SeedFixtures({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  queryClient.setQueryData(queryKeys.secrets.userDefinitions(COMPANY_ID), definitions);
-  queryClient.setQueryData(queryKeys.secrets.myUserSecrets(COMPANY_ID), myEntries);
+  queryClient.setQueryData(queryKeys.secrets.userDefinitions(), definitions);
+  queryClient.setQueryData(queryKeys.secrets.myUserSecrets(), myEntries);
   for (const [definitionId, summary] of Object.entries(coverage)) {
     queryClient.setQueryData(
-      queryKeys.secrets.userDefinitionCoverage(COMPANY_ID, definitionId),
+      queryKeys.secrets.userDefinitionCoverage(definitionId),
       summary,
     );
   }
-
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
-  useEffect(() => {
-    if (selectedCompanyId !== COMPANY_ID) setSelectedCompanyId(COMPANY_ID);
-  }, [selectedCompanyId, setSelectedCompanyId]);
-  if (selectedCompanyId !== COMPANY_ID) return null;
 
   // The preview decorator already provides a MemoryRouter; nesting a second
   // react-router Router here raced it and intermittently threw
@@ -151,7 +142,7 @@ export const AdminDefinitions: Story = {
     <SeedFixtures>
       <Section title="User secret definitions (admin)">
         <div className="h-[520px]">
-          <UserSecretDefinitionsTab companyId={COMPANY_ID} />
+          <UserSecretDefinitionsTab />
         </div>
       </Section>
     </SeedFixtures>
@@ -163,7 +154,7 @@ export const MySecrets: Story = {
     <SeedFixtures>
       <Section title="My secrets (owner)">
         <div className="h-[520px]">
-          <MyUserSecretsTab companyId={COMPANY_ID} />
+          <MyUserSecretsTab />
         </div>
       </Section>
     </SeedFixtures>
@@ -176,7 +167,6 @@ export const MissingWarning: Story = {
       <Section title="Missing user-secret warning (task creation / run)">
         <div className="max-w-xl">
           <MissingUserSecretsBanner
-            companyId={COMPANY_ID}
             secretsPath="/company/secrets"
           />
         </div>

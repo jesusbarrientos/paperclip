@@ -14,7 +14,7 @@ import { validate } from "../middleware/validate.js";
 import { authorizationDeniedDetails } from "../services/authorization.js";
 import { accessService, heartbeatService, instanceSettingsService, issueService, logActivity, statusCardService } from "../services/index.js";
 import { queueIssueAssignmentWakeup, type IssueAssignmentWakeupDeps } from "../services/issue-assignment-wakeup.js";
-import { assertCompanyAccess, getAccessibleResource, getActorInfo, hasCompanyAccess } from "./authz.js";
+import { assertOrgAccess, getAccessibleResource, getActorInfo, hasOrgAccess } from "./authz.js";
 
 export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWakeupDeps } = {}) {
   const router = Router();
@@ -29,14 +29,13 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     if (experimental.enableStatusCards !== true) throw notFound("Status cards are not enabled");
   }
 
-  async function assertCanMutate(req: Request, companyId: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertCanMutate(req: Request) {
+    assertOrgAccess(req);
     const decision = await access.decide({
       actor: req.actor,
       action: "tasks:assign",
       resource: {
         type: "issue",
-        companyId,
         issueId: null,
         projectId: null,
         parentIssueId: null,
@@ -47,8 +46,8 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     if (!decision.allowed) throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
   }
 
-  async function assertCanManageCard(req: Request, card: { companyId: string; createdByAgentId: string | null }) {
-    await assertCanMutate(req, card.companyId);
+  async function assertCanManageCard(req: Request, card: { createdByAgentId: string | null }) {
+    await assertCanMutate(req);
     if (req.actor.type === "agent" && card.createdByAgentId !== req.actor.agentId) {
       throw forbidden("Agents can only manage status cards they authored");
     }
@@ -66,10 +65,9 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     }
   }
 
-  async function logMutation(req: Request, companyId: string, action: string, cardId: string, details?: Record<string, unknown>) {
+  async function logMutation(req: Request, action: string, cardId: string, details?: Record<string, unknown>) {
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       action,
@@ -139,27 +137,25 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     return result;
   }
 
-  router.get("/companies/:companyId/status-cards", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/status-cards", async (req, res) => {
+    assertOrgAccess(req);
     await assertStatusCardsEnabled();
     const query = listStatusCardsQuerySchema.parse(req.query);
-    res.json(await service.list(companyId, query.archived));
+    res.json(await service.list(query.archived));
   });
 
-  router.post("/companies/:companyId/status-cards", validate(createStatusCardSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.post("/status-cards", validate(createStatusCardSchema), async (req, res) => {
     await assertStatusCardsEnabled();
-    await assertCanMutate(req, companyId);
+    await assertCanMutate(req);
     assertAgentPromptLimit(req, req.body.interestPrompt);
     const actor = getActorInfo(req);
-    const card = await service.create(companyId, req.body, {
+    const card = await service.create(req.body, {
       agentId: actor.actorType === "agent" ? actor.actorId : null,
       userId: actor.actorType === "user" ? actor.actorId : null,
     });
     try {
       const compile = await enqueueCompile(req, card.id);
-      await logMutation(req, companyId, "status_card.created", card.id, { state: card.state });
+      await logMutation(req, "status_card.created", card.id, { state: card.state });
       res.status(201).json(compile.card);
     } catch (error) {
       await service.remove(card.id);
@@ -189,7 +185,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     const restore = req.body.archived === false && card.archivedAt && updated.queries.length > 0 && !updated.generatingIssueId
       ? await enqueueRefresh(req, card.id, true, "restore")
       : null;
-    await logMutation(req, card.companyId, "status_card.updated", card.id, {
+    await logMutation(req, "status_card.updated", card.id, {
       fields: Object.keys(req.body),
       archived: Boolean(updated.archivedAt),
     });
@@ -202,7 +198,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     if (!card) return;
     await assertCanManageCard(req, card);
     await service.remove(card.id);
-    await logMutation(req, card.companyId, "status_card.deleted", card.id);
+    await logMutation(req, "status_card.deleted", card.id);
     res.status(204).send();
   });
 
@@ -226,7 +222,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     if (!card) return;
     await assertCanManageCard(req, card);
     const result = await enqueueCompile(req, card.id);
-    await logMutation(req, card.companyId, "status_card.recompile_requested", card.id, {
+    await logMutation(req, "status_card.recompile_requested", card.id, {
       generatingIssueId: result.generatingIssue.id,
       alreadyGenerating: result.alreadyGenerating,
     });
@@ -239,7 +235,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     if (!card) return;
     await assertCanManageCard(req, card);
     const result = await enqueueRefresh(req, card.id, req.body.full);
-    await logMutation(req, card.companyId, "status_card.refresh_requested", card.id, {
+    await logMutation(req, "status_card.refresh_requested", card.id, {
       full: req.body.full,
       generatingIssueId: result.generatingIssue?.id ?? null,
       alreadyGenerating: result.alreadyGenerating,
@@ -255,7 +251,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     const decision = await access.decide({
       actor: req.actor,
       action: "company_scope:read",
-      resource: { type: "company", companyId: card.companyId },
+      resource: { type: "company" },
     });
     if (!decision.allowed) {
       throw forbidden("Status-card dry-run is outside this actor's low-trust authorization boundary", authorizationDeniedDetails(decision));
@@ -272,14 +268,14 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     await assertStatusCardsEnabled();
     const card = await getAccessibleResource(req, res, service.getById(req.params.id as string), "Status card not found");
     if (!card) return;
-    if (!hasCompanyAccess(req, card.companyId)) throw notFound("Status card not found");
-    assertCompanyAccess(req, card.companyId);
+    if (!hasOrgAccess(req)) throw notFound("Status card not found");
+    assertOrgAccess(req);
     const actor = getActorInfo(req);
     const updated = await service.writeQuery(card.id, req.body, {
       agentId: actor.actorType === "agent" ? actor.actorId : null,
       runId: actor.runId ?? null,
     });
-    await logMutation(req, card.companyId, "status_card.query_written", card.id, {
+    await logMutation(req, "status_card.query_written", card.id, {
       queryVersion: updated.queryVersion,
       generationIssueId: req.body.generationIssueId,
       changeSummary: req.body.changeSummary,
@@ -291,14 +287,14 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
     await assertStatusCardsEnabled();
     const card = await getAccessibleResource(req, res, service.getById(req.params.id as string), "Status card not found");
     if (!card) return;
-    if (!hasCompanyAccess(req, card.companyId)) throw notFound("Status card not found");
-    assertCompanyAccess(req, card.companyId);
+    if (!hasOrgAccess(req)) throw notFound("Status card not found");
+    assertOrgAccess(req);
     const actor = getActorInfo(req);
     const result = await service.writeSummary(card.id, req.body, {
       agentId: actor.actorType === "agent" ? actor.actorId : null,
       runId: actor.runId ?? null,
     });
-    await logMutation(req, card.companyId, "status_card.summary_written", card.id, {
+    await logMutation(req, "status_card.summary_written", card.id, {
       queryVersion: result.card.queryVersion,
       generationIssueId: req.body.generationIssueId,
       documentId: result.document.id,

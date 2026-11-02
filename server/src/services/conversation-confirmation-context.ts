@@ -3,21 +3,22 @@ import { issueComments, issues, issueThreadInteractions, type Db } from "@paperc
 
 /** Supply current card identities even when they were created outside the provider session. */
 export async function getConversationConfirmationContext(input: {
-  db: Db; companyId: string; issueId: string; agentId: string;
+  db: Db;
+ issueId: string; agentId: string;
 }) {
-  const { db, companyId, issueId, agentId } = input;
+  const { db, issueId, agentId } = input;
   const [issue] = await db.select({ boundaryId: issues.conversationBoundaryCommentId }).from(issues).where(and(
-    eq(issues.id, issueId), eq(issues.companyId, companyId),
+    eq(issues.id, issueId),
     eq(issues.conversationAgentId, agentId), eq(issues.assigneeAgentId, agentId), isNotNull(issues.conversationUserId),
   ));
   if (!issue) return null;
   const [boundary] = issue.boundaryId ? await db.select({ createdAt: issueComments.createdAt }).from(issueComments).where(and(
-    eq(issueComments.id, issue.boundaryId), eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId),
+    eq(issueComments.id, issue.boundaryId), eq(issueComments.issueId, issueId),
   )) : [];
   if (issue.boundaryId && !boundary) return null;
   const limit = 12;
   const rows = await db.select().from(issueThreadInteractions).where(and(
-    eq(issueThreadInteractions.companyId, companyId), eq(issueThreadInteractions.issueId, issueId),
+    eq(issueThreadInteractions.issueId, issueId),
     eq(issueThreadInteractions.status, "pending"),
     inArray(issueThreadInteractions.kind, ["request_confirmation", "request_checkbox_confirmation"]),
     // Dedicated approval payloads are not conversational confirmations.

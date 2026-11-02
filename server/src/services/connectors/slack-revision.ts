@@ -15,7 +15,6 @@ import {
 /** Only authorization fields participate: receiving messages must not reset sessions. */
 export async function slackAuthorizationRevision(
   db: Db,
-  companyId: string,
   endpointId: string,
   connectionId: string,
   agentId: string,
@@ -30,10 +29,7 @@ export async function slackAuthorizationRevision(
       })
       .from(chatEndpointResources)
       .where(
-        and(
-          eq(chatEndpointResources.companyId, companyId),
-          eq(chatEndpointResources.endpointId, endpointId),
-        ),
+        eq(chatEndpointResources.endpointId, endpointId),
       )
       .orderBy(chatEndpointResources.id),
     db
@@ -46,7 +42,6 @@ export async function slackAuthorizationRevision(
       .from(chatIdentityLinks)
       .where(
         and(
-          eq(chatIdentityLinks.companyId, companyId),
           eq(chatIdentityLinks.endpointId, endpointId),
           eq(chatIdentityLinks.paperclipUserId, userId),
         ),
@@ -61,7 +56,6 @@ export async function slackAuthorizationRevision(
       .from(connectionGrants)
       .where(
         and(
-          eq(connectionGrants.companyId, companyId),
           eq(connectionGrants.connectionId, connectionId),
           eq(connectionGrants.subjectUserId, userId),
         ),
@@ -76,35 +70,26 @@ export async function slackAuthorizationRevision(
       })
       .from(toolCatalogEntries)
       .where(
-        and(
-          eq(toolCatalogEntries.companyId, companyId),
-          eq(toolCatalogEntries.connectionId, connectionId),
-        ),
+        eq(toolCatalogEntries.connectionId, connectionId),
       )
       .orderBy(toolCatalogEntries.id),
     db
       .select()
       .from(toolPolicies)
-      .where(eq(toolPolicies.companyId, companyId))
       .orderBy(toolPolicies.id),
     db
       .select()
       .from(toolProfiles)
-      .where(eq(toolProfiles.companyId, companyId))
       .orderBy(toolProfiles.id),
     db
       .select()
       .from(toolProfileEntries)
-      .where(eq(toolProfileEntries.companyId, companyId))
       .orderBy(toolProfileEntries.id),
     db
       .select()
       .from(toolProfileBindings)
       .where(
-        and(
-          eq(toolProfileBindings.companyId, companyId),
-          eq(toolProfileBindings.targetId, agentId),
-        ),
+        eq(toolProfileBindings.targetId, agentId),
       )
       .orderBy(toolProfileBindings.id),
   ]);

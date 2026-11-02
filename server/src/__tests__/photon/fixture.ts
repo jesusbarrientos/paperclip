@@ -22,7 +22,7 @@ import {
 } from "../../services/photon/adapter.js";
 export function memoryPersistence(): ChatSdkStatePersistence {
   const rows = new Map<string, ChatSdkStateRecord>();
-  const key = (scope: { companyId: string; endpointId: string }, key: string) =>
+  const key = (scope: { endpointId: string }, key: string) =>
     `${scope.companyId}:${scope.endpointId}:${key}`;
   return {
     async read(scope, id) {
@@ -102,7 +102,7 @@ export function photonEvent(
 export function photonFixture() {
   const persistence = memoryPersistence();
   const state = new PhotonState(
-    { companyId: "company", endpointId: "endpoint" },
+    { endpointId: "endpoint" },
     persistence,
   );
   const cloud = new PhotonCloudClient();

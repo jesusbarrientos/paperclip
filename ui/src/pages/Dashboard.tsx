@@ -15,7 +15,6 @@ import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { buildCompanyUserProfileMap } from "../lib/company-members";
-import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -71,7 +70,6 @@ export function derivePausedAgentBanner(agents: Agent[] | undefined): PausedAgen
 }
 
 export function Dashboard() {
-  const { selectedCompanyId, companies } = useCompany();
   const { openOnboarding } = useDialogActions();
   const location = useLocation();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -84,9 +82,8 @@ export function Dashboard() {
   // refetch runs, and an empty one from before the first hire must not pass
   // for the company's current state — see `shouldRouteAgentlessCompanyToOnboarding`.
   const { data: agents, isFetching: agentsRefreshing } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   // Bulk resume for agents parked by a company import. Sequential on purpose
@@ -100,7 +97,7 @@ export function Dashboard() {
       if (!targets || targets.kind !== "imported") return;
       for (const agentId of targets.pausedImportedAgentIds) {
         try {
-          await agentsApi.resume(agentId, selectedCompanyId ?? undefined);
+          await agentsApi.resume(agentId);
         } catch {
           // Leave the agent paused; the banner re-renders with the remainder.
         }
@@ -108,8 +105,8 @@ export function Dashboard() {
     },
     onSettled: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() }),
       ]);
     },
   });
@@ -128,80 +125,68 @@ export function Dashboard() {
   // Placed with the other hooks — the early returns below mean anything
   // further down would be called conditionally.
   //
-  // The company and the step are both passed. Opening with empty options would
-  // start the wizard at the front door with no company, and the new-company
-  // path there would create a *second* company instead of giving this one an
-  // agent.
+  // The step is passed explicitly. Opening with empty options would start the
+  // wizard at the organization step instead of giving this one an agent.
   const shouldOpenOnboarding = shouldRouteAgentlessCompanyToOnboarding({
     pathname: location.pathname,
     agentsLoaded: agents !== undefined,
     agentsRefreshing,
     agentCount: agents?.length ?? 0,
   });
-  // Auto-open once per company. Every input to the effect sits behind a query,
-  // so a refetch re-runs it, and the customer can also navigate away and come
+  // Auto-open once. Every input to the effect sits behind a query, so a
+  // refetch re-runs it, and the customer can also navigate away and come
   // back — both would otherwise call `openOnboarding` again and reopen a
-  // wizard that was deliberately closed. `claimOnboardingOffer` holds the
-  // companies already offered; see it for why that outlives this component.
+  // wizard that was deliberately closed. `claimOnboardingOffer` remembers the
+  // offer; see it for why that outlives this component.
   useEffect(() => {
-    if (!shouldOpenOnboarding || !selectedCompanyId) return;
-    if (!claimOnboardingOffer(selectedCompanyId)) return;
+    if (!shouldOpenOnboarding) return;
+    if (!claimOnboardingOffer()) return;
     openOnboarding({
-      companyId: selectedCompanyId,
       initialStep: onboardingStepForCompany(),
     });
     // No mission lookup to wait on any more: the step this opens is the same
     // whatever the goals say, so waiting only delayed the open.
-  }, [shouldOpenOnboarding, selectedCompanyId, openOnboarding]);
+  }, [shouldOpenOnboarding, openOnboarding]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Dashboard" }]);
   }, [setBreadcrumbs]);
 
-  const dashboardQueryKey = queryKeys.dashboard(selectedCompanyId!);
+  const dashboardQueryKey = queryKeys.dashboard();
   const sharedDashboard = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "dashboard",
     queryKey: dashboardQueryKey,
-    enabled: !!selectedCompanyId,
   });
   const { data, isLoading, error, dataUpdatedAt: dashboardUpdatedAt } = useQuery({
     queryKey: dashboardQueryKey,
-    queryFn: () => dashboardApi.summary(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryFn: () => dashboardApi.summary(),
   });
   usePublishSharedQueryData(sharedDashboard, data, dashboardUpdatedAt);
 
-  const activityQueryKey = [...queryKeys.activity(selectedCompanyId!), { limit: DASHBOARD_ACTIVITY_LIMIT }] as const;
+  const activityQueryKey = [...queryKeys.activity(), { limit: DASHBOARD_ACTIVITY_LIMIT }] as const;
   const sharedActivity = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: `activity:limit:${DASHBOARD_ACTIVITY_LIMIT}`,
     queryKey: activityQueryKey,
-    enabled: !!selectedCompanyId,
   });
   const { data: activity, dataUpdatedAt: activityUpdatedAt } = useQuery({
     queryKey: activityQueryKey,
-    queryFn: () => activityApi.list(selectedCompanyId!, { limit: DASHBOARD_ACTIVITY_LIMIT }),
-    enabled: !!selectedCompanyId,
+    queryFn: () => activityApi.list({ limit: DASHBOARD_ACTIVITY_LIMIT }),
   });
   usePublishSharedQueryData(sharedActivity, activity, activityUpdatedAt);
 
   const { data: issues } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.list(),
+    queryFn: () => issuesApi.list(),
   });
 
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
 
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
 
   const userProfileMap = useMemo(
@@ -220,7 +205,7 @@ export function Dashboard() {
     seenActivityIdsRef.current = new Set();
     hydratedActivityRef.current = false;
     setAnimatedActivityIds(new Set());
-  }, [selectedCompanyId]);
+  }, []);
 
   useEffect(() => {
     if (recentActivity.length === 0) return;
@@ -292,21 +277,6 @@ export function Dashboard() {
     return agents.find((a) => a.id === id)?.name ?? null;
   };
 
-  if (!selectedCompanyId) {
-    if (companies.length === 0) {
-      return (
-        <EmptyState
-          icon={LayoutDashboard}
-          message="Welcome to Paperclip. Set up your first organization and agent to get started."
-          action="Get Started"
-          onAction={openOnboarding}
-        />
-      );
-    }
-    return (
-      <EmptyState icon={LayoutDashboard} message="Create or select an organization to view the dashboard." />
-    );
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="dashboard" />;
@@ -366,7 +336,7 @@ export function Dashboard() {
             </p>
           </div>
           <button
-            onClick={() => openOnboarding({ initialStep: 3, companyId: selectedCompanyId! })}
+            onClick={() => openOnboarding({ initialStep: 3 })}
             className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline underline-offset-2 shrink-0"
           >
             Create one here
@@ -374,7 +344,7 @@ export function Dashboard() {
         </div>
       )}
 
-      <ActiveAgentsPanel companyId={selectedCompanyId!} dedupeLinkedTasks />
+      <ActiveAgentsPanel dedupeLinkedTasks />
 
       {data && (
         <>
@@ -451,7 +421,7 @@ export function Dashboard() {
             />
           </div>
 
-          <SmokeLabDashboardCard companyId={selectedCompanyId!} />
+          <SmokeLabDashboardCard />
 
           <div className={cn("grid grid-cols-2 gap-4", SHOW_TASK_PRIORITY_UI ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
             <ChartCard title="Run Activity" subtitle="Last 14 days">
@@ -473,7 +443,7 @@ export function Dashboard() {
 
           <PluginSlotOutlet
             slotTypes={["dashboardWidget"]}
-            context={{ companyId: selectedCompanyId }}
+            context={{}}
             className="grid gap-4 md:grid-cols-2"
             // design-allow(card-pattern): class-string prop consumed by the plugin outlet; a component can't be passed here (C5a Run 3)
             itemClassName="rounded-lg border bg-card p-4 shadow-sm"

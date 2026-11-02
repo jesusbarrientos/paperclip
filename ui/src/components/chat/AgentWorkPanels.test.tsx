@@ -88,9 +88,9 @@ describe("agent work panels", () => {
       task({ id: "chat", identifier: "PAP-2", title: "The conversation" }),
       task({ id: "new", identifier: "PAP-3", title: "Newer task", status: "in_progress", updatedAt: new Date("2026-09-20T00:00:00.000Z") }),
     ]);
-    await render(<AgentTasksPanel companyId="company-1" agentId="agent-1" excludeIssueId="chat" />);
+    await render(<AgentTasksPanel agentId="agent-1" excludeIssueId="chat" />);
 
-    expect(api.issuesList).toHaveBeenCalledWith("company-1", expect.objectContaining({ participantAgentId: "agent-1" }));
+    expect(api.issuesList).toHaveBeenCalledWith(expect.objectContaining({ participantAgentId: "agent-1" }));
     const cards = Array.from(container.querySelectorAll("a"));
     expect(cards.map((card) => card.getAttribute("href"))).toEqual(["/issues/PAP-3", "/issues/PAP-1"]);
     expect(cards.every((card) => card.getAttribute("target") === "_blank")).toBe(true);
@@ -114,9 +114,9 @@ describe("agent work panels", () => {
       artifacts: [artifact({ id: "mine", title: "plan.md" })],
       nextCursor: null,
     });
-    await render(<AgentArtifactsPanel companyId="company-1" agentId="agent-1" />);
+    await render(<AgentArtifactsPanel agentId="agent-1" />);
 
-    expect(api.artifactsList).toHaveBeenCalledWith("company-1", expect.objectContaining({ agentId: "agent-1" }));
+    expect(api.artifactsList).toHaveBeenCalledWith(expect.objectContaining({ agentId: "agent-1" }));
     const cards = Array.from(container.querySelectorAll("a"));
     expect(cards).toHaveLength(1);
     expect(cards[0]?.getAttribute("href")).toBe("/PAP/issues/PAP-9#document-report");

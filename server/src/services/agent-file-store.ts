@@ -80,7 +80,7 @@ export async function adoptAgentFiles(tx: Tx, agent: Agent): Promise<string> {
   }
   const legacy = await tx.select({ entryFile: agentInstructionHeads.entryFile, contentBase64: agentInstructionRevisions.contentBase64 })
     .from(agentInstructionHeads).innerJoin(agentInstructionRevisions, eq(agentInstructionHeads.revisionId, agentInstructionRevisions.id))
-    .where(and(eq(agentInstructionHeads.companyId, agent.companyId), eq(agentInstructionHeads.agentId, agent.id)));
+    .where(eq(agentInstructionHeads.agentId, agent.id));
   for (const entry of legacy) await materializeInstructionBytes(root, entry.entryFile, Buffer.from(entry.contentBase64, "base64"));
   await materializeInstructionBytes(markerRoot, marker, Buffer.from(JSON.stringify({ schema: AGENT_FILES_CONTRACT })));
   return root;
@@ -162,10 +162,10 @@ export async function snapshotAgentFiles(root: string, enforceLimits = true): Pr
 }
 
 export function agentFileStore(db: Db) {
-  async function locked<T>(companyId: string, agentId: string, actor: AuthorizationActor, write: boolean,
+  async function locked<T>(agentId: string, actor: AuthorizationActor, write: boolean,
     fn: (tx: Tx, agent: Agent, root: string, bound: AuthorizationActor) => Promise<T>) {
     return db.transaction(async tx => {
-      const [agent] = await tx.select().from(agents).where(and(eq(agents.companyId, companyId), eq(agents.id, agentId))).for("update");
+      const [agent] = await tx.select().from(agents).where(eq(agents.id, agentId)).for("update");
       if (!agent) throw notFound("Agent not found");
       const bound = write ? await authorizeInstructionCommit(tx, actor, agent) : await authorizeInstructionRead(tx, actor, agent);
       const root = await adoptAgentFiles(tx, agent);
@@ -173,17 +173,17 @@ export function agentFileStore(db: Db) {
     });
   }
   async function audit(tx: Tx, agent: Agent, actor: AuthorizationActor, details: Record<string, unknown>) {
-    await tx.insert(activityLog).values({ companyId: agent.companyId, actorType: actor.type === "board" ? "user" : "agent",
+    await tx.insert(activityLog).values({ actorType: actor.type === "board" ? "user" : "agent",
       actorId: (actor.type === "board" ? actor.userId : actor.agentId)!, agentId: actor.type === "agent" ? actor.agentId : null,
       runId: actor.runId, responsibleUserId: actor.type === "board" ? actor.userId : actor.onBehalfOfUserId,
       action: "agent.files_updated", entityType: "agent", entityId: agent.id, details });
   }
   return {
     locked,
-    download: async (companyId: string, agentId: string, relative: string, actor: AuthorizationActor) => {
+    download: async (agentId: string, relative: string, actor: AuthorizationActor) => {
       const opened: { file: Awaited<ReturnType<typeof openAgentFile>> } = { file: null };
       try {
-        const file = await locked(companyId, agentId, actor, false, async (_tx, _agent, root) => {
+        const file = await locked(agentId, actor, false, async (_tx, _agent, root) => {
           opened.file = await openAgentFile(root, instructionPath(relative));
           return opened.file;
         });
@@ -194,10 +194,10 @@ export function agentFileStore(db: Db) {
         return { size: file.size, stream: file.handle.createReadStream({ end: file.size - 1 }) };
       } catch (error) { await opened.file?.handle.close(); throw error; }
     },
-    read: (companyId: string, agentId: string, relative: string, actor: AuthorizationActor) =>
-      locked(companyId, agentId, actor, false, (_tx, _agent, root) => readAgentFile(root, instructionPath(relative))),
-    write: (input: { companyId: string; agentId: string; path: string; bytes: Buffer | null; baseHash: string | null }, actor: AuthorizationActor) =>
-      locked(input.companyId, input.agentId, actor, true, async (tx, agent, root, bound) => {
+    read: (agentId: string, relative: string, actor: AuthorizationActor) =>
+      locked(agentId, actor, false, (_tx, _agent, root) => readAgentFile(root, instructionPath(relative))),
+    write: (input: { agentId: string; path: string; bytes: Buffer | null; baseHash: string | null }, actor: AuthorizationActor) =>
+      locked(input.agentId, actor, true, async (tx, agent, root, bound) => {
         const relative = agentFilePath(input.path);
         if (input.bytes) assertFileSize(input.bytes.length, relative);
         const previous = await inspectAgentFile(root, relative);
@@ -220,8 +220,8 @@ export function agentFileStore(db: Db) {
         await audit(tx, agent, bound, { path: relative, contentHash: incomingHash });
         return { contentHash: incomingHash, changed: true };
       }),
-    apply: (input: { companyId: string; agentId: string; sourceDir: string; baseline: DirectorySnapshot; checkpoint?: AgentFileManifest }, actor: AuthorizationActor) =>
-      locked(input.companyId, input.agentId, actor, true, async (tx, agent, root, bound) => {
+    apply: (input: { agentId: string; sourceDir: string; baseline: DirectorySnapshot; checkpoint?: AgentFileManifest }, actor: AuthorizationActor) =>
+      locked(input.agentId, actor, true, async (tx, agent, root, bound) => {
         const incoming = input.checkpoint ? checkpointSnapshot(input.checkpoint) : await snapshotAgentFiles(input.sourceDir);
         const entryPath = deriveBundleState(agent).entryFile;
         if (incoming.entries.get(entryPath)?.kind !== "file") throw unprocessable("The configured instruction entry cannot be deleted");

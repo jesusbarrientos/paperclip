@@ -94,7 +94,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -106,7 +105,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Add feedback voting",
       status: "todo",
       priority: "medium",
@@ -115,13 +113,12 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId,
       authorAgentId: agentId,
       body: "AI generated update",
     });
 
-    return { companyId, issueId, commentId };
+    return { issueId, commentId };
   }
 
   async function seedIssueWithRichAgentComment() {
@@ -155,7 +152,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     await db.insert(companySkills).values([
       {
         id: randomUUID(),
-        companyId,
         key: "paperclipai/paperclip/paperclip",
         slug: "paperclip",
         name: "Paperclip",
@@ -167,7 +163,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         key: "octo/research/public-skill",
         slug: "public-skill",
         name: "Public Skill",
@@ -181,7 +176,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -207,7 +201,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Trace-rich feedback",
       description: "Issue context includes ops@example.com and a backup phone 555 111 2222.",
       status: "todo",
@@ -217,7 +210,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "manual",
       status: "succeeded",
@@ -234,7 +226,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(costEvents).values({
       id: randomUUID(),
-      companyId,
       agentId,
       issueId,
       heartbeatRunId: runId,
@@ -252,7 +243,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     await db.insert(issueComments).values([
       {
         id: earlierCommentId,
-        companyId,
         issueId,
         authorAgentId: agentId,
         createdByRunId: runId,
@@ -261,7 +251,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
       {
         id: targetCommentId,
-        companyId,
         issueId,
         authorAgentId: agentId,
         createdByRunId: runId,
@@ -270,7 +259,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
       {
         id: laterCommentId,
-        companyId,
         issueId,
         authorAgentId: agentId,
         createdByRunId: runId,
@@ -279,7 +267,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
     ]);
 
-    return { companyId, issueId, targetCommentId, runId };
+    return { issueId, targetCommentId, runId };
   }
 
   async function seedIssueWithAgentDocument() {
@@ -298,7 +286,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -310,7 +297,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Document feedback",
       status: "todo",
       priority: "medium",
@@ -319,7 +305,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: "Plan",
       format: "markdown",
       latestBody: "Drafted by an agent",
@@ -331,7 +316,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId,
       documentId,
       revisionNumber: 1,
       body: "Drafted by an agent",
@@ -339,13 +323,12 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     await db.insert(issueDocuments).values({
-      companyId,
       issueId,
       documentId,
       key: "plan",
     });
 
-    return { companyId, issueId, revisionId };
+    return { issueId, revisionId };
   }
 
   async function seedIssueWithAdapterRunComment(input: {
@@ -367,7 +350,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "TraceCollector",
       role: "engineer",
       status: "active",
@@ -379,7 +361,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Trace-backed feedback",
       status: "todo",
       priority: "medium",
@@ -388,7 +369,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "manual",
       status: "succeeded",
@@ -403,18 +383,17 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId,
       authorAgentId: agentId,
       createdByRunId: runId,
       body: "Trace-backed agent output",
     });
 
-    return { companyId, issueId, commentId };
+    return { issueId, commentId };
   }
 
   it("stores a local vote without enabling sharing by default", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId } = await seedIssueWithAgentComment();
 
     const result = await svc.saveIssueVote({
       issueId,
@@ -432,7 +411,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     const company = await db
       .select()
       .from(companies)
-      .where(eq(companies.id, companyId))
+      .limit(1)
       .then((rows) => rows[0] ?? null);
 
     expect(company?.feedbackDataSharingEnabled).toBe(false);
@@ -449,7 +428,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });
@@ -488,7 +466,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("enables sharing metadata on the first consented vote and upserts subsequent votes", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId } = await seedIssueWithAgentComment();
 
     const first = await svc.saveIssueVote({
       issueId,
@@ -531,7 +509,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     const company = await db
       .select()
       .from(companies)
-      .where(eq(companies.id, companyId))
+      .limit(1)
       .then((rows) => rows[0] ?? null);
 
     expect(company?.feedbackDataSharingEnabled).toBe(true);
@@ -565,7 +543,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(result.sharingEnabled).toBe(true);
 
     const traces = await svc.listFeedbackTraces({
-      companyId: result.vote.companyId,
       issueId,
       includePayload: true,
     });
@@ -598,7 +575,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(result.vote.reason).toBe("The update missed the edge case handling.");
 
     const traces = await svc.listFeedbackTraces({
-      companyId: result.vote.companyId,
       issueId,
       includePayload: true,
     });
@@ -634,7 +610,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(secondResult.vote.reason).toBe("Needed concrete next steps.");
 
     const traces = await svc.listFeedbackTraces({
-      companyId: secondResult.vote.companyId,
       issueId,
       includePayload: true,
     });
@@ -649,7 +624,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("builds a sanitized shared bundle without reading external instruction roots", async () => {
-    const { companyId, issueId, targetCommentId, runId } = await seedIssueWithRichAgentComment();
+    const { issueId, targetCommentId, runId } = await seedIssueWithRichAgentComment();
 
     await svc.saveIssueVote({
       issueId,
@@ -661,7 +636,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });
@@ -701,7 +675,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("keeps earlier local votes local when a later vote enables sharing", async () => {
-    const { companyId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
     const secondCommentId = randomUUID();
     const agentId = await db
       .select({ authorAgentId: issueComments.authorAgentId })
@@ -711,7 +685,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: secondCommentId,
-      companyId,
       issueId,
       authorAgentId: agentId,
       body: "Second AI generated update",
@@ -735,7 +708,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });
@@ -970,7 +942,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Human-authored comment",
       status: "todo",
       priority: "medium",
@@ -979,7 +950,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
       issueId,
       authorUserId: "user-2",
       body: "Board comment",
@@ -997,9 +967,9 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("flushes pending shared traces into configured object storage and marks them sent", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId } = await seedIssueWithAgentComment();
     const uploadTraceBundle = vi.fn().mockResolvedValue({
-      objectKey: `feedback-traces/${companyId}/2026/04/01/test-trace.json`,
+      objectKey: `feedback-traces/2026/04/01/test-trace.json`,
     });
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -1024,7 +994,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await flushingSvc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });
@@ -1036,7 +1005,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(uploadTraceBundle.mock.calls[0]?.[0]).toMatchObject({
       traceId: traces[0]?.id,
       exportId: traces[0]?.exportId,
-      companyId,
       issueId,
       issueIdentifier: traces[0]?.issueIdentifier,
       captureStatus: expect.stringMatching(/^(full|partial|unavailable)$/),
@@ -1048,7 +1016,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("can flush a single shared trace immediately by trace id", async () => {
-    const { companyId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
     const secondCommentId = randomUUID();
     const agentId = await db
       .select({ authorAgentId: issueComments.authorAgentId })
@@ -1058,14 +1026,13 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: secondCommentId,
-      companyId,
       issueId,
       authorAgentId: agentId,
       body: "Second AI generated update",
     });
 
     const uploadTraceBundle = vi.fn().mockResolvedValue({
-      objectKey: `feedback-traces/${companyId}/2026/04/01/test-trace.json`,
+      objectKey: `feedback-traces/2026/04/01/test-trace.json`,
     });
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -1091,7 +1058,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const flushResult = await flushingSvc.flushPendingFeedbackTraces({
-      companyId,
       traceId: first.traceId ?? undefined,
       limit: 1,
     });
@@ -1104,7 +1070,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(uploadTraceBundle).toHaveBeenCalledTimes(1);
 
     const traces = await flushingSvc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });
@@ -1115,7 +1080,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("marks pending shared traces as failed when remote export upload fails", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId } = await seedIssueWithAgentComment();
     const uploadTraceBundle = vi.fn().mockRejectedValue(new Error("telemetry unavailable"));
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -1140,7 +1105,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await flushingSvc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });
@@ -1153,7 +1117,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("marks pending shared traces as failed when no feedback export backend is configured", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { issueId, commentId } = await seedIssueWithAgentComment();
 
     const result = await svc.saveIssueVote({
       issueId,
@@ -1165,7 +1129,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const flushResult = await svc.flushPendingFeedbackTraces({
-      companyId,
       traceId: result.traceId ?? undefined,
       limit: 1,
     });
@@ -1177,7 +1140,6 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
       issueId,
       includePayload: true,
     });

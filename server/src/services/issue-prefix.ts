@@ -111,9 +111,9 @@ export async function pickAvailableIssuePrefix(
  */
 export async function rekeyCompanyIssueIdentifiers(
   tx: IssuePrefixWriteDb,
-  input: { companyId: string; fromPrefix: string; toPrefix: string },
+  input: { fromPrefix: string; toPrefix: string },
 ): Promise<{ issues: number; cases: number }> {
-  const { companyId, fromPrefix, toPrefix } = input;
+  const { fromPrefix, toPrefix } = input;
   if (fromPrefix === toPrefix) return { issues: 0, cases: 0 };
 
   const legacyHead = `${fromPrefix}-`;
@@ -130,13 +130,13 @@ export async function rekeyCompanyIssueIdentifiers(
   const rekeyedIssues = await tx
     .update(issues)
     .set({ identifier: sql`${toPrefix} || substring(${issues.identifier} from ${tailStart})` })
-    .where(and(eq(issues.companyId, companyId), matchesLegacyHead(issues.identifier)))
+    .where(matchesLegacyHead(issues.identifier))
     .returning({ id: issues.id });
 
   const rekeyedCases = await tx
     .update(cases)
     .set({ identifier: sql`${toPrefix} || substring(${cases.identifier} from ${tailStart})` })
-    .where(and(eq(cases.companyId, companyId), matchesLegacyHead(cases.identifier)))
+    .where(matchesLegacyHead(cases.identifier))
     .returning({ id: cases.id });
 
   return { issues: rekeyedIssues.length, cases: rekeyedCases.length };

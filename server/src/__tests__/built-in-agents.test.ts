@@ -53,7 +53,7 @@ const BUILT_IN_MARKER_UNIQUE_INDEX = "agents_company_built_in_agent_key_unique_i
 // test needs to simulate legacy duplicates that predate the constraint.
 const BUILT_IN_MARKER_UNIQUE_INDEX_DDL = `
   CREATE UNIQUE INDEX IF NOT EXISTS "${BUILT_IN_MARKER_UNIQUE_INDEX}"
-    ON "agents" ("company_id", ((metadata -> 'paperclipBuiltInAgent' ->> 'key')))
+    ON "agents" (((metadata -> 'paperclipBuiltInAgent' ->> 'key')))
     WHERE (metadata -> 'paperclipBuiltInAgent' ->> 'key') IS NOT NULL
       AND status <> 'terminated'
 `;
@@ -121,9 +121,9 @@ describeEmbeddedPostgres("built-in agents", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   const instructionOperator = { type: "board", userId: "local-board", source: "local_implicit" } as const;
-  async function writeInstructionEntry(agent: { id: string; companyId: string }, entryFile: string, content: string) {
+  async function writeInstructionEntry(agent: { id: string; }, entryFile: string, content: string) {
     const service = agentInstructionRevisionService(db);
-    const target = { companyId: agent.companyId, agentId: agent.id };
+    const target = { agentId: agent.id };
     const baseline = await service.readCurrent(target, instructionOperator);
     await service.commit({ ...target, entryFile, content, baseRevisionId: baseline?.revision.id ?? null, source: "board" }, instructionOperator);
     const refreshed = await agentService(db).getById(agent.id);
@@ -236,11 +236,10 @@ describeEmbeddedPostgres("built-in agents", () => {
     const companyId = await seedCompany();
     const svc = builtInAgentService(db);
 
-    const created = await svc.ensure(companyId, "briefs");
+    const created = await svc.ensure("briefs");
     expect(created.status).toBe("needs_setup");
     expect(created.agentId).toBeTruthy();
     expect(created.agent).toMatchObject({
-      companyId,
       name: "Briefs Agent",
       adapterConfig: {},
       status: "idle",
@@ -250,7 +249,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       featureKeys: ["briefs"],
     });
 
-    const configured = await svc.ensure(companyId, "briefs", {
+    const configured = await svc.ensure("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5.4" },
     });
@@ -261,14 +260,14 @@ describeEmbeddedPostgres("built-in agents", () => {
       adapterConfig: { model: "gpt-5.4" },
     });
 
-    const reconciled = await svc.ensure(companyId, "briefs");
+    const reconciled = await svc.ensure("briefs");
     expect(reconciled.status).toBe("ready");
     expect(reconciled.agent).toMatchObject({
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5.4" },
     });
 
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     expect(rows).toHaveLength(1);
   });
 
@@ -276,7 +275,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
 
-    const result = await builtIns.provision(companyId, "briefs", {
+    const result = await builtIns.provision("briefs", {
       adapterType: "process",
       adapterConfig: { command: "echo safe" },
       budgetMonthlyCents: 5000,
@@ -285,7 +284,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     expect(result.state).toMatchObject({
       status: "pending_approval",
       agent: {
-        companyId,
         name: "Briefs Agent",
         status: "pending_approval",
         adapterType: "process",
@@ -294,7 +292,6 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
     expect(result.approval).toMatchObject({
-      companyId,
       type: "hire_agent",
       status: "pending",
       requestedByUserId: "board-user",
@@ -311,11 +308,11 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    const rowsBeforeApproval = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rowsBeforeApproval = await db.select().from(agents);
     expect(rowsBeforeApproval).toHaveLength(1);
     expect(rowsBeforeApproval[0]).toMatchObject({ status: "pending_approval" });
 
-    await expect(builtIns.requireBuiltInAgent(companyId, "briefs")).rejects.toMatchObject({
+    await expect(builtIns.requireBuiltInAgent("briefs")).rejects.toMatchObject({
       status: 412,
       details: { code: "built_in_agent_not_configured", status: "pending_approval" },
     });
@@ -332,7 +329,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    await expect(builtIns.provision(companyId, "briefs", {
+    await expect(builtIns.provision("briefs", {
       budgetMonthlyCents: 7500,
     })).rejects.toMatchObject({
       status: 409,
@@ -353,7 +350,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
     await approvalService(db).approve(result.approval!.id, "board-user", "Approved built-in agent");
 
-    await expect(builtIns.get(companyId, "briefs")).resolves.toMatchObject({
+    await expect(builtIns.get("briefs")).resolves.toMatchObject({
       status: "ready",
       agentId: result.state.agentId,
       agent: { status: "idle", adapterType: "process", adapterConfig: { command: "echo safe" }, budgetMonthlyCents: 5000 },
@@ -363,12 +360,12 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("blocks policy-gated built-in reconfiguration instead of applying adapter overrides immediately", async () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
-    const ready = await builtIns.ensure(companyId, "briefs", {
+    const ready = await builtIns.ensure("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5.4" },
     });
 
-    await expect(builtIns.provision(companyId, "briefs", {
+    await expect(builtIns.provision("briefs", {
       adapterType: "process",
       adapterConfig: { command: "echo bypass" },
     })).rejects.toMatchObject({
@@ -380,7 +377,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    await expect(builtIns.get(companyId, "briefs")).resolves.toMatchObject({
+    await expect(builtIns.get("briefs")).resolves.toMatchObject({
       status: "ready",
       agentId: ready.agentId,
       agent: { adapterType: "codex_local", adapterConfig: { model: "gpt-5.4" } },
@@ -393,12 +390,12 @@ describeEmbeddedPostgres("built-in agents", () => {
 
     // A hired-but-unconfigured built-in row: exists (its hire was already
     // sanctioned) but its adapter config is still empty → `needs_setup`.
-    const seeded = await builtIns.ensure(companyId, "briefs");
+    const seeded = await builtIns.ensure("briefs");
     expect(seeded.status).toBe("needs_setup");
 
     // Configuring the adapter for the first time must apply directly instead of
     // throwing "adapter changes require board approval".
-    const result = await builtIns.provision(companyId, "briefs", {
+    const result = await builtIns.provision("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5.4" },
       budgetMonthlyCents: 2500,
@@ -416,16 +413,16 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     expect(rows).toHaveLength(1);
-    const noApprovals = await db.select().from(approvals).where(eq(approvals.companyId, companyId));
+    const noApprovals = await db.select().from(approvals);
     expect(noApprovals).toHaveLength(0);
   });
 
   it("rejects adapter types outside the built-in definition allowlist", async () => {
     const companyId = await seedCompany();
 
-    await expect(builtInAgentService(db).ensure(companyId, "briefs", {
+    await expect(builtInAgentService(db).ensure("briefs", {
       adapterType: "http",
       adapterConfig: { url: "https://example.test/webhook" },
     })).rejects.toMatchObject({
@@ -441,7 +438,7 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("rejects unknown built-in adapter models before saving setup", async () => {
     const companyId = await seedCompany();
 
-    await expect(builtInAgentService(db).ensure(companyId, "summarizer", {
+    await expect(builtInAgentService(db).ensure("summarizer", {
       adapterType: "claude_local",
       adapterConfig: { model: "claude-haiku-4-6" },
     })).rejects.toMatchObject({
@@ -454,7 +451,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     expect(rows).toHaveLength(0);
   });
 
@@ -463,7 +460,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     const orphanId = randomUUID();
     await db.insert(agents).values({
       id: orphanId,
-      companyId,
       name: "Old Briefs",
       role: "general",
       status: "idle",
@@ -474,11 +470,11 @@ describeEmbeddedPostgres("built-in agents", () => {
       metadata: withBuiltInAgentMarker({ source: "orphan" }, { key: "briefs", featureKeys: ["briefs"] }),
     });
 
-    const state = await builtInAgentService(db).ensure(companyId, "briefs");
+    const state = await builtInAgentService(db).ensure("briefs");
 
     expect(state.status).toBe("ready");
     expect(state.agentId).toBe(orphanId);
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     expect(rows).toHaveLength(1);
   });
 
@@ -486,20 +482,20 @@ describeEmbeddedPostgres("built-in agents", () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
 
-    await expect(builtIns.get(companyId, "learning")).resolves.toMatchObject({ status: "not_provisioned" });
+    await expect(builtIns.get("learning")).resolves.toMatchObject({ status: "not_provisioned" });
 
-    const needsSetup = await builtIns.ensure(companyId, "learning");
+    const needsSetup = await builtIns.ensure("learning");
     expect(needsSetup.status).toBe("needs_setup");
     expect(deriveBuiltInAgentStatus(needsSetup.agent)).toBe("needs_setup");
 
-    const ready = await builtIns.ensure(companyId, "learning", {
+    const ready = await builtIns.ensure("learning", {
       adapterType: "claude_local",
       adapterConfig: { model: "claude-sonnet-4-5" },
     });
     expect(ready.status).toBe("ready");
 
     await agentService(db).pause(ready.agentId!, "manual");
-    await expect(builtIns.get(companyId, "learning")).resolves.toMatchObject({
+    await expect(builtIns.get("learning")).resolves.toMatchObject({
       status: "paused",
       agentId: ready.agentId,
       pauseReason: "manual",
@@ -510,7 +506,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
 
-    await expect(builtIns.requireBuiltInAgent(companyId, "briefs")).rejects.toMatchObject({
+    await expect(builtIns.requireBuiltInAgent("briefs")).rejects.toMatchObject({
       status: 412,
       details: {
         code: "built_in_agent_not_configured",
@@ -520,8 +516,8 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    const needsSetup = await builtIns.ensure(companyId, "briefs");
-    await expect(builtIns.requireBuiltInAgent(companyId, "briefs")).rejects.toMatchObject({
+    const needsSetup = await builtIns.ensure("briefs");
+    await expect(builtIns.requireBuiltInAgent("briefs")).rejects.toMatchObject({
       status: 412,
       details: {
         code: "built_in_agent_not_configured",
@@ -531,17 +527,17 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    const ready = await builtIns.ensure(companyId, "briefs", {
+    const ready = await builtIns.ensure("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5.4" },
     });
-    await expect(builtIns.requireBuiltInAgent(companyId, "briefs")).resolves.toMatchObject({
+    await expect(builtIns.requireBuiltInAgent("briefs")).resolves.toMatchObject({
       agent: { id: ready.agentId },
       warning: null,
     });
 
     await agentService(db).pause(ready.agentId!, "maintenance");
-    await expect(builtIns.requireBuiltInAgent(companyId, "briefs")).resolves.toMatchObject({
+    await expect(builtIns.requireBuiltInAgent("briefs")).resolves.toMatchObject({
       agent: { id: ready.agentId },
       warning: {
         code: "built_in_agent_paused",
@@ -555,7 +551,7 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("resets marked agents back to registry display defaults without replacing adapter setup", async () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
-    const ready = await builtIns.ensure(companyId, "briefs", {
+    const ready = await builtIns.ensure("briefs", {
       adapterType: "codex_local",
       adapterConfig: { model: "gpt-5.4" },
     });
@@ -567,7 +563,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       capabilities: "Custom purpose",
     });
 
-    const reset = await builtIns.reset(companyId, "briefs", {}, instructionOperator);
+    const reset = await builtIns.reset("briefs", {}, instructionOperator);
 
     expect(reset).toMatchObject({
       status: "ready",
@@ -585,7 +581,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("reconciles an enabled Reflection Coach bundle with skill sync and a disabled routine", async () => {
     const companyId = await seedCompany({ requireApproval: false });
-    const root = await agentService(db).create(companyId, {
+    const root = await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -597,7 +593,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
     // The Reflection Coach is opt-in (not auto-created). Enabling it on demand
     // materializes its managed bundle in a single pass.
-    const enabled = await builtInAgentService(db).ensure(companyId, "reflection-coach");
+    const enabled = await builtInAgentService(db).ensure("reflection-coach");
     expect(enabled.agent?.adapterConfig).toMatchObject({
       instructionsBundleMode: "managed",
       instructionsEntryFile: "AGENTS.md",
@@ -615,11 +611,10 @@ describeEmbeddedPostgres("built-in agents", () => {
       "agents:configure", "agents:suggest-changes", "skills:create", "skills:suggest-changes",
     ]));
 
-    const state = await builtInAgentService(db).get(companyId, "reflection-coach");
+    const state = await builtInAgentService(db).get("reflection-coach");
     expect(state).toMatchObject({
       status: "paused",
       agent: {
-        companyId,
         name: "Reflection Coach",
         role: "general",
         title: "Reflection Coach",
@@ -641,7 +636,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       scheduleEnabled: false,
     });
 
-    const agentRows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const agentRows = await db.select().from(agents);
     expect(agentRows.filter((row) => readBuiltInAgentMarker(row.metadata)?.key === "reflection-coach")).toHaveLength(1);
 
     const [skill] = await db
@@ -656,7 +651,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       "paperclipai/bundled/paperclip-operations/reflection-coach",
     );
 
-    const [routine] = await db.select().from(routines).where(eq(routines.companyId, companyId));
+    const [routine] = await db.select().from(routines);
     expect(routine).toMatchObject({
       title: "Review recent agent trajectories for coaching proposals",
       status: "paused",
@@ -677,7 +672,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("recreates missing managed resource bindings idempotently during concurrent reconcile", async () => {
     const companyId = await seedCompany({ requireApproval: false });
-    await agentService(db).create(companyId, {
+    await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -687,12 +682,12 @@ describeEmbeddedPostgres("built-in agents", () => {
       permissions: {},
     });
     const builtIns = builtInAgentService(db);
-    await builtIns.ensure(companyId, "reflection-coach");
-    await db.delete(builtInManagedResources).where(eq(builtInManagedResources.companyId, companyId));
+    await builtIns.ensure("reflection-coach");
+    await db.delete(builtInManagedResources);
 
     const states = await Promise.all([
-      builtIns.ensure(companyId, "reflection-coach"),
-      builtIns.ensure(companyId, "reflection-coach"),
+      builtIns.ensure("reflection-coach"),
+      builtIns.ensure("reflection-coach"),
     ]);
 
     expect(states).toHaveLength(2);
@@ -705,8 +700,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     }
     const bindings = await db
       .select()
-      .from(builtInManagedResources)
-      .where(eq(builtInManagedResources.companyId, companyId));
+      .from(builtInManagedResources);
     expect(bindings).toHaveLength(3);
     expect(new Set(bindings.map((binding) =>
       `${binding.bundleKey}:${binding.resourceKind}:${binding.resourceKey}`
@@ -715,7 +709,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("preserves new-agent approval gates during on-demand Reflection Coach provisioning", async () => {
     const companyId = await seedCompany({ requireApproval: true });
-    const root = await agentService(db).create(companyId, {
+    const root = await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -733,13 +727,12 @@ describeEmbeddedPostgres("built-in agents", () => {
     // The Reflection Coach is opt-in, so it's enabled on demand. With board
     // approval required, provisioning it must leave a pending agent + a
     // hire_agent approval rather than an active agent.
-    const provisioned = await builtInAgentService(db).provision(companyId, "reflection-coach");
+    const provisioned = await builtInAgentService(db).provision("reflection-coach");
     expect(provisioned.approval).not.toBeNull();
-    const state = await builtInAgentService(db).get(companyId, "reflection-coach");
+    const state = await builtInAgentService(db).get("reflection-coach");
     expect(state).toMatchObject({
       status: "pending_approval",
       agent: {
-        companyId,
         name: "Reflection Coach",
         status: "pending_approval",
         reportsTo: root.id,
@@ -751,7 +744,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
     expect(state.resources.map((resource) => resource.stockStatus)).toEqual(["missing", "missing", "missing"]);
 
-    const allApprovals = await db.select().from(approvals).where(eq(approvals.companyId, companyId));
+    const allApprovals = await db.select().from(approvals);
     const approval = allApprovals.find(
       (row) => (row.payload as { agentId?: string } | null)?.agentId === state.agentId,
     )!;
@@ -771,7 +764,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
     const pendingReconcile = await reconcileBuiltInAgentsOnStartup(db);
     expect(pendingReconcile.pendingApprovals).toBe(1);
-    const stillPending = await builtInAgentService(db).get(companyId, "reflection-coach");
+    const stillPending = await builtInAgentService(db).get("reflection-coach");
     expect(stillPending).toMatchObject({
       status: "pending_approval",
       agent: {
@@ -787,7 +780,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     ]);
 
     await approvalService(db).approve(approval.id, "board-user", "Approved Reflection Coach");
-    const approvedState = await builtInAgentService(db).get(companyId, "reflection-coach");
+    const approvedState = await builtInAgentService(db).get("reflection-coach");
     expect(approvedState).toMatchObject({
       agent: {
         reportsTo: root.id,
@@ -803,16 +796,16 @@ describeEmbeddedPostgres("built-in agents", () => {
     ]);
 
     await reconcileBuiltInAgentsOnStartup(db);
-    const agentRows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const agentRows = await db.select().from(agents);
     expect(agentRows.filter((row) => readBuiltInAgentMarker(row.metadata)?.key === "reflection-coach")).toHaveLength(1);
-    const approvalRows = await db.select().from(approvals).where(eq(approvals.companyId, companyId));
+    const approvalRows = await db.select().from(approvals);
     expect(approvalRows).toHaveLength(1);
   });
 
   it("automatically upgrades untouched stock instructions while preserving personal files", async () => {
     const companyId = await seedCompany({ requireApproval: false });
     const svc = builtInAgentService(db);
-    const created = await svc.ensure(companyId, "reflection-coach");
+    const created = await svc.ensure("reflection-coach");
     const agent = created.agent!;
     const oldFiles = { "AGENTS.md": "# Previous stock instructions\n", "obsolete.txt": "old stock support" };
     await writeInstructionEntry(agent, "AGENTS.md", oldFiles["AGENTS.md"]);
@@ -820,27 +813,27 @@ describeEmbeddedPostgres("built-in agents", () => {
     await agentInstructionsService(db).writeFile(agent, "personal.txt", "keep my notes");
     await db.update(builtInManagedResources).set({ stockHash: stockHash(oldFiles), stockVersion: "previous",
       defaultsJson: { entryFile: "AGENTS.md", files: Object.keys(oldFiles) },
-    }).where(and(eq(builtInManagedResources.companyId, companyId), eq(builtInManagedResources.resourceKind, "instructions")));
-    const updated = await svc.ensure(companyId, "reflection-coach");
+    }).where(eq(builtInManagedResources.resourceKind, "instructions"));
+    const updated = await svc.ensure("reflection-coach");
     expect(updated.resources.find(resource => resource.resourceKind === "instructions")).toMatchObject({ stockStatus: "stock_current" });
     expect((await agentInstructionsService().readFile(updated.agent!, "AGENTS.md")).content).toContain("You are Reflection Coach");
     expect((await agentInstructionsService().readFile(updated.agent!, "personal.txt")).content).toBe("keep my notes");
     await expect(agentInstructionsService().readFile(updated.agent!, "obsolete.txt")).rejects.toMatchObject({ status: 404 });
-    const [event] = await db.select().from(activityLog).where(and(eq(activityLog.companyId, companyId), eq(activityLog.actorId, "built-in-reconcile")));
+    const [event] = await db.select().from(activityLog).where(eq(activityLog.actorId, "built-in-reconcile"));
     expect(event).toMatchObject({ actorType: "system", action: "agent.files_updated" });
   });
 
   it.each(["file", "database"])("retries a stock update after a %s failure without overwriting intervening edits", async (failure) => {
     const companyId = await seedCompany({ requireApproval: false });
     const svc = builtInAgentService(db);
-    const created = await svc.ensure(companyId, "reflection-coach");
+    const created = await svc.ensure("reflection-coach");
     const agent = created.agent!;
     const oldFiles = { "AGENTS.md": "# Old stock\n", "obsolete.txt": "old supporting file" };
     await writeInstructionEntry(agent, "AGENTS.md", oldFiles["AGENTS.md"]);
     await agentInstructionsService(db).writeFile(agent, "obsolete.txt", oldFiles["obsolete.txt"]);
     await db.update(builtInManagedResources).set({ stockHash: stockHash(oldFiles), stockVersion: "old",
       defaultsJson: { entryFile: "AGENTS.md", files: Object.keys(oldFiles) },
-    }).where(and(eq(builtInManagedResources.companyId, companyId), eq(builtInManagedResources.resourceKind, "instructions")));
+    }).where(eq(builtInManagedResources.resourceKind, "instructions"));
     const trigger = `stock_failure_${companyId.replaceAll("-", "")}`;
     const remove = fs.rm.bind(fs);
     const fault = failure === "file" ? vi.spyOn(fs, "rm").mockImplementation(async (file, options) => {
@@ -849,11 +842,11 @@ describeEmbeddedPostgres("built-in agents", () => {
     }) : null;
     if (failure === "database") {
       await db.execute(sql.raw(`CREATE FUNCTION ${trigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
-        IF NEW.company_id = '${companyId}' AND NEW.resource_kind = 'instructions' AND NEW.stock_hash <> OLD.stock_hash THEN
+        IF NEW.resource_kind = 'instructions' AND NEW.stock_hash <> OLD.stock_hash THEN
           RAISE EXCEPTION 'injected stock binding failure'; END IF; RETURN NEW; END $$`));
       await db.execute(sql.raw(`CREATE TRIGGER ${trigger} BEFORE UPDATE ON built_in_managed_resources FOR EACH ROW EXECUTE FUNCTION ${trigger}()`));
     }
-    try { await expect(svc.ensure(companyId, "reflection-coach")).rejects.toThrow(); }
+    try { await expect(svc.ensure("reflection-coach")).rejects.toThrow(); }
     finally {
       fault?.mockRestore();
       if (failure === "database") {
@@ -861,17 +854,17 @@ describeEmbeddedPostgres("built-in agents", () => {
         await db.execute(sql.raw(`DROP FUNCTION ${trigger}()`));
       }
     }
-    const [pending] = await db.select().from(builtInManagedResources).where(and(eq(builtInManagedResources.companyId, companyId), eq(builtInManagedResources.resourceKind, "instructions")));
+    const [pending] = await db.select().from(builtInManagedResources).where(eq(builtInManagedResources.resourceKind, "instructions"));
     expect(pending.defaultsJson.pendingInstructionsUpdate).toBeTruthy();
     expect(pending.stockHash).toBe(stockHash(oldFiles));
     const partial = (await agentInstructionsService().readFile(agent, "AGENTS.md")).content;
     expect(partial).toContain("You are Reflection Coach");
     // A real operator edit after the failed attempt must stop the retry.
     await writeInstructionEntry(agent, "AGENTS.md", "operator edit after failure");
-    await svc.ensure(companyId, "reflection-coach");
+    await svc.ensure("reflection-coach");
     expect((await agentInstructionsService().readFile(agent, "AGENTS.md")).content).toBe("operator edit after failure");
     await writeInstructionEntry(agent, "AGENTS.md", partial);
-    const retried = await svc.ensure(companyId, "reflection-coach");
+    const retried = await svc.ensure("reflection-coach");
     expect(retried.resources.find(resource => resource.resourceKind === "instructions")).toMatchObject({ stockStatus: "stock_current" });
     await expect(agentInstructionsService().readFile(agent, "obsolete.txt")).rejects.toMatchObject({ status: 404 });
     const [complete] = await db.select().from(builtInManagedResources).where(eq(builtInManagedResources.id, pending.id));
@@ -881,7 +874,7 @@ describeEmbeddedPostgres("built-in agents", () => {
   it.each([false, true])("supersedes an interrupted stock version, including rollback=%s", async (rollback) => {
     const companyId = await seedCompany({ requireApproval: false });
     const svc = builtInAgentService(db);
-    const created = await svc.ensure(companyId, "reflection-coach");
+    const created = await svc.ensure("reflection-coach");
     const agent = created.agent!;
     const currentStock = (await agentInstructionsService().readFile(agent, "AGENTS.md")).content;
     const oldFiles = { "AGENTS.md": rollback ? currentStock : "# Original stock" };
@@ -895,12 +888,12 @@ describeEmbeddedPostgres("built-in agents", () => {
         baseHashes: { "AGENTS.md": fileHash(Buffer.from(oldFiles["AGENTS.md"])), "intermediate-only.txt": null },
         nextHashes: Object.fromEntries(Object.entries(interruptedFiles).map(([file, text]) => [file, fileHash(Buffer.from(text))])),
       } },
-    }).where(and(eq(builtInManagedResources.companyId, companyId), eq(builtInManagedResources.resourceKind, "instructions")));
+    }).where(eq(builtInManagedResources.resourceKind, "instructions"));
     await writeInstructionEntry(agent, "AGENTS.md", "intervening operator edit");
-    await svc.ensure(companyId, "reflection-coach");
+    await svc.ensure("reflection-coach");
     expect((await agentInstructionsService().readFile(agent, "AGENTS.md")).content).toBe("intervening operator edit");
     await writeInstructionEntry(agent, "AGENTS.md", interruptedFiles["AGENTS.md"]);
-    const updated = await svc.ensure(companyId, "reflection-coach");
+    const updated = await svc.ensure("reflection-coach");
     expect(updated.resources.find(resource => resource.resourceKind === "instructions")).toMatchObject({ stockStatus: "stock_current" });
     expect((await agentInstructionsService().readFile(agent, "AGENTS.md")).content).toBe(currentStock);
     await expect(agentInstructionsService().readFile(agent, "intermediate-only.txt")).rejects.toMatchObject({ status: 404 });
@@ -910,12 +903,12 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("preserves Reflection Coach instruction drift on reconcile and restores it on reset", async () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
-    const created = await builtIns.ensure(companyId, "reflection-coach");
+    const created = await builtIns.ensure("reflection-coach");
     const instructions = agentInstructionsService();
 
     await writeInstructionEntry(created.agent!, "AGENTS.md", "# Custom Reflection Coach\n\nOperator edit.\n");
 
-    const reconciled = await builtIns.ensure(companyId, "reflection-coach");
+    const reconciled = await builtIns.ensure("reflection-coach");
     const drift = reconciled.resources.find((resource) => resource.resourceKind === "instructions");
     expect(drift).toMatchObject({
       stockStatus: "operator_modified",
@@ -927,7 +920,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       content: "# Custom Reflection Coach\n\nOperator edit.\n",
     });
 
-    const reset = await builtIns.reset(companyId, "reflection-coach", {}, instructionOperator);
+    const reset = await builtIns.reset("reflection-coach", {}, instructionOperator);
     expect(reset.resources.find((resource) => resource.resourceKind === "instructions")).toMatchObject({
       stockStatus: "stock_current",
       resetAvailable: false,
@@ -936,7 +929,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     expect(resetFile.content).toContain("Reflection Coach");
     expect(resetFile.content).not.toContain("Operator edit.");
     const revisions = agentInstructionRevisionService(db);
-    const target = { companyId, agentId: created.agent!.id, entryFile: "AGENTS.md" };
+    const target = { agentId: created.agent!.id, entryFile: "AGENTS.md" };
     const history = await revisions.history(target, instructionOperator);
     expect(history.revisions).toHaveLength(0);
     const current = await revisions.readCurrent(target, instructionOperator);
@@ -945,7 +938,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("blocks deleting a built-in agent", async () => {
     const companyId = await seedCompany();
-    const state = await builtInAgentService(db).ensure(companyId, "briefs");
+    const state = await builtInAgentService(db).ensure("briefs");
 
     await expect(agentService(db).remove(state.agentId!)).rejects.toMatchObject({
       status: 409,
@@ -958,8 +951,8 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("prevents direct marker add, remove, or mutation", async () => {
     const companyId = await seedCompany();
-    const builtIn = await builtInAgentService(db).ensure(companyId, "briefs");
-    const normal = await agentService(db).create(companyId, {
+    const builtIn = await builtInAgentService(db).ensure("briefs");
+    const normal = await agentService(db).create({
       name: "Normal",
       role: "engineer",
       status: "idle",
@@ -969,7 +962,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       permissions: {},
     });
 
-    await expect(agentService(db).create(companyId, {
+    await expect(agentService(db).create({
       name: "Spoof",
       role: "engineer",
       status: "idle",
@@ -1008,7 +1001,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     const agentId = randomUUID();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Old Name",
       role: "engineer",
       title: "Old title",
@@ -1039,14 +1031,13 @@ describeEmbeddedPostgres("built-in agents", () => {
   // Reproduce a company that already carries duplicate marked rows from before
   // migration 0192 by dropping the unique index, inserting two active rows, and
   // pairing a pending hire_agent approval with the newer one.
-  async function seedLegacyDuplicateBriefs(companyId: string) {
+  async function seedLegacyDuplicateBriefs() {
     await db.execute(sql.raw(`DROP INDEX IF EXISTS "${BUILT_IN_MARKER_UNIQUE_INDEX}"`));
     const olderId = randomUUID();
     const newerId = randomUUID();
     await db.insert(agents).values([
       {
         id: olderId,
-        companyId,
         name: "Briefs One",
         role: "general",
         status: "idle",
@@ -1059,7 +1050,6 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
       {
         id: newerId,
-        companyId,
         name: "Briefs Two",
         role: "general",
         status: "pending_approval",
@@ -1071,7 +1061,7 @@ describeEmbeddedPostgres("built-in agents", () => {
         metadata: withBuiltInAgentMarker({}, { key: "briefs", featureKeys: ["briefs"] }),
       },
     ]);
-    const approval = await approvalService(db).create(companyId, {
+    const approval = await approvalService(db).create({
       type: "hire_agent",
       requestedByAgentId: null,
       requestedByUserId: null,
@@ -1087,13 +1077,13 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("self-heals duplicate active instances, keeping the oldest and cancelling the newer's approval", async () => {
     const companyId = await seedCompany();
-    const { olderId, newerId, approvalId } = await seedLegacyDuplicateBriefs(companyId);
+    const { olderId, newerId, approvalId } = await seedLegacyDuplicateBriefs();
 
     // A plain read resolves the duplicate rather than throwing.
-    const state = await builtInAgentService(db).get(companyId, "briefs");
+    const state = await builtInAgentService(db).get("briefs");
     expect(state.agentId).toBe(olderId);
 
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     const byId = new Map(rows.map((row) => [row.id, row]));
     expect(byId.get(olderId)?.status).toBe("idle");
     expect(byId.get(newerId)?.status).toBe("terminated");
@@ -1110,14 +1100,14 @@ describeEmbeddedPostgres("built-in agents", () => {
     const svc = builtInAgentService(db);
 
     const [first, second] = await Promise.all([
-      svc.ensure(companyId, "briefs"),
-      svc.ensure(companyId, "briefs"),
+      svc.ensure("briefs"),
+      svc.ensure("briefs"),
     ]);
 
     expect(first.agentId).toBeTruthy();
     expect(second.agentId).toBe(first.agentId);
 
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     expect(
       rows.filter((row) => row.status !== "terminated" && readBuiltInAgentMarker(row.metadata)?.key === "briefs"),
     ).toHaveLength(1);
@@ -1126,7 +1116,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     await expect(
       db.insert(agents).values({
         id: randomUUID(),
-        companyId,
         name: "Briefs Dupe",
         role: "general",
         status: "idle",
@@ -1149,14 +1138,14 @@ describeEmbeddedPostgres("built-in agents", () => {
     const svc = builtInAgentService(db);
 
     const results = await Promise.all([
-      svc.provision(companyId, "briefs"),
-      svc.provision(companyId, "briefs"),
+      svc.provision("briefs"),
+      svc.provision("briefs"),
     ]);
 
     const agentIds = new Set(results.map((result) => result.state.agentId));
     expect(agentIds.size).toBe(1);
 
-    const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const rows = await db.select().from(agents);
     expect(
       rows.filter((row) => row.status !== "terminated" && readBuiltInAgentMarker(row.metadata)?.key === "briefs"),
     ).toHaveLength(1);
@@ -1164,7 +1153,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     const openApprovals = await db
       .select()
       .from(approvals)
-      .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending")));
+      .where(eq(approvals.status, "pending"));
     const briefsApprovals = openApprovals.filter(
       (row) => (row.payload as { sourceBuiltInAgentKey?: string } | null)?.sourceBuiltInAgentKey === "briefs",
     );
@@ -1180,31 +1169,14 @@ describeEmbeddedPostgres("built-in agents", () => {
     }
   });
 
-  it("self-heals duplicates during startup reconciliation without aborting later companies", async () => {
-    const affectedCompanyId = await seedCompany({ requireApproval: false });
-    const { olderId, newerId } = await seedLegacyDuplicateBriefs(affectedCompanyId);
-    // A second company created after the affected one — previously skipped
-    // entirely because the duplicate error escaped the reconciliation loop.
-    // Give it a drifted built-in row so we can prove reconcile still reached it.
-    const healthyCompanyId = await seedCompany({ requireApproval: false });
-    const healthyBriefsId = randomUUID();
-    await db.insert(agents).values({
-      id: healthyBriefsId,
-      companyId: healthyCompanyId,
-      name: "Stale Briefs",
-      role: "engineer",
-      status: "idle",
-      adapterType: "codex_local",
-      adapterConfig: { model: "gpt-5.4" },
-      runtimeConfig: {},
-      permissions: {},
-      metadata: withBuiltInAgentMarker({}, { key: "briefs", featureKeys: ["briefs"] }),
-    });
+  it("self-heals duplicates during startup reconciliation", async () => {
+    await seedCompany({ requireApproval: false });
+    const { olderId, newerId } = await seedLegacyDuplicateBriefs();
 
     const result = await reconcileBuiltInAgentsOnStartup(db);
     expect(result.companyFailures).toBe(0);
 
-    const affectedRows = await db.select().from(agents).where(eq(agents.companyId, affectedCompanyId));
+    const affectedRows = await db.select().from(agents);
     const affectedById = new Map(affectedRows.map((row) => [row.id, row]));
     expect(affectedById.get(olderId)?.status).toBe("idle");
     expect(affectedById.get(newerId)?.status).toBe("terminated");
@@ -1213,16 +1185,11 @@ describeEmbeddedPostgres("built-in agents", () => {
         (row) => row.status !== "terminated" && readBuiltInAgentMarker(row.metadata)?.key === "briefs",
       ),
     ).toHaveLength(1);
-
-    // The company after the affected one was still reconciled (its drifted
-    // built-in row was repaired to stock) rather than skipped.
-    const [healthyBriefs] = await db.select().from(agents).where(eq(agents.id, healthyBriefsId));
-    expect(healthyBriefs?.name).toBe("Briefs Agent");
   });
 
   it("automatically materializes the Reflection Coach bundle without enabling background work", async () => {
     const companyId = await seedCompany();
-    const root = await agentService(db).create(companyId, {
+    const root = await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -1232,10 +1199,9 @@ describeEmbeddedPostgres("built-in agents", () => {
       permissions: {},
     });
 
-    const state = await builtInAgentService(db).ensure(companyId, "reflection-coach");
+    const state = await builtInAgentService(db).ensure("reflection-coach");
 
     expect(state.agent).toMatchObject({
-      companyId,
       name: "Reflection Coach",
       title: "Reflection Coach",
       icon: "eye",
@@ -1253,7 +1219,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       ["skill", "stock_current"],
       ["routine", "stock_current"],
     ]);
-    const reported = await builtInAgentService(db).get(companyId, "reflection-coach");
+    const reported = await builtInAgentService(db).get("reflection-coach");
     const reportedRoutine = reported.resources.find((resource) => resource.resourceKind === "routine");
     expect(reportedRoutine).toMatchObject({
       stockStatus: "stock_current",
@@ -1272,7 +1238,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
     expect(readPaperclipSkillSyncPreference(state.agent!.adapterConfig).desiredSkills).toContain(skill!.key);
 
-    const [routine] = await db.select().from(routines).where(eq(routines.companyId, companyId));
+    const [routine] = await db.select().from(routines);
     expect(routine).toMatchObject({
       title: "Review recent agent trajectories for coaching proposals",
       status: "paused",
@@ -1297,7 +1263,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("materializes the Summarizer bundle paused on Claude Haiku with a disabled routine", async () => {
     const companyId = await seedCompany();
-    const root = await agentService(db).create(companyId, {
+    const root = await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -1307,10 +1273,9 @@ describeEmbeddedPostgres("built-in agents", () => {
       permissions: {},
     });
 
-    const state = await builtInAgentService(db).ensure(companyId, "summarizer");
+    const state = await builtInAgentService(db).ensure("summarizer");
 
     expect(state.agent).toMatchObject({
-      companyId,
       name: "Summarizer",
       title: "Summarizer",
       icon: "sparkles",
@@ -1346,7 +1311,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     const [routine] = await db
       .select()
       .from(routines)
-      .where(and(eq(routines.companyId, companyId), eq(routines.assigneeAgentId, state.agentId!)));
+      .where(eq(routines.assigneeAgentId, state.agentId!));
     expect(routine).toMatchObject({
       title: "Refresh stale summary slots",
       status: "paused",
@@ -1366,7 +1331,7 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("keeps the Summarizer not-configured until an adapter model is set", async () => {
     const companyId = await seedCompany();
 
-    await expect(builtInAgentService(db).requireBuiltInAgent(companyId, "summarizer")).rejects.toMatchObject({
+    await expect(builtInAgentService(db).requireBuiltInAgent("summarizer")).rejects.toMatchObject({
       status: 412,
       details: {
         code: "built_in_agent_not_configured",
@@ -1375,9 +1340,9 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
 
     // Provisioning without a model leaves it paused (default), still not runnable as "ready".
-    const paused = await builtInAgentService(db).ensure(companyId, "summarizer");
+    const paused = await builtInAgentService(db).ensure("summarizer");
     expect(paused.status).toBe("paused");
-    await expect(builtInAgentService(db).requireBuiltInAgent(companyId, "summarizer")).resolves.toMatchObject({
+    await expect(builtInAgentService(db).requireBuiltInAgent("summarizer")).resolves.toMatchObject({
       warning: { code: "built_in_agent_paused", key: "summarizer" },
     });
   });
@@ -1385,19 +1350,19 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("restores Summarizer instruction drift on reset", async () => {
     const companyId = await seedCompany();
     const builtIns = builtInAgentService(db);
-    const created = await builtIns.ensure(companyId, "summarizer");
+    const created = await builtIns.ensure("summarizer");
     const instructions = agentInstructionsService();
 
     await writeInstructionEntry(created.agent!, "AGENTS.md", "# Custom Summarizer\n\nOperator edit.\n");
 
-    const reconciled = await builtIns.ensure(companyId, "summarizer");
+    const reconciled = await builtIns.ensure("summarizer");
     expect(reconciled.resources.find((resource) => resource.resourceKind === "instructions")).toMatchObject({
       stockStatus: "operator_modified",
       resetAvailable: true,
       changedFiles: ["AGENTS.md"],
     });
 
-    const reset = await builtIns.reset(companyId, "summarizer", {}, instructionOperator);
+    const reset = await builtIns.reset("summarizer", {}, instructionOperator);
     expect(reset.resources.find((resource) => resource.resourceKind === "instructions")).toMatchObject({
       stockStatus: "stock_current",
       resetAvailable: false,
@@ -1411,7 +1376,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("controls the Reflection Coach routine schedule without enabling it by default", async () => {
     const companyId = await seedCompany();
-    await agentService(db).create(companyId, {
+    await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -1421,7 +1386,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       permissions: {},
     });
     const builtIns = builtInAgentService(db);
-    const created = await builtIns.ensure(companyId, "reflection-coach");
+    const created = await builtIns.ensure("reflection-coach");
     expect(created.status).toBe("paused");
     expect(created.resources.find((resource) => resource.resourceKind === "routine")).toMatchObject({
       stockStatus: "stock_current",
@@ -1429,7 +1394,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
 
     const enabled = await builtIns.enableRoutineSchedule(
-      companyId,
       "reflection-coach",
       "recent-agent-reflection",
       { userId: "board-user" },
@@ -1439,13 +1403,12 @@ describeEmbeddedPostgres("built-in agents", () => {
       stockStatus: "stock_current",
       scheduleEnabled: true,
     });
-    const [enabledRoutine] = await db.select().from(routines).where(eq(routines.companyId, companyId));
+    const [enabledRoutine] = await db.select().from(routines);
     const [enabledTrigger] = await db.select().from(routineTriggers).where(eq(routineTriggers.routineId, enabledRoutine!.id));
     expect(enabledRoutine).toMatchObject({ status: "active" });
     expect(enabledTrigger).toMatchObject({ enabled: true });
 
     const disabled = await builtIns.disableRoutineSchedule(
-      companyId,
       "reflection-coach",
       "recent-agent-reflection",
       { userId: "board-user" },
@@ -1462,7 +1425,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("surfaces pending Reflection Coach proposal interactions on the routine resource", async () => {
     const companyId = await seedCompany();
-    await agentService(db).create(companyId, {
+    await agentService(db).create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -1471,11 +1434,10 @@ describeEmbeddedPostgres("built-in agents", () => {
       runtimeConfig: {},
       permissions: {},
     });
-    const created = await builtInAgentService(db).ensure(companyId, "reflection-coach");
+    const created = await builtInAgentService(db).ensure("reflection-coach");
     const proposalIssueId = randomUUID();
     await db.insert(issues).values({
       id: proposalIssueId,
-      companyId,
       title: "Review Reflection Coach proposal",
       status: "in_review",
       priority: "medium",
@@ -1487,7 +1449,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     const interactionId = randomUUID();
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId,
       issueId: proposalIssueId,
       kind: "request_confirmation",
       status: "pending",
@@ -1503,7 +1464,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       },
     });
 
-    const state = await builtInAgentService(db).get(companyId, "reflection-coach");
+    const state = await builtInAgentService(db).get("reflection-coach");
 
     expect(state.resources.find((resource) => resource.resourceKind === "routine")).toMatchObject({
       pendingUpdateInteractionId: interactionId,
@@ -1515,7 +1476,7 @@ describeEmbeddedPostgres("built-in agents", () => {
   it("gates Reflection Coach proposal mutations until an accepted follow-up apply step", async () => {
     const companyId = await seedCompany();
     const agentsSvc = agentService(db);
-    await agentsSvc.create(companyId, {
+    await agentsSvc.create({
       name: "CEO",
       role: "ceo",
       status: "idle",
@@ -1524,7 +1485,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       runtimeConfig: {},
       permissions: {},
     });
-    const target = await agentsSvc.create(companyId, {
+    const target = await agentsSvc.create({
       name: "Target Coder",
       role: "engineer",
       status: "idle",
@@ -1533,7 +1494,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       runtimeConfig: {},
       permissions: {},
     });
-    const created = await builtInAgentService(db).ensure(companyId, "reflection-coach");
+    const created = await builtInAgentService(db).ensure("reflection-coach");
     const coach = created.agent!;
     const instructionsSvc = agentInstructionsService();
     const originalInstructions = "# Target Coder\n\nWork from the assigned issue.\n";
@@ -1559,7 +1520,6 @@ describeEmbeddedPostgres("built-in agents", () => {
     const proposalIssueId = randomUUID();
     await db.insert(issues).values({
       id: proposalIssueId,
-      companyId,
       title: "Review Reflection Coach proposal",
       status: "in_review",
       priority: "medium",
@@ -1570,8 +1530,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
     const acceptedInstructions = `${originalInstructions}\nWhen finishing, name the exact verification command.\n`;
     const acceptedProposal = await interactionsSvc.create({
-      id: proposalIssueId,
-      companyId,
+      id: proposalIssueId
     }, {
       kind: "request_confirmation",
       continuationPolicy: "wake_assignee_on_accept",
@@ -1602,7 +1561,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
 
     const accepted = await interactionsSvc.acceptInteraction(
-      { id: proposalIssueId, companyId, goalId: null, projectId: null },
+      { id: proposalIssueId, goalId: null, projectId: null },
       acceptedProposal.id,
       {},
       { userId: "board-user" },
@@ -1628,8 +1587,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     expect(await readTargetInstructions()).toBe(acceptedInstructions);
 
     const rejectedProposal = await interactionsSvc.create({
-      id: proposalIssueId,
-      companyId,
+      id: proposalIssueId
     }, {
       kind: "request_confirmation",
       continuationPolicy: "wake_assignee_on_accept",
@@ -1658,7 +1616,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     });
 
     const rejected = await interactionsSvc.rejectInteraction(
-      { id: proposalIssueId, companyId },
+      { id: proposalIssueId },
       rejectedProposal.id,
       { reason: "Not the right rule." },
       { userId: "board-user" },
@@ -1682,21 +1640,19 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   it("preserves Reflection Coach stock drift until explicit reset", async () => {
     const companyId = await seedCompany();
-    const created = await builtInAgentService(db).ensure(companyId, "reflection-coach");
+    const created = await builtInAgentService(db).ensure("reflection-coach");
     const agent = created.agent!;
 
     const instructionsSvc = agentInstructionsService();
     await writeInstructionEntry(agent, "AGENTS.md", "# Custom Reflection Coach\n\nDo not overwrite me.\n");
     await db
       .update(companySkills)
-      .set({ markdown: "---\nname: reflection-coach\n---\n\n# Custom skill\n" })
-      .where(eq(companySkills.companyId, companyId));
+      .set({ markdown: "---\nname: reflection-coach\n---\n\n# Custom skill\n" });
     await db
       .update(routines)
-      .set({ title: "DRIFTED BY TEST - do not clobber" })
-      .where(eq(routines.companyId, companyId));
+      .set({ title: "DRIFTED BY TEST - do not clobber" });
 
-    const drifted = await builtInAgentService(db).ensure(companyId, "reflection-coach");
+    const drifted = await builtInAgentService(db).ensure("reflection-coach");
     expect(drifted.resources.find((resource) => resource.resourceKind === "instructions")).toMatchObject({
       stockStatus: "operator_modified",
       resetAvailable: true,
@@ -1710,10 +1666,10 @@ describeEmbeddedPostgres("built-in agents", () => {
       resetAvailable: true,
     });
     expect((await instructionsSvc.readFile(drifted.agent!, "AGENTS.md")).content).toContain("Do not overwrite me.");
-    const [preservedRoutine] = await db.select().from(routines).where(eq(routines.companyId, companyId));
+    const [preservedRoutine] = await db.select().from(routines);
     expect(preservedRoutine?.title).toBe("DRIFTED BY TEST - do not clobber");
 
-    const reset = await builtInAgentService(db).reset(companyId, "reflection-coach", {
+    const reset = await builtInAgentService(db).reset("reflection-coach", {
       resources: ["instructions", "routine"],
     }, instructionOperator);
     expect(reset.resources.find((resource) => resource.resourceKind === "instructions")).toMatchObject({
@@ -1729,7 +1685,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       resetAvailable: false,
     });
     expect((await instructionsSvc.readFile(reset.agent!, "AGENTS.md")).content).toContain("You are Reflection Coach");
-    const [resetRoutine] = await db.select().from(routines).where(eq(routines.companyId, companyId));
+    const [resetRoutine] = await db.select().from(routines);
     expect(resetRoutine?.title).toBe("Review recent agent trajectories for coaching proposals");
   });
 });

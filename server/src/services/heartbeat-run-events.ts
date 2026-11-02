@@ -4,7 +4,6 @@ import { heartbeatRunEvents, heartbeatRuns } from "@paperclipai/db";
 import { nativeSha256 } from "./native-runtime/canonical.js";
 
 export interface AppendHeartbeatRunEventInput {
-  companyId: string;
   runId: string;
   agentId: string;
   eventType: string;
@@ -76,7 +75,7 @@ export async function appendHeartbeatRunEvent(
       .for("update")
       .limit(1)
       .then((rows) => rows[0] ?? null);
-    if (!run || run.companyId !== input.companyId || run.agentId !== input.agentId) {
+    if (!run || run.agentId !== input.agentId) {
       throw new Error("heartbeat_run_event_binding_mismatch");
     }
 
@@ -88,7 +87,6 @@ export async function appendHeartbeatRunEvent(
         .select()
         .from(heartbeatRunEvents)
         .where(and(
-          eq(heartbeatRunEvents.companyId, input.companyId),
           eq(heartbeatRunEvents.runId, input.runId),
           eq(heartbeatRunEvents.agentId, input.agentId),
           eq(heartbeatRunEvents.eventType, "lifecycle"),
@@ -146,7 +144,6 @@ export async function appendHeartbeatRunEvent(
       input.runId,
     );
     const [row] = await tx.insert(heartbeatRunEvents).values({
-      companyId: input.companyId,
       runId: input.runId,
       agentId: input.agentId,
       seq,

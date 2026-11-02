@@ -8,7 +8,6 @@ import type { DocumentFormat } from "./issue.js";
 
 export interface SummarySlot {
   id: string;
-  companyId: string;
   scopeKind: SummarySlotScopeKind;
   scopeId: string | null;
   slotKey: SummarySlotKey;
@@ -25,7 +24,6 @@ export interface SummarySlot {
 
 export interface SummarySlotDocument {
   id: string;
-  companyId: string;
   title: string | null;
   format: DocumentFormat;
   body: string;
@@ -41,7 +39,6 @@ export interface SummarySlotDocument {
 
 export interface SummarySlotRevision {
   id: string;
-  companyId: string;
   documentId: string;
   revisionNumber: number;
   title: string | null;

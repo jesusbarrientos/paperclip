@@ -11,7 +11,6 @@ import { useProjectCreatedItems } from "./useProjectCreatedItems";
 vi.mock("@/api/projects", () => ({ projectsApi: { get: vi.fn() } }));
 const receipt = {
   id: "receipt",
-  companyId: "company",
   action: "project.created",
   entityType: "project",
   entityId: "project",
@@ -28,7 +27,7 @@ let root: Root;
 let container: HTMLDivElement;
 let client: QueryClient;
 function Fixture({ activity = events }: { activity?: ActivityEvent[] }) {
-  const items = useProjectCreatedItems(activity, "company");
+  const items = useProjectCreatedItems(activity);
   return <pre>{JSON.stringify(items)}</pre>;
 }
 function render(activity = events) {
@@ -57,7 +56,6 @@ describe("shared project creation card queries", () => {
   it("refreshes repositories through existing project invalidation", async () => {
     const project = {
       id: "project",
-      companyId: "company",
       workspaces: [
         { id: "first", name: "App", repoUrl: "https://github.com/org/app" },
       ],
@@ -67,7 +65,7 @@ describe("shared project creation card queries", () => {
     await vi.waitFor(() =>
       expect(container.textContent).toContain('"name":"App"'),
     );
-    expect(projectsApi.get).toHaveBeenCalledWith("project", "company");
+    expect(projectsApi.get).toHaveBeenCalledWith("project");
     vi.mocked(projectsApi.get).mockResolvedValue({
       ...project,
       workspaces: [

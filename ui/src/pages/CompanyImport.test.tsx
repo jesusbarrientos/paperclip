@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CompanyPortabilityImportResult, CompanyPortabilityPreviewResult } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
-import type { CompanyImportJobAccepted } from "../api/companies";
+import type { OrganizationImportJobAccepted } from "../api/organization";
 import { CompanyImport } from "./CompanyImport";
 
 // jsdom's crypto has no SubtleCrypto; the chunked transfer path hashes parts
@@ -16,7 +16,7 @@ if (!globalThis.crypto?.subtle) {
   vi.stubGlobal("crypto", webcrypto);
 }
 
-const mockCompaniesApi = vi.hoisted(() => ({
+const mockOrganizationApi = vi.hoisted(() => ({
   importPreview: vi.fn(),
   importPreviewPackage: vi.fn(),
   importBundle: vi.fn(),
@@ -47,11 +47,10 @@ const mockSidebarPreferencesApi = vi.hoisted(() => ({
   updateProjectOrder: vi.fn(),
 }));
 const mockPushToast = vi.hoisted(() => vi.fn());
-const mockSetSelectedCompanyId = vi.hoisted(() => vi.fn());
 const mockReadZipArchive = vi.hoisted(() => vi.fn());
 
-vi.mock("../api/companies", () => ({
-  companiesApi: mockCompaniesApi,
+vi.mock("../api/organization", () => ({
+  organizationApi: mockOrganizationApi,
 }));
 
 // Keep the real sessionStorage bookkeeping so reload-resume is exercised, but
@@ -89,13 +88,11 @@ vi.mock("../context/BreadcrumbContext", () => ({
   useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
-    setSelectedCompanyId: mockSetSelectedCompanyId,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
-  useOptionalCompany: () => null,
+  useOptionalOrganization: () => null,
 }));
 
 vi.mock("../context/ToastContext", () => ({
@@ -225,7 +222,7 @@ function buildImportResult(): CompanyPortabilityImportResult {
   };
 }
 
-function buildAccepted(id = "job-1"): CompanyImportJobAccepted {
+function buildAccepted(id = "job-1"): OrganizationImportJobAccepted {
   return { job: { id, status: "running" }, statusUrl: `/companies/import/jobs/${id}` };
 }
 
@@ -274,18 +271,18 @@ describe("CompanyImport", () => {
     ]);
     mockAgentsApi.resume.mockResolvedValue({ id: "agent-1", status: "idle" });
     mockRoutinesApi.update.mockResolvedValue({ id: "routine-1", status: "active" });
-    mockCompaniesApi.importPreview.mockResolvedValue(buildPreviewResult());
-    mockCompaniesApi.importPreviewPackage.mockResolvedValue(buildPreviewResult());
+    mockOrganizationApi.importPreview.mockResolvedValue(buildPreviewResult());
+    mockOrganizationApi.importPreviewPackage.mockResolvedValue(buildPreviewResult());
     // Default async flow: the submit is accepted (202) and the first poll finds
     // the job already finished with the full result. Individual tests override.
-    mockCompaniesApi.importBundleAsync.mockResolvedValue(buildAccepted());
-    mockCompaniesApi.importBundlePackageAsync.mockResolvedValue(buildAccepted());
-    mockCompaniesApi.importTransferCreate.mockResolvedValue(buildTransferCreated([0, 1]));
-    mockCompaniesApi.importTransferUploadPart.mockResolvedValue({ ok: true, index: 0, alreadyCompleted: false });
-    mockCompaniesApi.importTransferPreview.mockResolvedValue(buildPreviewResult());
-    mockCompaniesApi.importTransferApply.mockResolvedValue(buildAccepted());
-    mockCompaniesApi.getImportJob.mockResolvedValue(buildSucceededJob());
-    mockCompaniesApi.get.mockResolvedValue({ id: "company-2", name: "Imported Test", issuePrefix: "IMP" });
+    mockOrganizationApi.importBundleAsync.mockResolvedValue(buildAccepted());
+    mockOrganizationApi.importBundlePackageAsync.mockResolvedValue(buildAccepted());
+    mockOrganizationApi.importTransferCreate.mockResolvedValue(buildTransferCreated([0, 1]));
+    mockOrganizationApi.importTransferUploadPart.mockResolvedValue({ ok: true, index: 0, alreadyCompleted: false });
+    mockOrganizationApi.importTransferPreview.mockResolvedValue(buildPreviewResult());
+    mockOrganizationApi.importTransferApply.mockResolvedValue(buildAccepted());
+    mockOrganizationApi.getImportJob.mockResolvedValue(buildSucceededJob());
+    mockOrganizationApi.get.mockResolvedValue({ id: "company-2", name: "Imported Test", issuePrefix: "IMP" });
     mockSidebarPreferencesApi.updateProjectOrder.mockResolvedValue(undefined);
   });
 
@@ -376,12 +373,12 @@ describe("CompanyImport", () => {
   it("submits the import as an async job, then activates selected agents and routines", async () => {
     await renderPageAndImport();
 
-    expect(mockCompaniesApi.importBundleAsync).toHaveBeenCalledWith(
+    expect(mockOrganizationApi.importBundleAsync).toHaveBeenCalledWith(
       expect.objectContaining({ pauseAutomations: true }),
     );
     // The page polls the job it was handed and runs the same activation path
     // the synchronous response used to drive.
-    expect(mockCompaniesApi.getImportJob).toHaveBeenCalledWith("job-1");
+    expect(mockOrganizationApi.getImportJob).toHaveBeenCalledWith("job-1");
     expect(container.textContent).toContain("Import complete");
     expect(container.textContent).toContain("Activate imported agents and routines");
     expect(container.textContent).toContain("Coder");
@@ -447,18 +444,18 @@ describe("CompanyImport", () => {
 
     await clickButton((text) => text === "Preview import");
     // The preview goes up as a multipart package (the raw File), not inline JSON.
-    expect(mockCompaniesApi.importPreviewPackage).toHaveBeenCalledTimes(1);
-    expect(mockCompaniesApi.importPreview).not.toHaveBeenCalled();
-    expect(mockCompaniesApi.importPreviewPackage.mock.calls[0]![0]).toBe(file);
+    expect(mockOrganizationApi.importPreviewPackage).toHaveBeenCalledTimes(1);
+    expect(mockOrganizationApi.importPreview).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.importPreviewPackage.mock.calls[0]![0]).toBe(file);
 
     await clickButton((text) => text.startsWith("Import 3 file"));
     await settle();
 
     // The apply also uploads the raw File as a multipart async job — never the
     // inflated inline body that truncated in transit.
-    expect(mockCompaniesApi.importBundleAsync).not.toHaveBeenCalled();
-    expect(mockCompaniesApi.importBundlePackageAsync).toHaveBeenCalledTimes(1);
-    const [sentFile, meta] = mockCompaniesApi.importBundlePackageAsync.mock.calls[0]! as [
+    expect(mockOrganizationApi.importBundleAsync).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.importBundlePackageAsync).toHaveBeenCalledTimes(1);
+    const [sentFile, meta] = mockOrganizationApi.importBundlePackageAsync.mock.calls[0]! as [
       File,
       { pauseAutomations: boolean; target: { mode: string } },
     ];
@@ -468,20 +465,20 @@ describe("CompanyImport", () => {
     // The bundle itself is never expanded into the request; only the raw zip travels.
     expect(meta).not.toHaveProperty("source");
     // A zip under the chunked threshold never touches the transfer machinery.
-    expect(mockCompaniesApi.importTransferCreate).not.toHaveBeenCalled();
-    expect(mockCompaniesApi.importTransferUploadPart).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.importTransferCreate).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.importTransferUploadPart).not.toHaveBeenCalled();
   });
 
   it("uploads a large local .zip through the chunked transfer path for preview and import", async () => {
     mockReadZipArchive.mockResolvedValue({ rootPath: "big-package", files: previewFiles });
-    mockCompaniesApi.importTransferCreate
+    mockOrganizationApi.importTransferCreate
       .mockResolvedValueOnce(buildTransferCreated([0, 1]))
       // The import's re-declaration resumes the transfer the preview uploaded.
       .mockResolvedValueOnce(buildTransferCreated([]));
 
     // Hold the last part so the visible upload progress can be observed.
     let resolveLastPart!: (value: { ok: true; index: number; alreadyCompleted: boolean }) => void;
-    mockCompaniesApi.importTransferUploadPart.mockImplementation((_id: string, index: number) => {
+    mockOrganizationApi.importTransferUploadPart.mockImplementation((_id: string, index: number) => {
       if (index === 0) return Promise.resolve({ ok: true, index, alreadyCompleted: false });
       return new Promise((resolve) => {
         resolveLastPart = resolve;
@@ -492,7 +489,7 @@ describe("CompanyImport", () => {
     await chooseLocalZip(buildLargeZipFile());
     await clickButton((text) => text === "Preview import");
     await vi.waitFor(() => {
-      expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenCalledTimes(2);
+      expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenCalledTimes(2);
     });
     await flushReact();
 
@@ -503,13 +500,13 @@ describe("CompanyImport", () => {
       resolveLastPart({ ok: true, index: 1, alreadyCompleted: false });
     });
     await vi.waitFor(() => {
-      expect(mockCompaniesApi.importTransferPreview).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationApi.importTransferPreview).toHaveBeenCalledTimes(1);
     });
     await settle();
 
     // The declaration describes the sliced zip: whole-file hash plus one
     // content hash per 32 MB byte range.
-    const manifest = mockCompaniesApi.importTransferCreate.mock.calls[0]![0] as {
+    const manifest = mockOrganizationApi.importTransferCreate.mock.calls[0]![0] as {
       totalBytes: number;
       zipSha256: string;
       partSizeBytes: number;
@@ -526,38 +523,38 @@ describe("CompanyImport", () => {
 
     // Both parts traveled, then the preview ran against the assembled spool —
     // never the single-shot multipart endpoints.
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenNthCalledWith(1, "transfer-1", 0, expect.anything());
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenNthCalledWith(2, "transfer-1", 1, expect.anything());
-    expect(mockCompaniesApi.importTransferPreview).toHaveBeenCalledWith(
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenNthCalledWith(1, "transfer-1", 0, expect.anything());
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenNthCalledWith(2, "transfer-1", 1, expect.anything());
+    expect(mockOrganizationApi.importTransferPreview).toHaveBeenCalledWith(
       "transfer-1",
       expect.objectContaining({ collisionStrategy: "rename", target: { mode: "new_company", newCompanyName: null } }),
     );
-    expect(mockCompaniesApi.importPreviewPackage).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.importPreviewPackage).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Import preview");
 
     await clickButton((text) => text.startsWith("Import 3 file"));
     await vi.waitFor(() => {
-      expect(mockCompaniesApi.importTransferApply).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationApi.importTransferApply).toHaveBeenCalledTimes(1);
     });
     await settle();
 
     // The resumed transfer had nothing left to upload, so the apply reused
     // the spooled parts and ran as the usual async job.
-    expect(mockCompaniesApi.importTransferCreate).toHaveBeenCalledTimes(2);
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenCalledTimes(2);
-    expect(mockCompaniesApi.importTransferApply).toHaveBeenCalledWith(
+    expect(mockOrganizationApi.importTransferCreate).toHaveBeenCalledTimes(2);
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenCalledTimes(2);
+    expect(mockOrganizationApi.importTransferApply).toHaveBeenCalledWith(
       "transfer-1",
       expect.objectContaining({ pauseAutomations: true }),
     );
-    expect(mockCompaniesApi.importBundlePackageAsync).not.toHaveBeenCalled();
-    expect(mockCompaniesApi.getImportJob).toHaveBeenCalledWith("job-1");
+    expect(mockOrganizationApi.importBundlePackageAsync).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.getImportJob).toHaveBeenCalledWith("job-1");
     expect(container.textContent).toContain("Import complete");
   });
 
   it("retries a failed part before surfacing the error panel, keeping the transfer resumable", async () => {
     mockReadZipArchive.mockResolvedValue({ rootPath: "big-package", files: previewFiles });
-    mockCompaniesApi.importTransferCreate.mockResolvedValue(buildTransferCreated([0, 1]));
-    mockCompaniesApi.importTransferUploadPart.mockImplementation((_id: string, index: number) => {
+    mockOrganizationApi.importTransferCreate.mockResolvedValue(buildTransferCreated([0, 1]));
+    mockOrganizationApi.importTransferUploadPart.mockImplementation((_id: string, index: number) => {
       if (index === 0) return Promise.resolve({ ok: true, index, alreadyCompleted: false });
       return Promise.reject(new Error("socket hang up"));
     });
@@ -571,27 +568,27 @@ describe("CompanyImport", () => {
 
     // Part 1 was attempted three times before the failure surfaced; the
     // preview never ran and no state was consumed, so retrying can resume.
-    const partOneAttempts = mockCompaniesApi.importTransferUploadPart.mock.calls.filter(
+    const partOneAttempts = mockOrganizationApi.importTransferUploadPart.mock.calls.filter(
       (call) => call[1] === 1,
     );
     expect(partOneAttempts).toHaveLength(3);
-    expect(mockCompaniesApi.importTransferPreview).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.importTransferPreview).not.toHaveBeenCalled();
     expect(findButton((text) => text === "Preview import")?.disabled).toBe(false);
 
     // Retry: the re-declared transfer reports only the lost part missing, so
     // just that part travels again.
-    mockCompaniesApi.importTransferCreate.mockResolvedValue(buildTransferCreated([1]));
-    mockCompaniesApi.importTransferUploadPart.mockResolvedValue({ ok: true, index: 1, alreadyCompleted: false });
-    mockCompaniesApi.importTransferUploadPart.mockClear();
+    mockOrganizationApi.importTransferCreate.mockResolvedValue(buildTransferCreated([1]));
+    mockOrganizationApi.importTransferUploadPart.mockResolvedValue({ ok: true, index: 1, alreadyCompleted: false });
+    mockOrganizationApi.importTransferUploadPart.mockClear();
 
     await clickButton((text) => text === "Preview import");
     await vi.waitFor(() => {
-      expect(mockCompaniesApi.importTransferPreview).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationApi.importTransferPreview).toHaveBeenCalledTimes(1);
     });
     await settle();
 
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenCalledTimes(1);
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenCalledWith("transfer-1", 1, expect.anything());
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenCalledTimes(1);
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenCalledWith("transfer-1", 1, expect.anything());
     expect(container.textContent).toContain("Import preview");
   });
 
@@ -599,18 +596,18 @@ describe("CompanyImport", () => {
     // A previous page load already uploaded part 0; re-declaring the same
     // file resumes that transfer, so only part 1 travels.
     mockReadZipArchive.mockResolvedValue({ rootPath: "big-package", files: previewFiles });
-    mockCompaniesApi.importTransferCreate.mockResolvedValue(buildTransferCreated([1]));
+    mockOrganizationApi.importTransferCreate.mockResolvedValue(buildTransferCreated([1]));
 
     await renderPage();
     await chooseLocalZip(buildLargeZipFile());
     await clickButton((text) => text === "Preview import");
     await vi.waitFor(() => {
-      expect(mockCompaniesApi.importTransferPreview).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationApi.importTransferPreview).toHaveBeenCalledTimes(1);
     });
     await settle();
 
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenCalledTimes(1);
-    expect(mockCompaniesApi.importTransferUploadPart).toHaveBeenCalledWith("transfer-1", 1, expect.anything());
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenCalledTimes(1);
+    expect(mockOrganizationApi.importTransferUploadPart).toHaveBeenCalledWith("transfer-1", 1, expect.anything());
     expect(container.textContent).toContain("Import preview");
   });
 
@@ -628,7 +625,7 @@ describe("CompanyImport", () => {
 
   it("shows a progress panel while the preview runs and a durable error panel when it fails", async () => {
     let rejectPreview!: (err: Error) => void;
-    mockCompaniesApi.importPreview.mockImplementation(
+    mockOrganizationApi.importPreview.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           rejectPreview = reject;
@@ -679,7 +676,7 @@ describe("CompanyImport", () => {
     // The submit stays pending across the whole job, so the progress panel and
     // structural locks cover it. Rejecting the submit surfaces the error panel.
     let rejectImport!: (err: Error) => void;
-    mockCompaniesApi.importBundleAsync.mockImplementation(
+    mockOrganizationApi.importBundleAsync.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           rejectImport = reject;
@@ -808,17 +805,17 @@ describe("CompanyImport", () => {
     // The outcome reports the submitted pause option, not the live checkbox:
     // a mid-flight toggle must not change what the completed import did. The
     // submit stays pending until we resolve it to the accepted job.
-    let resolveAccepted!: (value: CompanyImportJobAccepted) => void;
-    mockCompaniesApi.importBundleAsync.mockImplementation(
+    let resolveAccepted!: (value: OrganizationImportJobAccepted) => void;
+    mockOrganizationApi.importBundleAsync.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveAccepted = resolve;
         }),
     );
-    mockCompaniesApi.getImportJob.mockResolvedValue(buildSucceededJob("job-final"));
+    mockOrganizationApi.getImportJob.mockResolvedValue(buildSucceededJob("job-final"));
     await clickButton((text) => text.startsWith("Import 3 file"));
 
-    expect(mockCompaniesApi.importBundleAsync).toHaveBeenLastCalledWith(
+    expect(mockOrganizationApi.importBundleAsync).toHaveBeenLastCalledWith(
       expect.objectContaining({ pauseAutomations: false }),
     );
 
@@ -841,25 +838,25 @@ describe("CompanyImport", () => {
   });
 
   it("adopts the already-running job when the server reports a 409", async () => {
-    mockCompaniesApi.importBundleAsync.mockRejectedValueOnce(
+    mockOrganizationApi.importBundleAsync.mockRejectedValueOnce(
       new ApiError("An import is already running for this account", 409, {
         job: { id: "job-existing", status: "running" },
         statusUrl: "/companies/import/jobs/job-existing",
       }),
     );
-    mockCompaniesApi.getImportJob.mockResolvedValue(buildSucceededJob("job-existing"));
+    mockOrganizationApi.getImportJob.mockResolvedValue(buildSucceededJob("job-existing"));
 
     await renderPageAndImport();
 
     // The duplicate submit adopts the running job from the 409 body and polls
     // it instead of firing a second import.
-    expect(mockCompaniesApi.getImportJob).toHaveBeenCalledWith("job-existing");
+    expect(mockOrganizationApi.getImportJob).toHaveBeenCalledWith("job-existing");
     expect(container.textContent).toContain("Import complete");
     expect(container.textContent).toContain("Activate imported agents and routines");
   });
 
   it("surfaces a failed import job in the durable error panel", async () => {
-    mockCompaniesApi.getImportJob.mockResolvedValue({
+    mockOrganizationApi.getImportJob.mockResolvedValue({
       job: { id: "job-1", status: "failed", error: { message: "blob mismatch" } },
     });
 
@@ -877,7 +874,7 @@ describe("CompanyImport", () => {
     // A 403 (expired or revoked board session) will never recover by polling
     // again, so the watch must stop and surface an error instead of leaving the
     // import locked in its running state forever.
-    mockCompaniesApi.getImportJob.mockRejectedValue(
+    mockOrganizationApi.getImportJob.mockRejectedValue(
       new ApiError("Board access required", 403, { error: "Board access required" }),
     );
 
@@ -896,7 +893,7 @@ describe("CompanyImport", () => {
     // A one-off 5xx is transient: the job is still running server-side, so the
     // watch must keep polling and settle on the eventual success rather than
     // treating the blip as a terminal failure.
-    mockCompaniesApi.getImportJob
+    mockOrganizationApi.getImportJob
       .mockRejectedValueOnce(new ApiError("upstream unavailable", 503, null))
       .mockResolvedValue(buildSucceededJob("job-1"));
 
@@ -912,7 +909,7 @@ describe("CompanyImport", () => {
     // aged out): status is a confirmed success, `importResult` is gone, and the
     // summary still carries the company id. That is a success we can no longer
     // fully read — never a scary failure.
-    mockCompaniesApi.getImportJob.mockResolvedValue({
+    mockOrganizationApi.getImportJob.mockResolvedValue({
       job: { id: "job-1", status: "succeeded", result: { companyId: "company-2" } },
     });
 
@@ -933,19 +930,18 @@ describe("CompanyImport", () => {
       expect(container.textContent).not.toContain("Import failed");
       expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ tone: "success" }));
       // The company list is refreshed so the new company appears in the switcher.
-      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["companies"] }));
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["organization"] }));
       // The summary's company id still drives navigation into the import.
-      expect(mockSetSelectedCompanyId).toHaveBeenCalledWith("company-2");
     } finally {
       invalidateSpy.mockRestore();
     }
   });
 
   it("falls back to switcher guidance when the expired job's company is unreadable", async () => {
-    mockCompaniesApi.getImportJob.mockResolvedValue({
+    mockOrganizationApi.getImportJob.mockResolvedValue({
       job: { id: "job-1", status: "succeeded", result: { companyId: "company-2" } },
     });
-    mockCompaniesApi.get.mockRejectedValue(new Error("forbidden"));
+    mockOrganizationApi.get.mockRejectedValue(new Error("forbidden"));
 
     await renderPageAndImport();
 
@@ -958,7 +954,7 @@ describe("CompanyImport", () => {
   it("surfaces a first-poll 404 as an error because the job never existed", async () => {
     // A 404 on the very first poll — before the client ever saw the job
     // running — means the id never existed. That stays a hard error.
-    mockCompaniesApi.getImportJob.mockRejectedValue(
+    mockOrganizationApi.getImportJob.mockRejectedValue(
       new ApiError("Import job not found", 404, { error: "Import job not found" }),
     );
 
@@ -980,7 +976,7 @@ describe("CompanyImport", () => {
     // disappearance means the server restarted mid-import — the import never
     // reached a confirmed success and may not have finished. Report that
     // honestly instead of masking a possibly-incomplete import as completed.
-    mockCompaniesApi.getImportJob
+    mockOrganizationApi.getImportJob
       .mockResolvedValueOnce({ job: { id: "job-1", status: "running" } })
       .mockRejectedValue(new ApiError("Import job not found", 404, { error: "Import job not found" }));
 
@@ -1002,7 +998,7 @@ describe("CompanyImport", () => {
       await renderPageAndImport();
 
       expect(container.textContent).toContain("Import complete");
-      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["companies"] }));
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["organization"] }));
     } finally {
       invalidateSpy.mockRestore();
     }
@@ -1017,7 +1013,7 @@ describe("CompanyImport", () => {
     );
 
     let resolveFirstPoll!: (value: ReturnType<typeof buildSucceededJob>) => void;
-    mockCompaniesApi.getImportJob.mockImplementationOnce(
+    mockOrganizationApi.getImportJob.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveFirstPoll = resolve;
@@ -1029,8 +1025,8 @@ describe("CompanyImport", () => {
     // The resume panel is shown while the first poll is in flight, and no new
     // submit was fired — the job is only being watched.
     expect(container.textContent).toContain("Resume watching import");
-    expect(mockCompaniesApi.importBundleAsync).not.toHaveBeenCalled();
-    expect(mockCompaniesApi.getImportJob).toHaveBeenCalledWith("job-resume");
+    expect(mockOrganizationApi.importBundleAsync).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.getImportJob).toHaveBeenCalledWith("job-resume");
 
     await act(async () => {
       resolveFirstPoll(buildSucceededJob("job-resume"));
@@ -1050,14 +1046,14 @@ describe("CompanyImport", () => {
   }
 
   async function previewMixedAdapterPackage() {
-    mockCompaniesApi.importPreview.mockResolvedValue(buildMixedAdapterPreviewResult());
+    mockOrganizationApi.importPreview.mockResolvedValue(buildMixedAdapterPreviewResult());
     await renderPage();
     await enterGithubUrl();
     await clickButton((text) => text === "Preview import");
   }
 
   function lastImportMeta() {
-    const call = mockCompaniesApi.importBundleAsync.mock.calls.at(-1);
+    const call = mockOrganizationApi.importBundleAsync.mock.calls.at(-1);
     expect(call).toBeTruthy();
     return call![0] as { adapterOverrides?: Record<string, { adapterType: string }> };
   }

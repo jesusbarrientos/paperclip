@@ -14,7 +14,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { subscribeCompanyLiveEvents } from "../services/live-events.ts";
+import { subscribeLiveEvents } from "../services/live-events.ts";
 import {
   clearAllHeartbeatRunRuntimeStatuses,
   getHeartbeatRunRuntimeStatus,
@@ -77,7 +77,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -96,7 +95,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       agentId,
-      companyId,
       adapterType: "codex_local",
       stateJson: {},
     });
@@ -118,7 +116,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -130,7 +127,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
 
     const [insertedRun] = await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "running",
@@ -139,7 +135,7 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     const run = insertedRun!;
 
     const liveEvents: unknown[] = [];
-    const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       liveEvents.push(event);
     });
     try {
@@ -153,7 +149,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
       }, issueId);
 
       expect(status).toMatchObject({
-        companyId,
         issueId,
         agentId,
         runId,
@@ -165,7 +160,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
       });
       expect(heartbeat.decorateActiveRunStatus({
         id: runId,
-        companyId,
         agentId,
         issueId,
         status: "running",
@@ -176,7 +170,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
         lastEventAt: new Date("2026-06-24T00:00:05.000Z"),
       });
       expect(liveEvents).toContainEqual(expect.objectContaining({
-        companyId,
         type: "heartbeat.run.progress",
         payload: expect.objectContaining({
           runId,
@@ -216,7 +209,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -228,7 +220,6 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
 
     const [insertedRun] = await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "running",
@@ -237,7 +228,7 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     const staleRunningRun = insertedRun!;
 
     const liveEvents: unknown[] = [];
-    const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       liveEvents.push(event);
     });
     try {

@@ -110,7 +110,7 @@ The clean webhook run was created at `18:10:53.471Z`, started at
 
 The account was at its inbox limit, so live setup attached an existing inbox.
 Programmatic inbox creation and custom domains were not live-qualified.
-Attachment transfer, invalid signatures, cross-company denial, cancellation,
+Attachment transfer, invalid signatures, access denial, cancellation,
 duplicate callbacks, and expired idempotency windows are checked deterministically
 rather than against the live provider. Low-trust execution was not run in a real sandbox; setup correctly
 rejected the isolated test drive's missing sandbox runtime.

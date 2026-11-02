@@ -34,14 +34,11 @@ const mockInstanceSettingsService = vi.hoisted(() => ({
   get: vi.fn(),
   getExperimental: vi.fn(),
   getGeneral: vi.fn(),
-  listCompanyIds: vi.fn(),
 }));
 
 const mockRunSecretRedactionRegistry = vi.hoisted(() => ({
-  redactForRuns: vi.fn(async (_companyId: string, values: unknown[]) => values),
-  redactForRun: vi.fn(
-    async (_companyId: string, _runId: string, value: unknown) => value,
-  ),
+  redactForRuns: vi.fn(async (values: unknown[]) => values),
+  redactForRun: vi.fn(async (_runId: string, value: unknown) => value),
 }));
 
 const mockProviderTraceStore = vi.hoisted(() => ({
@@ -105,6 +102,10 @@ function registerModuleMocks() {
     issueService: () => mockIssueService,
   }));
 
+  vi.doMock("../services/organization.js", () => ({
+    organizationService: () => ({ findId: async () => "company-1", requireId: async () => "company-1" }),
+  }));
+
   vi.doMock("../services/run-secret-redaction.js", () => ({
     createRunSecretRedactionRegistry: () => mockRunSecretRedactionRegistry,
   }));
@@ -159,7 +160,6 @@ async function createApp(
   actor: Record<string, unknown> = {
     type: "board",
     userId: "local-board",
-    companyIds: ["company-1"],
     source: "local_implicit",
     isInstanceAdmin: false,
   },
@@ -284,6 +284,7 @@ describe("agent live run routes", () => {
     vi.doUnmock("../services/index.js");
     vi.doUnmock("../services/instance-settings.js");
     vi.doUnmock("../services/issues.js");
+    vi.doUnmock("../services/organization.js");
     vi.doUnmock("../adapters/index.js");
     vi.doUnmock("../routes/agents.js");
     vi.doUnmock("../routes/authz.js");
@@ -303,7 +304,6 @@ describe("agent live run routes", () => {
     mockAccessService.hasPermission.mockResolvedValue(true);
     mockIssueService.getByIdentifier.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       executionRunId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       assigneeAgentId: "agent-1",
       status: "in_progress",
@@ -311,7 +311,6 @@ describe("agent live run routes", () => {
     mockIssueService.getById.mockResolvedValue(null);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       name: "Builder",
       adapterType: "codex_local",
     });
@@ -327,7 +326,6 @@ describe("agent live run routes", () => {
       censorUsernameInLogs: false,
       feedbackDataSharingPreference: "prompt",
     });
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
     mockHeartbeatService.buildRunOutputSilence.mockResolvedValue(null);
     mockHeartbeatService.decorateActiveRunStatus.mockImplementation((run) => ({
       ...run,
@@ -353,7 +351,6 @@ describe("agent live run routes", () => {
     mockHeartbeatService.buildRunOutputSilence.mockResolvedValue(null);
     mockHeartbeatService.getRunLogAccess.mockResolvedValue({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "company-1",
       logStore: "local_file",
       logRef: "logs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.ndjson",
     });
@@ -366,7 +363,6 @@ describe("agent live run routes", () => {
     });
     mockHeartbeatService.wakeup.mockResolvedValue({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "company-1",
       agentId: "agent-1",
       status: "queued",
       invocationSource: "on_demand",
@@ -374,13 +370,11 @@ describe("agent live run routes", () => {
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "company-1",
       agentId: "agent-1",
       status: "succeeded",
     });
     mockWorkspaceOperationService.getById.mockResolvedValue({
       id: "operation-1",
-      companyId: "company-1",
       runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     });
     mockQueueRuntimeRequestResolution.mockReturnValue({
@@ -444,26 +438,24 @@ describe("agent live run routes", () => {
       expect(mockHeartbeatService.getRunLogAccess).toHaveBeenCalledWith(runId);
     });
 
-    it.each(["get", "log"])("keeps missing and cross-company %s lookups indistinguishable", async (kind) => {
+    it.each(["get", "log"])("returns 404 for a missing run on %s lookups", async (kind) => {
       const lookup = kind === "log" ? mockHeartbeatService.getRunLogAccess : mockHeartbeatService.getRun;
       const suffix = kind === "log" ? "/log" : "";
       const app = await createApp({}, {
-        type: "board", userId: "test-user", source: "session", companyIds: ["company-1"],
+        type: "board", userId: "test-user", source: "session", memberships: [{ status: "active", membershipRole: "operator" }],
       });
-      for (const result of [null, { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", companyId: "company-2" }]) {
-        lookup.mockResolvedValueOnce(result);
-        const response = await requestApp(app, (url) =>
-          request(url).get(`/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa${suffix}`),
-        );
-        expect(response.status).toBe(404);
-        expect(response.body).toEqual({ error: "Heartbeat run not found" });
-      }
-      expect(lookup).toHaveBeenCalledTimes(2);
+      lookup.mockResolvedValueOnce(null);
+      const response = await requestApp(app, (url) =>
+        request(url).get(`/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa${suffix}`),
+      );
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: "Heartbeat run not found" });
+      expect(lookup).toHaveBeenCalledTimes(1);
       expect(mockHeartbeatService.readLog).not.toHaveBeenCalled();
     });
 
     it("keeps board and instance-admin checks ahead of malformed-ID validation", async () => {
-      const app = await createApp({}, { type: "agent", companyId: "company-1", agentId: routeAgentId });
+      const app = await createApp({}, { type: "agent", agentId: routeAgentId });
       for (const [method, suffix] of routes.filter(([, suffix]) =>
         suffix === "/cancel" || suffix === "/runtime-requests/approval-1/resolve" || suffix.startsWith("/provider-trace"),
       )) {
@@ -570,10 +562,10 @@ describe("agent live run routes", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockHeartbeatService.decorateActiveRunStatus).toHaveBeenCalledWith(
       expect.objectContaining({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", issueId: "issue-1" }),
-      { companyId: "company-1", issueId: "issue-1" },
+      { issueId: "issue-1" },
     );
     expect(mockExecutionProjection.executionProjectionForRun).toHaveBeenCalledWith(
-      expect.anything(), "company-1", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      expect.anything(), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     );
     expect(res.body).toMatchObject({
       execution: null,
@@ -597,7 +589,6 @@ describe("agent live run routes", () => {
     expect(mockHeartbeatService.readLog).toHaveBeenCalledWith(
       {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        companyId: "company-1",
         logStore: "local_file",
         logRef: "logs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.ndjson",
       },
@@ -629,7 +620,6 @@ describe("agent live run routes", () => {
       const actor = {
         type: "agent",
         agentId: routeAgentId,
-        companyId: "company-1",
         source: "agent_key",
         keyScope: kind === "skill_test"
           ? { kind, issueId: "issue-1" }
@@ -637,8 +627,8 @@ describe("agent live run routes", () => {
       };
       const app = await createApp({}, actor);
       const paths = [
-        "/api/companies/company-1/heartbeat-runs",
-        "/api/companies/company-1/live-runs",
+        "/api/heartbeat-runs",
+        "/api/live-runs",
         "/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         "/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/events",
         "/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/log",
@@ -656,15 +646,14 @@ describe("agent live run routes", () => {
       expect(mockWorkspaceOperationService.readLog).not.toHaveBeenCalled();
       expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
         action: "company_scope:read",
-        resource: { type: "company", companyId: "company-1" },
+        resource: { type: "company" },
       }));
     },
   );
 
-  it("caps company live run polling by default", async () => {
+  it("caps live run polling by default", async () => {
     const rows = Array.from({ length: 75 }, (_, index) => ({
       id: `run-${index}`,
-      companyId: "company-1",
       status: "running",
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -692,7 +681,7 @@ describe("agent live run routes", () => {
     const { db, limit } = createLiveRunsDbStub(rows);
 
     const res = await requestApp(await createApp(db), (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/live-runs"),
+      request(baseUrl).get("/api/live-runs"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -708,7 +697,6 @@ describe("agent live run routes", () => {
   it("treats explicit zero or invalid live run limit as the capped default", async () => {
     const rows = Array.from({ length: 75 }, (_, index) => ({
       id: `run-${index}`,
-      companyId: "company-1",
       status: "running",
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -737,7 +725,7 @@ describe("agent live run routes", () => {
 
     const res = await requestApp(await createApp(db), (baseUrl) =>
       request(baseUrl).get(
-        "/api/companies/company-1/live-runs?limit=0&minCount=0",
+        "/api/live-runs?limit=0&minCount=0",
       ),
     );
 
@@ -751,7 +739,6 @@ describe("agent live run routes", () => {
   it("does not pad with recent runs when no minCount is requested", async () => {
     const liveRows = Array.from({ length: 8 }, (_, index) => ({
       id: `run-live-${index}`,
-      companyId: "company-1",
       status: "running",
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -800,7 +787,7 @@ describe("agent live run routes", () => {
     };
 
     const res = await requestApp(await createApp(db), (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/live-runs"),
+      request(baseUrl).get("/api/live-runs"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -811,7 +798,6 @@ describe("agent live run routes", () => {
   it("pads with recent runs when minCount is explicitly requested", async () => {
     const liveRows = Array.from({ length: 2 }, (_, index) => ({
       id: `run-live-${index}`,
-      companyId: "company-1",
       status: "running",
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -838,7 +824,6 @@ describe("agent live run routes", () => {
     }));
     const recentRows = Array.from({ length: 4 }, (_, index) => ({
       id: `run-recent-${index}`,
-      companyId: "company-1",
       status: "succeeded",
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -885,7 +870,7 @@ describe("agent live run routes", () => {
     };
 
     const res = await requestApp(await createApp(db), (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/live-runs?minCount=4"),
+      request(baseUrl).get("/api/live-runs?minCount=4"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -897,7 +882,7 @@ describe("agent live run routes", () => {
     const res = await requestApp(await createApp(), (baseUrl) =>
       request(baseUrl)
         .post(
-          `/api/agents/${routeAgentId}/heartbeat/invoke?companyId=company-1`,
+          `/api/agents/${routeAgentId}/heartbeat/invoke`,
         )
         .send({
           reason: "issue_assigned",
@@ -939,7 +924,7 @@ describe("agent live run routes", () => {
     const res = await requestApp(await createApp(), (baseUrl) =>
       request(baseUrl)
         .post(
-          `/api/agents/${routeAgentId}/heartbeat/invoke?companyId=company-1`,
+          `/api/agents/${routeAgentId}/heartbeat/invoke`,
         )
         .send({}),
     );
@@ -965,7 +950,7 @@ describe("agent live run routes", () => {
       allowed: action === "agent:wake", explanation: "Missing permission: agents:create",
     }));
     const res = await requestApp(await createApp(undefined, {
-      type: "board", userId: "operator", source: "session", companyIds: ["company-1"],
+      type: "board", userId: "operator", source: "session", memberships: [{ status: "active", membershipRole: "operator" }],
     }), url => request(url).post(`/api/agents/${routeAgentId}/${endpoint}`).send({}));
     expect(res.status, JSON.stringify(res.body)).toBe(202);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({ action: "agent:wake" }));
@@ -978,15 +963,15 @@ describe("agent live run routes", () => {
       nativeReviewDecisionId: "66666666-6666-4666-8666-666666666666",
     };
     const selectedRun = {
-      id: failedChatRunId, companyId: "company-1", agentId: routeAgentId,
+      id: failedChatRunId, agentId: routeAgentId,
       status: "failed", runtimeMode: "native", errorCode: "native_provider_model_rejected",
       nativeIssueId: failedChatIssueId,
       contextSnapshot: { issueId: failedChatIssueId, ...reviewContext },
     };
-    const selectedIssue = { id: failedChatIssueId, companyId: "company-1", status: "in_review", assigneeAgentId: "worker", assigneeUserId: null };
+    const selectedIssue = { id: failedChatIssueId, status: "in_review", assigneeAgentId: "worker", assigneeUserId: null };
     const retryBody = { failedRunId: failedChatRunId, reason: "retry_failed_run" };
     beforeEach(() => {
-      mockAgentService.getById.mockResolvedValue({ id: routeAgentId, companyId: "company-1" });
+      mockAgentService.getById.mockResolvedValue({ id: routeAgentId });
       mockHeartbeatService.getRun.mockResolvedValue(selectedRun);
       mockIssueService.getById.mockResolvedValue(selectedIssue);
       mockNativeReviewAssignment.mockResolvedValue({ interaction: { status: "pending" } });
@@ -999,7 +984,7 @@ describe("agent live run routes", () => {
       }));
       expect(res.status, JSON.stringify(res.body)).toBe(202);
       expect(mockNativeReviewAssignment).toHaveBeenCalledExactlyOnceWith(fixture.db, {
-        companyId: "company-1", issueId: failedChatIssueId, agentId: routeAgentId, contextSnapshot: reviewContext,
+        issueId: failedChatIssueId, agentId: routeAgentId, contextSnapshot: reviewContext,
       });
       expect(mockHeartbeatService.wakeup).toHaveBeenCalledExactlyOnceWith(routeAgentId, expect.objectContaining({
         failedRunId: failedChatRunId, reason: "retry_failed_run", payload: { issueId: failedChatIssueId },
@@ -1008,12 +993,11 @@ describe("agent live run routes", () => {
       expect(JSON.stringify(mockHeartbeatService.wakeup.mock.calls)).not.toContain("forged");
     });
 
-    it.each(["agent-caller", "denied-task", "foreign-company", "foreign-agent", "foreign-issue", "legacy", "unknown-error", "missing-context", "stale", "resolved", "changed-reviewer"])(
+    it.each(["agent-caller", "denied-task", "foreign-agent", "foreign-issue", "legacy", "unknown-error", "missing-context", "stale", "resolved", "changed-reviewer"])(
       "rejects an ineligible exact review retry (%s)", async scenario => {
         let actor: Record<string, unknown> | undefined;
-        if (scenario === "agent-caller") actor = { type: "agent", agentId: routeAgentId, companyId: "company-1" };
+        if (scenario === "agent-caller") actor = { type: "agent", agentId: routeAgentId };
         if (scenario === "denied-task") mockAccessService.decide.mockImplementation(async ({ action }) => ({ allowed: action !== "issue:comment", explanation: "Denied" }));
-        if (scenario === "foreign-company") mockHeartbeatService.getRun.mockResolvedValue({ ...selectedRun, companyId: "company-2" });
         if (scenario === "foreign-agent") mockHeartbeatService.getRun.mockResolvedValue({ ...selectedRun, agentId: "other-reviewer" });
         if (scenario === "foreign-issue") mockHeartbeatService.getRun.mockResolvedValue({ ...selectedRun, nativeIssueId: "other-task" });
         if (scenario === "legacy") mockHeartbeatService.getRun.mockResolvedValue({ ...selectedRun, runtimeMode: "legacy" });
@@ -1025,9 +1009,9 @@ describe("agent live run routes", () => {
         const res = await requestApp(await createApp(fixture.db, actor), url => request(url).post(`/api/agents/${routeAgentId}/wakeup`).send({
           ...retryBody, payload: { ...reviewContext },
         }));
-        expect(res.status).toBe(["agent-caller", "denied-task"].includes(scenario) ? 403 : ["foreign-company", "foreign-agent"].includes(scenario) ? 404 : 409);
+        expect(res.status).toBe(["agent-caller", "denied-task"].includes(scenario) ? 403 : scenario === "foreign-agent" ? 404 : 409);
         expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
-        if (["agent-caller", "denied-task", "foreign-company", "foreign-agent", "foreign-issue", "legacy", "unknown-error", "missing-context"].includes(scenario)) {
+        if (["agent-caller", "denied-task", "foreign-agent", "foreign-issue", "legacy", "unknown-error", "missing-context"].includes(scenario)) {
           expect(mockNativeReviewAssignment).not.toHaveBeenCalled();
         }
       },
@@ -1041,7 +1025,6 @@ describe("agent live run routes", () => {
     };
     const selectedRun = {
       id: failedChatRunId,
-      companyId: "company-1",
       agentId: routeAgentId,
       status: "failed",
       contextSnapshot: {
@@ -1055,12 +1038,11 @@ describe("agent live run routes", () => {
 
     beforeEach(() => {
       mockAgentService.getById.mockResolvedValue({
-        id: routeAgentId,
-        companyId: "company-1",
+        id: routeAgentId
       });
       mockHeartbeatService.getRun.mockResolvedValue(selectedRun);
       mockIssueService.getById.mockResolvedValue({
-        id: failedChatIssueId, companyId: "company-1", assigneeAgentId: routeAgentId,
+        id: failedChatIssueId, assigneeAgentId: routeAgentId,
         assigneeUserId: null, projectId: null, parentId: null, status: "blocked",
       });
       mockChatRunRetries.prepareFailedChatRunRetry.mockResolvedValue({
@@ -1080,7 +1062,7 @@ describe("agent live run routes", () => {
       mockHeartbeatService.getRun.mockResolvedValue({ ...selectedRun,
         runtimeMode: "native", errorCode: "native_session_cleanup_quarantined" });
       const res = await requestApp(await createApp(fixture.db, {
-        type: "board", userId: "operator", source: "session", companyIds: ["company-1"],
+        type: "board", userId: "operator", source: "session", memberships: [{ status: "active", membershipRole: "operator" }],
       }), url => request(url).post(`/api/agents/${routeAgentId}/wakeup`).send(retryBody));
       expect(res.status).toBe(409);
       expect(res.body).toMatchObject({ error: expect.stringContaining("cleanup and reconciliation") });
@@ -1097,12 +1079,12 @@ describe("agent live run routes", () => {
         allowed: action === "issue:comment" || action === "agent:wake", explanation: "Missing permission: agents:create",
       }));
       const res = await requestApp(await createApp(fixture.db, {
-        type: "board", userId: "operator", source: "session", companyIds: ["company-1"],
+        type: "board", userId: "operator", source: "session", memberships: [{ status: "active", membershipRole: "operator" }],
       }), url => request(url).post(`/api/agents/${routeAgentId}/wakeup`).send(retryBody));
       expect(res.status, JSON.stringify(res.body)).toBe(202);
       expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
         action: "issue:comment", resource: expect.objectContaining({
-          type: "issue", companyId: "company-1", issueId: failedChatIssueId,
+          type: "issue", issueId: failedChatIssueId,
         }),
       }));
       expect(mockHeartbeatService.wakeup).toHaveBeenCalledWith(routeAgentId, expect.objectContaining({
@@ -1120,7 +1102,7 @@ describe("agent live run routes", () => {
         ...(generation > 0 ? { conversationSessionGeneration: generation } : {}),
       } });
       mockIssueService.getById.mockResolvedValue({
-        id: failedChatIssueId, companyId: "company-1", assigneeAgentId: routeAgentId,
+        id: failedChatIssueId, assigneeAgentId: routeAgentId,
         conversationAgentId: routeAgentId, conversationUserId: "local-board",
         status: "in_review", conversationState: "waiting", conversationSessionGeneration: generation,
       });
@@ -1147,7 +1129,7 @@ describe("agent live run routes", () => {
         ...(generation === undefined ? {} : { conversationSessionGeneration: generation }),
       } });
       mockIssueService.getById.mockResolvedValue({
-        id: failedChatIssueId, companyId: "company-1", assigneeAgentId: routeAgentId,
+        id: failedChatIssueId, assigneeAgentId: routeAgentId,
         conversationAgentId: routeAgentId, conversationUserId: "local-board",
         conversationSessionGeneration: 3,
       });
@@ -1159,7 +1141,7 @@ describe("agent live run routes", () => {
       expect(mockChatRunRetries.prepareFailedChatRunRetry).not.toHaveBeenCalled();
     });
 
-    it.each(["viewer", "missing", "other-company", "reassigned", "other-chat-owner"])(
+    it.each(["viewer", "missing", "reassigned", "other-chat-owner"])(
       "rejects a %s task retry without dispatching or requiring agent creation", async (fault) => {
         const fixture = createFailedChatRetryDb(false);
         mockHeartbeatService.getRun.mockResolvedValue({ ...selectedRun, contextSnapshot: { issueId: failedChatIssueId } });
@@ -1167,7 +1149,7 @@ describe("agent live run routes", () => {
           allowed: false, explanation: "Viewer membership does not grant issue:comment.",
         });
         else mockIssueService.getById.mockResolvedValue(fault === "missing" ? null : {
-          id: failedChatIssueId, companyId: fault === "other-company" ? "elsewhere" : "company-1",
+          id: failedChatIssueId,
           assigneeAgentId: "other-agent", assigneeUserId: null, projectId: null, parentId: null, status: "blocked",
           ...(fault === "other-chat-owner" ? { conversationAgentId: routeAgentId, conversationUserId: "someone-else" } : {}),
         });
@@ -1236,7 +1218,6 @@ describe("agent live run routes", () => {
         expect(
           mockChatRunRetries.prepareFailedChatRunRetry,
         ).toHaveBeenCalledExactlyOnceWith(fixture.tx, {
-          companyId: "company-1",
           issueId: failedChatIssueId,
           agentId: routeAgentId,
           failedRunId: failedChatRunId,
@@ -1248,9 +1229,9 @@ describe("agent live run routes", () => {
         expect(fixture.order).toEqual(["begin", "stage", "commit", "dispatch"]);
         expect(fixture.predicates).toEqual([
           {
-            sql: '("chat_conversations"."company_id" = $1 and "chat_conversations"."issue_id" = $2)',
-            params: ["company-1", failedChatIssueId],
-            typings: ["uuid", "uuid"],
+            sql: '"chat_conversations"."issue_id" = $1',
+            params: [failedChatIssueId],
+            typings: ["uuid"],
           },
         ]);
         expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
@@ -1289,10 +1270,9 @@ describe("agent live run routes", () => {
 
     it.each([
       null,
-      { ...selectedRun, companyId: "other-company" },
       { ...selectedRun, agentId: "other-agent" },
     ])(
-      "does not retry a missing or wrong-scope selected run: %j",
+      "does not retry a missing or other-agent selected run: %j",
       async (run) => {
         mockHeartbeatService.getRun.mockResolvedValue(run);
         const fixture = createFailedChatRetryDb();
@@ -1339,7 +1319,7 @@ describe("agent live run routes", () => {
       },
     );
 
-    it.each(["agent", "company", "permission"])(
+    it.each(["agent", "membership", "permission"])(
       "denies %s authority before retry admission",
       async (denial) => {
         const fixture = createFailedChatRetryDb();
@@ -1348,13 +1328,12 @@ describe("agent live run routes", () => {
             ? {
                 type: "agent",
                 agentId: routeAgentId,
-                companyId: "company-1",
                 source: "agent_key",
               }
             : {
                 type: "board",
                 userId: "member",
-                companyIds: denial === "company" ? [] : ["company-1"],
+                memberships: denial === "membership" ? [] : [{ status: "active", membershipRole: "operator" }],
                 source: "session",
               };
         if (denial === "permission")
@@ -1543,7 +1522,7 @@ describe("agent live run routes", () => {
     const res = await requestApp(await createApp(), (baseUrl) =>
       request(baseUrl)
         .post(
-          `/api/agents/${routeAgentId}/heartbeat/invoke?companyId=company-1`,
+          `/api/agents/${routeAgentId}/heartbeat/invoke`,
         )
         .send({ debug: { providerTrace: "raw" } }),
     );
@@ -1564,7 +1543,7 @@ describe("agent live run routes", () => {
     const issueId = "22222222-2222-4222-8222-222222222222";
     const res = await requestApp(await createApp(), (baseUrl) =>
       request(baseUrl)
-        .post(`/api/agents/${routeAgentId}/wakeup?companyId=company-1`)
+        .post(`/api/agents/${routeAgentId}/wakeup`)
         .send({
           source: "on_demand",
           triggerDetail: "manual",
@@ -1593,7 +1572,7 @@ describe("agent live run routes", () => {
         {
           type: "board",
           userId: "member-user",
-          companyIds: ["company-1"],
+          memberships: [{ status: "active", membershipRole: "operator" }],
           source: "session",
           isInstanceAdmin: false,
         },
@@ -1601,7 +1580,7 @@ describe("agent live run routes", () => {
       (baseUrl) =>
         request(baseUrl)
           .post(
-            `/api/agents/${routeAgentId}/heartbeat/invoke?companyId=company-1`,
+            `/api/agents/${routeAgentId}/heartbeat/invoke`,
           )
           .send({ debug: { providerTrace: "raw" } }),
     );
@@ -1613,7 +1592,6 @@ describe("agent live run routes", () => {
   it("does not let an ordinary member downgrade a persisted approval into a question", async () => {
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "company-1",
       agentId: "agent-1",
       status: "running",
       runtimeMode: "native",
@@ -1641,7 +1619,7 @@ describe("agent live run routes", () => {
     const app = await createApp(db, {
       type: "board",
       userId: "ordinary-member",
-      companyIds: ["company-1"],
+      memberships: [{ status: "active", membershipRole: "operator" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -1661,7 +1639,6 @@ describe("agent live run routes", () => {
   it("queues an admin resolution with canonical request and actor bindings", async () => {
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "company-1",
       agentId: "agent-1",
       status: "running",
       runtimeMode: "native",
@@ -1689,7 +1666,7 @@ describe("agent live run routes", () => {
     const app = await createApp(db, {
       type: "board",
       userId: "instance-admin",
-      companyIds: ["company-1"],
+      memberships: [{ status: "active", membershipRole: "operator" }],
       source: "session",
       isInstanceAdmin: true,
     });
@@ -1704,10 +1681,8 @@ describe("agent live run routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(202);
     expect(mockQueueRuntimeRequestResolution).toHaveBeenCalledWith({
-      companyId: "company-1",
       runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       pendingRequest: {
-        companyId: "company-1",
         runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         requestId: "approval-1",
         requestKind: "permission_approval",
@@ -1724,7 +1699,7 @@ describe("agent live run routes", () => {
   });
 
   it.each([
-    ["get", "/api/companies/company-1/provider-traces?runIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+    ["get", "/api/provider-traces?runIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
     ["get", "/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/provider-trace"],
     ["post", "/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/provider-trace/frames/1/reveal"],
     ["get", "/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/provider-trace/download"],
@@ -1737,7 +1712,7 @@ describe("agent live run routes", () => {
         {
           type: "board",
           userId: "member-user",
-          companyIds: ["company-1"],
+          memberships: [{ status: "active", membershipRole: "operator" }],
           source: "session",
           isInstanceAdmin: false,
         },
@@ -1757,7 +1732,6 @@ describe("agent live run routes", () => {
         schema: "paperclip.provider_trace_metadata.v1",
         id: "trace-1",
         runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        companyId: "company-1",
         status: "complete",
         provider: "codex",
         frameCount: 70,
@@ -1773,13 +1747,12 @@ describe("agent live run routes", () => {
 
     const res = await requestApp(await createApp(), (baseUrl) =>
       request(baseUrl).get(
-        "/api/companies/company-1/provider-traces?runIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "/api/provider-traces?runIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       ),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockProviderTraceStore.listMetadataForRuns).toHaveBeenCalledWith(
-      "company-1",
       ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
     );
     expect(res.body[0]).not.toHaveProperty("rawBase64");
@@ -1850,7 +1823,6 @@ describe("agent live run routes", () => {
       expect.objectContaining({
         traceId: "trace-1",
         runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        companyId: "company-1",
         agentId: "agent-1",
         projection,
       }),
@@ -1915,7 +1887,6 @@ describe("agent live run routes", () => {
         {
           type: "agent",
           agentId: "agent-1",
-          companyId: "company-1",
           runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
           source: "agent_key",
         },

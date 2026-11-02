@@ -18,7 +18,6 @@ export async function recordResponsibleUserDenialOnActiveRun(
   input: {
     runId?: string | null;
     agentId?: string | null;
-    companyId?: string | null;
     code: unknown;
   },
 ) {
@@ -31,7 +30,6 @@ export async function recordResponsibleUserDenialOnActiveRun(
     inArray(heartbeatRuns.status, ["queued", "running"]),
   ];
   if (input.agentId) conditions.push(eq(heartbeatRuns.agentId, input.agentId));
-  if (input.companyId) conditions.push(eq(heartbeatRuns.companyId, input.companyId));
 
   const updated = await db
     .update(heartbeatRuns)
@@ -46,7 +44,6 @@ export async function recordResponsibleUserDenialOnActiveRun(
   if (!updated) return null;
 
   publishLiveEvent({
-    companyId: updated.companyId,
     type: "heartbeat.run.status",
     payload: {
       runId: updated.id,
@@ -65,7 +62,6 @@ export async function recordResponsibleUserDenialOnActiveRun(
     {
       runId: updated.id,
       agentId: updated.agentId,
-      companyId: updated.companyId,
       errorCode: code,
     },
     "recorded responsible-user denial code on active heartbeat run",

@@ -530,10 +530,7 @@ export async function claimNativeRestartRecoveries(input: {
         )
         .innerJoin(
           issues,
-          and(
-            eq(issues.id, nativeRunFinalizations.issueId),
-            eq(issues.companyId, nativeRunFinalizations.companyId),
-          ),
+          eq(issues.id, nativeRunFinalizations.issueId),
         )
         .where(eq(heartbeatRuns.id, candidate.runId))
         .for("update")
@@ -645,11 +642,10 @@ export async function claimNativeRestartRecoveries(input: {
           ? (checkpointRecord.identity as Record<string, unknown>)
           : {};
       const checkpointIdentityMatches =
-        hasCheckpoint &&
-        typeof row.run.nativeSessionId === "string" &&
-        row.run.nativeSessionId.length > 0 &&
-        checkpointIdentity.runId === row.run.id &&
-        checkpointIdentity.companyId === row.run.companyId &&
+        (hasCheckpoint &&
+                  typeof row.run.nativeSessionId === "string" &&
+                  row.run.nativeSessionId.length > 0 &&
+                  checkpointIdentity.runId === row.run.id) &&
         checkpointIdentity.issueId === row.coordinator.issueId &&
         checkpointIdentity.agentId === row.run.agentId &&
         checkpointIdentity.sessionId === row.run.nativeSessionId;
@@ -848,7 +844,6 @@ export async function claimNativeRestartRecoveries(input: {
           .where(
             and(
               eq(issues.id, row.coordinator.issueId),
-              eq(issues.companyId, row.run.companyId),
               eq(issues.executionRunId, row.run.id),
             ),
           );
@@ -858,7 +853,6 @@ export async function claimNativeRestartRecoveries(input: {
           .where(
             and(
               eq(issues.id, row.coordinator.issueId),
-              eq(issues.companyId, row.run.companyId),
               eq(issues.checkoutRunId, row.run.id),
             ),
           );
@@ -869,7 +863,6 @@ export async function claimNativeRestartRecoveries(input: {
           await issueRecoveryActionService(
             tx as unknown as Db,
           ).upsertSourceScoped({
-            companyId: row.run.companyId,
             sourceIssueId: row.coordinator.issueId,
             kind: "active_run_watchdog",
             ownerType: "board",

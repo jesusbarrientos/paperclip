@@ -10,7 +10,6 @@ import { secretService } from "../secrets.js";
 import { slackClient } from "./slack-client.js";
 export async function slackCapabilities(
   db: Db,
-  companyId: string,
   endpointId: string,
 ): Promise<SlackToolCapabilities> {
   const [row] = await db
@@ -18,14 +17,10 @@ export async function slackCapabilities(
     .from(chatEndpoints)
     .innerJoin(
       toolConnections,
-      and(
-        eq(toolConnections.id, chatEndpoints.connectionId),
-        eq(toolConnections.companyId, companyId),
-      ),
+      eq(toolConnections.id, chatEndpoints.connectionId),
     )
     .where(
       and(
-        eq(chatEndpoints.companyId, companyId),
         eq(chatEndpoints.id, endpointId),
         eq(chatEndpoints.provider, "slack"),
       ),
@@ -41,7 +36,6 @@ export async function slackCapabilities(
   );
   if (!ref) throw notFound("Slack bot credential is unavailable");
   const token = await secretService(db).resolveSecretValue(
-    companyId,
     ref.secretId,
     ref.versionSelector ?? "latest",
     {

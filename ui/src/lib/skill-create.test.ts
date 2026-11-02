@@ -12,7 +12,6 @@ import {
 function skill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
   return {
     id: "skill-1",
-    companyId: "company-1",
     key: "paperclip/demo-skill",
     slug: "demo-skill",
     name: "Demo Skill",
@@ -33,7 +32,6 @@ function skill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail 
     sharingScope: "company",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,

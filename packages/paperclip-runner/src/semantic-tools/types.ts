@@ -207,17 +207,14 @@ export type CapabilitySemanticToolResult =
 
 export interface PaperclipSemanticRunContext {
   readonly runId: string;
-  readonly companyId: string;
   readonly actor: {
     readonly id: string;
-    readonly companyId: string;
     readonly status: string;
     readonly role: string;
     readonly claims: readonly string[];
   };
   readonly activeTask: {
     readonly id: string;
-    readonly companyId: string;
     readonly assigneeActorId: string | null;
     readonly executionRunId: string | null;
     readonly status: string;
@@ -263,7 +260,6 @@ export type PaperclipSemanticDenialCode =
   | "operation_absent"
   | "authority_context_invalid"
   | "run_mismatch"
-  | "company_mismatch"
   | "actor_inactive"
   | "task_mode_denied"
   | "task_state_denied"
@@ -295,7 +291,6 @@ export interface PaperclipSemanticAuthorizationRecord extends PaperclipSemanticA
   readonly schema: "paperclip.semantic-authorization-record.v1";
   readonly id: string;
   readonly runId: string;
-  readonly companyId: string;
   readonly actorId: string;
   readonly taskId: string;
   readonly callId: string | null;
@@ -329,7 +324,6 @@ export interface PaperclipSemanticBindingResult {
 
 export interface PaperclipAuthorizedSemanticInvocation {
   readonly runId: string;
-  readonly companyId: string;
   readonly actorId: string;
   readonly taskId: string;
   readonly callId: string;

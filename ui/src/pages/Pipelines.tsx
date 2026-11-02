@@ -94,7 +94,6 @@ import { PipelineItemBodyDocument } from "../components/PipelineItemBodyDocument
 import { PipelineLivenessBanner } from "../components/PipelineLivenessBanner";
 import { PipelineWorkReferences } from "../components/PipelineWorkReferences";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 import { useToastActions } from "../context/ToastContext";
 import { assigneeValueFromSelection, parseAssigneeValue, suggestedCommentAssigneeValue } from "../lib/assignees";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap, buildCompanyUserProfileMap, isAgentTaskTarget } from "../lib/company-members";
@@ -898,7 +897,6 @@ export function pipelineKeyFromName(name: string) {
 }
 
 function PipelinesIndex() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -909,23 +907,22 @@ function PipelinesIndex() {
   useEffect(() => setBreadcrumbs([{ label: "Pipelines" }]), [setBreadcrumbs]);
 
   const pipelinesQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.pipelines.list(selectedCompanyId) : ["pipelines", "missing-company"],
-    queryFn: () => pipelinesApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.pipelines.list(),
+    queryFn: () => pipelinesApi.list(),
   });
 
   const createPipeline = useMutation({
     mutationFn: async (data: { name: string; description: string }) => {
       const baseKey = pipelineKeyFromName(data.name);
       try {
-        return await pipelinesApi.create(selectedCompanyId!, {
+        return await pipelinesApi.create({
           key: baseKey,
           name: data.name,
           description: data.description || null,
         });
       } catch (error) {
         if (error instanceof ApiError && error.status === 409) {
-          return await pipelinesApi.create(selectedCompanyId!, {
+          return await pipelinesApi.create({
             key: `${baseKey}-${Date.now().toString(36)}`,
             name: data.name,
             description: data.description || null,
@@ -935,15 +932,12 @@ function PipelinesIndex() {
       }
     },
     onSuccess: async (pipeline) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list() });
       setNewPipelineOpen(false);
       navigate(`/pipelines/${pipeline.id}/settings`);
     },
   });
 
-  if (!selectedCompanyId) {
-    return <div className="mx-auto max-w-3xl py-10 text-sm text-muted-foreground">Select an organization to view pipelines.</div>;
-  }
   if (pipelinesQuery.isLoading) return <PageSkeleton />;
 
   const pipelines = pipelinesQuery.data ?? [];
@@ -1425,7 +1419,6 @@ function PipelineBoardColumn({
 function PipelineBoard({ pipelineId }: { pipelineId: string }) {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
-  const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
@@ -1464,15 +1457,13 @@ function PipelineBoard({ pipelineId }: { pipelineId: string }) {
   // The workspace pipeline list lets us resolve "Break into pieces" connector
   // chips by name — which pipeline this board feeds, and which feed into it.
   const allPipelinesQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.pipelines.list(selectedCompanyId) : ["pipelines", "missing-company"],
-    queryFn: () => pipelinesApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.pipelines.list(),
+    queryFn: () => pipelinesApi.list(),
   });
 
   const agentsQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "pipeline-board", "missing-company"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const pipeline = pipelineQuery.data;
@@ -1957,7 +1948,6 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const { selectedCompanyId } = useCompany();
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [moveStageKey, setMoveStageKey] = useState("");
@@ -1991,11 +1981,9 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
 
   const detail = item.data;
   const reviewQueueItems = useQuery({
-    queryKey: selectedCompanyId
-      ? ["pipelines", "review-cases", selectedCompanyId, "pipeline", pipelineId]
-      : ["pipelines", "review-cases", "__none__", "pipeline", pipelineId],
-    queryFn: () => pipelinesApi.listReviewCases(selectedCompanyId!, { pipelineId }),
-    enabled: Boolean(selectedCompanyId && detail?.stage.kind === "review"),
+    queryKey: ["pipelines", "review-cases", "pipeline", pipelineId],
+    queryFn: () => pipelinesApi.listReviewCases({ pipelineId }),
+    enabled: Boolean(detail?.stage.kind === "review"),
   });
   const stages = pipeline.data?.stages ?? detail?.allowedNextStages ?? [];
   const stageLookup = useMemo(() => {
@@ -2029,7 +2017,6 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
     enabled: Boolean(conversationIssueId),
   });
   const activeConversationIssue = conversationIssueDetail.data ?? conversationIssue;
-  const conversationCompanyId = activeConversationIssue?.companyId ?? selectedCompanyId ?? null;
   const [locallyQueuedConversationCommentRunIds, setLocallyQueuedConversationCommentRunIds] = useState<Map<string, string>>(() => new Map());
   const comments = useQuery({
     queryKey: conversationIssueId ? queryKeys.issues.commentsList(conversationIssueId) : ["pipeline-item", caseId, "missing-conversation"],
@@ -2089,23 +2076,20 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
     refetchInterval: (query) => interactionReadinessRefetchInterval(query.state.data),
   });
   const { data: agents } = useQuery({
-    queryKey: conversationCompanyId ? queryKeys.agents.list(conversationCompanyId) : ["agents", "pipeline-item", "none"],
-    queryFn: () => agentsApi.list(conversationCompanyId!),
-    enabled: Boolean(conversationCompanyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: companyMembers } = useQuery({
-    queryKey: conversationCompanyId ? queryKeys.access.companyUserDirectory(conversationCompanyId) : ["access", "pipeline-item", "users", "none"],
-    queryFn: () => accessApi.listUserDirectory(conversationCompanyId!),
-    enabled: Boolean(conversationCompanyId),
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
   const { data: projects } = useQuery({
-    queryKey: conversationCompanyId ? queryKeys.projects.list(conversationCompanyId) : ["projects", "pipeline-item", "none"],
-    queryFn: () => projectsApi.list(conversationCompanyId!),
-    enabled: Boolean(conversationCompanyId),
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
   });
   const { data: feedbackVotes } = useQuery({
     queryKey: conversationIssueId ? queryKeys.issues.feedbackVotes(conversationIssueId) : ["pipeline-item", caseId, "missing-conversation-feedback"],
@@ -2122,7 +2106,6 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
   const feedbackDataSharingPreference = instanceGeneralSettings?.feedbackDataSharingPreference ?? "prompt";
   const { orderedProjects } = useProjectOrder({
     projects: projects ?? [],
-    companyId: conversationCompanyId,
     userId: currentUserId,
   });
   const agentMap = useMemo(() => {
@@ -2139,7 +2122,6 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
     [companyMembers?.users],
   );
   const mentionOptions = useStandardMarkdownMentionOptions({
-    companyId: conversationCompanyId,
     agents,
     projects: orderedProjects,
     members: companyMembers?.users,
@@ -2391,19 +2373,19 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
   }, [conversationIssueId, queryClient]);
 
   const handleConversationImageUpload = useCallback(async (file: File) => {
-    if (!conversationIssueId || !conversationCompanyId) {
+    if (!conversationIssueId) {
       throw new Error("No active conversation issue is available for image uploads.");
     }
-    const attachment = await issuesApi.uploadAttachment(conversationCompanyId, conversationIssueId, file);
+    const attachment = await issuesApi.uploadAttachment(conversationIssueId, file);
     return attachment.contentPath;
-  }, [conversationCompanyId, conversationIssueId]);
+  }, [conversationIssueId]);
 
   const handleConversationAttachImage = useCallback(async (file: File) => {
-    if (!conversationIssueId || !conversationCompanyId) {
+    if (!conversationIssueId) {
       throw new Error("No active conversation issue is available for image attachments.");
     }
-    return issuesApi.uploadAttachment(conversationCompanyId, conversationIssueId, file);
-  }, [conversationCompanyId, conversationIssueId]);
+    return issuesApi.uploadAttachment(conversationIssueId, file);
+  }, [conversationIssueId]);
 
   const handleDeleteConversationComment = useCallback(async (commentId: string) => {
     if (!conversationIssueId) return;
@@ -2701,9 +2683,9 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
       let nextHref = nextReviewItem
         ? `/pipelines/${nextReviewItem.pipeline.id}/items/${nextReviewItem.case.id}`
         : null;
-      if (!nextHref && selectedCompanyId) {
+      if (!nextHref) {
         try {
-          const latestReviewItems = await pipelinesApi.listReviewCases(selectedCompanyId, { pipelineId });
+          const latestReviewItems = await pipelinesApi.listReviewCases({ pipelineId });
           const latestNextItem = latestReviewItems.find((row) => row.case.id !== caseId) ?? null;
           nextHref = latestNextItem
             ? `/pipelines/${latestNextItem.pipeline.id}/items/${latestNextItem.case.id}`
@@ -2715,9 +2697,7 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
       setReviewDecisionNote("");
       await Promise.all([
         invalidateItem(),
-        selectedCompanyId
-          ? queryClient.invalidateQueries({ queryKey: ["pipelines", "review-cases", selectedCompanyId] })
-          : Promise.resolve(),
+        queryClient.invalidateQueries({ queryKey: ["pipelines", "review-cases"] }),
       ]);
       pushToast({
         title: reviewDecisionToastTitle(variables.decision, Boolean(nextHref)),
@@ -3309,7 +3289,6 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
                   successfulRunHandoff={activeConversationIssue.successfulRunHandoff ?? null}
                   scheduledRetry={activeConversationIssue.scheduledRetry ?? null}
                   recoveryAction={activeConversationIssue.activeRecoveryAction ?? null}
-                  companyId={activeConversationIssue.companyId}
                   projectId={activeConversationIssue.projectId}
                   issueStatus={activeConversationIssue.status}
                   agentMap={agentMap}
@@ -4832,7 +4811,6 @@ function ReviewQueueSection({
 }
 
 export function ReviewQueue() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -4848,15 +4826,13 @@ export function ReviewQueue() {
   }, [setBreadcrumbs]);
 
   const attentionQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.pipelines.attention(selectedCompanyId) : ["pipelines", "attention", "none"],
-    queryFn: () => pipelinesApi.listAttention(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.pipelines.attention(),
+    queryFn: () => pipelinesApi.listAttention(),
   });
 
   const reviewCasesQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.pipelines.reviewCases(selectedCompanyId) : ["pipelines", "review-cases", "none"],
-    queryFn: () => pipelinesApi.listReviewCases(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.pipelines.reviewCases(),
+    queryFn: () => pipelinesApi.listReviewCases(),
   });
 
   const rows = useMemo(
@@ -4890,11 +4866,10 @@ export function ReviewQueue() {
   }, [activeRowId, visibleRows]);
 
   const invalidateReviewQueue = async () => {
-    if (!selectedCompanyId) return;
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.attention(selectedCompanyId) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.reviewCases(selectedCompanyId) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list(selectedCompanyId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.attention() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.reviewCases() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list() }),
     ]);
   };
 
@@ -4951,7 +4926,6 @@ export function ReviewQueue() {
 
   const bulkApprove = useMutation({
     mutationFn: async (targetRows: ReviewQueueRow[]) => {
-      if (!selectedCompanyId) throw new Error("Select an organization first.");
       const reviewRows = targetRows.filter((row) => row.kind === "review");
       const suggestionRows = targetRows.filter((row) => row.kind === "suggestion" && row.suggestionId);
       const tasks: Promise<unknown>[] = [];
@@ -4961,7 +4935,7 @@ export function ReviewQueue() {
           return { caseId: row.caseId, decision: "approve" as const, expectedVersion: row.expectedVersion };
         });
         tasks.push(
-          pipelinesApi.bulkReviewCases(selectedCompanyId, { items }).then((response) => {
+          pipelinesApi.bulkReviewCases({ items }).then((response) => {
             const failures = (response.results ?? []).filter((result) => !result.ok);
             if (failures.length > 0) {
               throw new Error("Some items could not be approved.");
@@ -5055,9 +5029,6 @@ export function ReviewQueue() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [activeRowId, decideRow, openItem, visibleRows]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Hexagon} message="Select an organization to view the review queue." />;
-  }
 
   if (attentionQuery.isLoading || reviewCasesQuery.isLoading) {
     return <PageSkeleton variant="list" />;
@@ -5158,7 +5129,6 @@ const LEARNINGS_PAGE_SIZE = 100;
 const LEARNING_EVENT_TYPES = "review_decided,transition_forced";
 
 export function Learnings() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [offset, setOffset] = useState(0);
 
@@ -5167,21 +5137,15 @@ export function Learnings() {
   }, [setBreadcrumbs]);
 
   const learningsQuery = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.pipelines.learnings(selectedCompanyId, offset)
-      : ["pipelines", "learnings", "none"],
+    queryKey: queryKeys.pipelines.learnings(offset),
     queryFn: () =>
-      pipelinesApi.listCompanyCaseEvents(selectedCompanyId!, {
+      pipelinesApi.listCompanyCaseEvents({
         types: LEARNING_EVENT_TYPES,
         limit: LEARNINGS_PAGE_SIZE,
         offset,
       }),
-    enabled: !!selectedCompanyId,
   });
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={BookOpenText} message="Select an organization to view learnings." />;
-  }
 
   if (learningsQuery.isLoading && !learningsQuery.data) {
     return <PageSkeleton variant="list" />;

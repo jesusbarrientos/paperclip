@@ -98,7 +98,6 @@ function ChainOfThoughtReview() {
 
 const steeredComment: IssueChatComment = {
   id: "steered-comment",
-  companyId: "storybook-company",
   issueId: "storybook-issue",
   authorAgentId: null,
   authorUserId: "storybook-user",

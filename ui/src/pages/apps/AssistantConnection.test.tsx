@@ -8,11 +8,11 @@ const mocks = vi.hoisted(() => ({ setup: vi.fn(), connections: vi.fn(), revoke: 
 vi.mock("@/hooks/usePrefersReducedMotion", () => ({ usePrefersReducedMotion: () => true }));
 vi.mock("@/lib/clipboard", () => ({ copyTextToClipboard: mocks.copy }));
 vi.mock("@/api/publicMcp", () => ({ publicMcpApi: mocks }));
-vi.mock("@/context/CompanyContext", () => ({ useCompany: () => ({ selectedCompanyId: "butter", selectedCompany: { id: "butter", name: "Butter", logoUrl: null } }) }));
+vi.mock("@/context/OrganizationContext", () => ({ useOrganization: () => ({ organization: { id: "butter", name: "Butter", logoUrl: null } }) }));
 vi.mock("@/context/BreadcrumbContext", () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: mocks.breadcrumbs }) }));
 vi.mock("@/lib/router", () => ({ Link: ({ children, to, ...props }: { children: React.ReactNode; to: string }) => <a href={to} {...props}>{children}</a> }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-const grant = { id: "grant", companyId: "butter", companyName: "Butter", clientName: "OpenCode", scopes: ["paperclip:read", "paperclip:write"], createdAt: "2026-10-05T00:00:00Z", revokedAt: null };
+const grant = { id: "grant", companyName: "Butter", clientName: "OpenCode", scopes: ["paperclip:read", "paperclip:write"], createdAt: "2026-10-05T00:00:00Z", revokedAt: null };
 let root: Root, container: HTMLDivElement, client: QueryClient;
 async function flush() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 async function render(element: React.ReactNode = <AssistantConnection initialAssistant="opencode" />) {
@@ -32,7 +32,7 @@ describe("assistant setup from Connections", () => {
     await render();
     expect(container.querySelector("details")?.open).toBe(false);
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Copy invitation"]')!.click());
-    expect(mocks.copy).toHaveBeenLastCalledWith(expect.stringContaining("https://canonical.example/mcp/setup?company=butter"));
+    expect(mocks.copy).toHaveBeenLastCalledWith(expect.stringContaining("https://canonical.example/mcp/setup"));
     expect(mocks.copy).toHaveBeenLastCalledWith(expect.stringContaining("after I approve"));
     expect(document.body.textContent).toContain("Copied to clipboard");
     expect(container.textContent).not.toContain("Copy link");
@@ -63,14 +63,13 @@ describe("assistant setup from Connections", () => {
   it("shows the enable path while disabled, with no usable setup instructions", async () => {
     mocks.setup.mockResolvedValue({ enabled: false, serverUrl: "https://canonical.example/mcp/paperclip" });
     await render();
-    expect(container.querySelector('a[href="/company/settings/instance/experimental"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/organization/settings/instance/experimental"]')).not.toBeNull();
     expect(container.textContent).not.toContain("opencode mcp auth");
     expect(container.textContent).not.toContain("https://canonical.example");
   });
-  it("only shows this organization’s grants and revokes the selected grant", async () => {
-    mocks.connections.mockResolvedValue([grant, { ...grant, id: "other", companyId: "elsewhere", clientName: "Other secret client" }]);
+  it("revokes the selected grant", async () => {
+    mocks.connections.mockResolvedValue([grant]);
     await render();
-    expect(container.textContent).not.toContain("Other secret client");
     expect(container.textContent).toContain("Connected as you · Read and write");
     mocks.connections.mockResolvedValue([{ ...grant, revokedAt: "2026-10-05T00:00:00Z" }]);
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Revoke OpenCode connection"]')!.click());

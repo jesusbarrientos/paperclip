@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { type AnyPgColumn, check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
@@ -11,7 +10,6 @@ export const companySecretProposals = pgTable(
   "company_secret_proposals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     kind: text("kind").notNull(),
     status: text("status").notNull().default("pending"),
     proposedName: text("proposed_name"),
@@ -45,7 +43,6 @@ export const companySecretProposals = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyStatusIdx: index("company_secret_proposals_company_status_idx").on(table.companyId, table.status),
     proposerStatusIdx: index("company_secret_proposals_proposer_status_idx").on(table.proposedByAgentId, table.status),
     expiryIdx: index("company_secret_proposals_expiry_idx").on(table.status, table.expiresAt),
     secretProposalIdx: index("company_secret_proposals_secret_proposal_idx").on(table.secretProposalId),

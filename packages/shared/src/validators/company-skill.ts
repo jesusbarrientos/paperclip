@@ -21,7 +21,6 @@ export const companySkillVersionFileInventoryEntrySchema = companySkillFileInven
 
 export const companySkillSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   folderId: z.string().guid().nullable().optional(),
   folderPath: z.string().nullable().optional(),
   key: z.string().min(1),
@@ -44,7 +43,6 @@ export const companySkillSchema = z.object({
   sharingScope: companySkillSharingScopeSchema,
   publicShareToken: z.string().nullable(),
   forkedFromSkillId: z.string().guid().nullable(),
-  forkedFromCompanyId: z.string().guid().nullable(),
   starCount: z.number().int().nonnegative(),
   installCount: z.number().int().nonnegative(),
   forkCount: z.number().int().nonnegative(),
@@ -96,7 +94,6 @@ export const companySkillOriginalSummarySchema = z.object({
 export const companySkillForkSummarySchema = companySkillOriginalSummarySchema.extend({
   key: z.string().min(1),
   forkedFromSkillId: z.string().guid().nullable(),
-  forkedFromCompanyId: z.string().guid().nullable(),
   currentVersionId: z.string().guid().nullable(),
   createdByCurrentActor: z.boolean(),
   diverged: z.boolean(),
@@ -121,7 +118,6 @@ export const companySkillCategoryCountSchema = z.object({
 
 export const companySkillVersionSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   companySkillId: z.string().guid(),
   revisionNumber: z.number().int().positive(),
   label: z.string().nullable(),
@@ -155,7 +151,6 @@ export const companySkillStarResultSchema = z.object({
 
 export const companySkillCommentSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   companySkillId: z.string().guid(),
   parentCommentId: z.string().guid().nullable(),
   authorAgentId: z.string().guid().nullable(),
@@ -408,7 +403,6 @@ export const companySkillTestRunStatusSchema = z.enum(["queued", "running", "suc
 
 export const companySkillTestInputSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   skillId: z.string().guid(),
   name: z.string().min(1),
   content: z.string(),
@@ -432,7 +426,6 @@ export const companySkillTestInputUpdateSchema = z.object({
 
 export const companySkillTestRunTemplateSchema = z.object({
   id: z.string().min(1),
-  companyId: z.string().guid(),
   name: z.string().min(1),
   description: z.string().nullable(),
   body: z.string().min(1),
@@ -481,7 +474,6 @@ export const companySkillTestRunCostSummarySchema = z.object({
 
 export const companySkillTestRunSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   skillId: z.string().guid(),
   inputId: z.string().guid().nullable(),
   inputSnapshot: z.string(),

@@ -54,7 +54,7 @@ function stubDb() {
   return {
     execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
     select: vi.fn((projection?: Record<string, unknown>) => {
-      const rows = projection && "count" in projection ? [{ count: 1 }] : [{ companyId: "company-1" }];
+      const rows = projection && "count" in projection ? [{ count: 1 }] : [{ }];
       const chain: Record<string, unknown> = {};
       for (const method of ["from", "where", "innerJoin", "limit", "orderBy", "groupBy"]) {
         chain[method] = vi.fn(() => chain);
@@ -108,8 +108,7 @@ describe("GET /api/health workspace readiness", () => {
       cloneDataReady: true,
       authHandoffReady: true,
       seedState: "verified",
-      executionWorkspaceId: "ews-1",
-      companyId: "company-1",
+      executionWorkspaceId: "ews-1"
     });
   });
 

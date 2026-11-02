@@ -87,14 +87,13 @@ const OWNER_B = "user-b";
 // before it drives the next step.
 async function waitForStatus(
   store: {
-    getByPublicId(publicSessionId: string, companyId: string): Promise<AdapterAuthSessionRow | null>;
+    getByPublicId(publicSessionId: string): Promise<AdapterAuthSessionRow | null>;
   },
   publicSessionId: string,
-  companyId: string,
   status: AdapterAuthSessionRow["status"],
 ): Promise<void> {
   for (let attempt = 0; attempt < 1000; attempt += 1) {
-    const row = await store.getByPublicId(publicSessionId, companyId);
+    const row = await store.getByPublicId(publicSessionId);
     if (row?.status === status) return;
     await new Promise((resolve) => setImmediate(resolve));
   }
@@ -185,7 +184,7 @@ function createFakeRuntime(opts: FakeRuntimeOptions) {
   return { runtime, acquisitions, deleteCalls, releaseCalls };
 }
 
-// An in-memory store. It mimics the active company-adapter slot, so most tests
+// An in-memory store. It mimics the active owner-adapter slot, so most tests
 // run with no database. The concurrency test uses the database-backed store, so
 // the real partial unique index maps the conflict to a 409.
 function createMemoryStore(): AdapterAuthSessionStore & {
@@ -193,22 +192,21 @@ function createMemoryStore(): AdapterAuthSessionStore & {
 } {
   const rows = new Map<string, AdapterAuthSessionRow>();
   const activeSlots = new Set<string>();
-  // The active company credential slot is scoped to the company, the owner, and
-  // the adapter, so two owners in one company hold independent slots.
-  const slotKey = (companyId: string, startedByUserId: string, adapterType: string) =>
-    `${companyId}|${startedByUserId}|${adapterType}`;
+  // The active credential slot is scoped to the owner and the adapter, so two
+  // owners hold independent slots.
+  const slotKey = (startedByUserId: string, adapterType: string) =>
+    `${startedByUserId}|${adapterType}`;
   const isActive = (status: AdapterAuthSessionRow["status"]) =>
     status === "starting" || status === "waiting_for_user" || status === "promoting";
   return {
     rows,
     async insert(input) {
-      const key = slotKey(input.companyId, input.startedByUserId, input.adapterType);
+      const key = slotKey(input.startedByUserId, input.adapterType);
       if (activeSlots.has(key)) throw new AdapterAuthSessionConflictError();
       activeSlots.add(key);
       rows.set(input.id, {
         id: input.id,
         publicSessionId: input.publicSessionId,
-        companyId: input.companyId,
         environmentId: input.environmentId,
         adapterType: input.adapterType,
         startedByUserId: input.startedByUserId,
@@ -232,7 +230,7 @@ function createMemoryStore(): AdapterAuthSessionStore & {
       if (input.finishedAt !== undefined) row.finishedAt = input.finishedAt;
       if (input.promotionExpiresAt !== undefined) row.promotionExpiresAt = input.promotionExpiresAt;
       if (!isActive(input.status))
-        activeSlots.delete(slotKey(row.companyId, row.startedByUserId, row.adapterType));
+        activeSlots.delete(slotKey(row.startedByUserId, row.adapterType));
     },
     async compareAndSetStatus(input) {
       const row = rows.get(input.sessionId);
@@ -242,27 +240,26 @@ function createMemoryStore(): AdapterAuthSessionStore & {
       if (input.finishedAt !== undefined) row.finishedAt = input.finishedAt;
       if (input.promotionExpiresAt !== undefined) row.promotionExpiresAt = input.promotionExpiresAt;
       if (!isActive(input.status))
-        activeSlots.delete(slotKey(row.companyId, row.startedByUserId, row.adapterType));
+        activeSlots.delete(slotKey(row.startedByUserId, row.adapterType));
       return true;
     },
     async get(sessionId) {
       const row = rows.get(sessionId);
       return row ? { ...row } : null;
     },
-    async getByPublicId(publicSessionId, companyId) {
+    async getByPublicId(publicSessionId) {
       // Scope the read to the company and the public session id, so a
       // foreign-company lookup reads nothing and the internal id never matches.
       for (const row of rows.values()) {
-        if (row.publicSessionId === publicSessionId && row.companyId === companyId) {
+        if (row.publicSessionId === publicSessionId) {
           return { ...row };
         }
       }
       return null;
     },
-    async getActiveByOwner(companyId, startedByUserId, adapterType) {
+    async getActiveByOwner(startedByUserId, adapterType) {
       for (const row of rows.values()) {
         if (
-          row.companyId === companyId &&
           row.startedByUserId === startedByUserId &&
           row.adapterType === adapterType &&
           isActive(row.status)
@@ -272,7 +269,7 @@ function createMemoryStore(): AdapterAuthSessionStore & {
       }
       return null;
     },
-    async withCompanyAdapterPromotionLock(_companyId, _startedByUserId, _adapterType, fn) {
+    async withCompanyAdapterPromotionLock(_startedByUserId, _adapterType, fn) {
       // The in-memory store runs on a single event loop, so it needs no real
       // lock. The pass-through keeps the store contract satisfied.
       return fn();
@@ -302,7 +299,6 @@ describe("device login service", () => {
     };
     const service = makeService({ store, runtime });
     const { session, completed } = await service.start({
-      companyId: randomUUID(),
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -317,7 +313,7 @@ describe("device login service", () => {
     const store = createMemoryStore();
     const activity: LoginSessionActivityEvent[] = [];
     const promoted: Buffer[] = [];
-    const promotionContexts: { sessionId: string; companyId: string }[] = [];
+    const promotionContexts: { sessionId: string; }[] = [];
     // Gate the login after the prompt surfaces, so the row stays in
     // `waiting_for_user` long enough for the test to read the prompt (twice)
     // before it releases the gate and lets the login race to `authenticated`.
@@ -342,12 +338,11 @@ describe("device login service", () => {
       promotion: {
         promote: (bytes, context) => {
           promoted.push(bytes);
-          promotionContexts.push({ sessionId: context.sessionId, companyId: context.companyId });
+          promotionContexts.push({ sessionId: context.sessionId });
         },
       },
     });
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -356,22 +351,22 @@ describe("device login service", () => {
     // The prompt is surfaced only after the conditional move to
     // `waiting_for_user` wins, so wait for that surface, then drain the microtask
     // that retains the prompt before the owner reads it.
-    await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+    await waitForStatus(store, session.sessionId, "waiting_for_user");
     await new Promise((resolve) => setImmediate(resolve));
 
     // The owner reads the one-time prompt through the owner read path.
-    const owner = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const owner = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(owner?.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
     // The read returns the public session id, never the internal row id.
     expect(owner?.sessionId).toBe(session.sessionId);
 
     // A non-owner never reads the prompt.
-    const other = await service.readOwnerSession(session.sessionId, companyId, OWNER_B);
+    const other = await service.readOwnerSession(session.sessionId, OWNER_B);
     expect(other?.prompt).toBeNull();
 
     // The prompt survives a repeated read while the session is still active. The
     // read never consumes it, so a page reload does not lose the code.
-    const repeatWhileActive = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const repeatWhileActive = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(repeatWhileActive?.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
 
     // Release the gate, so the login proceeds to the promotion and the
@@ -386,17 +381,17 @@ describe("device login service", () => {
     // The promotion runs with the internal session id and the company context, so
     // it resolves the company scope and the sole-active-owner check for this exact
     // session. The internal id is not the public session id.
-    const internalRow = await store.getByPublicId(session.sessionId, companyId);
-    expect(promotionContexts).toEqual([{ sessionId: internalRow?.id, companyId }]);
+    const internalRow = await store.getByPublicId(session.sessionId);
+    expect(promotionContexts).toEqual([{ sessionId: internalRow?.id }]);
     expect(internalRow?.id).not.toBe(session.sessionId);
 
     // The session is now terminal (authenticated). A read after a terminal
     // transition returns a null prompt, and it carries `Cache-Control:
     // no-store, private` at the route layer (see agent-device-login-routes.test.ts).
-    const afterTerminal = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const afterTerminal = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(afterTerminal?.prompt).toBeNull();
 
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("authenticated");
     expect(row?.finishedAt).not.toBeNull();
 
@@ -405,7 +400,6 @@ describe("device login service", () => {
     for (const event of activity) {
       expect(Object.keys(event).sort()).toEqual([
         "adapterType",
-        "companyId",
         "environmentId",
         "phase",
         "sessionId",
@@ -441,7 +435,6 @@ describe("device login service", () => {
       },
     });
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -450,7 +443,7 @@ describe("device login service", () => {
     const outcome = await completed;
     expect(outcome.status).toBe("authenticated");
     expect(wrapCalls).toHaveLength(1);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("authenticated");
   });
 
@@ -479,7 +472,6 @@ describe("device login service", () => {
       },
     });
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -487,7 +479,7 @@ describe("device login service", () => {
 
     const outcome = await completed;
     expect(outcome.status).toBe("failed");
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("failed");
     expect(row?.failureReason).toBe("promotion_failed");
     // The service still deletes the sandbox on this failure path, the same
@@ -516,16 +508,15 @@ describe("device login service", () => {
     const companyId = randomUUID();
     const service = makeService({ store, runtime });
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: "grok_local",
       startedByUserId: OWNER_A,
     });
 
-    await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+    await waitForStatus(store, session.sessionId, "waiting_for_user");
     await new Promise((resolve) => setImmediate(resolve));
 
-    const owner = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const owner = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(owner?.prompt).toEqual({ url: GROK_DEVICE_LOGIN_URL, code: GROK_CODE });
 
     releaseGate();
@@ -550,7 +541,6 @@ describe("device login service", () => {
     const companyId = randomUUID();
     const service = makeService({ store, runtime });
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -562,10 +552,10 @@ describe("device login service", () => {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await new Promise((resolve) => setImmediate(resolve));
     }
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("starting");
 
-    const owner = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const owner = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(owner?.prompt).toBeNull();
 
     releaseGate();
@@ -598,7 +588,6 @@ describe("device login service", () => {
     });
 
     const grokRun = await service.start({
-      companyId: randomUUID(),
       environmentId: randomUUID(),
       adapterType: "grok_local",
       startedByUserId: OWNER_A,
@@ -608,7 +597,6 @@ describe("device login service", () => {
     expect(codexPromoteCalls).toHaveLength(0);
 
     const codexRun = await service.start({
-      companyId: randomUUID(),
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -673,15 +661,14 @@ describe("device login service", () => {
     });
 
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: "grok_local",
       startedByUserId: OWNER_A,
     });
-    await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+    await waitForStatus(store, session.sessionId, "waiting_for_user");
     await new Promise((resolve) => setImmediate(resolve));
 
-    const owner = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const owner = await service.readOwnerSession(session.sessionId, OWNER_A);
     releaseGate();
     const outcome = await completed;
     expect(outcome.status).toBe("authenticated");
@@ -691,7 +678,7 @@ describe("device login service", () => {
     const sessionText = JSON.stringify(session);
     const ownerText = JSON.stringify(owner);
     const outcomeText = JSON.stringify(outcome);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     const rowText = JSON.stringify(row);
     for (const secret of forbidden) {
       expect(activityText).not.toContain(secret);
@@ -723,7 +710,6 @@ describe("device login service", () => {
     });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -734,9 +720,9 @@ describe("device login service", () => {
     expect(outcome.status).toBe("failed");
     expect(promoteCalls).toBe(0);
     expect(deleteCalls).toHaveLength(1);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("failed");
-    const failed = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const failed = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(failed?.failure?.reason).toBe("promotion_failed");
   });
 
@@ -746,7 +732,6 @@ describe("device login service", () => {
     const service = makeService({ store, runtime });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -755,7 +740,7 @@ describe("device login service", () => {
     expect(outcome.status).toBe("failed");
     expect(outcome.sandboxDeleteObserved).toBe(true);
     expect(deleteCalls).toHaveLength(1);
-    const failed = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const failed = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(failed?.status).toBe("failed");
     expect(failed?.failure?.reason).toBe("login_command_failed");
   });
@@ -765,7 +750,6 @@ describe("device login service", () => {
     const { runtime, deleteCalls } = createFakeRuntime({ exec: execDriverError });
     const service = makeService({ store, runtime });
     const { completed } = await service.start({
-      companyId: randomUUID(),
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -795,7 +779,6 @@ describe("device login service", () => {
     });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -805,7 +788,7 @@ describe("device login service", () => {
     expect(outcome.status).toBe("failed");
     expect(promoteCalls).toBe(0);
     expect(deleteCalls).toHaveLength(1);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("failed");
   });
 
@@ -829,7 +812,6 @@ describe("device login service", () => {
     });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -837,7 +819,7 @@ describe("device login service", () => {
     const outcome = await completed;
     expect(outcome.status).toBe("failed");
     expect(deleteCalls).toHaveLength(1);
-    const failed = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const failed = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(failed?.status).toBe("failed");
     expect(failed?.failure?.reason).toBe("promotion_failed");
   });
@@ -849,7 +831,6 @@ describe("device login service", () => {
     const controller = new AbortController();
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -860,7 +841,7 @@ describe("device login service", () => {
     expect(outcome.status).toBe("cancelled");
     expect(outcome.sandboxDeleteObserved).toBe(true);
     expect(deleteCalls).toHaveLength(1);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("cancelled");
   });
 
@@ -871,25 +852,24 @@ describe("device login service", () => {
     const controller = new AbortController();
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
       signal: controller.signal,
     });
 
-    await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+    await waitForStatus(store, session.sessionId, "waiting_for_user");
     await new Promise((resolve) => setImmediate(resolve));
 
     // The prompt is present while the session is active.
-    const whileActive = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const whileActive = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(whileActive?.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
 
     controller.abort();
     await completed;
 
     // The session is now terminal (cancelled). The prompt is gone.
-    const afterCancel = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const afterCancel = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(afterCancel?.status).toBe("cancelled");
     expect(afterCancel?.prompt).toBeNull();
   });
@@ -909,7 +889,6 @@ describe("device login service", () => {
     const companyId = randomUUID();
     await expect(
       service.start({
-        companyId,
         environmentId: randomUUID(),
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
@@ -918,7 +897,7 @@ describe("device login service", () => {
     expect(releaseCalls).toHaveLength(1);
     // The service never runs the login command, so it never deletes a sandbox.
     expect(deleteCalls).toHaveLength(0);
-    const rows = [...store.rows.values()].filter((row) => row.companyId === companyId);
+    const rows = [...store.rows.values()].filter((row) => true);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe("failed");
   });
@@ -947,7 +926,6 @@ describe("device login service", () => {
       const controller = new AbortController();
       const companyId = randomUUID();
       const { session, completed } = await service.start({
-        companyId,
         environmentId: randomUUID(),
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
@@ -959,10 +937,10 @@ describe("device login service", () => {
       expect(outcome.cleanupPending).toBe(true);
       expect(outcome.sandboxDeleteObserved).toBe(true);
       expect(deleteCalls).toHaveLength(1);
-      const row = await store.getByPublicId(session.sessionId, companyId);
+      const row = await store.getByPublicId(session.sessionId);
       expect(row?.status).toBe("cleanup_pending");
       // The public read resolves the retained terminal, never a false-clean.
-      const publicRead = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+      const publicRead = await service.readOwnerSession(session.sessionId, OWNER_A);
       expect(publicRead?.status).toBe(terminal);
     },
   );
@@ -985,7 +963,6 @@ describe("device login service", () => {
     });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -997,9 +974,9 @@ describe("device login service", () => {
     expect(outcome.cleanupPending).toBe(true);
     expect(outcome.sandboxDeleteObserved).toBe(true);
     expect(deleteCalls).toHaveLength(1);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("cleanup_pending");
-    const publicRead = await service.readOwnerSession(session.sessionId, companyId, OWNER_A);
+    const publicRead = await service.readOwnerSession(session.sessionId, OWNER_A);
     expect(publicRead?.status).toBe("failed");
     expect(publicRead?.failure?.reason).toBe("promotion_failed");
   });
@@ -1014,7 +991,6 @@ describe("device login service", () => {
     const service = makeService({ store, runtime });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -1023,7 +999,7 @@ describe("device login service", () => {
     expect(outcome.status).toBe("authenticated");
     expect(outcome.cleanupPending).toBe(false);
     expect(outcome.sandboxDeleteObserved).toBe(true);
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("authenticated");
   });
 
@@ -1048,18 +1024,17 @@ describe("device login service", () => {
     const service = makeService({ store, runtime, promotion: { promote } });
     const companyId = randomUUID();
     const { session, completed } = await service.start({
-      companyId,
       environmentId: randomUUID(),
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
     });
 
     // The prompt moves the row to the active `waiting_for_user` state.
-    await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+    await waitForStatus(store, session.sessionId, "waiting_for_user");
 
     // The reaper wins the slot: it terminates the row before the promotion claim.
     // The status write keys on the internal id, not the public session id.
-    const seededRow = await store.getByPublicId(session.sessionId, companyId);
+    const seededRow = await store.getByPublicId(session.sessionId);
     await store.setStatus({
       sessionId: seededRow!.id,
       status: "timed_out",
@@ -1075,7 +1050,7 @@ describe("device login service", () => {
     // The lost claim writes no credential and never authenticates.
     expect(promote).not.toHaveBeenCalled();
     expect(outcome.status).not.toBe("authenticated");
-    const row = await store.getByPublicId(session.sessionId, companyId);
+    const row = await store.getByPublicId(session.sessionId);
     expect(row?.status).toBe("timed_out");
     // The service still deletes its own sandbox on the lost-claim path.
     expect(deleteCalls).toHaveLength(1);
@@ -1100,23 +1075,22 @@ describe("device login service", () => {
       const companyId = randomUUID();
       const environmentId = randomUUID();
       const { session, completed } = await service.start({
-        companyId,
         environmentId,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
       });
-      await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+      await waitForStatus(store, session.sessionId, "waiting_for_user");
 
       // A non-owner cannot cancel the session.
-      expect(await service.cancelOwnerSession(session.sessionId, companyId, OWNER_B)).toBeNull();
+      expect(await service.cancelOwnerSession(session.sessionId, OWNER_B)).toBeNull();
 
       // The owner cancel resolves the public terminal status at once.
-      const cancelled = await service.cancelOwnerSession(session.sessionId, companyId, OWNER_A);
+      const cancelled = await service.cancelOwnerSession(session.sessionId, OWNER_A);
       expect(cancelled?.status).toBe("cancelled");
 
       // The row holds the internal cleanup_pending state that encodes the
       // cancelled terminal, so the reaper deletes the sandbox and finalizes it.
-      const row = await store.getByPublicId(session.sessionId, companyId);
+      const row = await store.getByPublicId(session.sessionId);
       expect(row?.status).toBe("cleanup_pending");
       expect(row?.finishedAt).not.toBeNull();
 
@@ -1124,7 +1098,6 @@ describe("device login service", () => {
       // company and adapter wins. This proves the cancel does not depend on the
       // in-flight run ending.
       const second = await service.start({
-        companyId,
         environmentId,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
@@ -1153,18 +1126,17 @@ describe("device login service", () => {
       const service = makeService({ store, runtime, promotion: { promote } });
       const companyId = randomUUID();
       const { session, completed } = await service.start({
-        companyId,
         environmentId: randomUUID(),
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
       });
-      await waitForStatus(store, session.sessionId, companyId, "promoting");
+      await waitForStatus(store, session.sessionId, "promoting");
 
       // The cancel skips the promoting row, so the credential write finishes. The
       // public projection of a promoting row is `waiting_for_user`.
-      const result = await service.cancelOwnerSession(session.sessionId, companyId, OWNER_A);
+      const result = await service.cancelOwnerSession(session.sessionId, OWNER_A);
       expect(result?.status).toBe("waiting_for_user");
-      const row = await store.getByPublicId(session.sessionId, companyId);
+      const row = await store.getByPublicId(session.sessionId);
       expect(row?.status).toBe("promoting");
 
       // Release the promotion, so the run reaches its own terminal.
@@ -1182,16 +1154,15 @@ describe("device login service", () => {
       const controller = new AbortController();
       const companyId = randomUUID();
       const { session, completed } = await service.start({
-        companyId,
         environmentId: randomUUID(),
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
         signal: controller.signal,
       });
-      await waitForStatus(store, session.sessionId, companyId, "waiting_for_user");
+      await waitForStatus(store, session.sessionId, "waiting_for_user");
       await new Promise((resolve) => setImmediate(resolve));
 
-      const active = await service.readActiveOwnerSession(companyId, ADAPTER_TYPE, OWNER_A);
+      const active = await service.readActiveOwnerSession(ADAPTER_TYPE, OWNER_A);
       expect(active?.sessionId).toBe(session.sessionId);
       expect(active?.prompt).toEqual({ url: DEVICE_LOGIN_URL, code: PROMPT_CODE });
 
@@ -1206,18 +1177,17 @@ describe("device login service", () => {
       const controller = new AbortController();
       const companyId = randomUUID();
       await service.start({
-        companyId,
         environmentId: randomUUID(),
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
         signal: controller.signal,
       });
 
-      expect(await service.readActiveOwnerSession(companyId, ADAPTER_TYPE, OWNER_B)).toBeNull();
+      expect(await service.readActiveOwnerSession(ADAPTER_TYPE, OWNER_B)).toBeNull();
       expect(
         await service.readActiveOwnerSession(randomUUID(), ADAPTER_TYPE, OWNER_A),
       ).toBeNull();
-      expect(await service.readActiveOwnerSession(companyId, "grok_local", OWNER_A)).toBeNull();
+      expect(await service.readActiveOwnerSession("grok_local", OWNER_A)).toBeNull();
 
       controller.abort();
     });
@@ -1229,7 +1199,6 @@ describe("device login service", () => {
       const controller = new AbortController();
       const companyId = randomUUID();
       const { completed } = await service.start({
-        companyId,
         environmentId: randomUUID(),
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
@@ -1237,13 +1206,13 @@ describe("device login service", () => {
       });
 
       // No active session for this owner before any start ever ran.
-      expect(await service.readActiveOwnerSession(companyId, ADAPTER_TYPE, OWNER_A)).not.toBeNull();
+      expect(await service.readActiveOwnerSession(ADAPTER_TYPE, OWNER_A)).not.toBeNull();
 
       controller.abort();
       await completed;
 
       // The session is now terminal, so it no longer counts as active.
-      expect(await service.readActiveOwnerSession(companyId, ADAPTER_TYPE, OWNER_A)).toBeNull();
+      expect(await service.readActiveOwnerSession(ADAPTER_TYPE, OWNER_A)).toBeNull();
     });
   });
 
@@ -1256,7 +1225,6 @@ describe("device login service", () => {
         const service = makeService({ store, runtime });
         const companyId = randomUUID();
         const { session, completed } = await service.start({
-          companyId,
           environmentId: randomUUID(),
           adapterType: ADAPTER_TYPE,
           startedByUserId: OWNER_A,
@@ -1270,7 +1238,7 @@ describe("device login service", () => {
         // claim.
         await vi.advanceTimersByTimeAsync(DEVICE_LOGIN_TIMEOUT_MS - 1);
         expect(settled).toBe(false);
-        const midRow = await store.getByPublicId(session.sessionId, companyId);
+        const midRow = await store.getByPublicId(session.sessionId);
         expect(["starting", "waiting_for_user"]).toContain(midRow?.status);
 
         // The last millisecond fires the timeout.
@@ -1279,7 +1247,7 @@ describe("device login service", () => {
         expect(outcome.status).toBe("timed_out");
         expect(outcome.sandboxDeleteObserved).toBe(true);
         expect(deleteCalls).toHaveLength(1);
-        const row = await store.getByPublicId(session.sessionId, companyId);
+        const row = await store.getByPublicId(session.sessionId);
         expect(row?.status).toBe("timed_out");
       } finally {
         vi.useRealTimers();
@@ -1299,7 +1267,6 @@ describe("device login service", () => {
         const service = makeService({ store, runtime });
         const companyId = randomUUID();
         const { session, completed } = await service.start({
-          companyId,
           environmentId: randomUUID(),
           adapterType: ADAPTER_TYPE,
           startedByUserId: OWNER_A,
@@ -1310,7 +1277,7 @@ describe("device login service", () => {
         expect(outcome.cleanupPending).toBe(true);
         expect(outcome.sandboxDeleteObserved).toBe(true);
         expect(deleteCalls).toHaveLength(1);
-        const row = await store.getByPublicId(session.sessionId, companyId);
+        const row = await store.getByPublicId(session.sessionId);
         expect(row?.status).toBe("cleanup_pending");
       } finally {
         vi.useRealTimers();
@@ -1427,7 +1394,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     await stopDb?.();
   });
 
-  async function seedCompanyEnvironment(): Promise<{ companyId: string; environmentId: string }> {
+  async function seedCompanyEnvironment(): Promise<{ environmentId: string }> {
     const companyId = randomUUID();
     const environmentId = randomUUID();
     await db.insert(companies).values({
@@ -1446,10 +1413,10 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    return { companyId, environmentId };
+    return { environmentId };
   }
 
-  async function seedEnvironment(companyId: string): Promise<string> {
+  async function seedEnvironment(): Promise<string> {
     const environmentId = randomUUID();
     await db.insert(environments).values({
       id: environmentId,
@@ -1467,7 +1434,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     // The active slot is scoped to the company, the owner, and the adapter. Two
     // owners in one company hold independent slots, so both concurrent starts
     // succeed and each acquires one lease.
-    const { companyId, environmentId } = await seedCompanyEnvironment();
+    const { environmentId } = await seedCompanyEnvironment();
     const store = createDbAdapterAuthSessionStore(db);
     const { runtime, acquisitions } = createFakeRuntime({ exec: execHang });
     const service = makeService({ store, runtime });
@@ -1475,14 +1442,12 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
 
     const results = await Promise.allSettled([
       service.start({
-        companyId,
         environmentId,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
         signal: controller.signal,
       }),
       service.start({
-        companyId,
         environmentId,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_B,
@@ -1498,8 +1463,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     expect(acquisitions).toHaveLength(2);
     const rows = await db
       .select()
-      .from(adapterAuthSessions)
-      .where(eq(adapterAuthSessions.companyId, companyId));
+      .from(adapterAuthSessions);
     expect(rows).toHaveLength(2);
 
     // Release the surviving runs so the hanging login commands end.
@@ -1511,8 +1475,8 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     // One owner starting twice in two environments conflicts on the active slot.
     // The slot dropped the environment term, so the second environment does not
     // grant a second active session.
-    const { companyId, environmentId: environmentA } = await seedCompanyEnvironment();
-    const environmentB = await seedEnvironment(companyId);
+    const { environmentId: environmentA } = await seedCompanyEnvironment();
+    const environmentB = await seedEnvironment();
 
     const store = createDbAdapterAuthSessionStore(db);
     const { runtime, acquisitions } = createFakeRuntime({ exec: execHang });
@@ -1521,14 +1485,12 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
 
     const results = await Promise.allSettled([
       service.start({
-        companyId,
         environmentId: environmentA,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
         signal: controller.signal,
       }),
       service.start({
-        companyId,
         environmentId: environmentB,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
@@ -1553,8 +1515,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     expect(acquisitions).toHaveLength(1);
     const rows = await db
       .select()
-      .from(adapterAuthSessions)
-      .where(eq(adapterAuthSessions.companyId, companyId));
+      .from(adapterAuthSessions);
     expect(rows).toHaveLength(1);
 
     // Release the surviving run so the hanging login command ends.
@@ -1563,7 +1524,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   });
 
   it("rejects the same owner's second start with a 409 while the first holds the promotion claim", async () => {
-    const { companyId, environmentId } = await seedCompanyEnvironment();
+    const { environmentId } = await seedCompanyEnvironment();
     const store = createDbAdapterAuthSessionStore(db);
     const { runtime } = createFakeRuntime({ exec: execSuccess, authBytes: Buffer.from("{}") });
 
@@ -1580,20 +1541,18 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     });
 
     const first = await service.start({
-      companyId,
       environmentId,
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
     });
 
     // The first login reaches the `promoting` claim and holds it.
-    await waitForStatus(store, first.session.sessionId, companyId, "promoting");
+    await waitForStatus(store, first.session.sessionId, "promoting");
 
     // A second start for the same company, owner, and adapter conflicts on the
     // active slot, even though the first login is mid-promotion.
     await expect(
       service.start({
-        companyId,
         environmentId,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
@@ -1609,12 +1568,11 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   // Insert a `promoting` row whose promotion claim already expired, so the reaper
   // scan selects it. The tests below race the reaper reclaim against the
   // promotion critical section through the real advisory lock.
-  async function seedStalePromotingRow(companyId: string, environmentId: string): Promise<string> {
+  async function seedStalePromotingRow(environmentId: string): Promise<string> {
     const sessionId = randomUUID();
     const past = new Date(Date.now() - 5 * 60_000);
     await db.insert(adapterAuthSessions).values({
       id: sessionId,
-      companyId,
       environmentId,
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
@@ -1630,9 +1588,9 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   }
 
   it("holds the promotion lock so the reaper cannot reclaim a live credential write", async () => {
-    const { companyId, environmentId } = await seedCompanyEnvironment();
+    const { environmentId } = await seedCompanyEnvironment();
     const store = createDbAdapterAuthSessionStore(db);
-    const sessionId = await seedStalePromotingRow(companyId, environmentId);
+    const sessionId = await seedStalePromotingRow(environmentId);
 
     const { runtime } = createReaperRuntime();
     const reaper = createDeviceLoginReaper({ store, runtime, now: () => new Date() });
@@ -1649,12 +1607,12 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     const sectionActive = new Promise<void>((resolve) => {
       markSectionActive = resolve;
     });
-    const promotion = store.withCompanyAdapterPromotionLock(companyId, OWNER_A, ADAPTER_TYPE, async () => {
+    const promotion = store.withCompanyAdapterPromotionLock(OWNER_A, ADAPTER_TYPE, async () => {
       markSectionActive();
       await sectionGate;
       // Decision H: the write proceeds only while the session still owns the slot.
       const row = await store.get(sessionId);
-      if (row?.status === "promoting" && row.companyId === companyId) {
+      if (row?.status === "promoting") {
         wroteCredential = true;
       }
     });
@@ -1679,9 +1637,9 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   });
 
   it("skips the credential write when the reaper reclaimed the stale slot first", async () => {
-    const { companyId, environmentId } = await seedCompanyEnvironment();
+    const { environmentId } = await seedCompanyEnvironment();
     const store = createDbAdapterAuthSessionStore(db);
-    const sessionId = await seedStalePromotingRow(companyId, environmentId);
+    const sessionId = await seedStalePromotingRow(environmentId);
 
     const { runtime } = createReaperRuntime();
     const reaper = createDeviceLoginReaper({ store, runtime, now: () => new Date() });
@@ -1694,9 +1652,9 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     // A delayed promotion now runs its section. The ownership check reads the
     // reclaimed row, so it writes no credential and the terminal claim fails.
     let wroteCredential = false;
-    await store.withCompanyAdapterPromotionLock(companyId, OWNER_A, ADAPTER_TYPE, async () => {
+    await store.withCompanyAdapterPromotionLock(OWNER_A, ADAPTER_TYPE, async () => {
       const row = await store.get(sessionId);
-      if (row?.status === "promoting" && row.companyId === companyId) {
+      if (row?.status === "promoting") {
         wroteCredential = true;
       }
     });
@@ -1713,7 +1671,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   });
 
   it("does not resurrect a reaped starting row when a delayed prompt arrives", async () => {
-    const { companyId, environmentId } = await seedCompanyEnvironment();
+    const { environmentId } = await seedCompanyEnvironment();
     const store = createDbAdapterAuthSessionStore(db);
 
     // The login emits the prompt only after the test opens the gate, so the
@@ -1732,14 +1690,13 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
 
     const controller = new AbortController();
     const started = await service.start({
-      companyId,
       environmentId,
       adapterType: ADAPTER_TYPE,
       startedByUserId: OWNER_A,
       signal: controller.signal,
     });
     const publicSessionId = started.session.sessionId;
-    await waitForStatus(store, publicSessionId, companyId, "starting");
+    await waitForStatus(store, publicSessionId, "starting");
 
     // The reaper reclaims the expired row and times it out.
     const { runtime: reaperRuntime } = createReaperRuntime();
@@ -1750,7 +1707,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     });
     const sweep = await reaper.sweep();
     expect(sweep.expiredTimedOut).toBe(1);
-    expect((await store.getByPublicId(publicSessionId, companyId))?.status).toBe("timed_out");
+    expect((await store.getByPublicId(publicSessionId))?.status).toBe("timed_out");
 
     // The delayed prompt arrives now. The conditional transition must not revive
     // the reaped row, and the owner must not read a prompt for it.
@@ -1758,8 +1715,8 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
 
-    const owner = await service.readOwnerSession(publicSessionId, companyId, OWNER_A);
-    expect((await store.getByPublicId(publicSessionId, companyId))?.status).toBe("timed_out");
+    const owner = await service.readOwnerSession(publicSessionId, OWNER_A);
+    expect((await store.getByPublicId(publicSessionId))?.status).toBe("timed_out");
     expect(owner?.prompt ?? null).toBeNull();
 
     // End the run so no timer survives.
@@ -1770,27 +1727,25 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   describe("public session id lookup", () => {
     // Start one session and read its rows. The service returns the public session
     // id, and the store keeps the internal id private.
-    async function startOneSession(companyId: string, environmentId: string) {
+    async function startOneSession(environmentId: string) {
       const store = createDbAdapterAuthSessionStore(db);
       const controller = new AbortController();
       const { runtime } = createFakeRuntime({ exec: execHang });
       const service = makeService({ store, runtime });
       const started = await service.start({
-        companyId,
         environmentId,
         adapterType: ADAPTER_TYPE,
         startedByUserId: OWNER_A,
         signal: controller.signal,
       });
       const publicSessionId = started.session.sessionId;
-      const row = await store.getByPublicId(publicSessionId, companyId);
+      const row = await store.getByPublicId(publicSessionId);
       return { store, service, controller, started, publicSessionId, row };
     }
 
     it("reads a session by its public id in the same company", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
+      const { environmentId } = await seedCompanyEnvironment();
       const { store, controller, started, publicSessionId, row } = await startOneSession(
-        companyId,
         environmentId,
       );
 
@@ -1802,47 +1757,30 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
       expect(row?.id).not.toBe(publicSessionId);
       // The API-facing row read stays scoped: the same public id resolves the
       // same row on a second read.
-      const again = await store.getByPublicId(publicSessionId, companyId);
+      const again = await store.getByPublicId(publicSessionId);
       expect(again?.id).toBe(row?.id);
 
       controller.abort();
       await started.completed;
     });
 
-    it("does not read a session for a foreign company", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
-      const { store, controller, started, publicSessionId } = await startOneSession(
-        companyId,
-        environmentId,
-      );
-
-      // A different company id never resolves the row, even with the exact public
-      // session id. The predicate carries the company id, so a query never keys on
-      // the public session id alone.
-      const foreignCompanyId = randomUUID();
-      expect(await store.getByPublicId(publicSessionId, foreignCompanyId)).toBeNull();
-
-      controller.abort();
-      await started.completed;
-    });
-
     it("never accepts the internal row id as an API identifier", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
+      const { environmentId } = await seedCompanyEnvironment();
       const { store, service, controller, started, publicSessionId, row } =
-        await startOneSession(companyId, environmentId);
+        await startOneSession(environmentId);
       const internalId = row!.id;
 
       // The store never resolves a row by the internal id through the public-id
       // path, even within the same company.
-      expect(await store.getByPublicId(internalId, companyId)).toBeNull();
+      expect(await store.getByPublicId(internalId)).toBeNull();
 
       // The owner read returns the public session id, never the internal id.
-      const owner = await service.readOwnerSession(publicSessionId, companyId, OWNER_A);
+      const owner = await service.readOwnerSession(publicSessionId, OWNER_A);
       expect(owner?.sessionId).toBe(publicSessionId);
       expect(owner?.sessionId).not.toBe(internalId);
 
       // The owner read rejects the internal id as an API identifier.
-      expect(await service.readOwnerSession(internalId, companyId, OWNER_A)).toBeNull();
+      expect(await service.readOwnerSession(internalId, OWNER_A)).toBeNull();
 
       controller.abort();
       await started.completed;
@@ -1851,12 +1789,11 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
 
   describe("the displayed-code adapter scope", () => {
     it("reads a session row of a second displayed-code adapter by its public id", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
+      const { environmentId } = await seedCompanyEnvironment();
       const store = createDbAdapterAuthSessionStore(db);
       const publicSessionId = randomUUID();
       await db.insert(adapterAuthSessions).values({
         id: randomUUID(),
-        companyId,
         environmentId,
         adapterType: "grok_local",
         startedByUserId: OWNER_A,
@@ -1867,19 +1804,18 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
         updatedAt: new Date(),
       });
 
-      const row = await store.getByPublicId(publicSessionId, companyId);
+      const row = await store.getByPublicId(publicSessionId);
       expect(row).not.toBeNull();
       expect(row?.adapterType).toBe("grok_local");
     });
 
     it("the expiry scan and the cleanup scan include a row of a second displayed-code adapter", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
+      const { environmentId } = await seedCompanyEnvironment();
       const store = createDbAdapterAuthSessionStore(db);
       const past = new Date(Date.now() - 60_000);
       const expiredId = randomUUID();
       await db.insert(adapterAuthSessions).values({
         id: expiredId,
-        companyId,
         environmentId,
         adapterType: "grok_local",
         startedByUserId: OWNER_A,
@@ -1892,7 +1828,6 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
       const pendingId = randomUUID();
       await db.insert(adapterAuthSessions).values({
         id: pendingId,
-        companyId,
         environmentId,
         adapterType: "grok_local",
         startedByUserId: OWNER_A,
@@ -1912,7 +1847,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     });
 
     it("the orphan lease scan includes a session row of a second displayed-code adapter, and excludes a Claude setup-token row", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
+      const { environmentId } = await seedCompanyEnvironment();
       const reaperRuntime = createProductionLoginSessionReaperRuntime({
         db,
         // The orphan scan under test reads only the store and the lease list; it
@@ -1926,7 +1861,6 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
       const grokSessionId = randomUUID();
       await db.insert(adapterAuthSessions).values({
         id: randomUUID(),
-        companyId,
         environmentId,
         adapterType: "grok_local",
         startedByUserId: OWNER_A,
@@ -1938,7 +1872,6 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
         updatedAt: new Date(),
       });
       await db.insert(environmentLeases).values({
-        companyId,
         environmentId,
         status: "active",
         providerLeaseId: "grok-lease-1",
@@ -1949,11 +1882,10 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
       // `cleanup_pending` state the two login flows both use. `claude_local` is
       // outside the displayed-code adapter set, and no other row makes this
       // second environment a scan candidate, so the scan must never read it.
-      const claudeEnvironmentId = await seedEnvironment(companyId);
+      const claudeEnvironmentId = await seedEnvironment();
       const claudeSessionId = randomUUID();
       await db.insert(adapterAuthSessions).values({
         id: randomUUID(),
-        companyId,
         environmentId: claudeEnvironmentId,
         adapterType: "claude_local",
         startedByUserId: OWNER_B,
@@ -1966,7 +1898,6 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
         updatedAt: new Date(),
       });
       await db.insert(environmentLeases).values({
-        companyId,
         environmentId: claudeEnvironmentId,
         status: "active",
         providerLeaseId: "claude-lease-1",
@@ -1986,7 +1917,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
     });
 
     it("runLogin and the start ttl read the command, the parser, and the timeout from the resolved profile", async () => {
-      const { companyId, environmentId } = await seedCompanyEnvironment();
+      const { environmentId } = await seedCompanyEnvironment();
       const store = createDbAdapterAuthSessionStore(db);
       const originalProfile = DISPLAYED_CODE_PROFILES.codex_local!;
       const customPrompt = { url: "https://example.test/device", code: "ZZZZ-99999" };
@@ -2025,7 +1956,6 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
         const service = makeService({ store, runtime });
         const controller = new AbortController();
         const started = await service.start({
-          companyId,
           environmentId,
           adapterType: ADAPTER_TYPE,
           startedByUserId: OWNER_A,
@@ -2041,8 +1971,8 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
 
         // `runLogin`: the driver received the profile's command, and the
         // profile's parser produced the owner-visible prompt.
-        await waitForStatus(store, started.session.sessionId, companyId, "waiting_for_user");
-        const owner = await service.readOwnerSession(started.session.sessionId, companyId, OWNER_A);
+        await waitForStatus(store, started.session.sessionId, "waiting_for_user");
+        const owner = await service.readOwnerSession(started.session.sessionId, OWNER_A);
         expect(capturedCommands).toEqual(["custom-login-command"]);
         expect(owner?.prompt).toEqual(customPrompt);
 

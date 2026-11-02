@@ -5,7 +5,7 @@ import type { AuthSession, CurrentUserProfile, UpdateCurrentUserProfile } from "
 import { authApi } from "@/api/auth";
 import { assetsApi } from "@/api/assets";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
+import { useOrganization } from "../context/OrganizationContext";
 import { queryKeys } from "../lib/queryKeys";
 import { InboxAgentPolicyControl } from "@/components/InboxAgentPolicyControl";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,7 +22,7 @@ function deriveInitials(name: string) {
 
 export function ProfileSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { organization } = useOrganization();
   const queryClient = useQueryClient();
   const avatarInputId = useId();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -37,7 +37,7 @@ export function ProfileSettings() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Settings", href: "/company/settings" },
+      { label: "Settings", href: "/organization/settings" },
       { label: "Profile" },
     ]);
   }, [setBreadcrumbs]);
@@ -86,12 +86,8 @@ export function ProfileSettings() {
 
   const uploadAvatarMutation = useMutation({
     mutationFn: async (file: File) => {
-      if (!selectedCompanyId) {
-        throw new Error("Select an organization before uploading a profile avatar.");
-      }
 
       const asset = await assetsApi.uploadImage(
-        selectedCompanyId,
         file,
         `profiles/${sessionQuery.data?.user.id ?? "board-user"}`,
       );
@@ -135,9 +131,9 @@ export function ProfileSettings() {
   const currentImage = image.trim() || null;
   const initials = deriveInitials(currentName);
   const isSavingProfile = updateMutation.isPending || uploadAvatarMutation.isPending || removeAvatarMutation.isPending;
-  const uploadHint = selectedCompany
-    ? `Stored in Paperclip file storage for ${selectedCompany.name}.`
-    : "Select an organization to upload an avatar into Paperclip storage.";
+  const uploadHint = organization
+    ? `Stored in Paperclip file storage for ${organization.name}.`
+    : "Create an organization to upload an avatar into Paperclip storage.";
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -174,7 +170,7 @@ export function ProfileSettings() {
                     type="file"
                     accept="image/*"
                     className="sr-only"
-                    disabled={!selectedCompanyId || isSavingProfile}
+                    disabled={isSavingProfile}
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       if (!file) return;
@@ -196,7 +192,7 @@ export function ProfileSettings() {
                     type="button"
                     variant="secondary"
                     onClick={() => avatarInputRef.current?.click()}
-                    disabled={!selectedCompanyId || isSavingProfile}
+                    disabled={isSavingProfile}
                   >
                     {uploadAvatarMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Camera className="size-4" />}
                     {currentImage ? "Change photo" : "Upload photo"}
@@ -270,7 +266,7 @@ export function ProfileSettings() {
           </div>
         </form>
 
-        <InboxAgentPolicyControl companyId={selectedCompanyId} />
+        <InboxAgentPolicyControl />
       </section>
     </div>
   );

@@ -105,7 +105,6 @@ describe("issue thread interaction helpers", () => {
   it("formats successor-turn answer delivery with canonical prompts and labels", () => {
     const interaction = {
       id: "interaction-answers",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "ask_user_questions",
       status: "answered",
@@ -151,7 +150,6 @@ describe("issue thread interaction helpers", () => {
   it("summarizes task and question interactions", () => {
     expect(buildIssueThreadInteractionSummary({
       id: "interaction-1",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "suggest_tasks",
       status: "pending",
@@ -170,7 +168,6 @@ describe("issue thread interaction helpers", () => {
 
     expect(buildIssueThreadInteractionSummary({
       id: "interaction-accepted",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "suggest_tasks",
       status: "accepted",
@@ -194,7 +191,6 @@ describe("issue thread interaction helpers", () => {
 
     expect(buildIssueThreadInteractionSummary({
       id: "interaction-2",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "ask_user_questions",
       status: "pending",
@@ -217,7 +213,6 @@ describe("issue thread interaction helpers", () => {
 
     expect(buildIssueThreadInteractionSummary({
       id: "interaction-answered",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "ask_user_questions",
       status: "answered",
@@ -244,7 +239,6 @@ describe("issue thread interaction helpers", () => {
 
     expect(buildIssueThreadInteractionSummary({
       id: "interaction-expired",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "ask_user_questions",
       status: "expired",

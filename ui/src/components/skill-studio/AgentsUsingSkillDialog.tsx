@@ -46,11 +46,9 @@ type SkillChange =
  * stays declarative.
  */
 export function AgentsUsingSkillBadge({
-  companyId,
   skill,
   canManage = true,
 }: {
-  companyId: string;
   skill: CompanySkillDetail;
   canManage?: boolean;
 }) {
@@ -77,7 +75,6 @@ export function AgentsUsingSkillBadge({
       <AgentsUsingSkillDialog
         open={open}
         onOpenChange={setOpen}
-        companyId={companyId}
         skill={skill}
         canManage={canManage}
       />
@@ -95,13 +92,11 @@ export function AgentsUsingSkillBadge({
 export function AgentsUsingSkillDialog({
   open,
   onOpenChange,
-  companyId,
   skill,
   canManage = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  companyId: string;
   skill: CompanySkillDetail;
   canManage?: boolean;
 }) {
@@ -116,13 +111,13 @@ export function AgentsUsingSkillDialog({
   // never render a pin select, so their versions query stays disabled.
   const hasVersions = skill.currentVersion !== null;
   const versionsQuery = useQuery({
-    queryKey: queryKeys.companySkills.versions(companyId, skill.id),
-    queryFn: () => companySkillsApi.versions(companyId, skill.id),
+    queryKey: queryKeys.companySkills.versions(skill.id),
+    queryFn: () => companySkillsApi.versions(skill.id),
     enabled: open && hasVersions,
   });
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
     enabled: open,
   });
 
@@ -173,7 +168,7 @@ export function AgentsUsingSkillDialog({
       change: SkillChange;
     }) => {
       const skillKey = skill.key;
-      const snapshot = await agentsApi.skills(agent.id, companyId);
+      const snapshot = await agentsApi.skills(agent.id);
       // Prefer the richer entries payload; fall back to bare keys (versionId
       // null = tracks latest) for older snapshots.
       const currentEntries: AgentDesiredSkillEntry[] =
@@ -189,13 +184,13 @@ export function AgentsUsingSkillDialog({
       if (desiredSetsEqual(currentEntries, nextEntries)) {
         return { agentId: agent.id, changed: false };
       }
-      await agentsApi.syncSkills(agent.id, nextEntries, "replace", companyId);
+      await agentsApi.syncSkills(agent.id, nextEntries, "replace");
       return { agentId: agent.id, changed: true };
     },
     onSuccess: async ({ agentId }) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(companyId, skill.id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(skill.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list() }),
         // Keep the agent's own Skills tab (PAP-13194) in sync.
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.skills(agentId) }),
       ]);

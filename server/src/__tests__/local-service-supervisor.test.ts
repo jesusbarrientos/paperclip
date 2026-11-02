@@ -41,7 +41,7 @@ describe("local service supervision", () => {
     let registryRecord: Awaited<ReturnType<typeof listLocalServiceRegistryRecords>>[number] | null = null;
     try {
       const [service] = await startRuntimeServicesForWorkspaceControl({
-        actor: { id: null, name: "Board", companyId: randomUUID() },
+        actor: { id: null, name: "Board" },
         issue: null,
         workspace: {
           baseCwd: workspaceRoot,

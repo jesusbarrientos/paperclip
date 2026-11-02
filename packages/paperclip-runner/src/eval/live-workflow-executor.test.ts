@@ -161,7 +161,6 @@ describe("live workflow executor infrastructure failures", () => {
       actors: [
         {
           id: "actor-1",
-          companyId: "company-1",
           name: "Workflow eval actor",
           role: "engineer",
           status: "active",
@@ -175,7 +174,6 @@ describe("live workflow executor infrastructure failures", () => {
       identity: {
         runId: "delegation-parent",
         sessionId: "delegation-session",
-        companyId: "company-1",
         issueId: "task-1",
         agentId: "actor-1",
       },

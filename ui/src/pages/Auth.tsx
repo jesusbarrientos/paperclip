@@ -69,7 +69,7 @@ export function AuthPage() {
       // is not account-scoped, so invalidating leaves the previous account's list
       // readable (and any fetch for that session in flight) until the refetch lands.
       // Sign-in can change accounts, so drop the list outright.
-      await queryClient.resetQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.resetQueries({ queryKey: queryKeys.organization });
       navigate(nextPath, { replace: true });
     },
     onError: (err) => {

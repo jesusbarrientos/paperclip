@@ -9,7 +9,6 @@ import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent
 import { SummarySlotCard } from "../components/SummarySlotCard";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 import type { ProjectWorkspaceSummary } from "../lib/project-workspaces-tab";
 import { queryKeys } from "../lib/queryKeys";
 import { projectRouteRef } from "../lib/utils";
@@ -77,7 +76,6 @@ function buildProjectWorkspaceGroups(items: WorkspaceOverviewItem[]): ProjectWor
 }
 
 export function Workspaces() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const experimentalSettingsQuery = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
@@ -86,13 +84,11 @@ export function Workspaces() {
   const isolatedWorkspacesEnabled = experimentalSettingsQuery.data?.enableIsolatedWorkspaces === true;
 
   const overviewQuery = useInfiniteQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.executionWorkspaces.overview(selectedCompanyId)
-      : ["execution-workspaces", "__workspaces-overview__", "disabled"],
-    queryFn: ({ pageParam }) => executionWorkspacesApi.listOverview(selectedCompanyId!, { offset: pageParam as number }),
+    queryKey: queryKeys.executionWorkspaces.overview(),
+    queryFn: ({ pageParam }) => executionWorkspacesApi.listOverview({ offset: pageParam as number }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
-    enabled: Boolean(selectedCompanyId && isolatedWorkspacesEnabled),
+    enabled: Boolean(isolatedWorkspacesEnabled),
   });
 
   useEffect(() => {
@@ -122,7 +118,6 @@ export function Workspaces() {
       </div>
 
       <SummarySlotCard
-        companyId={selectedCompanyId}
         scopeKind="workspaces_overview"
         title="Workspace summary"
         description="Summarizer tracks workspace activity, live services, and follow-up needs across projects."
@@ -148,7 +143,6 @@ export function Workspaces() {
                 </span>
               </div>
               <ProjectWorkspacesContent
-                companyId={selectedCompanyId!}
                 projectId={group.projectId}
                 projectRef={group.projectRef}
                 summaries={group.summaries}

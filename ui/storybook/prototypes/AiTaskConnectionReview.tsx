@@ -11,7 +11,7 @@ import { storybookAgents } from "../fixtures/paperclipData";
 
 const initial: ConnectionIntentInteraction = {
   ...pendingConnectionIntentInteraction,
-  id: "ai-task-request", companyId: "company-storybook", addresseeUserId: "dotta",
+  id: "ai-task-request", addresseeUserId: "dotta",
   payload: { version: 1, purpose: "ai", serviceSlug: "anthropic", serviceName: "Claude", serviceLogoUrl: "/brands/claude-color.svg", requestingAgentId: "nova", requestingAgentName: "Nova", phase: "requested" },
 };
 

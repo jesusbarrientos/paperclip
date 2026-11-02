@@ -38,7 +38,6 @@ async function flushReact() {
 function event(id = "event-1", toolDisplayName = "Send Email") {
   return {
     id,
-    companyId: "company-1",
     action: "tool_gateway.call_completed",
     actorType: "gateway_client",
     actorId: "client-1",
@@ -96,7 +95,6 @@ describe("GatewayActivityPanel", () => {
       root.render(
         <QueryClientProvider client={client}>
           <GatewayActivityPanel
-            companyId="company-1"
             gateway={{ id: "gateway-1" } as ToolMcpGatewayWithTokens}
           />
         </QueryClientProvider>,
@@ -116,7 +114,7 @@ describe("GatewayActivityPanel", () => {
   it("filters by gateway and expands redacted call details", async () => {
     await render();
 
-    expect(listActivityMock).toHaveBeenCalledWith("company-1", {
+    expect(listActivityMock).toHaveBeenCalledWith({
       gateway: "gateway-1",
       window: "30d",
       limit: 25,
@@ -133,7 +131,7 @@ describe("GatewayActivityPanel", () => {
   });
 
   it("loads the next cursor page", async () => {
-    listActivityMock.mockImplementation((_companyId: string, params: { cursor?: string }) =>
+    listActivityMock.mockImplementation((params: { cursor?: string }) =>
       params.cursor === "cursor-2"
         ? Promise.resolve({ events: [event("event-2", "Read Email")], nextCursor: null })
         : Promise.resolve({ events: [event()], nextCursor: "cursor-2" }),

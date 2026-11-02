@@ -24,15 +24,11 @@ export async function recordNativeLocalProcessStop(db: Db, run: typeof heartbeat
   if (run.runtimeMode !== "native" || (!run.processPid && !run.processGroupId)) return false;
   const leases = await db.select({ provider: environmentLeases.provider })
     .from(environmentLeases)
-    .where(and(
-      eq(environmentLeases.companyId, run.companyId),
-      eq(environmentLeases.heartbeatRunId, run.id),
-    ));
+    .where(eq(environmentLeases.heartbeatRunId, run.id));
   if (leases.some(lease => lease.provider !== "local")) return false;
   if ((run.processPid && !absent(run.processPid)) ||
       (run.processGroupId && !absent(-run.processGroupId))) return false;
   await appendHeartbeatRunEvent(db, {
-    companyId: run.companyId,
     runId: run.id,
     agentId: run.agentId,
     eventType: LOCAL_PROCESS_STOPPED,
@@ -45,11 +41,10 @@ export async function recordNativeLocalProcessStop(db: Db, run: typeof heartbeat
 }
 
 /** Only server-authored evidence counts. A later launch invalidates the receipt. */
-export async function hasNativeLocalProcessStop(db: Db, companyId: string, runId: string) {
+export async function hasNativeLocalProcessStop(db: Db, runId: string) {
   const [event] = await db.select({ eventType: heartbeatRunEvents.eventType })
     .from(heartbeatRunEvents)
     .where(and(
-      eq(heartbeatRunEvents.companyId, companyId),
       eq(heartbeatRunEvents.runId, runId),
       isNull(heartbeatRunEvents.sourceEventId),
       inArray(heartbeatRunEvents.eventType, [PROCESS_START_REQUESTED, PROCESS_IDENTITY_RECORDED, LOCAL_PROCESS_STOPPED]),
@@ -68,7 +63,7 @@ export async function hasHistoricalSuspendedNativeSession(db: Db, run: typeof he
   if (run.runtimeMode !== "native" || run.processPid || run.processGroupId ||
       !run.nativeSessionId || !run.runnerInstanceId || !run.nativeIssueId) return false;
   const [modernProcessEvidence] = await db.select({ id: heartbeatRunEvents.id }).from(heartbeatRunEvents).where(and(
-    eq(heartbeatRunEvents.companyId, run.companyId), eq(heartbeatRunEvents.runId, run.id),
+    eq(heartbeatRunEvents.runId, run.id),
     isNull(heartbeatRunEvents.sourceEventId),
     inArray(heartbeatRunEvents.eventType, [PROCESS_START_REQUESTED, PROCESS_IDENTITY_RECORDED, LOCAL_PROCESS_STOPPED]),
   )).limit(1);
@@ -80,8 +75,7 @@ export async function hasHistoricalSuspendedNativeSession(db: Db, run: typeof he
       !checkpoint.providerSessionId.trim())) return false;
   const { nativeFailedRunRetryStateIsSafe } = await import("./native-runtime/native-session-executor.js");
   return nativeFailedRunRetryStateIsSafe({
-    execution: run.runnerProfileJson?.nativeExecutionInput,
-    companyId: run.companyId, issueId: run.nativeIssueId, agentId: run.agentId, runId: run.id,
+    execution: run.runnerProfileJson?.nativeExecutionInput, issueId: run.nativeIssueId, agentId: run.agentId, runId: run.id,
     nativeSessionId: run.nativeSessionId, runnerInstanceId: run.runnerInstanceId,
     processPid: null, processGroupId: null,
     providerSessionId: typeof checkpoint?.sessionId === "string" ? checkpoint.sessionId : null,
@@ -91,10 +85,10 @@ export async function hasHistoricalSuspendedNativeSession(db: Db, run: typeof he
 }
 
 /** Recover the exact stopped identity after the mutable run fields were cleared. */
-export async function readNativeLocalProcessStop(db: Db, companyId: string, runId: string) {
+export async function readNativeLocalProcessStop(db: Db, runId: string) {
   const [event] = await db.select({ eventType: heartbeatRunEvents.eventType, payload: heartbeatRunEvents.payload })
     .from(heartbeatRunEvents)
-    .where(and(eq(heartbeatRunEvents.companyId, companyId), eq(heartbeatRunEvents.runId, runId),
+    .where(and(eq(heartbeatRunEvents.runId, runId),
       isNull(heartbeatRunEvents.sourceEventId),
       inArray(heartbeatRunEvents.eventType, [PROCESS_START_REQUESTED, PROCESS_IDENTITY_RECORDED, LOCAL_PROCESS_STOPPED])))
     .orderBy(desc(heartbeatRunEvents.seq)).limit(1);

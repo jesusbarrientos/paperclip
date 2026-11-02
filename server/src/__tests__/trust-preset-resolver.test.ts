@@ -10,8 +10,6 @@ import {
   isIssueWithinLowTrustBoundary,
   resolveCoreTrustPreset,
 } from "../services/trust-preset-resolver.js";
-
-const companyId = "11111111-1111-4111-8111-111111111111";
 const otherCompanyId = "22222222-2222-4222-8222-222222222222";
 const projectA = "33333333-3333-4333-8333-333333333333";
 const projectB = "44444444-4444-4444-8444-444444444444";
@@ -26,7 +24,6 @@ const agentB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 function lowTrustBoundary(input: Partial<Omit<LowTrustBoundary, "mode">>): LowTrustBoundary {
   return {
     mode: LOW_TRUST_REVIEW_PRESET,
-    companyId,
     ...input,
   };
 }
@@ -42,8 +39,7 @@ function boundaryPolicy(boundary: ReturnType<typeof lowTrustBoundary>) {
 describe("resolveCoreTrustPreset", () => {
   it("defaults to standard with no boundary", () => {
     const result = resolveCoreTrustPreset({
-      companyId,
-      agent: { companyId, permissions: { canCreateAgents: false } },
+      agent: { permissions: { canCreateAgents: false } },
     });
 
     expect(result).toMatchObject({
@@ -55,9 +51,7 @@ describe("resolveCoreTrustPreset", () => {
 
   it("intersects low-trust agent, project, and issue policy boundaries", () => {
     const result = resolveCoreTrustPreset({
-      companyId,
       agent: {
-        companyId,
         permissions: {
           trustPreset: LOW_TRUST_REVIEW_PRESET,
           authorizationPolicy: {
@@ -73,7 +67,6 @@ describe("resolveCoreTrustPreset", () => {
         },
       },
       project: {
-        companyId,
         executionWorkspacePolicy: boundaryPolicy(lowTrustBoundary({
           projectIds: [projectB, projectC],
           issueIds: [issueB, issueC],
@@ -82,7 +75,6 @@ describe("resolveCoreTrustPreset", () => {
         })),
       },
       issue: {
-        companyId,
         executionPolicy: {
           authorizationPolicy: {
             trustBoundary: lowTrustBoundary({
@@ -97,7 +89,6 @@ describe("resolveCoreTrustPreset", () => {
     expect(result.kind).toBe("low_trust_review");
     if (result.kind !== "low_trust_review") throw new Error("expected low-trust result");
     expect(result.boundary).toMatchObject({
-      companyId,
       mode: LOW_TRUST_REVIEW_PRESET,
       rootIssueId,
       projectIds: [projectB],
@@ -105,15 +96,13 @@ describe("resolveCoreTrustPreset", () => {
       allowedAgentIds: [agentB],
       allowedToolClasses: ["git.read"],
     });
-    expect(isIssueWithinLowTrustBoundary(result.boundary, { companyId, id: issueB, projectId: projectB })).toBe(true);
-    expect(isIssueWithinLowTrustBoundary(result.boundary, { companyId, id: issueC, projectId: projectC })).toBe(false);
+    expect(isIssueWithinLowTrustBoundary(result.boundary, { id: issueB, projectId: projectB })).toBe(true);
+    expect(isIssueWithinLowTrustBoundary(result.boundary, { id: issueC, projectId: projectC })).toBe(false);
   });
 
   it("fails closed for unknown presets", () => {
     const result = resolveCoreTrustPreset({
-      companyId,
       agent: {
-        companyId,
         permissions: {
           trustPreset: "trusted_but_weird",
         },
@@ -129,9 +118,7 @@ describe("resolveCoreTrustPreset", () => {
 
   it("fails closed when low-trust has no concrete project or issue scope", () => {
     const result = resolveCoreTrustPreset({
-      companyId,
       agent: {
-        companyId,
         permissions: {
           trustPreset: LOW_TRUST_REVIEW_PRESET,
           authorizationPolicy: {
@@ -144,42 +131,6 @@ describe("resolveCoreTrustPreset", () => {
     expect(result).toMatchObject({
       kind: "denied",
       reason: "missing_low_trust_boundary_scope",
-    });
-  });
-
-  it("denies cross-company policy sources and boundaries", () => {
-    const sourceMismatch = resolveCoreTrustPreset({
-      companyId,
-      project: {
-        companyId: otherCompanyId,
-        executionWorkspacePolicy: boundaryPolicy(lowTrustBoundary({ projectIds: [projectA] })),
-      },
-    });
-    expect(sourceMismatch).toMatchObject({
-      kind: "denied",
-      reason: "cross_company_boundary",
-      source: "project",
-    });
-
-    const boundaryMismatch = resolveCoreTrustPreset({
-      companyId,
-      issue: {
-        companyId,
-        executionPolicy: {
-          authorizationPolicy: {
-            trustBoundary: {
-              mode: LOW_TRUST_REVIEW_PRESET,
-              companyId: otherCompanyId,
-              rootIssueId,
-            },
-          },
-        },
-      },
-    });
-    expect(boundaryMismatch).toMatchObject({
-      kind: "denied",
-      reason: "cross_company_boundary",
-      source: "issue",
     });
   });
 

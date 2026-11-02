@@ -48,21 +48,19 @@ describe("isolated task directories", () => {
   async function setup() {
     root = await mkdtemp(path.join(os.tmpdir(), "paperclip-isolated-task-"));
     vi.stubEnv("PAPERCLIP_HOME", root);
-    return { companyId: "company-1", issueId: "issue-1" };
+    return { issueId: "issue-1" };
   }
 
-  it("retains a task's files across turns without sharing them with another task or company", async () => {
+  it("retains a task's files across turns without sharing them with another task", async () => {
     const identity = await setup();
     const cwd = await materializeIsolatedTaskDirectory(identity);
     await writeFile(path.join(cwd, "notes.txt"), "private task output");
     expect(await materializeIsolatedTaskDirectory(identity)).toBe(cwd);
     expect(await readFile(path.join(cwd, "notes.txt"), "utf8")).toBe("private task output");
-    for (const other of [{ issueId: "issue-2" }, { companyId: "company-2" }]) {
-      const otherCwd = await materializeIsolatedTaskDirectory({ ...identity, ...other });
-      expect(otherCwd).not.toBe(cwd);
-      expect(otherCwd.startsWith(`${cwd}${path.sep}`)).toBe(false);
-      expect(await readdir(otherCwd)).toEqual([]);
-    }
+    const otherCwd = await materializeIsolatedTaskDirectory({ issueId: "issue-2" });
+    expect(otherCwd).not.toBe(cwd);
+    expect(otherCwd.startsWith(`${cwd}${path.sep}`)).toBe(false);
+    expect(await readdir(otherCwd)).toEqual([]);
   });
 
   it("rejects a symlink to another task's directory", async () => {

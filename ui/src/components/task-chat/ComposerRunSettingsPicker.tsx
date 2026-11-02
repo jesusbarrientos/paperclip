@@ -17,7 +17,6 @@ import {
 import "./composer-run-settings.css";
 
 interface Props {
-  companyId: string;
   assigneeValue: string;
   currentAssigneeValue: string;
   options: InlineEntityOption[];
@@ -80,7 +79,7 @@ function AnimatedBody({ children }: { children: ReactNode }) {
 }
 
 export function ComposerRunSettingsPicker({
-  companyId, assigneeValue, currentAssigneeValue, options, agents, overrides,
+  assigneeValue, currentAssigneeValue, options, agents, overrides,
   settings, onSettingsChange, onAssigneeChange, disabled = false, mobile: mobileProp, triggerRef, modelOptionsOverride, renderAssigneeIdentity,
   initialOpen = false, initialView = "settings", initialModelSearch = "", initialAssigneeSearch = "",
 }: Props) {
@@ -106,9 +105,9 @@ export function ComposerRunSettingsPicker({
   const poolId = binding?.mode === "router" ? binding.connectionId : undefined;
   const { data: fetchedModels = [], isPending: modelsPending } = useQuery({
     queryKey: agent && modelSupported
-      ? [...queryKeys.agents.adapterModels(companyId, agent.adapterType, agent.defaultEnvironmentId ?? null, provider), poolId ?? null]
+      ? [...queryKeys.agents.adapterModels(agent.adapterType, agent.defaultEnvironmentId ?? null, provider), poolId ?? null]
       : ["agents", "composer-models", "none"],
-    queryFn: () => agentsApi.adapterModels(companyId, agent!.adapterType, {
+    queryFn: () => agentsApi.adapterModels(agent!.adapterType, {
       environmentId: agent!.defaultEnvironmentId ?? null, provider, poolId,
     }),
     enabled: Boolean(agent && modelSupported && !modelOptionsOverride),
@@ -134,11 +133,11 @@ export function ComposerRunSettingsPicker({
   useEffect(() => {
     // Explicit drafts and task overrides take precedence over remembered effort.
     if (settings !== null || base.effort || !modelSupported) return;
-    const remembered = getLastComposerEffort(companyId);
+    const remembered = getLastComposerEffort();
     if (remembered && effortChoicesKey.split(",").includes(remembered)) {
       onSettingsChange({ ...base, effort: remembered });
     }
-  }, [companyId, agentId, model, modelSupported, settings, base.model, base.effort, base.fast, effortChoicesKey, onSettingsChange]);
+  }, [agentId, model, modelSupported, settings, base.model, base.effort, base.fast, effortChoicesKey, onSettingsChange]);
   const changed = Boolean(selected.model || selected.effort || selected.fast);
   const assigneeOptions = [{ id: "", label: "No assignee", searchText: "Unassigned" }, ...options.filter((item) => item.id !== "")];
   const filteredAgents = assigneeOptions.filter((item) => {
@@ -175,13 +174,13 @@ export function ComposerRunSettingsPicker({
   };
   const chooseModel = (value: string | null) => {
     const nextChoices = composerEfforts(agent, value ?? configuredModel, models.map((item) => item.id));
-    const preferred = selected.effort ?? getLastComposerEffort(companyId);
+    const preferred = selected.effort ?? getLastComposerEffort();
     onSettingsChange({ model: value, effort: preferred && nextChoices.includes(preferred) ? preferred : null, fast: false });
     setView("settings");
     setModelSearch("");
   };
   const reset = () => {
-    rememberComposerEffort(companyId, null);
+    rememberComposerEffort(null);
     onSettingsChange(DEFAULT_COMPOSER_RUN_SETTINGS);
   };
   const closeButton = mobile ? <DialogClose asChild><button type="button" aria-label="Close picker" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent"><X className="size-4" /></button></DialogClose> : null;
@@ -229,7 +228,7 @@ export function ComposerRunSettingsPicker({
         <input id="composer-run-effort" type="range" min={0} max={choices.length} step={1} value={effortIndex} aria-label={agent?.adapterType === "pi_local" ? "Thinking" : "Effort"} aria-valuetext={effortLabel}
           onChange={(event) => {
             const nextEffort = Number(event.target.value) === 0 ? null : choices[Number(event.target.value) - 1]!;
-            rememberComposerEffort(companyId, nextEffort);
+            rememberComposerEffort(nextEffort);
             onSettingsChange({ ...selected, effort: nextEffort });
           }}
           className="composer-run-effort-range mt-3 w-full" style={{ "--fill": `${effortIndex / choices.length * 100}%` } as CSSProperties} />

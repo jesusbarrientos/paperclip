@@ -6,16 +6,13 @@ vi.unmock("http");
 vi.unmock("node:http");
 
 // Tests that verify the write-path membership/role checks restored by Fix 1.
-// `assertCompanyAccess` (in authz.ts) must reject viewer-role users and
+// `assertOrgAccess` (in authz.ts) must reject viewer-role users and
 // inactive members on non-safe HTTP methods (POST/PUT/PATCH/DELETE), even when
-// `hasCompanyAccess` would let them through the 404 oracle gate.
-
-const companyId = "11111111-1111-4111-8111-111111111111";
+// `hasOrgAccess` would let them through the 404 oracle gate.
 const goalId = "22222222-2222-4222-8222-222222222222";
 
 const baseGoal = {
   id: goalId,
-  companyId,
   level: "company" as const,
   title: "Q3 goal",
   description: null,
@@ -125,11 +122,10 @@ describe("write-path membership checks (viewer / inactive)", () => {
     const viewerActor = {
       type: "board" as const,
       userId: "viewer-user",
-      companyIds: [companyId],
       source: "session" as const,
       isInstanceAdmin: false,
       memberships: [
-        { companyId, status: "active", membershipRole: "viewer" },
+        { status: "active", membershipRole: "viewer" },
       ],
     };
 
@@ -159,7 +155,7 @@ describe("write-path membership checks (viewer / inactive)", () => {
       const app = await createApp(viewerActor);
       const res = await requestApp(app, (baseUrl) =>
         request(baseUrl)
-          .post(`/api/companies/${companyId}/goals`)
+          .post(`/api/goals`)
           .send({ level: "company", title: "New goal" }),
       );
 
@@ -184,46 +180,43 @@ describe("write-path membership checks (viewer / inactive)", () => {
     const inactiveActor = {
       type: "board" as const,
       userId: "ex-employee",
-      companyIds: [companyId],
       source: "session" as const,
       isInstanceAdmin: false,
       memberships: [
-        { companyId, status: "removed", membershipRole: "editor" },
+        { status: "removed", membershipRole: "editor" },
       ],
     };
 
-    it("rejects PATCH on a goal with 403 'User does not have active company access'", async () => {
+    it("hides the goal from PATCH with 404", async () => {
       const app = await createApp(inactiveActor);
       const res = await requestApp(app, (baseUrl) =>
         request(baseUrl).patch(`/api/goals/${goalId}`).send({ title: "New title" }),
       );
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe("User does not have active company access");
+      expect(res.status).toBe(404);
       expect(mockGoalService.update).not.toHaveBeenCalled();
     });
 
-    it("rejects DELETE on a goal with 403 'User does not have active company access'", async () => {
+    it("hides the goal from DELETE with 404", async () => {
       const app = await createApp(inactiveActor);
       const res = await requestApp(app, (baseUrl) =>
         request(baseUrl).delete(`/api/goals/${goalId}`),
       );
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe("User does not have active company access");
+      expect(res.status).toBe(404);
       expect(mockGoalService.remove).not.toHaveBeenCalled();
     });
 
-    it("rejects POST on a company's goals with 403 'User does not have active company access'", async () => {
+    it("rejects POST on goals with 403 'User is not an active member of this organization'", async () => {
       const app = await createApp(inactiveActor);
       const res = await requestApp(app, (baseUrl) =>
         request(baseUrl)
-          .post(`/api/companies/${companyId}/goals`)
+          .post(`/api/goals`)
           .send({ level: "company", title: "New goal" }),
       );
 
       expect(res.status).toBe(403);
-      expect(res.body.error).toBe("User does not have active company access");
+      expect(res.body.error).toBe("User is not an active member of this organization");
       expect(mockGoalService.create).not.toHaveBeenCalled();
     });
   });
@@ -232,11 +225,10 @@ describe("write-path membership checks (viewer / inactive)", () => {
     const editorActor = {
       type: "board" as const,
       userId: "editor-user",
-      companyIds: [companyId],
       source: "session" as const,
       isInstanceAdmin: false,
       memberships: [
-        { companyId, status: "active", membershipRole: "editor" },
+        { status: "active", membershipRole: "editor" },
       ],
     };
 

@@ -38,36 +38,28 @@ describeEmbeddedPostgres("export fidelity counts", () => {
     await tempDb?.cleanup();
   });
 
-  it("counts labels, label references, blocker relations, and monitors scoped to the company", async () => {
-    const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
-    await seedCompany(companyId);
-    await seedCompany(otherCompanyId);
+  it("counts labels, label references, blocker relations, and monitors", async () => {
+    await seedCompany();
 
     const issueA = randomUUID();
     const issueB = randomUUID();
-    const otherIssue = randomUUID();
     await db.insert(issues).values([
-      issueRow({ id: issueA, companyId, identifier: "LOCAL-1" }),
-      issueRow({ id: issueB, companyId, identifier: "LOCAL-2", monitorScheduledBy: "agent" }),
-      issueRow({ id: otherIssue, companyId: otherCompanyId, identifier: "OTHER-1", monitorScheduledBy: "agent" }),
+      issueRow({ id: issueA, identifier: "LOCAL-1" }),
+      issueRow({ id: issueB, identifier: "LOCAL-2", monitorScheduledBy: "agent" }),
     ]);
 
     const labelId = randomUUID();
-    const otherLabelId = randomUUID();
     await db.insert(labels).values([
-      { id: labelId, companyId, name: "bug", color: "#ff0000" },
-      { id: otherLabelId, companyId: otherCompanyId, name: "bug", color: "#00ff00" },
+      { id: labelId, name: "bug", color: "#ff0000" },
     ]);
     await db.insert(issueLabels).values([
-      { issueId: issueA, labelId, companyId },
-      { issueId: otherIssue, labelId: otherLabelId, companyId: otherCompanyId },
+      { issueId: issueA, labelId },
     ]);
     await db.insert(issueRelations).values([
-      { companyId, issueId: issueA, relatedIssueId: issueB, type: "blocks" as const },
+      { issueId: issueA, relatedIssueId: issueB, type: "blocks" as const },
     ]);
 
-    const counts = await collectExportFidelityCounts(db, companyId);
+    const counts = await collectExportFidelityCounts(db);
     expect(counts).toEqual({
       labelDefinitions: 1,
       issueLabelReferences: 1,
@@ -80,25 +72,18 @@ describeEmbeddedPostgres("export fidelity counts", () => {
       activityLogEntries: 0,
       issueMonitors: 1,
     });
-
-    const otherCounts = await collectExportFidelityCounts(db, otherCompanyId);
-    expect(otherCounts.labelDefinitions).toBe(1);
-    expect(otherCounts.issueBlockerRelations).toBe(0);
-    expect(otherCounts.issueMonitors).toBe(1);
   });
 
   it("builds a report whose warnings reflect the collected counts", async () => {
-    const companyId = randomUUID();
-    await seedCompany(companyId);
+    await seedCompany();
     const issueId = randomUUID();
-    await db.insert(issues).values([issueRow({ id: issueId, companyId, identifier: "LOCAL-1" })]);
+    await db.insert(issues).values([issueRow({ id: issueId, identifier: "LOCAL-1" })]);
     const labelId = randomUUID();
-    await db.insert(labels).values([{ id: labelId, companyId, name: "bug", color: "#ff0000" }]);
-    await db.insert(issueLabels).values([{ issueId, labelId, companyId }]);
+    await db.insert(labels).values([{ id: labelId, name: "bug", color: "#ff0000" }]);
+    await db.insert(issueLabels).values([{ issueId, labelId }]);
 
-    const report = buildExportFidelityReport(companyId, await collectExportFidelityCounts(db, companyId));
+    const report = buildExportFidelityReport(await collectExportFidelityCounts(db));
     expect(report.schema).toBe("paperclip-export-fidelity-v1");
-    expect(report.companyId).toBe(companyId);
     // Labels travel in the bundle now, so their counts stay informational.
     expect(report.counts.labelDefinitions).toBe(1);
     expect(report.counts.issueLabelReferences).toBe(1);
@@ -106,7 +91,8 @@ describeEmbeddedPostgres("export fidelity counts", () => {
     expect(Date.parse(report.generatedAt)).not.toBeNaN();
   });
 
-  async function seedCompany(companyId: string) {
+  async function seedCompany() {
+    const companyId = randomUUID();
     await db.insert(companies).values({
       id: companyId,
       name: "Paperclip",
@@ -115,7 +101,8 @@ describeEmbeddedPostgres("export fidelity counts", () => {
     });
   }
 
-  function issueRow(overrides: { id: string; companyId: string; identifier: string; monitorScheduledBy?: string }) {
+  function issueRow(overrides: { id: string;
+ identifier: string; monitorScheduledBy?: string }) {
     return {
       description: "",
       status: "todo",

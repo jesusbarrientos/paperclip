@@ -15,17 +15,18 @@ export function isLowTrustRuntimeManagementAllowed(resolution: TrustPresetResolu
     (resolution.boundary.allowedToolClasses ?? []).includes(LOW_TRUST_RUNTIME_MANAGEMENT_TOOL_CLASS);
 }
 
-async function issueIdIsDescendantOf(db: Db, issueId: string, rootIssueId: string, companyId: string) {
+async function issueIdIsDescendantOf(db: Db, issueId: string, rootIssueId: string) {
   let cursor: string | null = issueId;
   // Keep the runtime preflight aligned with authorization while bounding DB work.
   for (let depth = 0; cursor && depth < LOW_TRUST_ISSUE_ANCESTRY_MAX_DEPTH; depth += 1) {
     if (cursor === rootIssueId) return true;
-    const row: { id: string; companyId: string; parentId: string | null } | null = await db
-      .select({ id: issues.id, companyId: issues.companyId, parentId: issues.parentId })
+    const row: { id: string;
+ parentId: string | null } | null = await db
+      .select({ id: issues.id, parentId: issues.parentId })
       .from(issues)
       .where(eq(issues.id, cursor))
       .then((rows) => rows[0] ?? null);
-    if (!row || row.companyId !== companyId) return false;
+    if (!row) return false;
     cursor = row.parentId;
   }
   return false;
@@ -34,11 +35,11 @@ async function issueIdIsDescendantOf(db: Db, issueId: string, rootIssueId: strin
 async function workspaceIssueWithinLowTrustBoundary(input: {
   db?: Db;
   boundary: Extract<TrustPresetResolution, { kind: "low_trust_review" }>["boundary"];
-  issue: { companyId: string; id?: string | null; projectId?: string | null };
+  issue: { id?: string | null; projectId?: string | null };
 }) {
   if (isIssueWithinLowTrustBoundary(input.boundary, input.issue)) return true;
   if (!input.db || !input.issue.id || !input.boundary.rootIssueId) return false;
-  return issueIdIsDescendantOf(input.db, input.issue.id, input.boundary.rootIssueId, input.boundary.companyId);
+  return issueIdIsDescendantOf(input.db, input.issue.id, input.boundary.rootIssueId);
 }
 
 export async function assertLowTrustWorkspaceIsolation(input: {
@@ -47,7 +48,7 @@ export async function assertLowTrustWorkspaceIsolation(input: {
   isolatedWorkspacesEnabled: boolean;
   effectiveExecutionWorkspaceMode: string | null | undefined;
   selectedEnvironmentDriver: string | null | undefined;
-  issue: { companyId: string; id?: string | null; projectId?: string | null } | null;
+  issue: { id?: string | null; projectId?: string | null } | null;
 }) {
   if (input.resolution.kind === "denied") {
     throw unprocessable(input.resolution.detail, {
@@ -69,7 +70,7 @@ export async function assertLowTrustWorkspaceIsolation(input: {
   }
   if (
     !input.issue ||
-    !(input.resolution.humanDirectedIssueId && input.issue.companyId === input.resolution.boundary.companyId &&
+    !(input.resolution.humanDirectedIssueId &&
       input.issue.id === input.resolution.humanDirectedIssueId) &&
     !(await workspaceIssueWithinLowTrustBoundary({
       db: input.db,

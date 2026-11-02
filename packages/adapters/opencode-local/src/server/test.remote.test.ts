@@ -111,7 +111,6 @@ describe("opencode remote environment diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "opencode_local",
       config: {
         command: "opencode",

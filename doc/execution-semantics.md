@@ -400,9 +400,9 @@ Document-scoped activity may still route work when it is converted into an expli
 
 Freeform document approval text is not auto-acceptance. Plan approval, implementation approval, or review acceptance must flow through the explicit interaction, approval, execution-policy, assignment, or blocker primitives that define who owns the next move.
 
-An interaction can be created by a run on another task in the same company, or by a run with no task. That run records the interaction's origin; its comments and results do not become context for the target task. Explicit resume and retry history takes precedence and must belong to the target task.
+An interaction can be created by a run on another task, or by a run with no task. That run records the interaction's origin; its comments and results do not become context for the target task. Explicit resume and retry history takes precedence and must belong to the target task.
 
-New interactions exclude known comments from other tasks when recording their origins. At dispatch, older interactions may discard a copied origin only when both the producer's saved context and a comment on that producer's other task prove where it came from. Missing records, cross-company references, explicit wake comments, and unrelated origins still fail closed.
+New interactions exclude known comments from other tasks when recording their origins. At dispatch, older interactions may discard a copied origin only when both the producer's saved context and a comment on that producer's other task prove where it came from. Missing records, explicit wake comments, and unrelated origins still fail closed.
 
 ### Comment interrupts and ownership handoffs
 
@@ -436,7 +436,7 @@ For adapter-backed execution, an active run or queued wake counts as a live path
 
 A workspace-coherent adapter path means:
 
-- the selected `executionWorkspaceId`, `projectWorkspaceId`, `projectId`, source issue, and company all refer to the same company-scoped work context
+- the selected `executionWorkspaceId`, `projectWorkspaceId`, `projectId`, source issue, all refer to the same work context
 - any `projectWorkspaceId` is accompanied by the owning `projectId`, and that project relationship is unambiguous
 - the adapter will receive the same effective workspace/cwd that Paperclip resolved for the run, including the same workspace ids and `PAPERCLIP_WORKSPACE_*` environment values
 - the effective cwd exists or is provider-reachable, according to the workspace provider
@@ -446,7 +446,7 @@ Adapter-backed liveness also requires control-plane reachability from the agent'
 
 For sandbox-backed local adapters, Paperclip may satisfy that contract with a run-scoped in-sandbox bridge. The host adapter keeps the real run JWT on the host side, injects only the bridge URL/token into the sandbox tool environment, and forwards allowed Paperclip API requests with the run id attached. The bridge credentials are execution plumbing, not user-facing context: they must not be written into prompts, visible comments, issue documents, restored workspace files, or durable logs. Agents and skills must use the env vars available in Bash/curl rather than assuming that the host's localhost API URL is reachable from browser or web-extraction tools inside the sandbox.
 
-The state `projectWorkspaceId` plus `executionWorkspaceId` without `projectId` is invalid for project-scoped execution. Paperclip may treat it as recoverable only when it can derive exactly one owning project from the execution workspace, project workspace, or source issue in the same company and then repair the persisted state before delivery. If the owning project is missing, ambiguous, or cross-company, the queued adapter run must not be counted as a live path.
+The state `projectWorkspaceId` plus `executionWorkspaceId` without `projectId` is invalid for project-scoped execution. Paperclip may treat it as recoverable only when it can derive exactly one owning project from the execution workspace, project workspace, or source issue and then repair the persisted state before delivery. If the owning project is missing or ambiguous, the queued adapter run must not be counted as a live path.
 
 Workspace incoherence feeds into the same non-terminal liveness and stranded assigned-work model as a disappeared run. The recovery path should first fail or reject the incoherent wake, then either repair and requeue one bounded continuation for the same assignee or surface an explicit recovery action. It must not leave an agent-owned `in_progress` issue healthy solely because a wake record exists that would invoke the adapter in the wrong cwd, a non-git directory where git is required, an unrelated project workspace, or an unrecoverable missing worktree.
 
@@ -772,7 +772,7 @@ legacy rows are marked `legacy_inherited_restriction` and retain their old
 restriction: `board_or_agents` becomes `not_creator`, not `anyone`, while
 `board_only` becomes `human_only`. Pending cards are never silently widened.
 
-Resolution is exact-once and requires issue access in the same company. Agent
+Resolution is exact-once and requires issue access. Agent
 resolution also requires valid run attribution and remains subject to low-trust
 and task-bridge containment. Target freshness and supersession are checked before
 the outcome commits. Resolution records an answer; every continuation, task
@@ -791,7 +791,7 @@ Keep the three watchdog/recovery concepts separate:
 
 ### Configuration and scan scope
 
-A source issue may have at most one active task watchdog configuration. The configuration names a same-company, invokable watchdog agent and optional custom instructions.
+A source issue may have at most one active task watchdog configuration. The configuration names an invokable watchdog agent and optional custom instructions.
 
 The scan scope is:
 
@@ -852,7 +852,7 @@ containment, target freshness, and exact-once state.
 This does not give a watchdog downstream authority. Linked/formal approvals remain
 separate, execution-policy decisions still require the typed participant, and an
 accepted interaction cannot authorize spend, hiring, secrets, deployment,
-destructive data changes, cross-company work, or any mutation the watchdog scope
+destructive data changes, or any mutation the watchdog scope
 otherwise forbids.
 
 ### Completion and fingerprint updates
@@ -912,7 +912,7 @@ The active-run cleanup scan is source-aware. It re-reads the linked source issue
 
 Fold watchdog work when all of these are true:
 
-- the run is linked to a source issue in the same company
+- the run is linked to a source issue
 - the source issue is terminal (`done` or `cancelled`)
 - durable source activity from the same run proves the source issue reached that terminal disposition after the stale-run or output-silence evidence point
 - there is no independent evidence that the still-running or detached process is doing harmful work, still owns external cleanup that needs an operator decision, or needs a separate security/ownership review
@@ -1413,7 +1413,7 @@ and retains the queued input for continuation.
 An agent handoff carries the interrupted run's authorized task history, completed
 semantic actions, and available result summary to the replacement agent. The
 replacement must inspect existing files and preserve completed content before
-editing. Source history is still scoped to the same company and task; prior
+editing. Source history is still scoped to the same task; prior
 results are untrusted evidence, not instructions or new authorization.
 Saved task comments move into that successor's delivery receipt in the same
 transaction that queues it. Their original authors remain intact. A former
@@ -1591,7 +1591,7 @@ crash may leave it behind. The in-process claim ends when the callback joins and
 is empty after restart, with no expiry that can misclassify a slow export. This
 read-only presentation check never grants takeover authority. It remains authoritative while
 the original heartbeat still records its previous failure. Completed operations,
-unrelated runs, and other companies do not establish activity. These retries do
+and unrelated runs do not establish activity. These retries do
 not require or synthesize a legacy `scheduledRetryReason`.
 
 The card describes recovery of the existing run. It does not describe a fresh

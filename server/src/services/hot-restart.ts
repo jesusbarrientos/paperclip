@@ -18,7 +18,6 @@ type ProcessStatReader = (target: string) => Promise<{ ctimeMs: number }>;
 
 export type HotRestartIntentRun = {
   runId: string;
-  companyId: string;
   agentId: string;
   adapterType: string;
   status: string;
@@ -394,14 +393,12 @@ function isSameHotRestartRequest(left: HotRestartIntent, right: HotRestartIntent
 function parseRun(value: unknown): HotRestartIntentRun | null {
   if (!isRecord(value)) return null;
   const runId = asString(value.runId);
-  const companyId = asString(value.companyId);
   const agentId = asString(value.agentId);
   const adapterType = asString(value.adapterType);
   const status = asString(value.status);
-  if (!runId || !companyId || !agentId || !adapterType || !status) return null;
+  if (!runId || !agentId || !adapterType || !status) return null;
   return {
     runId,
-    companyId,
     agentId,
     adapterType,
     status,

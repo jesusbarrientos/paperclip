@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PluginRecord } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { AlertTriangle, FlaskConical, Plus, Power, Puzzle, Settings, Trash } from "lucide-react";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { pluginsApi } from "@/api/plugins";
 import { queryKeys } from "@/lib/queryKeys";
@@ -86,7 +86,7 @@ function ExperimentalBadge() {
  * @see doc/plugins/PLUGIN_SPEC.md §3 — Plugin Lifecycle for status semantics.
  */
 export function PluginManager() {
-  const { selectedCompany } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
@@ -99,11 +99,11 @@ export function PluginManager() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Organization", href: "/dashboard" },
-      { label: "Settings", href: "/company/settings" },
+      { label: organization?.name ?? "Organization", href: "/dashboard" },
+      { label: "Settings", href: "/organization/settings" },
       { label: "Plugins" },
     ]);
-  }, [selectedCompany?.name, setBreadcrumbs]);
+  }, [organization?.name, setBreadcrumbs]);
 
   const { data: plugins, isLoading, error } = useQuery({
     queryKey: queryKeys.plugins.all,
@@ -322,7 +322,7 @@ export function PluginManager() {
                             </Button>
                           )}
                           <Button variant="outline" size="sm" asChild>
-                            <Link to={`/company/settings/instance/plugins/${installedPlugin.id}`}>
+                            <Link to={`/organization/settings/instance/plugins/${installedPlugin.id}`}>
                               {installedPlugin.status === "ready" ? "Open Settings" : "Review"}
                             </Link>
                           </Button>
@@ -376,7 +376,7 @@ export function PluginManager() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
-                        to={`/company/settings/instance/plugins/${plugin.id}`}
+                        to={`/organization/settings/instance/plugins/${plugin.id}`}
                         className="font-medium hover:underline truncate block"
                         title={plugin.manifestJson.displayName ?? plugin.packageName}
                       >
@@ -480,7 +480,7 @@ export function PluginManager() {
                         </Button>
                       </div>
                       <Button variant="outline" size="sm" className="mt-2 h-8" asChild>
-                        <Link to={`/company/settings/instance/plugins/${plugin.id}`}>
+                        <Link to={`/organization/settings/instance/plugins/${plugin.id}`}>
                           <Settings className="h-4 w-4" />
                           Configure
                         </Link>

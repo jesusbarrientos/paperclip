@@ -13,14 +13,13 @@ import type {
 import { EnvironmentVariablesEditor } from "@/components/environment-variables-editor";
 import { RoutineHistoryTab } from "@/components/RoutineHistoryTab";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { storybookCompanies, storybookSecrets } from "../fixtures/paperclipData";
 
 const COMPANY_ID = "company-storybook";
 
 if (typeof window !== "undefined") {
-  window.localStorage.setItem("paperclip.selectedCompanyId", COMPANY_ID);
 }
 
 function StorybookRoutineFixtures({
@@ -31,18 +30,10 @@ function StorybookRoutineFixtures({
   children: ReactNode;
 }) {
   const queryClient = useQueryClient();
-  queryClient.setQueryData(queryKeys.companies.all, { companies: storybookCompanies, unauthorized: false });
-  queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), storybookSecrets);
+  queryClient.setQueryData(queryKeys.organization, storybookCompanies[0]);
+  queryClient.setQueryData(queryKeys.secrets.list(), storybookSecrets);
   queryClient.setQueryData(queryKeys.routines.revisions("routine-storybook"), revisions);
 
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
-  useEffect(() => {
-    if (selectedCompanyId !== COMPANY_ID) {
-      setSelectedCompanyId(COMPANY_ID);
-    }
-  }, [selectedCompanyId, setSelectedCompanyId]);
-
-  if (selectedCompanyId !== COMPANY_ID) return null;
   return <>{children}</>;
 }
 
@@ -145,7 +136,6 @@ function makeSnapshot(env: RoutineEnvConfig | null): RoutineRevisionSnapshotV1 {
     version: 1,
     routine: {
       id: "routine-storybook",
-      companyId: COMPANY_ID,
       projectId: null,
       goalId: null,
       parentIssueId: null,
@@ -169,7 +159,6 @@ function makeSnapshot(env: RoutineEnvConfig | null): RoutineRevisionSnapshotV1 {
 function makeRoutine(latestRevisionId: string, latestRevisionNumber: number): Routine {
   return {
     id: "routine-storybook",
-    companyId: COMPANY_ID,
     projectId: null,
     goalId: null,
     parentIssueId: null,
@@ -207,7 +196,6 @@ export const HistoryDiffWithEnv: Story = {
     const revisions: RoutineRevision[] = [
       {
         id: "rev-2",
-        companyId: COMPANY_ID,
         routineId: "routine-storybook",
         revisionNumber: 2,
         title: "Nightly digest",
@@ -225,7 +213,6 @@ export const HistoryDiffWithEnv: Story = {
       },
       {
         id: "rev-1",
-        companyId: COMPANY_ID,
         routineId: "routine-storybook",
         revisionNumber: 1,
         title: "Nightly digest",

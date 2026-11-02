@@ -44,18 +44,16 @@ function statusVariant(status: ToolProfileWithDetails["status"]): "default" | "s
 }
 
 export function ProfilesIndex({
-  companyId,
   initialStatusFilter,
   initialResolverOpen,
 }: {
-  companyId: string;
   initialStatusFilter?: "active" | "archived";
   initialResolverOpen?: boolean;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const { profiles, agents } = useProfilesData(companyId);
+  const { profiles, agents } = useProfilesData();
   const [resolverOpen, setResolverOpen] = useState(Boolean(initialResolverOpen));
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">(initialStatusFilter ?? "active");
   const [actionDialog, setActionDialog] = useState<{
@@ -73,7 +71,7 @@ export function ProfilesIndex({
   );
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.tools.profiles(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tools.profiles() });
     queryClient.invalidateQueries({ queryKey: queryKeys.tools.testAgentAccesses() });
   };
 
@@ -148,7 +146,7 @@ export function ProfilesIndex({
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col p-4">
-          <EffectiveAgentPanel companyId={companyId} agentOptions={agentOptions} />
+          <EffectiveAgentPanel agentOptions={agentOptions} />
         </div>
       </SheetContent>
     </Sheet>

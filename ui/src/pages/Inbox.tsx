@@ -20,7 +20,6 @@ import {
   type BlockedInboxGroupBy,
   type BlockedInboxSort,
 } from "../lib/blockedInbox";
-import { useCompany } from "../context/CompanyContext";
 import { useToastActions } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
@@ -226,22 +225,17 @@ function normalizeInboxCollectionViewState(value: unknown): StreamlinedInboxView
   };
 }
 
-function inboxCollectionPreferenceLocation(
-  companyId: string | null | undefined,
-): TaskCollectionPreferenceLocation {
+function inboxCollectionPreferenceLocation(): TaskCollectionPreferenceLocation {
   return {
-    companyId: companyId ?? "__unscoped__",
     collectionKey: INBOX_COLLECTION_KEY,
-    legacyViewStorageKey: companyId
-      ? `${INBOX_FILTER_PREFERENCES_KEY_PREFIX}:${companyId}`
-      : undefined,
+    legacyViewStorageKey: INBOX_FILTER_PREFERENCES_KEY_PREFIX,
     legacyColumnsStorageKey: INBOX_ISSUE_COLUMNS_KEY,
   };
 }
 
-function loadInboxCollectionPreferences(companyId: string | null | undefined) {
+function loadInboxCollectionPreferences() {
   return loadTaskCollectionPreferences({
-    ...inboxCollectionPreferenceLocation(companyId),
+    ...inboxCollectionPreferenceLocation(),
     defaultViewState: DEFAULT_INBOX_FILTER_PREFERENCES,
     defaultColumns: DEFAULT_INBOX_ISSUE_COLUMNS,
     normalizeViewState: normalizeInboxCollectionViewState,
@@ -336,7 +330,6 @@ export function formatJoinRequestInboxLabel(
   if (requesterId) return requesterId;
   return "Human join request";
 }
-
 
 type NonIssueUnreadState = "visible" | "fading" | "hidden" | null;
 
@@ -819,7 +812,6 @@ function StreamlinedInbox({
   surfaceLabel = "Inbox",
 }: InboxSurfaceProps) {
   const streamlinedUiEnabled = true;
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { openNewIssue } = useDialogActions();
   const { isMobile } = useSidebar();
@@ -837,16 +829,16 @@ function StreamlinedInbox({
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedSearchQuery = searchQuery.trim();
   const [filterPreferences, setFilterPreferences] = useState<StreamlinedInboxViewState>(
-    () => loadInboxCollectionPreferences(selectedCompanyId).viewState,
+    () => loadInboxCollectionPreferences().viewState,
   );
   const [groupBy, setGroupBy] = useState<InboxWorkItemGroupBy>(() => loadInboxWorkItemGroupBy());
   const [blockedGroupBy, setBlockedGroupBy] = useState<BlockedInboxGroupBy>("none");
   const [blockedSortBy, setBlockedSortBy] = useState<BlockedInboxSort>("most_recent");
   const [visibleIssueColumns, setVisibleIssueColumns] = useState<InboxIssueColumn[]>(
-    () => loadInboxCollectionPreferences(selectedCompanyId).columns,
+    () => loadInboxCollectionPreferences().columns,
   );
   const { dismissed: dismissedAlerts, dismiss: dismissAlert } = useDismissedInboxAlerts();
-  const { dismissedAtByKey, dismiss: dismissInboxItem } = useInboxDismissals(selectedCompanyId);
+  const { dismissedAtByKey, dismiss: dismissInboxItem } = useInboxDismissals();
   const { readItems, markRead: markItemRead, markUnread: markItemUnread } = useReadInboxItems();
   const { allCategoryFilter, allApprovalFilter, issueFilters } = filterPreferences;
 
@@ -877,29 +869,24 @@ function StreamlinedInbox({
   });
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
   const { data: labels } = useQuery({
-    queryKey: queryKeys.issues.labels(selectedCompanyId!),
-    queryFn: () => issuesApi.listLabels(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
   });
   const isolatedWorkspacesEnabled = experimentalSettings?.enableIsolatedWorkspaces === true;
   const externalObjectsEnabled = experimentalSettings?.enableExternalObjects === true;
   const { data: executionWorkspaces = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.executionWorkspaces.summaryList(selectedCompanyId)
-      : ["execution-workspaces", "__disabled__"],
-    queryFn: () => executionWorkspacesApi.listSummaries(selectedCompanyId!),
-    enabled: !!selectedCompanyId && isolatedWorkspacesEnabled,
+    queryKey: queryKeys.executionWorkspaces.summaryList(),
+    queryFn: () => executionWorkspacesApi.listSummaries(),
+    enabled: isolatedWorkspacesEnabled,
   });
 
   useEffect(() => {
@@ -912,36 +899,24 @@ function StreamlinedInbox({
     setSearchQuery("");
   }, [tab]);
 
-  const previousSelectedCompanyIdRef = useRef<string | null>(selectedCompanyId);
-  useEffect(() => {
-    if (previousSelectedCompanyIdRef.current !== selectedCompanyId) {
-      previousSelectedCompanyIdRef.current = selectedCompanyId;
-      const preferences = loadInboxCollectionPreferences(selectedCompanyId);
-      setFilterPreferences(preferences.viewState);
-      setVisibleIssueColumns(preferences.columns);
-      setCollapsedGroupKeys(loadCollapsedInboxGroupKeys(selectedCompanyId));
-      setCollapsedInboxParents(loadCollapsedInboxParentIds(selectedCompanyId));
-    }
-  }, [selectedCompanyId]);
 
   const {
     data: approvals,
     isLoading: isApprovalsLoading,
     error: approvalsError,
   } = useQuery({
-    queryKey: queryKeys.approvals.list(selectedCompanyId!),
-    queryFn: () => approvalsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.approvals.list(),
+    queryFn: () => approvalsApi.list(),
   });
 
   const {
     data: joinRequests = [],
     isLoading: isJoinRequestsLoading,
   } = useQuery({
-    queryKey: queryKeys.access.joinRequests(selectedCompanyId!),
+    queryKey: queryKeys.access.joinRequests(),
     queryFn: async () => {
       try {
-        return await accessApi.listJoinRequests(selectedCompanyId!, "pending_approval");
+        return await accessApi.listJoinRequests("pending_approval");
       } catch (err) {
         if (err instanceof ApiError && (err.status === 403 || err.status === 401)) {
           return [];
@@ -949,40 +924,33 @@ function StreamlinedInbox({
         throw err;
       }
     },
-    enabled: !!selectedCompanyId,
     retry: false,
   });
 
-  const dashboardQueryKey = queryKeys.dashboard(selectedCompanyId!);
+  const dashboardQueryKey = queryKeys.dashboard();
   const sharedDashboard = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "dashboard",
     queryKey: dashboardQueryKey,
-    enabled: !!selectedCompanyId,
   });
   const { data: dashboard, isLoading: isDashboardLoading, dataUpdatedAt: dashboardUpdatedAt } = useQuery({
     queryKey: dashboardQueryKey,
-    queryFn: () => dashboardApi.summary(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryFn: () => dashboardApi.summary(),
   });
   usePublishSharedQueryData(sharedDashboard, dashboard, dashboardUpdatedAt);
 
-  const inboxIssuesQueryKey = [...queryKeys.issues.list(selectedCompanyId!), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const;
+  const inboxIssuesQueryKey = [...queryKeys.issues.list(), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const;
   const sharedInboxIssues = useSharedPollingQuery<Issue[]>({
-    companyId: selectedCompanyId,
     resourceKey: "inbox:issues",
     queryKey: inboxIssuesQueryKey,
-    enabled: !!selectedCompanyId,
   });
   const { data: issues, isLoading: isIssuesLoading, dataUpdatedAt: issuesUpdatedAt } = useQuery({
     queryKey: inboxIssuesQueryKey,
     queryFn: () =>
-      issuesApi.listCompact(selectedCompanyId!, {
+      issuesApi.listCompact({
         includeRoutineExecutions: true,
         includeLiveDescendantSummary: true,
         limit: INBOX_ISSUE_LIST_LIMIT,
       }).then((rows) => rows as Issue[]),
-    enabled: !!selectedCompanyId,
     refetchOnWindowFocus: false,
     staleTime: INBOX_HOT_PATH_STALE_MS,
   });
@@ -992,9 +960,9 @@ function StreamlinedInbox({
     isLoading: isMineIssuesLoading,
     dataUpdatedAt: mineIssuesUpdatedAt,
   } = useQuery({
-    queryKey: [...queryKeys.issues.listMineByMe(selectedCompanyId!), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const,
+    queryKey: [...queryKeys.issues.listMineByMe(), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const,
     queryFn: () =>
-      issuesApi.listCompact(selectedCompanyId!, {
+      issuesApi.listCompact({
         touchedByUserId: "me",
         inboxArchivedByUserId: "me",
         status: INBOX_MINE_ISSUE_STATUS_FILTER,
@@ -1002,16 +970,13 @@ function StreamlinedInbox({
         includeLiveDescendantSummary: true,
         limit: INBOX_ISSUE_LIST_LIMIT,
       }).then((rows) => rows as Issue[]),
-    enabled: !!selectedCompanyId,
     refetchOnWindowFocus: false,
     staleTime: INBOX_HOT_PATH_STALE_MS,
   });
-  const mineIssuesQueryKey = [...queryKeys.issues.listMineByMe(selectedCompanyId!), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const;
+  const mineIssuesQueryKey = [...queryKeys.issues.listMineByMe(), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const;
   const sharedMineIssues = useSharedPollingQuery<Issue[]>({
-    companyId: selectedCompanyId,
     resourceKey: "inbox:mine-issues",
     queryKey: mineIssuesQueryKey,
-    enabled: !!selectedCompanyId,
   });
   usePublishSharedQueryData(sharedMineIssues, mineIssuesRaw, mineIssuesUpdatedAt);
   const {
@@ -1019,62 +984,55 @@ function StreamlinedInbox({
     isLoading: isTouchedIssuesLoading,
     dataUpdatedAt: touchedIssuesUpdatedAt,
   } = useQuery({
-    queryKey: [...queryKeys.issues.listTouchedByMe(selectedCompanyId!), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const,
+    queryKey: [...queryKeys.issues.listTouchedByMe(), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const,
     queryFn: () =>
-      issuesApi.listCompact(selectedCompanyId!, {
+      issuesApi.listCompact({
         touchedByUserId: "me",
         status: INBOX_MINE_ISSUE_STATUS_FILTER,
         includeRoutineExecutions: true,
         includeLiveDescendantSummary: true,
         limit: INBOX_ISSUE_LIST_LIMIT,
       }).then((rows) => rows as Issue[]),
-    enabled: !!selectedCompanyId,
     refetchOnWindowFocus: false,
     staleTime: INBOX_HOT_PATH_STALE_MS,
   });
-  const touchedIssuesQueryKey = [...queryKeys.issues.listTouchedByMe(selectedCompanyId!), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const;
+  const touchedIssuesQueryKey = [...queryKeys.issues.listTouchedByMe(), "compact", "with-routine-executions", "live-descendant-summary", INBOX_ISSUE_LIST_LIMIT] as const;
   const sharedTouchedIssues = useSharedPollingQuery<Issue[]>({
-    companyId: selectedCompanyId,
     resourceKey: "inbox:touched-issues",
     queryKey: touchedIssuesQueryKey,
-    enabled: !!selectedCompanyId,
   });
   usePublishSharedQueryData(sharedTouchedIssues, touchedIssuesRaw, touchedIssuesUpdatedAt);
 
   const { data: heartbeatRuns, isLoading: isRunsLoading } = useQuery({
-    queryKey: [...queryKeys.heartbeats(selectedCompanyId!), "limit", INBOX_HEARTBEAT_RUN_LIMIT],
-    queryFn: () => heartbeatsApi.list(selectedCompanyId!, undefined, INBOX_HEARTBEAT_RUN_LIMIT, { summary: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: [...queryKeys.heartbeats(), "limit", INBOX_HEARTBEAT_RUN_LIMIT],
+    queryFn: () => heartbeatsApi.list(undefined, INBOX_HEARTBEAT_RUN_LIMIT, { summary: true }),
     refetchOnWindowFocus: false,
     staleTime: INBOX_HOT_PATH_STALE_MS,
   });
-  const liveRunsQueryKey = queryKeys.liveRuns(selectedCompanyId!);
+  const liveRunsQueryKey = queryKeys.liveRuns();
   const sharedLiveRuns = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
-    enabled: !!selectedCompanyId,
     // Event-sourced via LiveUpdatesProvider (GitHub issue 9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
   const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
     queryKey: liveRunsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedLiveRuns.enabled,
     refetchInterval: sharedLiveRuns.refetchInterval,
   });
   usePublishSharedQueryData(sharedLiveRuns, liveRuns, liveRunsUpdatedAt);
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
   const [archivingIssueIds, setArchivingIssueIds] = useState<Set<string>>(new Set());
   const [undoableArchiveIssueIds, setUndoableArchiveIssueIds] = useState<string[]>([]);
   const [unarchivingIssueIds, setUnarchivingIssueIds] = useState<Set<string>>(new Set());
-  const guardedArchiveIssueIds = useLocalInboxArchiveIssueIds(selectedCompanyId);
+  const guardedArchiveIssueIds = useLocalInboxArchiveIssueIds();
   const locallyArchivedIssueIds = useMemo(() => {
     const issueIds = new Set(guardedArchiveIssueIds);
     for (const issueId of undoableArchiveIssueIds) issueIds.add(issueId);
@@ -1101,17 +1059,16 @@ function StreamlinedInbox({
     [locallyArchivedIssueIds, touchedIssuesRaw],
   );
   const shouldUseIssueSearchSupplement =
-    !!selectedCompanyId
-    && normalizedSearchQuery.length > 0;
+    normalizedSearchQuery.length > 0;
   const { data: remoteIssueSearchResults = [] } = useQuery({
     queryKey: [
-      ...queryKeys.issues.search(selectedCompanyId!, normalizedSearchQuery, undefined, 25),
+      ...queryKeys.issues.search(normalizedSearchQuery, undefined, 25),
       "compact",
       "inbox-supplement",
       "live-descendant-summary",
     ],
     queryFn: () =>
-      issuesApi.listCompact(selectedCompanyId!, {
+      issuesApi.listCompact({
         q: normalizedSearchQuery,
         limit: 25,
         includeRoutineExecutions: true,
@@ -1141,7 +1098,6 @@ function StreamlinedInbox({
     isLoading: externalObjectSummariesLoading,
     isReady: externalObjectSummariesReady,
   } = useIssueExternalObjectSummaries(
-    selectedCompanyId,
     inboxIssueIdsForExternalObjectSummaries,
   );
   const issueFilterContext = useMemo(() => ({
@@ -1499,28 +1455,28 @@ function StreamlinedInbox({
     });
   }, []);
   const [collapsedInboxParents, setCollapsedInboxParents] = useState<Set<string>>(
-    () => loadCollapsedInboxParentIds(selectedCompanyId),
+    () => loadCollapsedInboxParentIds(),
   );
-  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => loadCollapsedInboxGroupKeys(selectedCompanyId));
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => loadCollapsedInboxGroupKeys());
   const toggleGroupCollapse = useCallback((groupKey: string) => {
     setCollapsedGroupKeys((prev) => {
       const next = new Set(prev);
       if (next.has(groupKey)) next.delete(groupKey);
       else next.add(groupKey);
-      saveCollapsedInboxGroupKeys(selectedCompanyId, next);
+      saveCollapsedInboxGroupKeys(next);
       return next;
     });
-  }, [selectedCompanyId]);
+  }, []);
   const setGroupCollapsed = useCallback((groupKey: string, collapsed: boolean) => {
     setCollapsedGroupKeys((prev) => {
       if (collapsed ? prev.has(groupKey) : !prev.has(groupKey)) return prev;
       const next = new Set(prev);
       if (collapsed) next.add(groupKey);
       else next.delete(groupKey);
-      saveCollapsedInboxGroupKeys(selectedCompanyId, next);
+      saveCollapsedInboxGroupKeys(next);
       return next;
     });
-  }, [selectedCompanyId]);
+  }, []);
   const freshGroupedSections = useMemo<InboxGroupedSection[]>(() => [
     ...buildGroupedInboxSections(filteredWorkItems, groupBy, inboxWorkspaceGrouping, { nestingEnabled }),
     ...buildGroupedInboxSections(
@@ -1565,7 +1521,6 @@ function StreamlinedInbox({
   const inboxSortViewIdentity = useMemo(
     () =>
       JSON.stringify([
-        selectedCompanyId,
         tab,
         groupBy,
         nestingEnabled,
@@ -1581,7 +1536,6 @@ function StreamlinedInbox({
       issueFilters,
       nestingEnabled,
       normalizedSearchQuery,
-      selectedCompanyId,
       tab,
     ],
   );
@@ -1636,20 +1590,20 @@ function StreamlinedInbox({
       const next = new Set(prev);
       if (next.has(parentId)) next.delete(parentId);
       else next.add(parentId);
-      saveCollapsedInboxParentIds(selectedCompanyId, next);
+      saveCollapsedInboxParentIds(next);
       return next;
     });
-  }, [selectedCompanyId]);
+  }, []);
   const setInboxParentCollapsed = useCallback((parentId: string, collapsed: boolean) => {
     setCollapsedInboxParents((prev) => {
       if (prev.has(parentId) === collapsed) return prev;
       const next = new Set(prev);
       if (collapsed) next.add(parentId);
       else next.delete(parentId);
-      saveCollapsedInboxParentIds(selectedCompanyId, next);
+      saveCollapsedInboxParentIds(next);
       return next;
     });
-  }, [selectedCompanyId]);
+  }, []);
 
   // Build flat navigation list from visible rows so keyboard traversal respects collapsed groups.
   const flatNavItems = useMemo((): NavEntry[] => {
@@ -1708,11 +1662,11 @@ function StreamlinedInbox({
   const setIssueColumns = useCallback((next: InboxIssueColumn[]) => {
     const normalized = normalizeInboxIssueColumns(next);
     setVisibleIssueColumns(normalized);
-    saveTaskCollectionPreferences(inboxCollectionPreferenceLocation(selectedCompanyId), {
+    saveTaskCollectionPreferences(inboxCollectionPreferenceLocation(), {
       viewState: filterPreferences,
       columns: normalized,
     });
-  }, [filterPreferences, selectedCompanyId]);
+  }, [filterPreferences]);
   const toggleIssueColumn = useCallback((column: InboxIssueColumn, enabled: boolean) => {
     if (enabled) {
       setIssueColumns([...visibleIssueColumns, column]);
@@ -1724,14 +1678,14 @@ function StreamlinedInbox({
     (updater: (previous: StreamlinedInboxViewState) => StreamlinedInboxViewState) => {
       setFilterPreferences((previous) => {
         const next = updater(previous);
-        saveTaskCollectionPreferences(inboxCollectionPreferenceLocation(selectedCompanyId), {
+        saveTaskCollectionPreferences(inboxCollectionPreferenceLocation(), {
           viewState: next,
           columns: visibleIssueColumns,
         });
         return next;
       });
     },
-    [selectedCompanyId, visibleIssueColumns],
+    [visibleIssueColumns],
   );
   const updateIssueFilters = useCallback((patch: Partial<IssueFilterState>) => {
     updateFilterPreferences((previous) => ({
@@ -1763,7 +1717,7 @@ function StreamlinedInbox({
     mutationFn: (id: string) => approvalsApi.approve(id),
     onSuccess: (_approval, id) => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list() });
       navigate(`/approvals/${id}?resolved=approved`);
     },
     onError: (err) => {
@@ -1775,7 +1729,7 @@ function StreamlinedInbox({
     mutationFn: (id: string) => approvalsApi.reject(id),
     onSuccess: () => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list() });
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : "Failed to reject");
@@ -1784,13 +1738,13 @@ function StreamlinedInbox({
 
   const approveJoinMutation = useMutation({
     mutationFn: (joinRequest: JoinRequest) =>
-      accessApi.approveJoinRequest(selectedCompanyId!, joinRequest.id),
+      accessApi.approveJoinRequest(joinRequest.id),
     onSuccess: () => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.organization });
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : "Failed to approve join request");
@@ -1799,11 +1753,11 @@ function StreamlinedInbox({
 
   const rejectJoinMutation = useMutation({
     mutationFn: (joinRequest: JoinRequest) =>
-      accessApi.rejectJoinRequest(selectedCompanyId!, joinRequest.id),
+      accessApi.rejectJoinRequest(joinRequest.id),
     onSuccess: () => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests(selectedCompanyId!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.access.joinRequests() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges() });
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : "Failed to reject join request");
@@ -1817,7 +1771,6 @@ function StreamlinedInbox({
       const result = await agentsApi.retryFailedRun(
         run.agentId,
         run.id,
-        run.companyId,
       );
       return { newRun: result, originalRun: run };
     },
@@ -1825,8 +1778,8 @@ function StreamlinedInbox({
       setRetryingRunIds((prev) => new Set(prev).add(run.id));
     },
     onSuccess: ({ newRun, originalRun }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(originalRun.companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(originalRun.companyId, originalRun.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(originalRun.agentId) });
       if (newRun.runId)
         navigate(`/agents/${originalRun.agentId}/runs/${newRun.runId}`);
       else if (newRun.issueId) navigate(`/issues/${newRun.issueId}`);
@@ -1885,8 +1838,7 @@ function StreamlinedInbox({
   }, [noteInboxSortInteraction]);
 
   const invalidateInboxIssueQueryCaches = () => {
-    if (!selectedCompanyId) return;
-    invalidateInboxIssueQueries(queryClient, selectedCompanyId);
+    invalidateInboxIssueQueries(queryClient);
   };
 
   const archiveIssueMutation = useMutation({
@@ -1897,18 +1849,17 @@ function StreamlinedInbox({
       setActionError(null);
       setArchivingIssueIds((prev) => new Set(prev).add(id));
 
-      if (!selectedCompanyId) return { previousData: [] as InboxIssueCacheSnapshot };
-      beginLocalInboxArchive(selectedCompanyId, id);
+      beginLocalInboxArchive(id);
 
-      await cancelInboxIssueQueries(queryClient, selectedCompanyId);
-      const previousData = snapshotInboxIssueCaches(queryClient, selectedCompanyId);
-      removeIssueFromInboxCaches(queryClient, selectedCompanyId, id);
+      await cancelInboxIssueQueries(queryClient);
+      const previousData = snapshotInboxIssueCaches(queryClient);
+      removeIssueFromInboxCaches(queryClient, id);
 
-      return { companyId: selectedCompanyId, previousData };
+      return { previousData };
     },
     onError: (err, id, context) => {
       setActionError(err instanceof Error ? err.message : "Failed to archive task");
-      if (context?.companyId) clearLocalInboxArchive(context.companyId, id);
+      if (context) clearLocalInboxArchive(id);
       setArchivingIssueIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -1926,12 +1877,12 @@ function StreamlinedInbox({
         next.delete(id);
         return next;
       });
-      if (!context?.companyId) return;
-      if (!error) boundLocalInboxArchive(context.companyId, id);
-      await invalidateInboxIssueQueries(queryClient, context.companyId);
+      if (!context) return;
+      if (!error) boundLocalInboxArchive(id);
+      await invalidateInboxIssueQueries(queryClient);
       if (!error) {
-        const presence = getIssuePresenceInActiveInboxCaches(queryClient, context.companyId, id);
-        if (presence !== "unknown") confirmLocalInboxArchive(context.companyId, id);
+        const presence = getIssuePresenceInActiveInboxCaches(queryClient, id);
+        if (presence !== "unknown") confirmLocalInboxArchive(id);
       }
     },
     onSuccess: (_data, id) => {
@@ -1944,15 +1895,12 @@ function StreamlinedInbox({
     onMutate: (id) => {
       setActionError(null);
       setUnarchivingIssueIds((prev) => new Set(prev).add(id));
-      if (selectedCompanyId) clearLocalInboxArchive(selectedCompanyId, id);
-      return { companyId: selectedCompanyId };
+      clearLocalInboxArchive(id);
     },
     onError: (err, id, context) => {
       setActionError(err instanceof Error ? err.message : "Failed to undo inbox archive");
-      if (context?.companyId) {
-        beginLocalInboxArchive(context.companyId, id);
-        boundLocalInboxArchive(context.companyId, id);
-      }
+      beginLocalInboxArchive(id);
+      boundLocalInboxArchive(id);
     },
     onSuccess: (_data, id) => {
       setUndoableArchiveIssueIds((prev) => {
@@ -2096,7 +2044,7 @@ function StreamlinedInbox({
   useEffect(() => {
     setUndoableArchiveIssueIds([]);
     setUnarchivingIssueIds(new Set());
-  }, [selectedCompanyId]);
+  }, []);
 
   // Use refs for keyboard handler to avoid stale closures
   const kbStateRef = useRef({
@@ -2351,9 +2299,6 @@ function StreamlinedInbox({
     if (row) row.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={InboxIcon} message={`Select an organization to view ${surfaceLabel.toLowerCase()}.`} />;
-  }
 
   const hasRunFailures = failedRuns.length > 0;
   const showCompanyAlerts = shouldShowCompanyAlerts(tab) && showAlertsCategory;
@@ -2712,7 +2657,6 @@ function StreamlinedInbox({
       {tab === "blocked" ? (
         <div className="-mx-2 sm:mx-0">
         <BlockedInboxView
-          companyId={selectedCompanyId!}
           searchQuery={searchQuery}
           agentNameById={agentById} agents={agents}
           userLabelById={companyUserLabelMap}

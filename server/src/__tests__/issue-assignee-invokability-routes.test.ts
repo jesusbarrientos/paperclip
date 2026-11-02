@@ -64,14 +64,12 @@ vi.mock("../services/index.js", () => ({
   agentService: () => ({
     getById: vi.fn(async (id: string) => ({
       id,
-      companyId: "company-1",
       status: agentStatusById[id] ?? "idle",
     })),
-    resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
+    resolveByReference: vi.fn(async (raw: string) => ({
       ambiguous: false,
       agent: {
         id: raw,
-        companyId: "company-1",
         status: agentStatusById[raw] ?? "idle",
         orgChainHealth: { status: "healthy" },
       },
@@ -140,7 +138,7 @@ function boardActor(): Actor {
   return {
     type: "board",
     userId: "local-board",
-    companyIds: ["company-1"],
+    memberships: [{ membershipRole: "operator", status: "active" }],
     source: "local_implicit",
     isInstanceAdmin: false,
   };
@@ -150,7 +148,6 @@ function agentActor(): Actor {
   return {
     type: "agent",
     agentId: AGENT_ACTOR_ID,
-    companyId: "company-1",
     source: "agent_key",
     runId: AGENT_RUN_ID,
   };
@@ -182,7 +179,6 @@ function createApp(actor: Actor) {
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    companyId: "company-1",
     status: "todo",
     priority: "medium",
     projectId: null,

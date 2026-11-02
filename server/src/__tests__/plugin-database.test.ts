@@ -499,6 +499,7 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
       "001_llm_wiki.sql",
       "002_paperclip_distillation.sql",
       "003_spaces.sql",
+      "004_single_organization.sql",
     ]);
 
     const constraintRows = Array.from(
@@ -521,10 +522,10 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     );
     expect(constraints).toEqual(
       expect.arrayContaining([
-        "wiki_pages_company_wiki_space_path_key",
-        "distillation_cursors_company_wiki_space_scope_key",
-        "distillation_work_items_company_wiki_space_idempotency_key",
-        "page_bindings_company_wiki_space_page_path_key",
+        "wiki_pages_wiki_space_path_key",
+        "distillation_cursors_wiki_space_scope_key",
+        "distillation_work_items_wiki_space_idempotency_key",
+        "page_bindings_wiki_space_page_path_key",
       ]),
     );
     expect(constraints).not.toContain("wiki_pages_company_id_wiki_id_path_key");
@@ -561,7 +562,6 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Joined issue",
       status: "todo",
       priority: "medium",

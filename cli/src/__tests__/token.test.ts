@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerTokenCommands } from "../commands/client/token.js";
 
-const COMPANY_ID = "22222222-2222-4222-8222-222222222222";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 
 function createProgram(): Command {
@@ -19,7 +18,6 @@ function createProgram(): Command {
 function agentResponse() {
   return {
     id: AGENT_ID,
-    companyId: COMPANY_ID,
     name: "Worker",
     urlKey: "worker",
     role: "Engineer",
@@ -61,8 +59,6 @@ describe("token commands", () => {
       "http://localhost:3100",
       "--api-key",
       "board-token",
-      "--company-id",
-      COMPANY_ID,
       "--agent",
       "worker",
       "--name",
@@ -70,7 +66,7 @@ describe("token commands", () => {
       "--json",
     ], { from: "user" });
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://localhost:3100/api/agents/worker?companyId=${COMPANY_ID}`);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://localhost:3100/api/agents/worker`);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`http://localhost:3100/api/agents/${AGENT_ID}/keys`);
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       name: "external-worker",
@@ -78,7 +74,6 @@ describe("token commands", () => {
     });
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
       agentId: AGENT_ID,
-      companyId: COMPANY_ID,
       key: { id: "key-1", token: "pcp_plaintext" },
     });
   });
@@ -97,7 +92,6 @@ describe("token commands", () => {
       "token", "agent", "list",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--agent", "worker",
     ], { from: "user" });
 
@@ -105,7 +99,6 @@ describe("token commands", () => {
       "token", "agent", "revoke", "key-1",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--agent", "worker",
     ], { from: "user" });
 
@@ -126,7 +119,6 @@ describe("token commands", () => {
       "token", "agent", "list",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--agent", AGENT_ID,
       "--json",
     ], { from: "user" });
@@ -156,7 +148,6 @@ describe("token commands", () => {
       "token", "board", "create",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--name", "external-admin",
       "--ttl-days", "14",
       "--json",
@@ -165,7 +156,6 @@ describe("token commands", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:3100/api/board-api-keys");
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       name: "external-admin",
-      requestedCompanyId: COMPANY_ID,
       expiresAt: "2026-06-06T00:00:00.000Z",
     });
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
@@ -197,7 +187,6 @@ describe("token commands", () => {
       "token", "board", "create",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--name", "external-admin",
       "--never-expires",
       "--json",
@@ -205,7 +194,6 @@ describe("token commands", () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       name: "external-admin",
-      requestedCompanyId: COMPANY_ID,
       expiresAt: null,
     });
   });

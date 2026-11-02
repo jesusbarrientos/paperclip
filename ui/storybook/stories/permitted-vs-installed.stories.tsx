@@ -230,7 +230,7 @@ function SeededAgentTools() {
     const c = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } },
     });
-    c.setQueryData(queryKeys.tools.effectiveProfilesForAgent(COMPANY, "a-sage"), {
+    c.setQueryData(queryKeys.tools.effectiveProfilesForAgent("a-sage"), {
       agentId: "a-sage",
       profiles: [],
       bindings: [],
@@ -238,7 +238,7 @@ function SeededAgentTools() {
       allowedToolNames: allowed.map((t) => t.toolName),
       installedConnections: connections.filter((conn) => conn.id === "conn-gmail"),
     });
-    c.setQueryData(queryKeys.tools.connections(COMPANY), { connections });
+    c.setQueryData(queryKeys.tools.connections(), { connections });
     c.setQueryData(queryKeys.tools.catalog("conn-gmail"), { catalog: GMAIL_TOOLS });
     c.setQueryData(queryKeys.tools.catalog("conn-slack"), { catalog: SLACK_TOOLS });
     return c;
@@ -246,7 +246,7 @@ function SeededAgentTools() {
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-6xl bg-background p-6">
-        <AgentToolsTab agent={{ id: "a-sage", name: "Sage" } as never} companyId={COMPANY} />
+        <AgentToolsTab agent={{ id: "a-sage", name: "Sage" } as never} />
       </div>
     </QueryClientProvider>
   );
@@ -287,7 +287,7 @@ function SeededAccessStep({
     const c = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } },
     });
-    c.setQueryData(queryKeys.agents.list(COMPANY), AGENTS);
+    c.setQueryData(queryKeys.agents.list(), AGENTS);
     return c;
   }, []);
   const [grantKind, setGrantKind] = useState(initialGrantKind);
@@ -297,7 +297,6 @@ function SeededAccessStep({
     <QueryClientProvider client={client}>
       <div className="bg-background p-6">
         <AccessStep
-          companyId={COMPANY}
           authKind={authKind}
           grantKind={grantKind}
           setGrantKind={setGrantKind}

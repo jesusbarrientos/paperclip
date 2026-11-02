@@ -52,14 +52,14 @@ vi.mock("../api/issues", () => ({
 
 // Defaults to null (no provider) so the existing suite exercises the permissive
 // path unchanged. Gating tests override the return value per-case.
-const mockUseOptionalCompany = vi.hoisted(() => vi.fn<() => { companies: Array<{ issuePrefix: string }>; selectedCompanyId?: string } | null>(() => null));
+const mockUseOptionalOrganization = vi.hoisted(() => vi.fn<() => { organization: { issuePrefix: string } | null } | null>(() => null));
 
-vi.mock("../context/CompanyContext", () => ({
-  useOptionalCompany: mockUseOptionalCompany,
+vi.mock("../context/OrganizationContext", () => ({
+  useOptionalOrganization: mockUseOptionalOrganization,
 }));
 
 afterEach(() => {
-  mockUseOptionalCompany.mockReturnValue(null);
+  mockUseOptionalOrganization.mockReturnValue(null);
 });
 
 function renderMarkdown(
@@ -170,7 +170,7 @@ describe("MarkdownBody", () => {
       </QueryClientProvider>,
     );
 
-    expect(html).toContain('href="/company/settings/access"');
+    expect(html).toContain('href="/organization/settings/access"');
     expect(html).toContain('data-mention-kind="user"');
     expect(html).toContain('href="/agents/agent-123"');
     expect(html).toContain('data-mention-kind="agent"');
@@ -194,9 +194,9 @@ describe("MarkdownBody", () => {
   });
 
   it("uses the current company agent appearance for an old saved mention", () => {
-    mockUseOptionalCompany.mockReturnValue({ companies: [{ issuePrefix: "PAP" }], selectedCompanyId: "company-1" });
+    mockUseOptionalOrganization.mockReturnValue({ organization: { issuePrefix: "PAP" } });
     const client = new QueryClient();
-    client.setQueryData(queryKeys.agents.list("company-1"), [
+    client.setQueryData(queryKeys.agents.list(), [
       { id: "agent-123", appearance: appearanceForPalette("electric-grove") },
     ]);
     const html = renderToStaticMarkup(
@@ -571,9 +571,9 @@ describe("MarkdownBody", () => {
   });
 
   it("does not set target on relative internal links", () => {
-    const html = renderMarkdown("[settings](/company/settings)");
+    const html = renderMarkdown("[settings](/organization/settings)");
 
-    expect(html).toContain('href="/company/settings"');
+    expect(html).toContain('href="/organization/settings"');
     expect(html).not.toContain('target="_blank"');
     expect(html).toContain('rel="noreferrer"');
   });
@@ -615,7 +615,7 @@ describe("MarkdownBody", () => {
   });
 
   it("does not render the new-tab icon on internal links", () => {
-    const html = renderMarkdown("[settings](/company/settings)");
+    const html = renderMarkdown("[settings](/organization/settings)");
 
     expect(html).not.toContain("lucide-external-link");
   });
@@ -669,8 +669,8 @@ describe("MarkdownBody", () => {
     expect(html).not.toContain("paperclip-mention-chip--issue");
   });
 
-  it("gates bare-identifier auto-linking to known company prefixes", () => {
-    mockUseOptionalCompany.mockReturnValue({ companies: [{ issuePrefix: "PAP" }] });
+  it("gates bare-identifier auto-linking to the organization prefix", () => {
+    mockUseOptionalOrganization.mockReturnValue({ organization: { issuePrefix: "PAP" } });
 
     const html = renderMarkdown("Depends on PAP-1271 and blocked by JIRA-2.", [
       { identifier: "PAP-1271", status: "done" },
@@ -683,8 +683,8 @@ describe("MarkdownBody", () => {
     expect(html).toContain("blocked by JIRA-2.");
   });
 
-  it("stays permissive when companies are loaded but the list is empty", () => {
-    mockUseOptionalCompany.mockReturnValue({ companies: [] });
+  it("stays permissive when no organization exists yet", () => {
+    mockUseOptionalOrganization.mockReturnValue({ organization: null });
 
     const html = renderMarkdown("See JIRA-2 for context.", [
       { identifier: "JIRA-2", status: "done" },
@@ -715,7 +715,7 @@ describe("MarkdownBody", () => {
   });
 
   it("never gates explicit internal issue paths, even for unknown prefixes", () => {
-    mockUseOptionalCompany.mockReturnValue({ companies: [{ issuePrefix: "PAP" }] });
+    mockUseOptionalOrganization.mockReturnValue({ organization: { issuePrefix: "PAP" } });
 
     const html = renderMarkdown("See /ACME/issues/ACME-1 for the writeup.", [
       { identifier: "ACME-1", status: "done" },

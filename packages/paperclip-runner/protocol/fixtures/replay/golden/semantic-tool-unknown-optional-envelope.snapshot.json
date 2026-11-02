@@ -3,7 +3,6 @@
   "fixtureName": "Semantic tool unknown optional envelope fields",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_semantic_future",
     "issueId": "issue_semantic_future",
     "runId": "run_semantic_future",
     "environmentLeaseId": "lease_semantic_future",

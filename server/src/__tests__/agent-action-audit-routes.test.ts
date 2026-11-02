@@ -68,7 +68,6 @@ describePostgres("agent action audit routes", () => {
       issuePrefix: `AU${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);
     const [agent, otherAgent] = await db.insert(agents).values([1, 2].map((index) => ({
-      companyId: company.id,
       name: `Audit Agent ${index}`,
       role: "engineer",
       status: "active" as const,
@@ -77,41 +76,36 @@ describePostgres("agent action audit routes", () => {
       runtimeConfig: {},
     }))).returning();
     const issue = await db.insert(issues).values({
-      companyId: company.id,
       identifier: `${company.issuePrefix}-1`,
       title: "Audit target",
       status: "todo",
       priority: "medium",
     }).returning().then((rows) => rows[0]!);
     const comment = await db.insert(issueComments).values({
-      companyId: company.id,
       issueId: issue.id,
       authorAgentId: agent.id,
       body: "A useful comment excerpt for the audit feed.",
     }).returning().then((rows) => rows[0]!);
     const document = await db.insert(documents).values({
-      companyId: company.id,
       title: "Plan",
       latestBody: "Plan body",
       createdByAgentId: agent.id,
       updatedByAgentId: agent.id,
     }).returning().then((rows) => rows[0]!);
     const issueDocument = await db.insert(issueDocuments).values({
-      companyId: company.id,
       issueId: issue.id,
       documentId: document.id,
       key: "plan",
     }).returning().then((rows) => rows[0]!);
     const run = await db.insert(heartbeatRuns).values({
-      companyId: company.id,
       agentId: agent.id,
       responsibleUserId: "legacy-user",
     }).returning().then((rows) => rows[0]!);
     const base = new Date("2026-07-17T00:00:00.000Z");
     await db.insert(activityLog).values([
-      { companyId: company.id, actorType: "agent", actorId: agent.id, action: "issue.comment.created", entityType: "issue_comment", entityId: comment.id, agentId: agent.id, runId: run.id, responsibleUserId: null, createdAt: new Date(base.getTime() + 3000) },
-      { companyId: company.id, actorType: "system", actorId: "system", action: "issue.document.updated", entityType: "issue_document", entityId: issueDocument.id, agentId: agent.id, runId: run.id, responsibleUserId: "direct-user", createdAt: new Date(base.getTime() + 2000) },
-      { companyId: company.id, actorType: "agent", actorId: otherAgent.id, action: "issue.updated", entityType: "issue", entityId: issue.id, agentId: otherAgent.id, responsibleUserId: "other-user", createdAt: new Date(base.getTime() + 1000) },
+      { actorType: "agent", actorId: agent.id, action: "issue.comment.created", entityType: "issue_comment", entityId: comment.id, agentId: agent.id, runId: run.id, responsibleUserId: null, createdAt: new Date(base.getTime() + 3000) },
+      { actorType: "system", actorId: "system", action: "issue.document.updated", entityType: "issue_document", entityId: issueDocument.id, agentId: agent.id, runId: run.id, responsibleUserId: "direct-user", createdAt: new Date(base.getTime() + 2000) },
+      { actorType: "agent", actorId: otherAgent.id, action: "issue.updated", entityType: "issue", entityId: issue.id, agentId: otherAgent.id, responsibleUserId: "other-user", createdAt: new Date(base.getTime() + 1000) },
     ]);
     return { company, agent, otherAgent, issue, comment, issueDocument, run };
   }
@@ -119,7 +113,6 @@ describePostgres("agent action audit routes", () => {
   async function seedActorOnlyRows(companyId: string) {
     return db.insert(activityLog).values([
       {
-        companyId,
         actorType: "user",
         actorId: "board-user",
         action: "company.updated",
@@ -130,7 +123,6 @@ describePostgres("agent action audit routes", () => {
         createdAt: new Date("2026-07-17T00:00:06.000Z"),
       },
       {
-        companyId,
         actorType: "system",
         actorId: "scheduler",
         action: "heartbeat.scheduled",
@@ -140,7 +132,6 @@ describePostgres("agent action audit routes", () => {
         createdAt: new Date("2026-07-17T00:00:05.000Z"),
       },
       {
-        companyId,
         actorType: "plugin",
         actorId: "example-plugin",
         action: "plugin.synced",
@@ -155,13 +146,13 @@ describePostgres("agent action audit routes", () => {
   it("denies agents and board users without the audit permission", async () => {
     const { company, agent } = await seed();
     const agentResponse = await request(await createApp(db, {
-      type: "agent", agentId: agent.id, companyId: company.id, runId: null, source: "agent_jwt",
-    })).get(`/api/companies/${company.id}/audit/agent-actions`);
+      type: "agent", agentId: agent.id, runId: null, source: "agent_jwt",
+    })).get(`/api/audit/agent-actions`);
     expect(agentResponse.status).toBe(403);
 
     const agentAllActorsResponse = await request(await createApp(db, {
-      type: "agent", agentId: agent.id, companyId: company.id, runId: null, source: "agent_jwt",
-    })).get(`/api/companies/${company.id}/audit/agent-actions?actorScope=all`);
+      type: "agent", agentId: agent.id, runId: null, source: "agent_jwt",
+    })).get(`/api/audit/agent-actions?actorScope=all`);
     expect(agentAllActorsResponse.status, JSON.stringify(agentAllActorsResponse.body)).toBe(200);
     expect(agentAllActorsResponse.body.items).toHaveLength(3);
     expect(agentAllActorsResponse.body.items.every((item: { responsibleUserId: string | null }) => (
@@ -169,14 +160,14 @@ describePostgres("agent action audit routes", () => {
     ))).toBe(true);
 
     const boardResponse = await request(await createApp(db, {
-      type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions`);
+      type: "board", userId: "reader", memberships: [{ status: "active", membershipRole: "viewer" }], source: "session", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions`);
     expect(boardResponse.status).toBe(403);
     expect(boardResponse.body.error).toContain("audit:view_agent_actions");
 
     const invalidBoardResponse = await request(await createApp(db, {
-      type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions?limit=invalid`);
+      type: "board", userId: "reader", memberships: [{ status: "active", membershipRole: "viewer" }], source: "session", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions?limit=invalid`);
     expect(invalidBoardResponse.status).toBe(403);
     expect(invalidBoardResponse.body.error).toContain("audit:view_agent_actions");
   }, 30_000);
@@ -193,7 +184,7 @@ describePostgres("agent action audit routes", () => {
     const app = await createApp(db, {
       type: "board",
       userId: "reader",
-      companyIds: [company.id],
+      memberships: [{ status: "active", membershipRole: "viewer" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -203,7 +194,7 @@ describePostgres("agent action audit routes", () => {
     do {
       const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
       const response = await request(app)
-        .get(`/api/companies/${company.id}/audit/agent-actions?actorScope=all&limit=2${cursorQuery}`);
+        .get(`/api/audit/agent-actions?actorScope=all&limit=2${cursorQuery}`);
       expect(response.status, JSON.stringify(response.body)).toBe(200);
       items.push(...response.body.items);
       expect(response.body.accessTier).toBe("basic");
@@ -243,7 +234,7 @@ describePostgres("agent action audit routes", () => {
     const app = await createApp(db, {
       type: "board",
       userId: "reader",
-      companyIds: [company.id],
+      memberships: [{ status: "active", membershipRole: "viewer" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -261,7 +252,7 @@ describePostgres("agent action audit routes", () => {
 
     for (const filter of filters) {
       const response = await request(app).get(
-        `/api/companies/${company.id}/audit/agent-actions?actorScope=all&${filter}`,
+        `/api/audit/agent-actions?actorScope=all&${filter}`,
       );
       expect(response.status, filter).toBe(403);
       expect(response.body.error).toContain("audit:view_agent_actions");
@@ -274,19 +265,18 @@ describePostgres("agent action audit routes", () => {
     const app = await createApp(db, {
       type: "board",
       userId: "local-board",
-      companyIds: [company.id],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const defaultResponse = await request(app)
-      .get(`/api/companies/${company.id}/audit/agent-actions`);
+      .get(`/api/audit/agent-actions`);
     expect(defaultResponse.status, JSON.stringify(defaultResponse.body)).toBe(200);
     expect(defaultResponse.body.items).toHaveLength(3);
     expect(defaultResponse.body.items.map((item: { id: string }) => item.id)).not.toContain(actorOnlyRows[0]!.id);
 
     const allResponse = await request(app)
-      .get(`/api/companies/${company.id}/audit/agent-actions?actorScope=all`);
+      .get(`/api/audit/agent-actions?actorScope=all`);
     expect(allResponse.status, JSON.stringify(allResponse.body)).toBe(200);
     expect(defaultResponse.body.accessTier).toBe("full");
     expect(allResponse.body.accessTier).toBe("full");
@@ -300,20 +290,20 @@ describePostgres("agent action audit routes", () => {
   it("returns a client error for invalid audit query parameters", async () => {
     const { company } = await seed();
     const response = await request(await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions?limit=invalid`);
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions?limit=invalid`);
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("Invalid agent action audit query");
 
     const scopeResponse = await request(await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions?actorScope=unknown`);
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions?actorScope=unknown`);
     expect(scopeResponse.status).toBe(400);
     expect(scopeResponse.body.error).toBe("Invalid agent action audit query");
 
     const cursorResponse = await request(await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions?cursor=invalid`);
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions?cursor=invalid`);
     expect(cursorResponse.status).toBe(400);
     expect(cursorResponse.body.error).toBe("Invalid audit cursor");
 
@@ -322,8 +312,8 @@ describePostgres("agent action audit routes", () => {
       id: "not-a-uuid",
     }), "utf8").toString("base64url");
     const nonUuidCursorResponse = await request(await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions?cursor=${encodeURIComponent(nonUuidCursor)}`);
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions?cursor=${encodeURIComponent(nonUuidCursor)}`);
     expect(nonUuidCursorResponse.status).toBe(400);
     expect(nonUuidCursorResponse.body.error).toBe("Invalid audit cursor");
   });
@@ -335,22 +325,22 @@ describePostgres("agent action audit routes", () => {
     const olderId = randomUUID();
     await db.execute(sql`
       insert into activity_log (
-        id, company_id, actor_type, actor_id, action, entity_type, entity_id, agent_id, created_at
+        id, actor_type, actor_id, action, entity_type, entity_id, agent_id, created_at
       ) values
-        (${newerId}::uuid, ${company.id}::uuid, 'agent', ${agent.id}, 'audit.precision', 'company', ${company.id}, ${agent.id}::uuid, '2026-07-17T00:00:00.001900Z'::timestamptz),
-        (${olderId}::uuid, ${company.id}::uuid, 'agent', ${agent.id}, 'audit.precision', 'company', ${company.id}, ${agent.id}::uuid, '2026-07-17T00:00:00.001100Z'::timestamptz)
+        (${newerId}::uuid, 'agent', ${agent.id}, 'audit.precision', 'company', ${company.id}, ${agent.id}::uuid, '2026-07-17T00:00:00.001900Z'::timestamptz),
+        (${olderId}::uuid, 'agent', ${agent.id}, 'audit.precision', 'company', ${company.id}, ${agent.id}::uuid, '2026-07-17T00:00:00.001100Z'::timestamptz)
     `);
 
     const app = await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
     });
-    const first = await request(app).get(`/api/companies/${company.id}/audit/agent-actions?action=audit.precision&limit=1`);
+    const first = await request(app).get(`/api/audit/agent-actions?action=audit.precision&limit=1`);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.body.items.map((item: { id: string }) => item.id)).toEqual([newerId]);
     expect(first.body.nextCursor).toEqual(expect.any(String));
 
     const second = await request(app).get(
-      `/api/companies/${company.id}/audit/agent-actions?action=audit.precision&limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`,
+      `/api/audit/agent-actions?action=audit.precision&limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`,
     );
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     expect(second.body.items.map((item: { id: string }) => item.id)).toEqual([olderId]);
@@ -359,8 +349,8 @@ describePostgres("agent action audit routes", () => {
 
   it("paginates, filters, enriches entities, and falls back to the run responsible user", async () => {
     const { company, agent, otherAgent, issue, comment, issueDocument, run } = await seed();
-    const app = await createApp(db, { type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false });
-    const first = await request(app).get(`/api/companies/${company.id}/audit/agent-actions?limit=1`);
+    const app = await createApp(db, { type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false });
+    const first = await request(app).get(`/api/audit/agent-actions?limit=1`);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.body.items).toHaveLength(1);
     expect(first.body.items[0].responsibleUserId).toBe("legacy-user");
@@ -368,7 +358,7 @@ describePostgres("agent action audit routes", () => {
     expect(first.body.items[0].entity.issue).toMatchObject({ id: issue.id, identifier: issue.identifier, title: issue.title });
     expect(first.body.nextCursor).toEqual(expect.any(String));
 
-    const second = await request(app).get(`/api/companies/${company.id}/audit/agent-actions?limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    const second = await request(app).get(`/api/audit/agent-actions?limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`);
     expect(second.body.items[0].entity.document).toEqual({ id: expect.any(String), key: "plan" });
 
     const cases = [
@@ -383,7 +373,7 @@ describePostgres("agent action audit routes", () => {
       [`agentId=${otherAgent.id}`, 1],
     ] as const;
     for (const [query, count] of cases) {
-      const response = await request(app).get(`/api/companies/${company.id}/audit/agent-actions?${query}`);
+      const response = await request(app).get(`/api/audit/agent-actions?${query}`);
       expect(response.status, `${query}: ${JSON.stringify(response.body)}`).toBe(200);
       expect(response.body.items, query).toHaveLength(count);
     }
@@ -392,7 +382,6 @@ describePostgres("agent action audit routes", () => {
   it("does not enrich hidden issues or mismatched entity types", async () => {
     const { company, agent, comment, run } = await seed();
     const hiddenIssue = await db.insert(issues).values({
-      companyId: company.id,
       identifier: `${company.issuePrefix}-HIDDEN`,
       title: "Hidden audit target",
       status: "todo",
@@ -400,14 +389,12 @@ describePostgres("agent action audit routes", () => {
       hiddenAt: new Date(),
     }).returning().then((rows) => rows[0]!);
     const hiddenComment = await db.insert(issueComments).values({
-      companyId: company.id,
       issueId: hiddenIssue.id,
       authorAgentId: agent.id,
       body: "Hidden audit comment",
     }).returning().then((rows) => rows[0]!);
     const [hiddenActivity, hiddenDocumentActivity, mismatchedActivity] = await db.insert(activityLog).values([
       {
-        companyId: company.id,
         actorType: "agent",
         actorId: agent.id,
         action: "issue.comment.created",
@@ -423,7 +410,6 @@ describePostgres("agent action audit routes", () => {
         },
       },
       {
-        companyId: company.id,
         actorType: "agent",
         actorId: agent.id,
         action: "issue.document_updated",
@@ -438,7 +424,6 @@ describePostgres("agent action audit routes", () => {
         },
       },
       {
-        companyId: company.id,
         actorType: "agent",
         actorId: agent.id,
         action: "company.updated",
@@ -450,8 +435,8 @@ describePostgres("agent action audit routes", () => {
     ]).returning();
 
     const response = await request(await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions`);
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions`);
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(response.body.items.find((item: { id: string }) => item.id === hiddenActivity.id)?.entity).toEqual({
       issue: null,
@@ -472,12 +457,12 @@ describePostgres("agent action audit routes", () => {
     await db.update(issues).set({ title: "=2+2" }).where(eq(issues.id, issue.id));
     await db.update(issueComments).set({ body: "@SUM(A1)" }).where(eq(issueComments.id, comment.id));
     const app = await createApp(db, {
-      type: "board", userId: "local-board", companyIds: [company.id], source: "local_implicit", isInstanceAdmin: false,
+      type: "board", userId: "local-board", source: "local_implicit", isInstanceAdmin: false,
     });
-    const response = await request(app).get(`/api/companies/${company.id}/audit/agent-actions.csv`);
+    const response = await request(app).get(`/api/audit/agent-actions.csv`);
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(response.headers["content-type"]).toContain("text/csv");
-    expect(response.headers["content-disposition"]).toContain(`agent-audit-${company.id}.csv`);
+    expect(response.headers["content-disposition"]).toContain(`agent-audit.csv`);
 
     const lines = response.text.trim().split("\r\n");
     expect(lines[0]).toBe(
@@ -500,8 +485,8 @@ describePostgres("agent action audit routes", () => {
   it("denies CSV export without the audit permission and logs nothing", async () => {
     const { company } = await seed();
     const response = await request(await createApp(db, {
-      type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions.csv`);
+      type: "board", userId: "reader", memberships: [{ status: "active", membershipRole: "viewer" }], source: "session", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions.csv`);
     expect(response.status).toBe(403);
     expect(response.body.error).toContain("audit:view_agent_actions");
 
@@ -518,8 +503,8 @@ describePostgres("agent action audit routes", () => {
       principalType: "user", principalId: "reader", permissionKey: "audit:view_agent_actions", scope: null, grantedByUserId: null,
     });
     const response = await request(await createApp(db, {
-      type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,
-    })).get(`/api/companies/${company.id}/audit/agent-actions`);
+      type: "board", userId: "reader", memberships: [{ status: "active", membershipRole: "viewer" }], source: "session", isInstanceAdmin: false,
+    })).get(`/api/audit/agent-actions`);
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(response.body.items).toHaveLength(3);
   });

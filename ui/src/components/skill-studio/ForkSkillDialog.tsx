@@ -37,12 +37,10 @@ import { cn } from "@/lib/utils";
  * (fork-sprawl guard, §5).
  */
 export function ForkSkillDialog({
-  companyId,
   skill,
   open,
   onOpenChange,
 }: {
-  companyId: string;
   skill: CompanySkillDetail;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,9 +71,9 @@ export function ForkSkillDialog({
   );
 
   const precheckQuery = useQuery({
-    queryKey: queryKeys.companySkills.forkPrecheck(companyId, skill.id),
-    queryFn: () => companySkillsApi.forkPrecheck(companyId, skill.id),
-    enabled: open && Boolean(companyId && skill.id),
+    queryKey: queryKeys.companySkills.forkPrecheck(skill.id),
+    queryFn: () => companySkillsApi.forkPrecheck(skill.id),
+    enabled: open && Boolean(skill.id),
     initialData: seededPrecheck,
   });
 
@@ -94,15 +92,15 @@ export function ForkSkillDialog({
 
   const forkMutation = useMutation({
     mutationFn: () =>
-      companySkillsApi.fork(companyId, skill.id, {
+      companySkillsApi.fork(skill.id, {
         reassignAgentIds: reassign ? reassignTargetIds(usedByAgents) : [],
       }),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list() });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.companySkills.detail(companyId, skill.id),
+        queryKey: queryKeys.companySkills.detail(skill.id),
       });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
       for (const entry of result.reassignments) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.agents.skills(entry.agentId),

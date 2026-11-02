@@ -14,7 +14,6 @@ import {
   Users,
   AlertTriangle,
 } from "lucide-react";
-import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useToastActions } from "../context/ToastContext";
@@ -299,7 +298,6 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
   const [liveLingerVersion, setLiveLingerVersion] = useState(0);
   const lastSeenLiveAtRef = useRef<Map<string, number>>(new Map());
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
   const { isMobile, setSidebarOpen, collapsed, peeking } = useSidebar();
   const rail = collapsed && !peeking;
@@ -307,20 +305,18 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
   const location = useLocation();
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
-    enabled: !!selectedCompanyId,
   });
   const builtInAgentsEnabled = experimentalSettings?.enableBuiltInAgents === true;
   const { data: builtInAgents } = useQuery({
-    queryKey: queryKeys.builtInAgents.list(selectedCompanyId!),
-    queryFn: () => builtInAgentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && builtInAgentsEnabled,
+    queryKey: queryKeys.builtInAgents.list(),
+    queryFn: () => builtInAgentsApi.list(),
+    enabled: builtInAgentsEnabled,
   });
   const builtInStatusByAgentId = useMemo(() => {
     const map = new Map<string, BuiltInAgentStatus>();
@@ -334,22 +330,20 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
-  const membershipsQuery = useResourceMemberships(selectedCompanyId);
-  const membershipMutation = useResourceMembershipMutation(selectedCompanyId);
+  const membershipsQuery = useResourceMemberships();
+  const membershipMutation = useResourceMembershipMutation();
 
-  const liveRunsQueryKey = queryKeys.liveRuns(selectedCompanyId!);
+  const liveRunsQueryKey = queryKeys.liveRuns();
   const sharedLiveRuns = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
-    enabled: !!selectedCompanyId,
     // Event-sourced via LiveUpdatesProvider (issue 9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
   const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
     queryKey: liveRunsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedLiveRuns.enabled,
     refetchInterval: sharedLiveRuns.refetchInterval,
   });
@@ -383,16 +377,14 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
   }, [agents, membershipsQuery.data, membershipsQuery.isSuccess]);
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const sortModeStorageKey = useMemo(() => {
-    if (!selectedCompanyId) return null;
-    return getAgentSortModeStorageKey(selectedCompanyId, currentUserId);
-  }, [currentUserId, selectedCompanyId]);
+    return getAgentSortModeStorageKey(currentUserId);
+  }, [currentUserId]);
   const [sortMode, setSortMode] = useState<AgentSidebarSortMode>(() => {
     if (!sortModeStorageKey) return "top";
     return readAgentSortMode(sortModeStorageKey);
   });
   const { orderedAgents } = useAgentOrder({
     agents: visibleAgents,
-    companyId: selectedCompanyId,
     userId: currentUserId,
   });
   const sortedAgents = useMemo(
@@ -515,8 +507,8 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
   const pauseResumeAgent = useMutation({
     mutationFn: ({ agent, action }: { agent: Agent; action: "pause" | "resume" }) =>
       action === "pause"
-        ? agentsApi.pause(agent.id, selectedCompanyId ?? undefined)
-        : agentsApi.resume(agent.id, selectedCompanyId ?? undefined),
+        ? agentsApi.pause(agent.id)
+        : agentsApi.resume(agent.id),
     onMutate: ({ agent }) => {
       setPendingAgentIds((current) => {
         const next = new Set(current);
@@ -525,13 +517,11 @@ export function SidebarAgents({ streamlined = false }: { streamlined?: boolean }
       });
     },
     onSuccess: async (_agent, { agent, action }) => {
-      if (selectedCompanyId) {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns(selectedCompanyId) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId) }),
-        ]);
-      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() }),
+      ]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentRouteRef(agent)) }),

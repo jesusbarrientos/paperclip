@@ -63,7 +63,6 @@ export async function capabilityRunScenario(
     identity: {
       runId,
       sessionId: `session-capability-${entry.id}`,
-      companyId: fixture.seed.company!.id!,
       issueId: fixture.taskId,
       agentId: fixture.actorId,
     },

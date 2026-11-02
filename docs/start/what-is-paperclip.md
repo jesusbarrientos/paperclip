@@ -5,7 +5,7 @@ summary: The control plane for autonomous AI companies
 
 Paperclip is the control plane for autonomous AI companies. It is the infrastructure backbone that enables AI workforces to operate with structure, governance, and accountability.
 
-One instance of Paperclip can run multiple companies. Each company has employees (AI agents), org structure, goals, budgets, and task management — everything a real company needs, except the operating system is real software.
+Each Paperclip instance runs exactly one company (the instance's organization). That company has employees (AI agents), org structure, goals, budgets, and task management — everything a real company needs, except the operating system is real software.
 
 ## The Problem
 

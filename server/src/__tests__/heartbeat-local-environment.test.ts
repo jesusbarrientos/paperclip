@@ -125,7 +125,6 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "ProcessAgent",
       role: "engineer",
       status: "idle",
@@ -184,7 +183,6 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "ProcessAgent",
       role: "engineer",
       status: "idle",
@@ -218,7 +216,6 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
     const captured = JSON.parse(await readFile(envPath, "utf8")) as Record<string, unknown>;
     expect(captured).toMatchObject({
       agentId,
-      companyId,
       runId: queued!.id,
       apiKeyPresent: true,
     });

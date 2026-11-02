@@ -29,14 +29,13 @@ describe("LLM Wiki issue attachment uploads", () => {
     };
 
     await expect(uploadIssueAttachmentFile({
-      companyId: "company 1",
       issueId: "issue/1",
       file,
       fetchImpl,
     })).resolves.toEqual({ id: "attachment-1" });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.input).toBe("/api/companies/company%201/issues/issue%2F1/attachments");
+    expect(calls[0]?.input).toBe("/api/issues/issue%2F1/attachments");
     expect(calls[0]?.init.method).toBe("POST");
     expect(calls[0]?.init.credentials).toBe("include");
     const body = calls[0]?.init.body;
@@ -51,7 +50,6 @@ describe("LLM Wiki issue attachment uploads", () => {
     });
 
     await expect(uploadIssueAttachmentFile({
-      companyId: "company-1",
       issueId: "issue-1",
       file: new File(["hello"], "source.txt"),
       fetchImpl,

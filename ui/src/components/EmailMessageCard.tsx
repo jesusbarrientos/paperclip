@@ -10,15 +10,13 @@ import { useEmailThread } from "@/hooks/useEmailThread";
 import { issuesApi } from "@/api/issues";
 const EmailContext = createContext<EmailThreadSummary | null>(null);
 export function EmailThreadProvider({
-  companyId,
   issueId,
   children,
 }: {
-  companyId: string;
   issueId: string;
   children: ReactNode;
 }) {
-  const thread = useEmailThread(companyId, issueId);
+  const thread = useEmailThread(issueId);
   return (
     <EmailContext.Provider value={thread.data ?? null}>
       {children}

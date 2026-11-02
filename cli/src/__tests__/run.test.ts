@@ -4,7 +4,6 @@ import { registerAgentCommands } from "../commands/client/agent.js";
 import { registerIssueCommands } from "../commands/client/issue.js";
 import { registerRunCommands } from "../commands/client/run.js";
 
-const COMPANY_ID = "22222222-2222-4222-8222-222222222222";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const RUN_ID = "33333333-3333-4333-8333-333333333333";
 const ISSUE_ID = "44444444-4444-4444-8444-444444444444";
@@ -38,11 +37,10 @@ describe("run inspection commands", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([
-        { id: RUN_ID, companyId: COMPANY_ID, agentId: AGENT_ID, status: "running", invocationSource: "on_demand" },
+        { id: RUN_ID, agentId: AGENT_ID, status: "running", invocationSource: "on_demand" },
       ]), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: RUN_ID,
-        companyId: COMPANY_ID,
         agentId: AGENT_ID,
         status: "running",
         invocationSource: "on_demand",
@@ -61,7 +59,6 @@ describe("run inspection commands", () => {
       "run", "list",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--agent-id", AGENT_ID,
       "--limit", "25",
     ], { from: "user" });
@@ -88,7 +85,7 @@ describe("run inspection commands", () => {
     ], { from: "user" });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `http://localhost:3100/api/companies/${COMPANY_ID}/heartbeat-runs?agentId=${AGENT_ID}&limit=25`,
+      `http://localhost:3100/api/heartbeat-runs?agentId=${AGENT_ID}&limit=25`,
     );
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`http://localhost:3100/api/heartbeat-runs/${RUN_ID}`);
     expect(fetchMock.mock.calls[2]?.[0]).toBe(
@@ -166,12 +163,10 @@ describe("run inspection commands", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: AGENT_ID,
         name: "Builder",
-        companyId: COMPANY_ID,
         urlKey: "builder",
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: RUN_ID,
-        companyId: COMPANY_ID,
         agentId: AGENT_ID,
         status: "queued",
       }), { status: 202 }))
@@ -185,7 +180,6 @@ describe("run inspection commands", () => {
       "agent", "wake", "builder",
       "--api-base", "http://localhost:3100",
       "--api-key", "board-token",
-      "--company-id", COMPANY_ID,
       "--reason", "manual check",
       "--payload", "{\"issueId\":\"PC-1\"}",
     ], { from: "user" });
@@ -205,7 +199,7 @@ describe("run inspection commands", () => {
       "--api-key", "board-token",
     ], { from: "user" });
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://localhost:3100/api/agents/builder?companyId=${COMPANY_ID}`);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://localhost:3100/api/agents/builder`);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`http://localhost:3100/api/agents/${AGENT_ID}/wakeup`);
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
       source: "on_demand",

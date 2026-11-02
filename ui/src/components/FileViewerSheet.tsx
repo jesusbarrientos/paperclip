@@ -465,7 +465,6 @@ function LoadingView({ elapsedMs }: { elapsedMs: number }) {
 
 interface FileViewerSheetProps {
   issueId: string;
-  companyId?: string | null;
   /** When not provided, the sheet defaults to the context state. */
   state?: FileViewerUrlState | null;
   /** When true, renders the "Open file" prompt when no file is selected but sheet is open. */
@@ -477,7 +476,6 @@ interface FileViewerSheetProps {
 
 export function FileViewerSheet({
   issueId,
-  companyId,
   state: stateProp,
   showPromptWhenEmpty = false,
   open: openProp,
@@ -852,7 +850,6 @@ export function FileViewerSheet({
                 <WorkspaceFileBrowser
                   key={`${state.projectId ?? ""}:${state.workspaceId ?? ""}`}
                   issueId={issueId}
-                  companyId={companyId}
                   onOpen={handleBrowseOpen}
                   onBrowseStateChange={cameFromBrowse ? handleBrowseStateChange : undefined}
                   initialQuery={cameFromBrowse ? viewer.query : null}
@@ -908,7 +905,6 @@ export function FileViewerSheet({
           ) : browseMode ? (
             <WorkspaceFileBrowser
               issueId={issueId}
-              companyId={companyId}
               onOpen={handleBrowseOpen}
               onBrowseStateChange={handleBrowseStateChange}
               initialQuery={viewer.query}

@@ -30,7 +30,6 @@ export function isChatPublicationCommitSignal(
  * name, target, result, or error from crossing into the public live stream.
  */
 export function publishChatPublicationCommitSignal(input: {
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -40,7 +39,6 @@ export function publishChatPublicationCommitSignal(input: {
   if (!isChatPublicationCommitEventType(input.eventType)) return false;
   try {
     publishLiveEvent({
-      companyId: input.companyId,
       type: "heartbeat.run.event",
       payload: {
         runId: input.runId,

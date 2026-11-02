@@ -2,13 +2,10 @@ import { sql } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uuid, uniqueIndex } from "drizzle-orm/pg-core";
 import { approvals } from "./approvals.js";
 import { budgetPolicies } from "./budget_policies.js";
-import { companies } from "./companies.js";
-
 export const budgetIncidents = pgTable(
   "budget_incidents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     policyId: uuid("policy_id").notNull().references(() => budgetPolicies.id),
     scopeType: text("scope_type").notNull(),
     scopeId: uuid("scope_id").notNull(),
@@ -26,9 +23,8 @@ export const budgetIncidents = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyStatusIdx: index("budget_incidents_company_status_idx").on(table.companyId, table.status),
+    companyStatusIdx: index("budget_incidents_company_status_idx").on(table.status),
     companyScopeIdx: index("budget_incidents_company_scope_idx").on(
-      table.companyId,
       table.scopeType,
       table.scopeId,
       table.status,

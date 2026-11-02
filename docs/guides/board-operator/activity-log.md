@@ -26,7 +26,7 @@ The Activity section in the sidebar shows a chronological feed of all events acr
 ### API
 
 ```
-GET /api/companies/{companyId}/activity
+GET /api/activity
 ```
 
 Query parameters:

@@ -79,7 +79,6 @@ async function stored(
   const [owner] = await (lock ? owners.for("update") : owners);
   if (
     !owner ||
-    owner.companyId !== scope.companyId ||
     owner.endpointId !== scope.endpointId
   )
     return null;
@@ -98,8 +97,7 @@ async function stored(
   if (rows.length !== 1) return null;
   const row = rows[0]!;
   if (
-    row.id !== owner.actionId ||
-    row.companyId !== scope.companyId ||
+    (row.id !== owner.actionId) ||
     row.endpointId !== scope.endpointId ||
     row.conversationId !== null ||
     row.deliveryId !== null ||
@@ -185,7 +183,6 @@ export async function reconcileStoredDiscordCommandRegistration(
           .insert(chatDiscordCommandOwners)
           .values({
             applicationId: scope.applicationId,
-            companyId: scope.companyId,
             endpointId: scope.endpointId,
             actionId,
           })
@@ -194,7 +191,6 @@ export async function reconcileStoredDiscordCommandRegistration(
         if (inserted.length) {
           await tx.insert(chatActions).values({
             id: actionId,
-            companyId: scope.companyId,
             endpointId: scope.endpointId,
             kind,
             providerActionId: actionKey(scope.applicationId),

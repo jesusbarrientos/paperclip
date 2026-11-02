@@ -186,7 +186,7 @@ function StoryFrame({ title, subtitle, children }: { title: string; subtitle: st
 
 function EdgeState({ agent, snapshot }: { agent: Agent; snapshot: AgentSkillSnapshot }) {
   const queryClient = useQueryClient();
-  queryClient.setQueryData(queryKeys.companySkills.list(COMPANY_ID), library);
+  queryClient.setQueryData(queryKeys.companySkills.list(), library);
   queryClient.setQueryData(queryKeys.agents.skills(agent.id), snapshot);
   return <AgentSkillsTab agent={agent} companyId={COMPANY_ID} />;
 }

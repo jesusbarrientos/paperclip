@@ -1,15 +1,15 @@
-const key = (companyId: string) => `paperclip.skill-source-connect-return:${companyId}`;
+const STORAGE_KEY = "paperclip.skill-source-connect-return";
 const lifetime = 30 * 60 * 1000;
 
 /** Tab-local intent survives the full-page OAuth round trip without a redirect URL. */
-export function rememberSkillSourceReturn(companyId: string, sourceId: string) {
+export function rememberSkillSourceReturn(sourceId: string) {
   if (sourceId !== "new" && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sourceId)) return;
-  sessionStorage.setItem(key(companyId), JSON.stringify({ sourceId, expiresAt: Date.now() + lifetime }));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ sourceId, expiresAt: Date.now() + lifetime }));
 }
 
-export function skillSourceReturnPath(companyId: string): string | null {
+export function skillSourceReturnPath(): string | null {
   try {
-    const saved = JSON.parse(sessionStorage.getItem(key(companyId)) ?? "null");
+    const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null");
     if (!saved || typeof saved.expiresAt !== "number" || saved.expiresAt < Date.now()
       || typeof saved.sourceId !== "string"
       || (saved.sourceId !== "new" && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(saved.sourceId))) return null;
@@ -17,8 +17,8 @@ export function skillSourceReturnPath(companyId: string): string | null {
   } catch { return null; }
 }
 
-export function consumeSkillSourceReturn(companyId: string): string | null {
-  const path = skillSourceReturnPath(companyId);
-  sessionStorage.removeItem(key(companyId));
+export function consumeSkillSourceReturn(): string | null {
+  const path = skillSourceReturnPath();
+  sessionStorage.removeItem(STORAGE_KEY);
   return path;
 }

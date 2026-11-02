@@ -15,7 +15,7 @@
  *   4. Set the env var and run:
  *        RUN_K8S_INTEGRATION_TESTS=1 pnpm test
  *
- * The namespace is derived from companySlug ("spike-e2e") + namespacePrefix
+ * The namespace is derived from namespaceSlug ("spike-e2e") + namespacePrefix
  * ("paperclip-"), resolving to "paperclip-spike-e2e".
  */
 
@@ -48,7 +48,7 @@ describe("plugin-kubernetes end-to-end", () => {
       const config = {
         inCluster: false,
         kubeconfig,
-        companySlug: "spike-e2e",
+        namespaceSlug: "spike-e2e",
         adapterType: "claude_local",
         backend: "job",
         imageAllowList: [] as string[],
@@ -60,7 +60,6 @@ describe("plugin-kubernetes end-to-end", () => {
         driverKey: "kubernetes",
         config,
         runId: "r-test-e2e-job",
-        companyId: "11111111-1111-1111-1111-111111111111",
         environmentId: "env-test",
       });
 
@@ -98,7 +97,6 @@ describe("plugin-kubernetes end-to-end", () => {
         config,
         providerLeaseId: lease.providerLeaseId,
         leaseMetadata: lease.metadata,
-        companyId: "11111111-1111-1111-1111-111111111111",
         environmentId: "env-test",
       });
 
@@ -120,7 +118,7 @@ describe("plugin-kubernetes end-to-end", () => {
       const config = {
         inCluster: false,
         kubeconfig,
-        companySlug: "spike-e2e",
+        namespaceSlug: "spike-e2e",
         adapterType: "claude_local",
         backend: "sandbox-cr",
         imageAllowList: [] as string[],
@@ -132,7 +130,6 @@ describe("plugin-kubernetes end-to-end", () => {
         driverKey: "kubernetes",
         config,
         runId: "r-test-e2e-sandbox-cr",
-        companyId: "22222222-2222-2222-2222-222222222222",
         environmentId: "env-test-cr",
       });
 
@@ -186,7 +183,6 @@ describe("plugin-kubernetes end-to-end", () => {
         config,
         providerLeaseId: lease.providerLeaseId,
         leaseMetadata: lease.metadata,
-        companyId: "22222222-2222-2222-2222-222222222222",
         environmentId: "env-test-cr",
       });
 

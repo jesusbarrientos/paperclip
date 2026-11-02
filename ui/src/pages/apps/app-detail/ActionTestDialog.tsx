@@ -24,7 +24,6 @@ import { checkOAuthEndpointUrl } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { toolsApi } from "@/api/tools";
 import { queryKeys } from "@/lib/queryKeys";
-import { useCompany } from "@/context/CompanyContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -430,7 +429,6 @@ function ActionTester({
   onSelectAgent: (agentId: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
   const rawSchema = (entry.inputSchema ?? { type: "object", properties: {} }) as JsonSchemaNode;
   const formSchema = useMemo(() => splitRequiredOptional(rawSchema), [rawSchema]);
   const [values, setValues] = useState<Record<string, unknown>>(() => getDefaultValues(rawSchema));
@@ -472,10 +470,8 @@ function ActionTester({
         setOutcome(nextOutcome);
         storeAskFirstOutcome(connectionId, entry, agent.id, nextOutcome);
         queryClient.invalidateQueries({ queryKey: queryKeys.tools.connectionActivity(connectionId) });
-        if (selectedCompanyId) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.tools.actionRequests(selectedCompanyId, "pending") });
-          queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention(selectedCompanyId) });
-        }
+        queryClient.invalidateQueries({ queryKey: queryKeys.tools.actionRequests("pending") });
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention() });
       };
       const remaining = 200 - durationMs;
       if (remaining > 0) window.setTimeout(finish, remaining);
@@ -1131,7 +1127,6 @@ function AskFirstResult({
   connectionId: string;
   agent?: TestAgentWithAccess;
 }) {
-  const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const actionRequestId = outcome.result.actionRequestId;
   const [cancelled, setCancelled] = useState(false);
@@ -1148,11 +1143,11 @@ function AskFirstResult({
   });
 
   const cancel = useMutation({
-    mutationFn: () => toolsApi.declineActionRequest(selectedCompanyId!, actionRequestId!),
+    mutationFn: () => toolsApi.declineActionRequest(actionRequestId!),
     onSuccess: () => {
       setCancelled(true);
-      queryClient.invalidateQueries({ queryKey: queryKeys.tools.actionRequests(selectedCompanyId!, "pending") });
-      if (selectedCompanyId) queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tools.actionRequests("pending") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention() });
     },
   });
 
@@ -1240,7 +1235,7 @@ function AskFirstResult({
         <Button asChild size="sm" variant="outline">
           <Link to={appTabHref(connectionId, "review")}>Open Review tab</Link>
         </Button>
-        {phase === "waiting" && actionRequestId && selectedCompanyId && (
+        {phase === "waiting" && actionRequestId && (
           <Button size="sm" variant="ghost" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
             {cancel.isPending ? "Cancelling…" : "Cancel this request"}
           </Button>

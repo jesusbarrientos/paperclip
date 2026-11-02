@@ -29,10 +29,7 @@ export async function syncSlackBotTools(
     .select()
     .from(toolConnections)
     .where(
-      and(
-        eq(toolConnections.companyId, endpoint.companyId),
-        eq(toolConnections.id, endpoint.connectionId),
-      ),
+      eq(toolConnections.id, endpoint.connectionId),
     );
   if (!connection) return;
   await tx.execute(
@@ -57,7 +54,6 @@ export async function syncSlackBotTools(
       )
       .digest("hex");
     const values = {
-      companyId: endpoint.companyId,
       applicationId: connection.applicationId,
       connectionId: connection.id,
       entryKind: "tool" as const,
@@ -100,16 +96,12 @@ export async function syncSlackBotTools(
     .select()
     .from(toolProfiles)
     .where(
-      and(
-        eq(toolProfiles.companyId, endpoint.companyId),
-        eq(toolProfiles.profileKey, profileKey),
-      ),
+      eq(toolProfiles.profileKey, profileKey),
     );
   if (priorProfile) return;
   const [profile] = await tx
     .insert(toolProfiles)
     .values({
-      companyId: endpoint.companyId,
       profileKey,
       name: `Slack bot ${endpoint.id}`,
       description: "Task-scoped tools using this bot's App connection",
@@ -118,7 +110,7 @@ export async function syncSlackBotTools(
       metadata: { slackChatEndpointId: endpoint.id },
     })
     .onConflictDoUpdate({
-      target: [toolProfiles.companyId, toolProfiles.profileKey],
+      target: [toolProfiles.profileKey],
       set: {
         description:
           "Task-scoped Slack tools; existing action policies remain in effect.",
@@ -131,7 +123,6 @@ export async function syncSlackBotTools(
     await tx
       .insert(toolConnectionInstalls)
       .values({
-        companyId: endpoint.companyId,
         connectionId: connection.id,
         targetType: "agent",
         targetId: endpoint.assignedAgentId,
@@ -152,7 +143,6 @@ export async function syncSlackBotTools(
     await tx
       .insert(toolProfileEntries)
       .values({
-        companyId: endpoint.companyId,
         profileId: profile!.id,
         selectorType: "connection",
         connectionId: connection.id,
@@ -162,7 +152,6 @@ export async function syncSlackBotTools(
   await tx
     .insert(toolProfileBindings)
     .values({
-      companyId: endpoint.companyId,
       profileId: profile!.id,
       targetType: "agent",
       targetId: endpoint.assignedAgentId,
@@ -176,7 +165,7 @@ async function slackToolsForEndpoint(
   db: Db,
   session: Pick<
     ToolGatewaySession,
-    | "companyId"
+
     | "agentId"
     | "runId"
     | "issueId"
@@ -190,7 +179,6 @@ async function slackToolsForEndpoint(
   try {
     authority = await resolveSlackTaskAuthority(db, {
       endpointId,
-      companyId: session.companyId,
       agentId: session.agentId,
       runId: session.runId,
       issueId: session.issueId,
@@ -219,7 +207,6 @@ async function slackToolsForEndpoint(
     )
     .where(
       and(
-        eq(toolCatalogEntries.companyId, session.companyId),
         eq(toolCatalogEntries.connectionId, authority.endpoint.connectionId),
         eq(toolCatalogEntries.status, "active"),
         isNull(toolCatalogEntries.quarantinedAt),
@@ -252,7 +239,6 @@ export async function slackToolsForSession(
   if (!session.agentId || !session.runId || !session.issueId) return [];
   const tools: ToolGatewayDescriptor[] = [];
   for (const endpoint of await slackEndpointCandidates(db, {
-    companyId: session.companyId,
     agentId: session.agentId,
   })) {
     tools.push(...(await slackToolsForEndpoint(db, session, endpoint.id)));

@@ -1,3 +1,4 @@
+import { organizationService } from "../services/organization.js";
 import { createHash, randomUUID } from "node:crypto";
 import express, { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
@@ -67,7 +68,7 @@ import {
 import { isCloudManagedInstance } from "../services/cloud-instance.js";
 import { getHiddenSettings } from "../services/settings-visibility.js";
 import type { StorageService } from "../storage/types.js";
-import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo, hasCompanyAccess } from "./authz.js";
+import { assertBoard, assertOrgAccess, assertInstanceAdmin, getActorInfo, hasOrgAccess } from "./authz.js";
 import { COMPANY_IMPORT_ROUTE_PATH } from "./company-import-paths.js";
 
 // A company import can arrive one of two ways on the import + preview routes:
@@ -319,7 +320,6 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
 
   async function assertExternalInstructionExportAllowed(
     req: Request,
-    companyId: string,
     input: { include?: { agents?: boolean }; agents?: string[] },
   ) {
     const instanceAdmin = req.actor.type === "board"
@@ -328,7 +328,7 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       ? true
       : input.include?.agents ?? true;
     if (!includesAgents) return instanceAdmin;
-    const companyAgents = await agents.list(companyId, { includeTerminated: true });
+    const companyAgents = await agents.list({ includeTerminated: true });
     const selection = resolvePortableExportAgentSelection(companyAgents, input.agents, includesAgents);
     if (selection.agents.some((agent) => agentInstructionsBundleMode(agent) === "external")) {
       assertInstanceAdmin(req);
@@ -349,91 +349,46 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
 
   function assertImportTargetAccess(
     req: Request,
-    target: { mode: "new_company" } | { mode: "existing_company"; companyId: string },
+    target: { mode: "new_company" } | { mode: "existing_company"; },
   ) {
     if (target.mode === "new_company") {
       assertInstanceAdmin(req);
       return;
     }
-    assertCompanyAccess(req, target.companyId);
+    assertOrgAccess(req);
   }
 
-  async function assertSameCompanyCeoAgentOrBoard(req: Request, companyId: string, capability: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertSameCompanyCeoAgentOrBoard(req: Request, capability: string) {
+    assertOrgAccess(req);
     if (req.actor.type === "board") {
       return;
     }
     if (!req.actor.agentId) throw forbidden("Agent authentication required");
 
     const actorAgent = await agents.getById(req.actor.agentId);
-    if (!actorAgent || actorAgent.companyId !== companyId) {
-      throw forbidden("Agent key cannot access another company");
+    if (!actorAgent) {
+      throw forbidden("Agent not found");
     }
     if (actorAgent.role !== "ceo") {
       throw forbidden(`Only CEO agents can manage ${capability}`);
     }
   }
 
-  router.get("/", async (req, res) => {
-    assertBoard(req);
-    const scope = req.query.scope;
-    if (scope !== undefined && scope !== "accessible") {
-      throw badRequest("scope must be a single accessible value when provided");
-    }
-    const result = await svc.list();
-    // Navigation needs the same membership scope as company detail routes.
-    // Instance admins can inspect the directory without membership, but that
-    // visibility alone does not let them open a company's inbox or tasks.
-    if (scope === "accessible") {
-      res.json(result.filter((company) => hasCompanyAccess(req, company.id)));
-      return;
-    }
-    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
-      res.json(result);
-      return;
-    }
-    const allowed = new Set(req.actor.companyIds ?? []);
-    res.json(result.filter((company) => allowed.has(company.id)));
-  });
-
-  router.get("/stats", async (req, res) => {
-    assertBoard(req);
-    const allowed = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin
-      ? null
-      : new Set(req.actor.companyIds ?? []);
-    const stats = await svc.stats();
-    if (!allowed) {
-      res.json(stats);
-      return;
-    }
-    const filtered = Object.fromEntries(Object.entries(stats).filter(([companyId]) => allowed.has(companyId)));
-    res.json(filtered);
-  });
-
-  // Common malformed path when companyId is empty in "/api/companies/{companyId}/issues".
-  router.get("/issues", (_req, res) => {
-    res.status(400).json({
-      error: "Missing companyId in path. Use /api/companies/{companyId}/issues.",
-    });
-  });
-
-  router.get("/:companyId/artifacts", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/artifacts", async (req, res) => {
+    assertOrgAccess(req);
     const query = companyArtifactsQuerySchema.parse(req.query);
-    res.json(await artifacts.list(companyId, query, {
+    res.json(await artifacts.list(query, {
       userId: query.starred && req.actor.type === "board" ? req.actor.userId : undefined,
     }));
   });
 
-  router.get("/:companyId/timeline", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/timeline", async (req, res) => {
+    assertOrgAccess(req);
 
     const companyScopeDecision = await access.decide({
       actor: req.actor,
       action: "company_scope:read",
-      resource: { type: "company", companyId },
+      resource: { type: "company" },
     });
     if (!companyScopeDecision.allowed) {
       res.status(403).json({ error: "Timeline is outside this actor's authorization boundary" });
@@ -443,7 +398,6 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     const query = timelineQuerySchema.parse(req.query);
     const timeline = workTimelineService(db);
     const result = await timeline.getTimeline({
-      companyId,
       from: parseDateQuery(query.from, "from"),
       to: parseDateQuery(query.to, "to"),
       userId: query.userId,
@@ -458,7 +412,6 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
           action: "issue:read",
           resource: {
             type: "issue",
-            companyId: issue.companyId,
             issueId: issue.id,
             projectId: issue.projectId,
             parentIssueId: issue.parentId,
@@ -480,24 +433,8 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     res.json(result);
   });
 
-  router.get("/:companyId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    // Allow agents (CEO) to read their own company; board always allowed
-    if (req.actor.type !== "agent") {
-      assertBoard(req);
-    }
-    const company = await svc.getById(companyId);
-    if (!company) {
-      res.status(404).json({ error: "Company not found" });
-      return;
-    }
-    res.json(company);
-  });
-
-  router.get("/:companyId/feedback-traces", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/feedback-traces", async (req, res) => {
+    assertOrgAccess(req);
     assertBoard(req);
 
     const targetTypeRaw = typeof req.query.targetType === "string" ? req.query.targetType : undefined;
@@ -509,7 +446,6 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       : undefined;
 
     const traces = await feedback.listFeedbackTraces({
-      companyId,
       issueId,
       projectId,
       targetType: targetTypeRaw ? feedbackTargetTypeSchema.parse(targetTypeRaw) : undefined,
@@ -523,20 +459,18 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     res.json(traces);
   });
 
-  router.post("/:companyId/export", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company exports");
+  router.post("/export", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company exports");
     const body = companyPortabilityExportSchema.parse(req.body);
-    const allowExternalInstructions = await assertExternalInstructionExportAllowed(req, companyId, body);
-    const result = await portability.exportBundle(companyId, body, { allowExternalInstructions });
+    const allowExternalInstructions = await assertExternalInstructionExportAllowed(req, body);
+    const result = await portability.exportBundle(body, { allowExternalInstructions });
     res.json(result);
   });
 
-  router.get("/:companyId/export/fidelity", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company export fidelity");
-    const counts = await collectExportFidelityCounts(db, companyId);
-    res.json(buildExportFidelityReport(companyId, counts));
+  router.get("/export/fidelity", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company export fidelity");
+    const counts = await collectExportFidelityCounts(db);
+    res.json(buildExportFidelityReport(counts));
   });
 
   /**
@@ -571,7 +505,7 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
   // COMPANY_IMPORT_TRANSFERS_ROUTE_PATH nests under the import path, so these
   // two prefixes cover every import route registered below.
   router.use(COMPANY_IMPORT_ROUTE_PATH, importFloor);
-  router.use("/:companyId/imports", importFloor);
+  router.use("/imports", importFloor);
 
   router.post("/import/preview", async (req, res) => {
     assertBoard(req);
@@ -634,7 +568,7 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
           await logImportedCompanyActivity(db, activity, result);
         } catch (activityError) {
           logger.warn(
-            { err: activityError, companyId: result.company.id },
+            { err: activityError },
             "failed to write the company.imported activity entry for a committed import",
           );
         }
@@ -804,10 +738,10 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       // since, so this lookup is null-safe and the field stays optional. The
       // actor key proves this caller ran the original import, but their
       // access may have been revoked since — withhold the identity unless
-      // they can still reach the company today (hasCompanyAccess, so a
+      // they can still reach the company today (hasOrgAccess, so a
       // revoked caller sees the same null as a deleted company).
-      const landedCompany = run.companyId && hasCompanyAccess(req, run.companyId)
-        ? await svc.getById(run.companyId)
+      const landedCompany = hasOrgAccess(req)
+        ? await svc.getById(await organizationService(db).requireId())
         : null;
       res.json({
         transferId: run.id,
@@ -1067,7 +1001,7 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
             }
           }
           try {
-            await companyTransferRunService.attachCompany(db, run.id, result.company.id);
+            await companyTransferRunService.attachCompany(db, run.id);
           } catch (attachError) {
             logger.warn(
               { err: attachError, transferId: run.id },
@@ -1118,59 +1052,46 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     }
   });
 
-  router.post("/:companyId/exports/preview", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company exports");
+  router.post("/exports/preview", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company exports");
     const body = companyPortabilityExportSchema.parse(req.body);
-    const allowExternalInstructions = await assertExternalInstructionExportAllowed(req, companyId, body);
-    const preview = await portability.previewExport(companyId, body, { allowExternalInstructions });
+    const allowExternalInstructions = await assertExternalInstructionExportAllowed(req, body);
+    const preview = await portability.previewExport(body, { allowExternalInstructions });
     res.json(preview);
   });
 
-  router.post("/:companyId/exports", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company exports");
+  router.post("/exports", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company exports");
     const body = companyPortabilityExportSchema.parse(req.body);
-    const allowExternalInstructions = await assertExternalInstructionExportAllowed(req, companyId, body);
-    const result = await portability.exportBundle(companyId, body, { allowExternalInstructions });
+    const allowExternalInstructions = await assertExternalInstructionExportAllowed(req, body);
+    const result = await portability.exportBundle(body, { allowExternalInstructions });
     res.json(result);
   });
 
-  router.post("/:companyId/imports/preview", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company imports");
+  router.post("/imports/preview", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company imports");
     const body = companyPortabilityPreviewSchema.parse(req.body);
-    if (body.target.mode === "existing_company" && body.target.companyId !== companyId) {
-      throw forbidden("Safe import route can only target the route company");
-    }
     if (body.collisionStrategy === "replace") {
       throw forbidden("Safe import route does not allow replace collision strategy");
     }
     const preview = await portability.previewImport(body, {
       mode: "agent_safe",
-      sourceCompanyId: companyId,
     });
     res.json(preview);
   });
 
-  router.post("/:companyId/imports/apply", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company imports");
+  router.post("/imports/apply", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company imports");
     const body = companyPortabilityImportSchema.parse(req.body);
-    if (body.target.mode === "existing_company" && body.target.companyId !== companyId) {
-      throw forbidden("Safe import route can only target the route company");
-    }
     if (body.collisionStrategy === "replace") {
       throw forbidden("Safe import route does not allow replace collision strategy");
     }
     const actor = getActorInfo(req);
     const result = await portability.importBundle(body, req.actor.type === "board" ? req.actor.userId : null, {
       mode: "agent_safe",
-      sourceCompanyId: companyId,
       pauseAutomations: body.pauseAutomations === true,
     });
     await logActivity(db, {
-      companyId: result.company.id,
       actorType: actor.actorType,
       actorId: actor.actorId,
       entityType: "company",
@@ -1208,15 +1129,13 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       ...req.body,
       defaultResponsibleUserId: req.body.defaultResponsibleUserId ?? ownerPrincipalId,
     });
-    await access.ensureMembership(company.id, "user", ownerPrincipalId, "owner", "active");
+    await access.ensureMembership("user", ownerPrincipalId, "owner", "active");
     await access.ensureRoleDefaultGrants(
-      company.id,
       ownerPrincipalId,
       "owner",
       req.actor.userId ?? null,
     );
     await logActivity(db, {
-      companyId: company.id,
       actorType: "user",
       actorId: req.actor.userId ?? "board",
       action: "company.created",
@@ -1226,7 +1145,6 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     });
     if (company.budgetMonthlyCents > 0) {
       await budgets.upsertPolicy(
-        company.id,
         {
           scopeType: "company",
           scopeId: company.id,
@@ -1239,9 +1157,8 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     res.status(201).json(company);
   });
 
-  router.patch("/:companyId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company settings");
+  router.patch("/", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company settings");
 
     const actor = getActorInfo(req);
     let body: Record<string, unknown>;
@@ -1252,7 +1169,8 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       body = updateCompanySchema.parse(req.body);
     }
 
-    const existingCompany = await svc.getById(companyId);
+    const organizationId = await organizationService(db).requireId();
+    const existingCompany = await svc.getById(organizationId);
     if (!existingCompany) {
       res.status(404).json({ error: "Company not found" });
       return;
@@ -1282,7 +1200,6 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
         .select({ value: countFn() })
         .from(agentsTable)
         .where(and(
-          eq(agentsTable.companyId, companyId),
           eq(agentsTable.status, "paused"),
           eq(agentsTable.pauseReason, "company_archived"),
         ));
@@ -1294,14 +1211,13 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       transitionsArchivedToActive ||
       transitionsPausedToActiveWithArchivePausedAgents;
 
-    const company = await svc.update(companyId, body, actor);
+    const company = await svc.update(organizationId, body, actor);
     if (!company) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
     if (!lifecycleEventEmittedByService) {
       await logActivity(db, {
-        companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -1309,25 +1225,23 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
         agentApiKeyId: actor.agentApiKeyId,
         action: "company.updated",
         entityType: "company",
-        entityId: companyId,
+        entityId: company.id,
         details: body,
       });
     }
     res.json(company);
   });
 
-  router.patch("/:companyId/branding", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company branding");
+  router.patch("/branding", async (req, res) => {
+    await assertSameCompanyCeoAgentOrBoard(req, "company branding");
     const body = updateCompanyBrandingSchema.parse(req.body);
-    const company = await svc.update(companyId, body);
+    const company = await svc.update(await organizationService(db).requireId(), body);
     if (!company) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -1335,34 +1249,10 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
       agentApiKeyId: actor.agentApiKeyId,
       action: "company.branding_updated",
       entityType: "company",
-      entityId: companyId,
+      entityId: company.id,
       details: body,
     });
     res.json(company);
-  });
-
-  router.post("/:companyId/archive", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
-    const company = await svc.archive(companyId, getActorInfo(req));
-    if (!company) {
-      res.status(404).json({ error: "Company not found" });
-      return;
-    }
-    res.json(company);
-  });
-
-  router.delete("/:companyId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
-    const company = await svc.remove(companyId);
-    if (!company) {
-      res.status(404).json({ error: "Company not found" });
-      return;
-    }
-    res.json({ ok: true });
   });
 
   return router;
@@ -1399,7 +1289,6 @@ interface ImportJobRecord {
   completedAt?: string;
   error?: { message: string };
   result?: {
-    companyId: string;
     agentCount: number;
     warningCount: number;
     companyAction: unknown;
@@ -1489,7 +1378,6 @@ async function runImportJob(
     job.updatedAt = now;
     job.completedAt = now;
     job.result = {
-      companyId: result.company.id,
       agentCount: result.agents.length,
       warningCount: result.warnings.length,
       companyAction: result.company.action,
@@ -1525,7 +1413,6 @@ async function logImportedCompanyActivity(
   result: CompanyImportResult,
 ) {
   await logActivity(db, {
-    companyId: result.company.id,
     actorType: activity.actorType,
     actorId: activity.actorId,
     action: "company.imported",
@@ -1543,7 +1430,7 @@ async function logImportedCompanyActivity(
 }
 
 function importJobStatusUrl(job: ImportJobRecord) {
-  return `/api/companies/import/jobs/${encodeURIComponent(job.id)}`;
+  return `/api/organization/import/jobs/${encodeURIComponent(job.id)}`;
 }
 
 function importJobAcceptedResponse(job: ImportJobRecord) {

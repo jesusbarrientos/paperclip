@@ -75,7 +75,6 @@ export interface CapabilityCleanRoomIdentity {
   token: string;
   /** Mock issue number. Rendered as `MCK-<sequence>` in the header. */
   sequence: number;
-  companyId: string;
   actorId: string;
   taskId: string;
   identifier: string;
@@ -94,7 +93,6 @@ export function createCapabilityCleanRoomIdentity(
   return {
     token,
     sequence,
-    companyId: `company-cleanroom-${token}`,
     actorId: `actor-cleanroom-${token}`,
     taskId: `task-cleanroom-${token}`,
     identifier: `MCK-${sequence}`,
@@ -116,16 +114,14 @@ export function createCapabilityCleanRoomSeed(
   return createCapabilityFixtureState({
     ...(options.epochMs === undefined ? {} : { epochMs: options.epochMs }),
     company: {
-      id: identity.companyId,
       name: "Mock Paperclip (clean room)",
       issuePrefix: "MCK",
       status: "active",
-      budgetId: `budget-${identity.companyId}`,
+      budgetId: `budget-cleanroom-${identity.token}`,
     },
     actors: [
       {
         id: identity.actorId,
-        companyId: identity.companyId,
         name: "Mock Agent",
         role: "engineer",
         status: "active",
@@ -136,7 +132,6 @@ export function createCapabilityCleanRoomSeed(
     tasks: [
       {
         id: identity.taskId,
-        companyId: identity.companyId,
         identifier: identity.identifier,
         title: "Clean-room chat",
         description: null,
@@ -217,7 +212,6 @@ export function createCapabilityCleanRoomSessionInput(
       scenario: CAPABILITY_CLEAN_ROOM_SCENARIO,
       capabilities: capabilityFixtureRunCapabilities(CAPABILITY_CLEAN_ROOM_CLAIMS),
       explicitClaims: [...CAPABILITY_CLEAN_ROOM_CLAIMS],
-      companyId: identity.companyId,
       actorId: identity.actorId,
       taskId: identity.taskId,
       ...(options.turnTimeoutMs === undefined ? {} : { turnTimeoutMs: options.turnTimeoutMs }),

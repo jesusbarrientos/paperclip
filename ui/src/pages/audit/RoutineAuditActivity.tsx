@@ -7,20 +7,18 @@ import { Button } from "@/components/ui/button";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function RoutineAuditActivity({
-  companyId,
   routineId,
 }: {
-  companyId: string;
   routineId: string;
 }) {
   const activity = useQuery({
-    queryKey: [...queryKeys.routines.activity(companyId, routineId), "audit"],
+    queryKey: [...queryKeys.routines.activity(routineId), "audit"],
     queryFn: async () => {
       const [routine, runs] = await Promise.all([
         routinesApi.get(routineId),
         routinesApi.listRuns(routineId, 200),
       ]);
-      return routinesApi.activity(companyId, routineId, {
+      return routinesApi.activity(routineId, {
         triggerIds: routine.triggers.map((trigger) => trigger.id),
         runIds: runs.map((run) => run.id),
       });

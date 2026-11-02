@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { buildRoutineMentionHref, buildSkillMentionHref } from "@paperclipai/shared";
 import { companySkillsApi } from "../api/companySkills";
 import { routinesApi } from "../api/routines";
-import { useCompany } from "./CompanyContext";
+import { useOrganization } from "./OrganizationContext";
 import { queryKeys } from "../lib/queryKeys";
 
 export interface SkillCommandOption {
@@ -50,20 +50,13 @@ const EditorAutocompleteContext = createContext<EditorAutocompleteContextValue>(
 });
 
 export function EditorAutocompleteProvider({ children }: { children: ReactNode }) {
-  const { selectedCompanyId } = useCompany();
   const { data: companySkills = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.companySkills.list(selectedCompanyId)
-      : ["company-skills", "__none__"],
-    queryFn: () => companySkillsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.companySkills.list(),
+    queryFn: () => companySkillsApi.list(),
   });
   const { data: routines = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.routines.list(selectedCompanyId)
-      : ["routines", "__none__", "__all-projects__"],
-    queryFn: () => routinesApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.routines.list(),
+    queryFn: () => routinesApi.list(),
   });
 
   const value = useMemo<EditorAutocompleteContextValue>(() => ({

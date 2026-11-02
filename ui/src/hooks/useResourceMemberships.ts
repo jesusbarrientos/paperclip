@@ -136,26 +136,24 @@ export function starredResourceIds(
   return Array.isArray(ids) ? ids : [];
 }
 
-export function useResourceMemberships(companyId: string | null | undefined) {
+export function useResourceMemberships() {
   return useQuery({
-    queryKey: queryKeys.resourceMemberships.mine(companyId ?? "__none__"),
-    queryFn: () => resourceMembershipsApi.listMine(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.resourceMemberships.mine(),
+    queryFn: () => resourceMembershipsApi.listMine(),
   });
 }
 
-export function useResourceMembershipMutation(companyId: string | null | undefined) {
+export function useResourceMembershipMutation() {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
-  const queryKey = queryKeys.resourceMemberships.mine(companyId ?? "__none__");
+  const queryKey = queryKeys.resourceMemberships.mine();
 
   return useMutation({
     mutationFn: (variables: MutationVariables) => {
-      if (!companyId) throw new Error("Select an organization first.");
       const body = { state: variables.state, starred: variables.starred };
       return variables.resourceType === "project"
-        ? resourceMembershipsApi.updateProject(companyId, variables.resourceId, body)
-        : resourceMembershipsApi.updateAgent(companyId, variables.resourceId, body);
+        ? resourceMembershipsApi.updateProject(variables.resourceId, body)
+        : resourceMembershipsApi.updateAgent(variables.resourceId, body);
     },
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey });

@@ -27,7 +27,7 @@ let messages: TaskChatMessageItem[] = [];
 function resetFixture(scenario: Scenario) {
   const established = ["access", "task", "reconnect"].includes(scenario.screen ?? "catalog");
   endpoint = {
-    id: endpointId, companyId: agent.companyId, provider: "imessage-photon",
+    id: endpointId, provider: "imessage-photon",
     status: established ? "verifying" : "draft", assignedAgentId: agent.id,
     assignedAgentName: agent.name, allowDirectMessages: true, allowUnlinkedPeople: false,
     allowGroupChats: false, photonAllocation: scenario.dedicated ? "dedicated" : "shared",
@@ -74,14 +74,14 @@ function Journey({ screen = "catalog" }: { screen?: Screen }) {
       </div>
     </aside>
     <Routes>
-      <Route path="/:companyPrefix/apps" element={<div role="list" aria-label="Connectors"><ConnectorCard
+      <Route path="/apps" element={<div role="list" aria-label="Connectors"><ConnectorCard
         row={{ key: "imessage-photon", slug: "imessage-photon", name: "iMessage Photon", description: "Message an agent from Apple Messages. Send photos and keep one task conversation.", brandKey: "imessage-photon", entry: null, applications: [], connections: [], chatEndpoints: [] }}
         userProfileById={new Map()} chatConnectorsEnabled
         onNavigate={() => navigate(setupUrl)} onRequestRemove={() => {}}
       /></div>} />
-      <Route path="/:companyPrefix/apps/chat/new" element={<ChatEndpointSetup />} />
-      <Route path="/:companyPrefix/apps/chat/:endpointId/:tab" element={<ChatEndpointDetail />} />
-      <Route path="/:companyPrefix/issues/DEMO-1" element={<section className="space-y-4" aria-label="Simulated task conversation">
+      <Route path="/apps/chat/new" element={<ChatEndpointSetup />} />
+      <Route path="/apps/chat/:endpointId/:tab" element={<ChatEndpointDetail />} />
+      <Route path="/issues/DEMO-1" element={<section className="space-y-4" aria-label="Simulated task conversation">
         <h1 className="text-xl font-bold">DEMO-1 · Launch plan</h1>
         <p className="text-sm text-muted-foreground">Each simulated reply completes a turn. Follow-ups stay on DEMO-1. Use /new or /close in Messages when you want a new task.</p>
         {messages.length ? messages.map((message) => <TaskChatBubble key={message.id} item={message} />) : <p>Link the sender, then simulate a fresh message to start work.</p>}

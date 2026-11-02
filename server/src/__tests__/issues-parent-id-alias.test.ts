@@ -18,22 +18,20 @@ describeEmbeddedPostgres("issue list parentIssueId query alias", () => {
 
   async function seed() {
     const company = await seedCompanyWithBoardAccess(ctx.db, "Parent alias");
-    const companyId = company.companyId;
     const parentId = randomUUID();
     const otherParentId = randomUUID();
     const childId = randomUUID();
     const blockedChildId = randomUUID();
 
     await ctx.db.insert(issues).values([
-      { id: parentId, companyId, title: "Parent", status: "todo", priority: "medium" },
-      { id: otherParentId, companyId, title: "Other parent", status: "todo", priority: "medium" },
+      { id: parentId, title: "Parent", status: "todo", priority: "medium" },
+      { id: otherParentId, title: "Other parent", status: "todo", priority: "medium" },
     ]);
     await ctx.db.insert(issues).values([
-      { id: childId, companyId, title: "Child", status: "todo", priority: "medium", parentId },
-      { id: blockedChildId, companyId, title: "Blocked child", status: "blocked", priority: "medium", parentId },
+      { id: childId, title: "Child", status: "todo", priority: "medium", parentId },
+      { id: blockedChildId, title: "Blocked child", status: "blocked", priority: "medium", parentId },
       {
         id: randomUUID(),
-        companyId,
         title: "Other child",
         status: "todo",
         priority: "medium",
@@ -41,7 +39,6 @@ describeEmbeddedPostgres("issue list parentIssueId query alias", () => {
       },
       {
         id: randomUUID(),
-        companyId,
         title: "Blocked other child",
         status: "blocked",
         priority: "medium",
@@ -60,7 +57,7 @@ describeEmbeddedPostgres("issue list parentIssueId query alias", () => {
 
   async function listIds(seeded: Seeded, query: Record<string, string>) {
     const res = await request(appFor(seeded))
-      .get(`/api/companies/${seeded.companyId}/issues`)
+      .get(`/api/issues`)
       .query(query)
       .expect(200);
     return (res.body as { id: string }[]).map((issue) => issue.id).sort();
@@ -68,7 +65,7 @@ describeEmbeddedPostgres("issue list parentIssueId query alias", () => {
 
   async function blockedCount(seeded: Seeded, query: Record<string, string>) {
     const res = await request(appFor(seeded))
-      .get(`/api/companies/${seeded.companyId}/issues/count`)
+      .get(`/api/issues/count`)
       .query({ attention: "blocked", ...query })
       .expect(200);
     return res.body as { count: number };

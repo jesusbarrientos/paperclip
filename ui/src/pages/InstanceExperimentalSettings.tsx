@@ -127,7 +127,7 @@ export function InstanceExperimentalSettings() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Settings", href: "/company/settings" },
+      { label: "Settings", href: "/organization/settings" },
       { label: "Experimental" },
     ]);
   }, [setBreadcrumbs]);

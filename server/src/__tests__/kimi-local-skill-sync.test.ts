@@ -26,7 +26,6 @@ describe("kimi local skill sync", () => {
 
     const ctx = {
       agentId: "agent-1",
-      companyId: "company-1",
       adapterType: "kimi_local",
       config: {
         env: {

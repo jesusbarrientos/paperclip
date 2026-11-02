@@ -520,7 +520,6 @@ interface IssueChatComposerProps {
   enableReassign?: boolean;
   reassignOptions?: InlineEntityOption[];
   currentAssigneeValue?: string;
-  companyId?: string | null;
   assigneeAdapterOverrides?: IssueAssigneeAdapterOverrides | null;
   suggestedAssigneeValue?: string;
   mentions?: MentionOption[];
@@ -599,7 +598,6 @@ interface IssueChatThreadProps {
   /** Starts a fresh on-demand run for the selected failed run. */
   onRetryFailedRun?: (runId: string) => Promise<void> | void;
   retryFailedRunId?: string | null;
-  companyId?: string | null;
   projectId?: string | null;
   issueStatus?: string;
   agentMap?: Map<string, Agent>;
@@ -4668,7 +4666,6 @@ const IssueChatComposer = forwardRef<
     enableReassign = false,
     reassignOptions = [],
     currentAssigneeValue = "",
-    companyId,
     assigneeAdapterOverrides,
     suggestedAssigneeValue,
     mentions = [],
@@ -5612,9 +5609,8 @@ const IssueChatComposer = forwardRef<
             testId="issue-chat-composer-work-mode-chip" />
         </div>
 
-        {enableReassign && reassignOptions.length > 0 && companyId && agentMap ? (
+        {enableReassign && reassignOptions.length > 0 && agentMap ? (
           <ComposerRunSettingsPicker
-            companyId={companyId}
             assigneeValue={reassignTarget}
             currentAssigneeValue={currentAssigneeValue}
             options={reassignOptions}
@@ -5782,7 +5778,6 @@ export function IssueChatThread({
   reconcileRecoveryActionPending = false,
   canFalsePositiveRecoveryAction = false,
   legacyRecoverySourceIssue = null,
-  companyId,
   assigneeAdapterOverrides,
   projectId,
   issueStatus,
@@ -5957,7 +5952,6 @@ export function IssueChatThread({
 
   const { transcriptByRun, hasOutputForRun } = useLiveRunTranscripts({
     runs: enableLiveTranscriptPolling ? transcriptRuns : [],
-    companyId,
   });
   const resolvedTranscriptByRun = transcriptsByRunId ?? transcriptByRun;
   const resolvedHasOutputForRun = hasOutputForRunOverride ?? hasOutputForRun;
@@ -5973,7 +5967,6 @@ export function IssueChatThread({
         transcriptsByRunId: resolvedTranscriptByRun,
         hasOutputForRun: resolvedHasOutputForRun,
         includeSucceededRunsWithoutOutput,
-        companyId,
         projectId,
         agentMap,
         currentUserId,
@@ -5990,7 +5983,6 @@ export function IssueChatThread({
       resolvedTranscriptByRun,
       resolvedHasOutputForRun,
       includeSucceededRunsWithoutOutput,
-      companyId,
       projectId,
       agentMap,
       currentUserId,
@@ -6769,7 +6761,6 @@ export function IssueChatThread({
                 enableReassign={enableReassign}
                 reassignOptions={reassignOptions}
                 currentAssigneeValue={currentAssigneeValue}
-                companyId={companyId}
                 assigneeAdapterOverrides={assigneeAdapterOverrides}
                 suggestedAssigneeValue={suggestedAssigneeValue}
                 mentions={mentions}

@@ -8,7 +8,6 @@ import type {
 } from "./model";
 
 const requirement: AiConnectionRequirement = {
-  companyId: "design-example",
   provider: "anthropic",
   method: "subscription",
 };

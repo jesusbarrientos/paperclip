@@ -57,7 +57,6 @@ function createRequestConfirmation(
 ): RequestConfirmationInteraction {
   return {
     id: "confirmation-1",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "request_confirmation",
     title: "Approve the plan",

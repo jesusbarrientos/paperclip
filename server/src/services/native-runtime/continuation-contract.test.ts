@@ -48,7 +48,6 @@ const support = await getEmbeddedPostgresTestSupport();
         .insert(agents)
         .values({
           id: agentId,
-          companyId,
           name: "Executor",
           role: "engineer",
           adapterType: "paperclip_runner",
@@ -57,7 +56,6 @@ const support = await getEmbeddedPostgresTestSupport();
         .insert(issues)
         .values({
           id: issueId,
-          companyId,
           title: "Read Notion",
           status: "in_progress",
           assigneeAgentId: agentId,
@@ -65,14 +63,12 @@ const support = await getEmbeddedPostgresTestSupport();
         .returning();
       const previous = await ensureNativeCompletionContract({
         db,
-        companyId,
         issue: task!,
         actorId: agentId,
         immediateRequest: "Read Notion",
       });
       const current = await ensureNativeCompletionContract({
         db,
-        companyId,
         issue: task!,
         actorId: agentId,
         immediateRequest: "Now read Gmail",
@@ -86,7 +82,6 @@ const support = await getEmbeddedPostgresTestSupport();
       const oldInput = parseNativeExecutionInput({
         schema: "paperclip.native-execution-input.v1",
         binding: {
-          companyId,
           issueId,
           agentId,
           runId,
@@ -124,7 +119,6 @@ const support = await getEmbeddedPostgresTestSupport();
         .insert(heartbeatRuns)
         .values({
           id: runId,
-          companyId,
           agentId,
           nativeIssueId: issueId,
           status: "running",
@@ -136,13 +130,12 @@ const support = await getEmbeddedPostgresTestSupport();
       await db
         .insert(nativeRunFinalizations)
         .values({
-          companyId,
           issueId,
           runId,
           phase: "retryable_failure",
           attempt: 1,
         });
-      return { companyId, issueId, runId, oldInput, nextInput };
+      return { issueId, runId, oldInput, nextInput };
     }
     it("rebinds a fenced unfinished run to Gmail while retaining the Notion revision", async () => {
       const s = await setup();
@@ -183,7 +176,6 @@ const support = await getEmbeddedPostgresTestSupport();
       await db
         .insert(nativeRunResults)
         .values({
-          companyId: s.companyId,
           issueId: s.issueId,
           runId: s.runId,
           completionContractId: s.oldInput.completionContract.id,
@@ -199,7 +191,7 @@ const support = await getEmbeddedPostgresTestSupport();
         .update(issues)
         .set({ assigneeAgentId: null })
         .where(
-          and(eq(issues.companyId, s.companyId), eq(issues.id, s.issueId)),
+          eq(issues.id, s.issueId),
         );
       await expect(
         rebindContinuationContract(db, s.oldInput, s.nextInput),

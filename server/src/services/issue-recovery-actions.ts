@@ -34,7 +34,6 @@ function isRecoveryBudgetExhausted(evidence: Record<string, unknown>) {
 }
 
 export type UpsertIssueRecoveryActionInput = {
-  companyId: string;
   sourceIssueId: string;
   recoveryIssueId?: string | null;
   kind: IssueRecoveryActionKind;
@@ -67,7 +66,6 @@ export type UpsertIssueRecoveryActionInput = {
 };
 
 export type ResolveIssueRecoveryActionInput = {
-  companyId: string;
   sourceIssueId: string;
   actionId?: string | null;
   kind?: IssueRecoveryActionKind | null;
@@ -81,7 +79,6 @@ export type ResolveIssueRecoveryActionInput = {
 function toReadModel(row: IssueRecoveryActionRow): IssueRecoveryAction {
   return {
     id: row.id,
-    companyId: row.companyId,
     sourceIssueId: row.sourceIssueId,
     recoveryIssueId: row.recoveryIssueId,
     kind: row.kind as IssueRecoveryAction["kind"],
@@ -132,7 +129,7 @@ export function issueRecoveryActionService(db: Db) {
     input: UpsertIssueRecoveryActionInput,
     task: () => Promise<T>,
   ): Promise<T> {
-    const key = `${input.companyId}:${input.sourceIssueId}`;
+    const key = input.sourceIssueId;
     const previous = upsertQueues.get(key) ?? Promise.resolve();
     let release: () => void = () => {};
     const current = new Promise<void>((resolve) => {
@@ -156,7 +153,6 @@ export function issueRecoveryActionService(db: Db) {
   // scheduled retries, and workspace export can run while the heartbeat still
   // records its earlier failure. Project their actual activity for every reader.
   async function projectNativeRunActivity(
-    companyId: string,
     actions: IssueRecoveryAction[],
     dbOrTx: DbOrTransaction,
   ) {
@@ -174,7 +170,6 @@ export function issueRecoveryActionService(db: Db) {
       finishedAt: heartbeatRuns.finishedAt,
       workspaceOperationId: workspaceOperations.id,
     }).from(heartbeatRuns).leftJoin(workspaceOperations, and(
-      eq(workspaceOperations.companyId, heartbeatRuns.companyId),
       eq(workspaceOperations.heartbeatRunId, heartbeatRuns.id),
       eq(workspaceOperations.issueId, heartbeatRuns.nativeIssueId),
       eq(workspaceOperations.phase, "workspace_finalize"),
@@ -182,7 +177,6 @@ export function issueRecoveryActionService(db: Db) {
       isNull(workspaceOperations.finishedAt),
       sql`${workspaceOperations.metadata}->>'owningService' = 'native_workspace_finalizer'`,
     )).where(and(
-      eq(heartbeatRuns.companyId, companyId),
       eq(heartbeatRuns.runtimeMode, "native"),
       inArray(heartbeatRuns.id, runIds),
       or(
@@ -194,7 +188,7 @@ export function issueRecoveryActionService(db: Db) {
     for (const row of activity) {
       const liveOperation = row.workspaceOperationId && row.issueId
         && isNativeWorkspaceFinalizationOperationActive({
-          operationId: row.workspaceOperationId, companyId, runId: row.runId, issueId: row.issueId,
+          operationId: row.workspaceOperationId, runId: row.runId, issueId: row.issueId,
         });
       const liveHeartbeat = ["queued", "running"].includes(row.status) && row.finishedAt === null;
       if (!liveHeartbeat && !liveOperation) continue;
@@ -215,7 +209,6 @@ export function issueRecoveryActionService(db: Db) {
   }
 
   async function getActiveForIssue(
-    companyId: string,
     sourceIssueId: string,
     dbOrTx: DbOrTransaction = db,
   ): Promise<IssueRecoveryAction | null> {
@@ -224,7 +217,6 @@ export function issueRecoveryActionService(db: Db) {
       .from(issueRecoveryActions)
       .where(
         and(
-          eq(issueRecoveryActions.companyId, companyId),
           eq(issueRecoveryActions.sourceIssueId, sourceIssueId),
           inArray(issueRecoveryActions.status, [...ACTIVE_RECOVERY_ACTION_STATUSES]),
         ),
@@ -234,18 +226,17 @@ export function issueRecoveryActionService(db: Db) {
       .then((rows) => rows[0] ?? null);
     if (!row) return null;
     const action = toReadModel(row);
-    await projectNativeRunActivity(companyId, [action], dbOrTx);
+    await projectNativeRunActivity([action], dbOrTx);
     return action;
   }
 
-  async function listActiveForIssues(companyId: string, sourceIssueIds: string[]) {
+  async function listActiveForIssues(sourceIssueIds: string[]) {
     if (sourceIssueIds.length === 0) return new Map<string, IssueRecoveryAction>();
     const rows = await db
       .select()
       .from(issueRecoveryActions)
       .where(
         and(
-          eq(issueRecoveryActions.companyId, companyId),
           inArray(issueRecoveryActions.sourceIssueId, [...new Set(sourceIssueIds)]),
           inArray(issueRecoveryActions.status, [...ACTIVE_RECOVERY_ACTION_STATUSES]),
         ),
@@ -255,7 +246,7 @@ export function issueRecoveryActionService(db: Db) {
     for (const row of rows) {
       if (!result.has(row.sourceIssueId)) result.set(row.sourceIssueId, toReadModel(row));
     }
-    await projectNativeRunActivity(companyId, [...result.values()], db);
+    await projectNativeRunActivity([...result.values()], db);
     return result;
   }
 
@@ -279,7 +270,6 @@ export function issueRecoveryActionService(db: Db) {
     now: Date,
   ) {
     return {
-      companyId: input.companyId,
       sourceIssueId: input.sourceIssueId,
       recoveryIssueId: input.recoveryIssueId ?? null,
       kind: input.kind,
@@ -355,7 +345,7 @@ export function issueRecoveryActionService(db: Db) {
     input: UpsertIssueRecoveryActionInput,
     retryCount = 0,
   ): Promise<IssueRecoveryAction> {
-    const existing = await getActiveForIssue(input.companyId, input.sourceIssueId);
+    const existing = await getActiveForIssue(input.sourceIssueId);
     const now = new Date();
     const ownerType = input.ownerType ?? (input.ownerAgentId ? "agent" : "board");
     if (existing) {
@@ -535,7 +525,6 @@ export function issueRecoveryActionService(db: Db) {
   ): Promise<IssueRecoveryAction | null> {
     const now = new Date();
     const predicates = [
-      eq(issueRecoveryActions.companyId, input.companyId),
       eq(issueRecoveryActions.sourceIssueId, input.sourceIssueId),
       inArray(issueRecoveryActions.status, [...ACTIVE_RECOVERY_ACTION_STATUSES]),
     ];

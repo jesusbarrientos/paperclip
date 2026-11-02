@@ -94,7 +94,6 @@ type RoutineActivityList = Awaited<
 export type RoutineDetailContextValue = {
   routine: RoutineDetailType;
   routineId: string;
-  companyId: string;
 
   // edit state
   editDraft: RoutineEditDraft;

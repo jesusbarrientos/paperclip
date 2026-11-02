@@ -7,7 +7,7 @@ import { CreateosClient } from "./client.js";
 vi.mock("./request-pacer.js", () => ({ waitForRequest: vi.fn().mockResolvedValue(undefined) }));
 
 const config = { apiUrl: "https://createos.example.test", apiKey: "test-secret", shape: "test-shape", timeoutMs: 5000 };
-const base = { driverKey: "createos", companyId: "company-a", environmentId: "env-a", config };
+const base = { driverKey: "createos", environmentId: "env-a", config };
 const success = (data: unknown = {}) => Response.json({ status: "success", data });
 const failure = (status: number) => Response.json({ status: "fail", data: "private provider diagnostics test-secret" }, { status });
 const data = (seq: number, text: string | Buffer, stream = "stdout") => ({ type: "data", seq, stream, data_base64: Buffer.from(text).toString("base64") });
@@ -94,12 +94,12 @@ describe("CreateOS lifecycle", () => {
     expect(fake.fetchMock).not.toHaveBeenCalled();
   });
 
-  it("does not execute, resume, or destroy another company's recorded lease", async () => {
+  it("does not execute, resume, or destroy another environment's recorded lease", async () => {
     const fake = provider();
     const hooks = createPlugin().definition;
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, runId: "run" });
     fake.fetchMock.mockClear();
-    const other = { ...base, companyId: "company-b" };
+    const other = { ...base, environmentId: "env-b" };
     await expect(hooks.onEnvironmentExecute!({ ...other, lease, command: "echo" })).rejects.toThrow("this environment");
     await expect(hooks.onEnvironmentResumeLease!({ ...other, providerLeaseId: "sb_test", leaseMetadata: lease.metadata })).rejects.toThrow("this environment");
     await expect(hooks.onEnvironmentDestroyLease!({ ...other, providerLeaseId: "sb_test", leaseMetadata: lease.metadata })).rejects.toThrow("this environment");

@@ -3,7 +3,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   classifyShellRoute,
-  getCompanyPathSegments,
   readContextualSidebarOrigin,
   rememberContextualSidebarOrigin,
 } from "./shell-navigation";
@@ -12,73 +11,64 @@ describe("shell navigation", () => {
   beforeEach(() => window.sessionStorage.clear());
 
   it("classifies task detail independently from list routes", () => {
-    expect(classifyShellRoute("/PAP/issues", "PAP").isTaskDetail).toBe(false);
-    expect(classifyShellRoute("/PAP/issues/task-1", "PAP").isTaskDetail).toBe(true);
+    expect(classifyShellRoute("/issues").isTaskDetail).toBe(false);
+    expect(classifyShellRoute("/issues/task-1").isTaskDetail).toBe(true);
   });
 
   it("classifies the built-in contextual surfaces", () => {
-    expect(classifyShellRoute("/PAP/company/settings/secrets", "PAP").builtInContextualSurface).toBe("settings");
-    expect(classifyShellRoute("/PAP/company/export", "PAP").builtInContextualSurface).toBe("settings");
-    expect(classifyShellRoute("/PAP/apps/connections", "PAP").builtInContextualSurface).toBe("apps");
-    expect(classifyShellRoute("/PAP/tools/runtime", "PAP").builtInContextualSurface).toBe("apps");
-    expect(classifyShellRoute("/PAP/agents/agent-1/instructions", "PAP").builtInContextualSurface).toBe("agent");
-    expect(classifyShellRoute("/PAP/agents/agent-1/runs/run-1", "PAP").builtInContextualSurface).toBe("agent");
-    expect(classifyShellRoute("/PAP/routines/routine-1/overview", "PAP").builtInContextualSurface).toBe("routine");
-    expect(classifyShellRoute("/PAP/skills", "PAP").builtInContextualSurface).toBe("skills");
-    expect(classifyShellRoute("/PAP/skills/studio/skill-1", "PAP").builtInContextualSurface).toBe("skills");
+    expect(classifyShellRoute("/organization/settings/secrets").builtInContextualSurface).toBe("settings");
+    expect(classifyShellRoute("/organization/export").builtInContextualSurface).toBe("settings");
+    expect(classifyShellRoute("/apps/connections").builtInContextualSurface).toBe("apps");
+    expect(classifyShellRoute("/tools/runtime").builtInContextualSurface).toBe("apps");
+    expect(classifyShellRoute("/agents/agent-1/instructions").builtInContextualSurface).toBe("agent");
+    expect(classifyShellRoute("/agents/agent-1/runs/run-1").builtInContextualSurface).toBe("agent");
+    expect(classifyShellRoute("/routines/routine-1/overview").builtInContextualSurface).toBe("routine");
+    expect(classifyShellRoute("/skills").builtInContextualSurface).toBe("skills");
+    expect(classifyShellRoute("/skills/studio/skill-1").builtInContextualSurface).toBe("skills");
   });
 
   it("keeps Agent and Routine collection routes in the global shell", () => {
     for (const pathname of [
-      "/PAP/agents",
-      "/PAP/agents/all",
-      "/PAP/agents/active",
-      "/PAP/agents/paused",
-      "/PAP/agents/error",
-      "/PAP/agents/builtin",
-      "/PAP/agents/new",
-      "/PAP/routines",
+      "/agents",
+      "/agents/all",
+      "/agents/active",
+      "/agents/paused",
+      "/agents/error",
+      "/agents/builtin",
+      "/agents/new",
+      "/routines",
     ]) {
-      expect(classifyShellRoute(pathname, "PAP").builtInContextualSurface).toBeNull();
+      expect(classifyShellRoute(pathname).builtInContextualSurface).toBeNull();
     }
   });
 
-  it("rejects a different company prefix", () => {
-    expect(getCompanyPathSegments("/OTHER/issues/task-1", "PAP")).toEqual([]);
-  });
-
-  it("remembers only safe same-company origins", () => {
+  it("remembers only board origins", () => {
     rememberContextualSidebarOrigin({
       surface: "settings",
-      companyPrefix: "PAP",
-      previousPathname: "/PAP/issues/task-1",
+      previousPathname: "/issues/task-1",
     });
     expect(readContextualSidebarOrigin({
       surface: "settings",
-      companyPrefix: "PAP",
       fallbackTo: "/dashboard",
-    })).toBe("/PAP/issues/task-1");
+    })).toBe("/issues/task-1");
 
     rememberContextualSidebarOrigin({
       surface: "settings",
-      companyPrefix: "PAP",
-      previousPathname: "/OTHER/dashboard",
+      previousPathname: "//evil.example/dashboard",
     });
     expect(readContextualSidebarOrigin({
       surface: "settings",
-      companyPrefix: "PAP",
       fallbackTo: "/dashboard",
-    })).toBe("/PAP/issues/task-1");
+    })).toBe("/issues/task-1");
   });
 
   it("falls back when storage contains an unsafe path", () => {
     window.sessionStorage.setItem(
-      "paperclip.contextualSidebar.origin:PAP:settings",
-      "/OTHER/company/settings",
+      "paperclip.contextualSidebar.origin:settings",
+      "//evil.example/organization/settings",
     );
     expect(readContextualSidebarOrigin({
       surface: "settings",
-      companyPrefix: "PAP",
       fallbackTo: "/dashboard",
     })).toBe("/dashboard");
   });

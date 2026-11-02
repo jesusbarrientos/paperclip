@@ -57,27 +57,27 @@ export function installConnectionGuidanceFixtures(client: QueryClient, provider:
   } }] };
   client.setQueryData(queryKeys.instance.experimentalSettings, settings);
   const responses = new Map<string, () => unknown>([
-    [`/api/companies/${company}/user-directory`, () => directory],
-    [`/api/companies/${company}/agents`, () => guidanceAgents],
-    [`/api/companies/${company}/tools/gallery`, () => gallery],
-    [`/api/companies/${company}/tools/connections`, () => ({ connections: connected ? [connection] : [] })],
-    [`/api/companies/${company}/tools/applications`, () => ({ applications: connected ? [application] : [] })],
+    [`/api/user-directory`, () => directory],
+    [`/api/agents`, () => guidanceAgents],
+    [`/api/tools/gallery`, () => gallery],
+    [`/api/tools/connections`, () => ({ connections: connected ? [connection] : [] })],
+    [`/api/tools/applications`, () => ({ applications: connected ? [application] : [] })],
     [`/api/tool-connections/${id}`, () => connection],
     [`/api/tool-connections/${id}/catalog`, () => ({ catalog })],
     [`/api/tool-connections/${id}/grants`, () => grants],
     [`/api/tool-connections/${id}/installs`, () => ({ connectionId: id, installs })],
-    [`/api/companies/${company}/tools/profiles`, () => ({ profiles: [profile] })],
-    [`/api/companies/${company}/tools/policies`, () => ({ policies })],
+    [`/api/tools/profiles`, () => ({ profiles: [profile] })],
+    [`/api/tools/policies`, () => ({ policies })],
   ]);
-  for (const agent of guidanceAgents) responses.set(`/api/companies/${company}/tools/profiles/effective/agents/${agent.id}`, () => ({ agentId: agent.id, profiles: [], entries: [], bindings: [], allowedTools: catalog, allowedToolNames: catalog.map(t => t.toolName), installedConnections: [connection] }));
+  for (const agent of guidanceAgents) responses.set(`/api/tools/profiles/effective/agents/${agent.id}`, () => ({ agentId: agent.id, profiles: [], entries: [], bindings: [], allowedTools: catalog, allowedToolNames: catalog.map(t => t.toolName), installedConnections: [connection] }));
   const seeds: Array<[readonly unknown[], unknown]> = [
-    [queryKeys.access.companyUserDirectory(company), directory],
-    [queryKeys.agents.list(company), guidanceAgents], [queryKeys.apps.gallery(company), gallery],
+    [queryKeys.access.companyUserDirectory(), directory],
+    [queryKeys.agents.list(), guidanceAgents], [queryKeys.apps.gallery(), gallery],
     [queryKeys.tools.connection(id), connection], [queryKeys.tools.catalog(id), { catalog }],
     [queryKeys.tools.connectionGrants(id), grants], [queryKeys.tools.connectionInstalls(id), { connectionId: id, installs }],
-    [queryKeys.tools.connections(company), { connections: connected ? [connection] : [] }],
-    [queryKeys.tools.applications(company), { applications: connected ? [application] : [] }],
-    [queryKeys.tools.profiles(company), { profiles: [profile] }], [queryKeys.tools.policies(company), { policies }],
+    [queryKeys.tools.connections(), { connections: connected ? [connection] : [] }],
+    [queryKeys.tools.applications(), { applications: connected ? [application] : [] }],
+    [queryKeys.tools.profiles(), { profiles: [profile] }], [queryKeys.tools.policies(), { policies }],
   ];
   for (const [key, value] of seeds) client.setQueryData(key, value);
   const original = window.fetch;
@@ -87,7 +87,7 @@ export function installConnectionGuidanceFixtures(client: QueryClient, provider:
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
     const body = () => JSON.parse(String(init?.body ?? "{}"));
     if (path === "/api/instance/settings/experimental") return Response.json(settings);
-    if (path === `/api/companies/${company}/tools/apps/connect`) {
+    if (path === `/api/tools/apps/connect`) {
       connected = true;
       const next = body();
       if (next.agentInstructions !== undefined) connection.agentInstructions = next.agentInstructions;
@@ -119,7 +119,7 @@ export function installConnectionGuidanceFixtures(client: QueryClient, provider:
       return Response.json({ connectionId: id, installs });
     }
     if (path.startsWith("/api/tools/oauth/")) return Response.json({ error: "Sign-in is not available in this design preview. No provider was contacted." }, { status: 422 });
-    if (path.startsWith(`/api/companies/${company}/tools/`) || path.startsWith("/api/tool-connections/") || path.startsWith("/api/tools/")) {
+    if (path.startsWith(`/api/tools/`) || path.startsWith("/api/tool-connections/") || path.startsWith("/api/tools/")) {
       return Response.json({ error: "This connector operation is not included in this design preview." }, { status: 422 });
     }
     return original(input, init);

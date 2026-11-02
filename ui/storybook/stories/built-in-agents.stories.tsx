@@ -25,7 +25,6 @@ import { Bot, Clock3 } from "lucide-react";
 
 const briefsAgent: Agent = {
   id: "agent-briefs",
-  companyId: "company-storybook",
   name: "Briefs Agent",
   urlKey: "briefs-agent",
   role: "general",
@@ -229,7 +228,6 @@ export const ConfigureModal: Story = {
       <div className="p-6">
         <Button onClick={() => setOpen(true)}>Open configure modal</Button>
         <ConfigureBuiltInAgentModal
-          companyId="company-storybook"
           state={notProvisionedState}
           open={open}
           onOpenChange={setOpen}

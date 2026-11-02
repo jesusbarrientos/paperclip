@@ -608,7 +608,7 @@ Rules:
 
 Primary transport: websocket channel per company.
 
-- Endpoint: `GET /api/companies/:companyId/events/ws`
+- Endpoint: `GET /api/events/ws`
 - Auth: board session or agent API key (company-bound)
 
 ## 11.2 Event envelope
@@ -700,7 +700,7 @@ On server startup:
    - fetch persisted lightweight timeline
 7. `GET /heartbeat-runs/:runId/log`
    - reads full log stream via `RunLogStore` (or redirects/presigned URL for object store)
-8. `GET /api/companies/:companyId/events/ws`
+8. `GET /api/events/ws`
    - websocket stream
 
 ## 13.2 Mutation logging

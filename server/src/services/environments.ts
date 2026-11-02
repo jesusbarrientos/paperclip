@@ -90,8 +90,6 @@ export interface KubernetesEnvironmentConfigInput {
  * lease time.
  */
 export interface ManagedSandboxEnvironmentInput {
-  /** Company whose managed-resource binding should be reconciled. Omit at instance boot to bind every company. */
-  companyId?: string;
   name: string;
   description?: string;
   /** Sandbox provider key (the plugin's driverKey, e.g. "kubernetes", "daytona"). */
@@ -213,7 +211,6 @@ function resolveKubernetesConfig(
 function toEnvironmentLease(row: EnvironmentLeaseRow): EnvironmentLease {
   return {
     id: row.id,
-    companyId: row.companyId,
     environmentId: row.environmentId,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
     issueId: row.issueId ?? null,
@@ -350,16 +347,10 @@ export function environmentService(db: Db) {
       desiredMetadata[KUBERNETES_MANAGED_MARKER] = null;
     }
 
-    let activityCompanyIds: string[] = [];
     let trackingInitialized = false;
     let providerReactivated = false;
     const reconciliation = await db.transaction(
       async (tx): Promise<ManagedSandboxEnvironmentReconcileResult> => {
-        const companyIds = input.companyId
-          ? [input.companyId]
-          : await tx.select({ id: companies.id }).from(companies).then((rows) => rows.map((row) => row.id));
-        activityCompanyIds = companyIds;
-
         // Take the sandbox-row lock BEFORE reading the stock bindings. Two
         // passes can reconcile the same slot concurrently (the boot ensure and
         // the async provider-recovery reactivation, or two app builds during a
@@ -381,12 +372,9 @@ export function environmentService(db: Db) {
           eq(builtInManagedResources.bundleKey, MANAGED_ENVIRONMENT_BUNDLE_KEY),
           eq(builtInManagedResources.resourceKind, MANAGED_ENVIRONMENT_RESOURCE_KIND),
           eq(builtInManagedResources.resourceKey, MANAGED_ENVIRONMENT_RESOURCE_KEY),
-          ...(companyIds.length > 0 ? [inArray(builtInManagedResources.companyId, companyIds)] : []),
         );
-        const bindings = companyIds.length > 0
-          ? await tx.select().from(builtInManagedResources).where(bindingConditions)
-          : [];
-        trackingInitialized = bindings.length < companyIds.length;
+        const bindings = await tx.select().from(builtInManagedResources).where(bindingConditions);
+        trackingInitialized = bindings.length === 0;
         const keys = managedMetadataKeys(desiredMetadata, bindings);
 
         let row = sandboxRows.find(
@@ -400,14 +388,8 @@ export function environmentService(db: Db) {
           defaultsJson: Record<string, unknown>,
           replace: boolean,
         ) => {
-          const targetCompanyIds = replace
-            ? companyIds
-            : companyIds.filter(
-              (companyId) => !bindings.some((binding) => binding.companyId === companyId),
-            );
-          if (targetCompanyIds.length === 0) return;
-          const values = targetCompanyIds.map((companyId) => ({
-            companyId,
+          if (!replace && bindings.length > 0) return;
+          const insert = tx.insert(builtInManagedResources).values({
             bundleKey: MANAGED_ENVIRONMENT_BUNDLE_KEY,
             resourceKind: MANAGED_ENVIRONMENT_RESOURCE_KIND,
             resourceKey: MANAGED_ENVIRONMENT_RESOURCE_KEY,
@@ -415,12 +397,10 @@ export function environmentService(db: Db) {
             stockVersion,
             stockHash: installedStockHash,
             defaultsJson,
-          }));
-          const insert = tx.insert(builtInManagedResources).values(values);
+          });
           if (!replace) {
             await insert.onConflictDoNothing({
               target: [
-                builtInManagedResources.companyId,
                 builtInManagedResources.bundleKey,
                 builtInManagedResources.resourceKind,
                 builtInManagedResources.resourceKey,
@@ -430,7 +410,6 @@ export function environmentService(db: Db) {
           }
           await insert.onConflictDoUpdate({
             target: [
-              builtInManagedResources.companyId,
               builtInManagedResources.bundleKey,
               builtInManagedResources.resourceKind,
               builtInManagedResources.resourceKey,
@@ -731,8 +710,7 @@ export function environmentService(db: Db) {
           : reconciliation.action === "skipped"
             ? "environment.managed_stock_skipped"
             : "environment.managed_stock_tracking_initialized";
-      await Promise.all(activityCompanyIds.map((companyId) => logActivity(db, {
-        companyId,
+      await logActivity(db, {
         actorType: "system",
         actorId: "managed-environment-reconciler",
         action,
@@ -746,7 +724,7 @@ export function environmentService(db: Db) {
           stockHash: reconciliation.stockHash,
           providerReactivated,
         },
-      })));
+      });
     }
     return reconciliation;
   };
@@ -767,9 +745,8 @@ export function environmentService(db: Db) {
    * managed row for this provider.
    */
   const archiveManagedSandboxEnvironment = async (
-    input: { provider: string; companyId?: string },
+    input: { provider: string },
   ): Promise<Environment | null> => {
-    let activityCompanyIds: string[] = [];
     const archived = await db.transaction(async (tx) => {
       const existing = await tx
         .select()
@@ -786,22 +763,15 @@ export function environmentService(db: Db) {
         ?.managedSandboxProvider;
       if (rowProvider !== input.provider) return null;
 
-      const companyIds = input.companyId
-        ? [input.companyId]
-        : await tx.select({ id: companies.id }).from(companies).then((rows) => rows.map((row) => row.id));
-      activityCompanyIds = companyIds;
-      const bindings = companyIds.length > 0
-        ? await tx
-          .select()
-          .from(builtInManagedResources)
-          .where(and(
-            inArray(builtInManagedResources.companyId, companyIds),
-            eq(builtInManagedResources.bundleKey, MANAGED_ENVIRONMENT_BUNDLE_KEY),
-            eq(builtInManagedResources.resourceKind, MANAGED_ENVIRONMENT_RESOURCE_KIND),
-            eq(builtInManagedResources.resourceKey, MANAGED_ENVIRONMENT_RESOURCE_KEY),
-            eq(builtInManagedResources.resourceId, existing.id),
-          ))
-        : [];
+      const bindings = await tx
+        .select()
+        .from(builtInManagedResources)
+        .where(and(
+          eq(builtInManagedResources.bundleKey, MANAGED_ENVIRONMENT_BUNDLE_KEY),
+          eq(builtInManagedResources.resourceKind, MANAGED_ENVIRONMENT_RESOURCE_KIND),
+          eq(builtInManagedResources.resourceKey, MANAGED_ENVIRONMENT_RESOURCE_KEY),
+          eq(builtInManagedResources.resourceId, existing.id),
+        ));
       const archiveToken = randomUUID();
       const archivedMetadata = {
         ...(existing.metadata ?? {}),
@@ -845,15 +815,14 @@ export function environmentService(db: Db) {
       return toEnvironment(archived);
     });
     if (archived) {
-      await Promise.all(activityCompanyIds.map((companyId) => logActivity(db, {
-        companyId,
+      await logActivity(db, {
         actorType: "system",
         actorId: "managed-environment-reconciler",
         action: "environment.managed_provider_unavailable_archived",
         entityType: "environment",
         entityId: archived.id,
         details: { provider: input.provider },
-      })));
+      });
     }
     return archived;
   };
@@ -878,26 +847,6 @@ export function environmentService(db: Db) {
     getById: async (id: string): Promise<Environment | null> => {
       const row = await db.select().from(environments).where(eq(environments.id, id)).then((rows) => rows[0] ?? null);
       return row ? toEnvironment(row) : null;
-    },
-
-    /**
-     * List the companies that own an environment through a built-in managed
-     * resource binding. A managed sandbox row binds to each company that the
-     * instance provisions it for. An operator-created environment has no
-     * binding, so this returns an empty list. The caller treats an empty list
-     * as an instance-global environment with no company owner.
-     */
-    listBoundCompanyIds: async (environmentId: string): Promise<string[]> => {
-      const rows = await db
-        .select({ companyId: builtInManagedResources.companyId })
-        .from(builtInManagedResources)
-        .where(
-          and(
-            eq(builtInManagedResources.resourceKind, MANAGED_ENVIRONMENT_RESOURCE_KIND),
-            eq(builtInManagedResources.resourceId, environmentId),
-          ),
-        );
-      return Array.from(new Set(rows.map((row) => row.companyId)));
     },
 
     getLeaseById: async (id: string): Promise<EnvironmentLease | null> => {
@@ -999,7 +948,6 @@ export function environmentService(db: Db) {
     ): Promise<Environment> => {
       const config = resolveKubernetesConfig(companyIdOrConfig, maybeConfig);
       return ensureManagedSandboxEnvironment({
-        companyId: typeof companyIdOrConfig === "string" ? companyIdOrConfig : undefined,
         name: DEFAULT_KUBERNETES_ENVIRONMENT_NAME,
         description: DEFAULT_KUBERNETES_ENVIRONMENT_DESCRIPTION,
         provider: KUBERNETES_PROVIDER_KEY,
@@ -1383,7 +1331,6 @@ export function environmentService(db: Db) {
     },
 
     acquireLease: async (input: {
-      companyId: string;
       environmentId: string;
       executionWorkspaceId?: string | null;
       issueId?: string | null;
@@ -1408,21 +1355,9 @@ export function environmentService(db: Db) {
        * database owner for the same run and provider resource.
        */
       reusesReusableLeaseId?: string | null;
-      /**
-       * Re-check the environment company binding inside the lease insert
-       * transaction. The login routes set this to close the check-to-lease
-       * race: managed reconciliation can bind a sandbox to another company
-       * between the route guard and this acquire. When the environment is
-       * bound to a company other than `companyId`, the insert throws the 403
-       * `environment_company_mismatch` and no lease row is created (fail
-       * closed). An unbound (instance-global) environment stays open to every
-       * member. All other callers keep the plain, non-transactional insert.
-       */
-      assertCompanyBinding?: boolean;
     }): Promise<EnvironmentLease> => {
       const now = new Date();
       const values = {
-        companyId: input.companyId,
         environmentId: input.environmentId,
         executionWorkspaceId: input.executionWorkspaceId ?? null,
         issueId: input.issueId ?? null,
@@ -1460,54 +1395,9 @@ export function environmentService(db: Db) {
         );
       }
       const row =
-        input.assertCompanyBinding ||
         input.replacesReusableLeaseId ||
         input.reusesReusableLeaseId
           ? await db.transaction(async (tx) => {
-              if (input.assertCompanyBinding) {
-                // Lock the environment row first. Managed reconciliation locks the
-                // same sandbox environment rows with `for update` before it writes a
-                // company binding, so this lock serializes the two transactions on
-                // this row and closes the time-of-check to time-of-use window.
-                await tx
-                  .select({ id: environments.id })
-                  .from(environments)
-                  .where(eq(environments.id, input.environmentId))
-                  .for("update");
-                // Re-read the company binding inside the locked transaction. A
-                // binding a reconciliation committed after the route guard now
-                // appears here. Reject a foreign-company environment before the
-                // insert, so the login holds no lease.
-                const boundRows = await tx
-                  .select({ companyId: builtInManagedResources.companyId })
-                  .from(builtInManagedResources)
-                  .where(
-                    and(
-                      eq(
-                        builtInManagedResources.resourceKind,
-                        MANAGED_ENVIRONMENT_RESOURCE_KIND,
-                      ),
-                      eq(
-                        builtInManagedResources.resourceId,
-                        input.environmentId,
-                      ),
-                    ),
-                  );
-                const boundCompanyIds = Array.from(
-                  new Set(boundRows.map((boundRow) => boundRow.companyId)),
-                );
-                if (
-                  boundCompanyIds.length > 0 &&
-                  !boundCompanyIds.includes(input.companyId)
-                ) {
-                  throw forbidden(
-                    "The selected environment belongs to another company.",
-                    {
-                      code: "environment_company_mismatch",
-                    },
-                  );
-                }
-              }
               if (input.replacesReusableLeaseId) {
                 const retired = await tx
                   .update(environmentLeases)
@@ -1521,7 +1411,6 @@ export function environmentService(db: Db) {
                   .where(
                     and(
                       eq(environmentLeases.id, input.replacesReusableLeaseId),
-                      eq(environmentLeases.companyId, input.companyId),
                       eq(environmentLeases.environmentId, input.environmentId),
                       input.executionWorkspaceId
                         ? eq(environmentLeases.executionWorkspaceId, input.executionWorkspaceId)
@@ -1564,7 +1453,6 @@ export function environmentService(db: Db) {
                   .where(
                     and(
                       eq(environmentLeases.id, input.reusesReusableLeaseId),
-                      eq(environmentLeases.companyId, input.companyId),
                       eq(environmentLeases.environmentId, input.environmentId),
                       input.executionWorkspaceId
                         ? eq(environmentLeases.executionWorkspaceId, input.executionWorkspaceId)
@@ -1674,7 +1562,6 @@ export function environmentService(db: Db) {
      *   describes, where the foreign-key insert fails after a delete.
      */
     insertPendingCleanupLease: async (input: {
-      companyId: string;
       environmentId: string;
       executionWorkspaceId?: string | null;
       issueId?: string | null;
@@ -1698,7 +1585,6 @@ export function environmentService(db: Db) {
         return tx
           .insert(environmentLeases)
           .values({
-            companyId: input.companyId,
             environmentId: environmentIdForRow,
             executionWorkspaceId: input.executionWorkspaceId ?? null,
             issueId: input.issueId ?? null,

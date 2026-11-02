@@ -38,7 +38,6 @@ export type AttentionSeverity = "critical" | "high" | "medium" | "low";
 export interface AttentionSubject {
   kind: AttentionSubjectKind;
   id: string;
-  companyId: string;
   title: string | null;
   identifier: string | null;
   status: string | null;
@@ -220,7 +219,6 @@ export interface AttentionResolverAudience {
 
 export interface AttentionItem {
   id: string;
-  companyId: string;
   sourceKind: AttentionSourceKind;
   subject: AttentionSubject;
   whyNow: string;
@@ -261,7 +259,6 @@ export interface AttentionItem {
 }
 
 export interface AttentionFeed {
-  companyId: string;
   generatedAt: string;
   totalCount: number;
   /**

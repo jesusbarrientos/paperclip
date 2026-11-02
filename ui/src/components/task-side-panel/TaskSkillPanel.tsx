@@ -8,11 +8,11 @@ import { queryKeys } from "@/lib/queryKeys";
 import { useNavigate } from "@/lib/router";
 import { parseFrontmatterMarkdown } from "@paperclipai/shared";
 
-export function TaskSkillPanel({ companyId, skillId }: { companyId: string; skillId: string }) {
+export function TaskSkillPanel({ skillId }: { skillId: string }) {
   const navigate = useNavigate();
   const query = useQuery({
-    queryKey: queryKeys.companySkills.detail(companyId, skillId),
-    queryFn: () => companySkillsApi.detail(companyId, skillId),
+    queryKey: queryKeys.companySkills.detail(skillId),
+    queryFn: () => companySkillsApi.detail(skillId),
     retry: false,
     refetchOnWindowFocus: true,
     refetchOnMount: "always",

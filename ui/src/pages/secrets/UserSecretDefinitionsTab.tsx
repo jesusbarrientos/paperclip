@@ -63,7 +63,7 @@ const emptyForm: DefinitionForm = {
  * that each member fills in with their own value. Coverage is shown as counts
  * only — never values — per the UX terminology decisions.
  */
-export function UserSecretDefinitionsTab({ companyId }: { companyId: string }) {
+export function UserSecretDefinitionsTab() {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -74,8 +74,8 @@ export function UserSecretDefinitionsTab({ companyId }: { companyId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<UserSecretDefinition | null>(null);
 
   const definitionsQuery = useQuery({
-    queryKey: queryKeys.secrets.userDefinitions(companyId),
-    queryFn: () => secretsApi.listUserSecretDefinitions(companyId),
+    queryKey: queryKeys.secrets.userDefinitions(),
+    queryFn: () => secretsApi.listUserSecretDefinitions(),
   });
   const definitions = definitionsQuery.data ?? [];
 
@@ -109,19 +109,19 @@ export function UserSecretDefinitionsTab({ companyId }: { companyId: string }) {
         usageGuidance: form.usageGuidance.trim() || null,
       };
       if (editing) {
-        return secretsApi.updateUserSecretDefinition(companyId, editing.id, {
+        return secretsApi.updateUserSecretDefinition(editing.id, {
           ...sharedPayload,
           status: form.status,
         });
       }
-      return secretsApi.createUserSecretDefinition(companyId, {
+      return secretsApi.createUserSecretDefinition({
         ...sharedPayload,
         key: form.key.trim(),
         status: form.status === "deleted" ? "active" : form.status,
       });
     },
     onSuccess: (definition) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions() });
       pushToast({
         title: editing ? "Definition updated" : "Definition created",
         body: definition.name,
@@ -135,9 +135,9 @@ export function UserSecretDefinitionsTab({ companyId }: { companyId: string }) {
 
   const remove = useMutation({
     mutationFn: (definition: UserSecretDefinition) =>
-      secretsApi.removeUserSecretDefinition(companyId, definition.id),
+      secretsApi.removeUserSecretDefinition(definition.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.userDefinitions() });
       pushToast({ title: "Definition removed", tone: "info" });
       setDeleteTarget(null);
     },
@@ -208,7 +208,7 @@ export function UserSecretDefinitionsTab({ companyId }: { companyId: string }) {
                   {definition.description ? (
                     <p className="mt-1 text-xs text-muted-foreground">{definition.description}</p>
                   ) : null}
-                  <CoverageBadge companyId={companyId} definitionId={definition.id} />
+                  <CoverageBadge definitionId={definition.id} />
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button size="sm" variant="ghost" onClick={() => openEdit(definition)}>
@@ -361,15 +361,13 @@ export function UserSecretDefinitionsTab({ companyId }: { companyId: string }) {
 }
 
 function CoverageBadge({
-  companyId,
   definitionId,
 }: {
-  companyId: string;
   definitionId: string;
 }) {
   const coverageQuery = useQuery({
-    queryKey: queryKeys.secrets.userDefinitionCoverage(companyId, definitionId),
-    queryFn: () => secretsApi.userSecretDefinitionCoverage(companyId, definitionId),
+    queryKey: queryKeys.secrets.userDefinitionCoverage(definitionId),
+    queryFn: () => secretsApi.userSecretDefinitionCoverage(definitionId),
     staleTime: 30_000,
   });
   const summary = coverageQuery.data;

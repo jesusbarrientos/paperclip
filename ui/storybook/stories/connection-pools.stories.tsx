@@ -15,7 +15,7 @@ import { storybookAgents, storybookIssues } from "../fixtures/paperclipData";
 const companyId = "company-storybook", agentId = "agent-codex";
 const poolId = "10000000-0000-4000-8000-000000000001";
 const pool: AiConnectionPool = {
-  id: poolId, companyId, pluginKey: "paperclip-cloud.plugin-connection-pool", revision: 3,
+  id: poolId, pluginKey: "paperclip-cloud.plugin-connection-pool", revision: 3,
   name: "Research accounts", enabled: true, mode: "round_robin", thresholdPercent: 90,
   members: [
     { id: "20000000-0000-4000-8000-000000000001", binding: { mode: "delegated", provider: "openai", method: "subscription", connectionId: "30000000-0000-4000-8000-000000000001", grantId: "40000000-0000-4000-8000-000000000001" }, profile: { provider: "codex", model: "gpt-5.6-sol", effort: "high" } },
@@ -33,7 +33,7 @@ function PoolComposer({ scenario }: { scenario: Scenario }) {
   const [settings, setSettings] = useState<ComposerRunSettings>({ model: scenario === "claude-model" ? "claude-sonnet-5" : "gpt-5.6-sol", effort: null, fast: false });
   return <div className="space-y-3 rounded-xl border bg-card p-4">
     <p className="text-sm">Choose settings for the next turn. The task keeps its account and harness.</p>
-    <ComposerRunSettingsPicker companyId={companyId} assigneeValue={`agent:${agentId}`} currentAssigneeValue={`agent:${agentId}`}
+    <ComposerRunSettingsPicker assigneeValue={`agent:${agentId}`} currentAssigneeValue={`agent:${agentId}`}
       options={[{ id: `agent:${agentId}`, label: agent.name }]} agents={new Map([[agentId, agent]])}
       settings={settings} onSettingsChange={(next) => setSettings(next ?? { model: null, effort: null, fast: false })} onAssigneeChange={() => setSettings({ model: null, effort: null, fast: false })}
       modelOptionsOverride={models} mobile={scenario === "mobile"} initialOpen={scenario !== "overview"}
@@ -66,7 +66,7 @@ function PoolSurfaces({ scenario = "overview" }: { scenario?: Scenario }) {
   const overview = scenario === "overview";
   return <QueryClientProvider client={client}><main className="mx-auto max-w-3xl space-y-6 p-6">
     {scenario !== "adoption" && <header className="space-y-2"><h1 className="text-xl font-semibold">Experimental connection pools</h1><a className="text-sm text-primary underline" href="http://127.0.0.1:6010/?path=/story/plugins-connection-pools--in-connectors">Connection pool connector in Cloud Storybook</a></header>}
-    {(overview || ["selector", "legacy", "adoption", "unavailable", "read-only"].includes(scenario)) && <section className="space-y-2"><h2 className="text-sm font-semibold">Agent connection</h2><AiConnectionField companyId={companyId} agentId={agentId} agentName={agent.name}
+    {(overview || ["selector", "legacy", "adoption", "unavailable", "read-only"].includes(scenario)) && <section className="space-y-2"><h2 className="text-sm font-semibold">Agent connection</h2><AiConnectionField agentId={agentId} agentName={agent.name}
       adapterType={scenario === "legacy" ? "claude_local" : "codex_local"} routerAdapterType={scenario === "legacy" ? "claude_local" : "paperclip_runner"}
       value={binding} onChange={setBinding} legacy={scenario === "adoption"} readOnly={scenario === "read-only"} /></section>}
     {(overview || ["models", "effort", "mobile", "claude-model"].includes(scenario)) && <section className="space-y-2"><h2 className="text-sm font-semibold">Composer model and effort</h2><PoolComposer scenario={scenario} /></section>}

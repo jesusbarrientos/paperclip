@@ -50,13 +50,11 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
       issuePrefix: `RQ${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning();
     const [application] = await db.insert(toolApplications).values({
-      companyId: company.id,
       name: `Review Queue app ${randomUUID()}`,
       type: "mcp_http",
       status: "active",
     }).returning();
     const [connection] = await db.insert(toolConnections).values({
-      companyId: company.id,
       applicationId: application.id,
       name: `Review Queue connection ${randomUUID()}`,
       uid: `test/${randomUUID()}`,
@@ -66,7 +64,6 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
       config: { url: "https://fixture.example/mcp" },
     }).returning();
     const [catalogEntry] = await db.insert(toolCatalogEntries).values({
-      companyId: company.id,
       applicationId: application.id,
       connectionId: connection.id,
       name: "sheets:update_cell",
@@ -84,7 +81,6 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
 
     // A test-origin ask-first invocation, exactly as recordInvocation records it.
     const [invocation] = await db.insert(toolInvocations).values({
-      companyId: company.id,
       actorType: "user",
       actorId: "board",
       agentId: null,
@@ -103,7 +99,6 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
 
     // Step one of the two-step create: the row exists, pending, not yet signed.
     const [actionRequest] = await db.insert(toolActionRequests).values({
-      companyId: company.id,
       invocationId: invocation.id,
       status: "pending",
       canonicalArgumentsHash: "args-hash",
@@ -112,7 +107,7 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
     }).returning();
 
     // A concurrent review-queue read lands inside the create window.
-    const listedDuringCreate = await toolAccessService(db).listActionRequests(company.id, "pending");
+    const listedDuringCreate = await toolAccessService(db).listActionRequests("pending");
     expect(listedDuringCreate.map((item) => item.request.id)).not.toContain(actionRequest.id);
 
     const [afterRead] = await db
@@ -135,14 +130,13 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
       .where(eq(toolActionRequests.id, actionRequest.id));
 
     // The queue now shows the signed request.
-    const listedAfterSign = await toolAccessService(db).listActionRequests(company.id, "pending");
+    const listedAfterSign = await toolAccessService(db).listActionRequests("pending");
     expect(listedAfterSign.map((item) => item.request.id)).toContain(actionRequest.id);
 
     // Approve no longer races a cancelled row.
     const gateway = createToolGatewayService(db, { toolActionSigningSecret: signingSecret });
     await expect(
       gateway.approveActionRequest({
-        companyId: company.id,
         actionRequestId: actionRequest.id,
         actor: { userId: "board" },
       }),

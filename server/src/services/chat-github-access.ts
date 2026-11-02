@@ -21,10 +21,7 @@ export async function githubChatPrincipalAccess(
     .select()
     .from(chatGitHubConfigurations)
     .where(
-      and(
-        eq(chatGitHubConfigurations.companyId, endpoint.companyId),
-        eq(chatGitHubConfigurations.endpointId, endpoint.id),
-      ),
+      eq(chatGitHubConfigurations.endpointId, endpoint.id),
     )
     .for("share");
   if (!saved) return null; // Preserve the existing connector until explicitly upgraded.
@@ -32,10 +29,7 @@ export async function githubChatPrincipalAccess(
     .select()
     .from(chatExternalPrincipals)
     .where(
-      and(
-        eq(chatExternalPrincipals.companyId, endpoint.companyId),
-        eq(chatExternalPrincipals.id, principalId),
-      ),
+      eq(chatExternalPrincipals.id, principalId),
     )
     .for("share");
   const denied = {
@@ -54,7 +48,6 @@ export async function githubChatPrincipalAccess(
     .from(chatIdentityLinks)
     .where(
       and(
-        eq(chatIdentityLinks.companyId, endpoint.companyId),
         eq(chatIdentityLinks.endpointId, endpoint.id),
         eq(chatIdentityLinks.principalId, principalId),
       ),

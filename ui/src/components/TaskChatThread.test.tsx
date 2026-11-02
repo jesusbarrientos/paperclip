@@ -160,7 +160,7 @@ describe.each(["legacy", "native"] as const)("historical %s system status", (run
     finishedAt: `2025-01-01T10:0${minute}:30Z`,
   });
   const comment = (id: string, body: string, runId?: string) => ({
-    id, body, runId, companyId: "company", issueId: "issue", authorType: "agent" as const,
+    id, body, runId, issueId: "issue", authorType: "agent" as const,
     authorAgentId: "agent", authorUserId: null, presentation: null, metadata: null,
     createdAt: new Date("2025-01-01T10:00:20Z"), updatedAt: new Date("2025-01-01T10:00:20Z"),
   });
@@ -278,7 +278,7 @@ it.each([true, false])("interleaves browser sessions with their requests and pre
   streamlinedState.enabled = streamlined;
   const onOpenBrowser = vi.fn();
   const comments = [0, 2, 4].map((minute) => ({
-    id: `comment-${minute}`, companyId: "company", issueId: "issue",
+    id: `comment-${minute}`, issueId: "issue",
     authorType: "user" as const, authorAgentId: null, authorUserId: "board",
     body: `Request at minute ${minute}`, presentation: null, metadata: null,
     createdAt: new Date(`2026-09-29T12:0${minute}:00Z`), updatedAt: new Date(`2026-09-29T12:0${minute}:00Z`),
@@ -348,7 +348,7 @@ it.each([true, false])("reveals saved conversation when initial history stalls (
       issueId: "stalled-issue",
       comments: [{
         id: "saved-comment", body: "An already saved reply.", runId: null,
-        companyId: "company", issueId: "stalled-issue", authorType: "agent" as const,
+        issueId: "stalled-issue", authorType: "agent" as const,
         authorAgentId: "agent", authorUserId: null, presentation: null, metadata: null,
         createdAt: new Date("2025-01-01T10:00:20Z"), updatedAt: new Date("2025-01-01T10:00:20Z"),
       }],
@@ -498,7 +498,7 @@ describe.each(["legacy", "native"] as const)("%s task history readiness", (runti
 
 it("preserves the typed disposition notice through the task-chat adapter", () => {
   render(<TaskChatThread comments={[{
-    id: "typed-recovery", companyId: "company", issueId: "issue", authorType: "system", authorAgentId: null, authorUserId: null,
+    id: "typed-recovery", issueId: "issue", authorType: "system", authorAgentId: null, authorUserId: null,
     body: "Unrelated prose", createdAt: new Date(), updatedAt: new Date(),
     presentation: { kind: "system_notice", title: "Different wording", tone: "warning", detailsDefaultOpen: false, density: "compact" },
     metadata: { version: 1, sections: [], recovery: { kind: "disposition_repair_escalated", actionId: "action", assigneeAgentId: "agent", attemptCount: 2, maxAttempts: 2, reason: "unchanged_source_state_exhausted" } },
@@ -510,7 +510,6 @@ it("preserves the typed disposition notice through the task-chat adapter", () =>
 
 it("keeps an acknowledged optimistic bubble mounted with its canonical comment target", () => {
   const comment = {
-    companyId: "company",
     issueId: "issue",
     authorAgentId: null,
     presentation: null,
@@ -566,7 +565,6 @@ function fakeScrollGeometry(
 function planDocument(overrides: Partial<IssueDocument> = {}): IssueDocument {
   return {
     id: "document-plan",
-    companyId: "company-1",
     issueId: "issue-1",
     key: "plan",
     title: "Plan",
@@ -595,7 +593,6 @@ function planReviewInteraction(
   const isResolved = status !== "pending";
   return {
     id: "plan-review",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "request_confirmation",
     title: "Review the Plan",
@@ -651,7 +648,6 @@ function questionInteraction(
 ): IssueThreadInteraction {
   return {
     id,
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "ask_user_questions",
     title: prompt,
@@ -695,7 +691,6 @@ function questionInteraction(
 function createLongThreadComments() {
   return Array.from({ length: 4 }, (_, index) => ({
     id: `comment-${index + 1}`,
-    companyId: "company-1",
     issueId: "issue-1",
     authorType: "user" as const,
     authorAgentId: null,
@@ -715,7 +710,6 @@ describe("TaskChatThread draft pass-through", () => {
         comments={[
           {
             id: "comment-1",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "user",
             authorAgentId: null,
@@ -743,7 +737,6 @@ describe("TaskChatThread draft pass-through", () => {
         comments={[
           {
             id: "comment-1",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "user",
             authorAgentId: null,
@@ -1088,7 +1081,6 @@ describe("TaskChatThread runtime transcript selection", () => {
     planState.data = planDocument({ updatedAt: new Date("2026-08-25T18:00:02.000Z") });
     const events = ["started", "completed"].map((phase, index) => ({
       id: index + 1,
-      companyId: "company-1",
       agentId: "agent-1",
       stream: "system",
       level: "info",
@@ -1932,7 +1924,6 @@ describe("TaskChatThread runtime transcript selection", () => {
         comments={[
           {
             id: "progress-comment",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "agent",
             authorAgentId: "agent-1",
@@ -2010,7 +2001,6 @@ describe("TaskChatThread runtime transcript selection", () => {
         comments={[
           {
             id: "native-repeated-final-comment",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "agent",
             authorAgentId: "agent-1",
@@ -2089,7 +2079,6 @@ describe("TaskChatThread runtime transcript selection", () => {
         comments={[
           {
             id: "steering-comment",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "user",
             authorAgentId: null,
@@ -2107,7 +2096,6 @@ describe("TaskChatThread runtime transcript selection", () => {
           },
           {
             id: "native-steered-repetition-final",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "agent",
             authorAgentId: "agent-1",
@@ -2190,7 +2178,6 @@ describe("TaskChatThread runtime transcript selection", () => {
         comments={[
           {
             id: "live-steering-comment",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "user",
             authorAgentId: null,
@@ -2283,7 +2270,6 @@ describe("TaskChatThread runtime transcript selection", () => {
     ) =>
       ({
         id: seq,
-        companyId: "company-1",
         agentId: "agent-1",
         stream: "system",
         level: "info",
@@ -2345,7 +2331,6 @@ describe("TaskChatThread runtime transcript selection", () => {
             ? [
                 {
                   id: "response-wake-steering",
-                  companyId: "company-1",
                   issueId: "issue-1",
                   authorType: "user",
                   authorAgentId: null,
@@ -2366,7 +2351,6 @@ describe("TaskChatThread runtime transcript selection", () => {
               ? [
                   {
                     id: "private-board-response",
-                    companyId: "company-1",
                     issueId: "issue-1",
                     authorType: "agent",
                     authorAgentId: "agent-1",
@@ -2498,7 +2482,6 @@ describe("TaskChatThread runtime transcript selection", () => {
         comments={[
           {
             id: "native-question-placeholder",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "agent",
             authorAgentId: "agent-1",
@@ -2648,7 +2631,6 @@ describe("TaskChatThread runtime transcript selection", () => {
         <TaskChatThread
           comments={[{
             id: "failure-comment",
-            companyId: "company-1",
             issueId: "issue-1",
             authorAgentId: "agent-1",
             authorUserId: null,
@@ -3194,7 +3176,6 @@ describe("TaskChatThread composer alignment", () => {
 describe("TaskChatThread no-live-execution-path recovery", () => {
   const noLivePathComment = {
     id: "comment-no-live-path",
-    companyId: "company-1",
     issueId: "issue-1",
     authorType: "system" as const,
     authorAgentId: null,
@@ -3653,7 +3634,6 @@ describe("TaskChatThread queued message actions", () => {
     const onInterruptQueued = vi.fn(async () => {});
     const queuedComment = {
       id: "comment-queued",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "user" as const,
       authorAgentId: null,
@@ -3692,7 +3672,6 @@ describe("TaskChatThread queued message actions", () => {
         comments={[
           {
             id: "comment-queued",
-            companyId: "company-1",
             issueId: "issue-1",
             authorType: "user",
             authorAgentId: null,
@@ -3723,7 +3702,6 @@ describe("TaskChatThread queued message actions", () => {
 describe("TaskChatThread Paperclip Runner queue", () => {
   const queuedComment = {
     id: "queued-prp-1",
-    companyId: "company-1",
     issueId: "issue-1",
     authorType: "user" as const,
     authorAgentId: null,
@@ -4081,7 +4059,6 @@ describe("TaskChatThread live transcript", () => {
     ]);
     const comment = {
       id: "comment-runner",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "agent" as const,
       authorAgentId: "agent-1",
@@ -4472,7 +4449,6 @@ describe("TaskChatThread live transcript", () => {
           comments={[
             {
               id: "delayed-comment",
-              companyId: "company-1",
               issueId: "issue-1",
               authorType: "agent",
               authorAgentId: "agent-1",

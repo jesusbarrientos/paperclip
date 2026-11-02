@@ -19,12 +19,10 @@ import { readConfig, resolveConfigPath } from "../config/store.js";
 type RoutinesDisableAllOptions = {
   config?: string;
   dataDir?: string;
-  companyId?: string;
   json?: boolean;
 };
 
 type DisableAllRoutinesResult = {
-  companyId: string;
   totalRoutines: number;
   pausedCount: number;
   alreadyPausedCount: number;
@@ -233,18 +231,10 @@ async function openConfiguredDb(configPath: string): Promise<{
 }
 
 export async function disableAllRoutinesInConfig(
-  options: Pick<RoutinesDisableAllOptions, "config" | "companyId">,
+  options: Pick<RoutinesDisableAllOptions, "config">,
 ): Promise<DisableAllRoutinesResult> {
   const configPath = resolveConfigPath(options.config);
   loadPaperclipEnvFile(configPath);
-  const companyId =
-    nonEmpty(options.companyId)
-    ?? nonEmpty(process.env.PAPERCLIP_COMPANY_ID)
-    ?? null;
-  if (!companyId) {
-    throw new Error("Company ID is required. Pass --company-id or set PAPERCLIP_COMPANY_ID.");
-  }
-
   const config = readConfig(configPath);
   if (!config) {
     throw new Error(`Config not found at ${configPath}.`);
@@ -277,8 +267,7 @@ export async function disableAllRoutinesInConfig(
         id: routines.id,
         status: routines.status,
       })
-      .from(routines)
-      .where(eq(routines.companyId, companyId));
+      .from(routines);
 
     const alreadyPausedCount = existing.filter((routine) => routine.status === "paused").length;
     const archivedCount = existing.filter((routine) => routine.status === "archived").length;
@@ -297,7 +286,6 @@ export async function disableAllRoutinesInConfig(
     }
 
     return {
-      companyId,
       totalRoutines: existing.length,
       pausedCount: idsToPause.length,
       alreadyPausedCount,
@@ -322,12 +310,12 @@ export async function disableAllRoutinesCommand(options: RoutinesDisableAllOptio
   }
 
   if (result.totalRoutines === 0) {
-    console.log(pc.dim(`No routines found for company ${result.companyId}.`));
+    console.log(pc.dim("No routines found."));
     return;
   }
 
   console.log(
-    `Paused ${result.pausedCount} routine(s) for company ${result.companyId} ` +
+    `Paused ${result.pausedCount} routine(s) ` +
       `(${result.alreadyPausedCount} already paused, ${result.archivedCount} archived).`,
   );
 }
@@ -337,10 +325,9 @@ export function registerRoutineCommands(program: Command): void {
 
   routinesCommand
     .command("disable-all")
-    .description("Pause all non-archived routines in the configured local instance for one company")
+    .description("Pause all non-archived routines in the configured local instance")
     .option("-c, --config <path>", "Path to config file")
     .option("-d, --data-dir <path>", "Paperclip data directory root (isolates state from ~/.paperclip)")
-    .option("-C, --company-id <id>", "Company ID")
     .option("--json", "Output raw JSON")
     .action(async (opts: RoutinesDisableAllOptions) => {
       try {

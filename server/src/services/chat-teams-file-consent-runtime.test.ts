@@ -21,7 +21,6 @@ import type {
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const appId = "22222222-2222-4222-8222-222222222222";
-const companyId = "33333333-3333-4333-8333-333333333333";
 const endpointId = "44444444-4444-4444-8444-444444444444";
 const aadObjectId = "55555555-5555-4555-8555-555555555555";
 const userId = "29:synthetic-user";
@@ -31,7 +30,6 @@ const emea = "https://smba.trafficmanager.net/emea/";
 const uploadCanary = "SYNTHETIC-PRIVATE-UPLOAD-URL";
 const bytes = Buffer.from("hello");
 const binding = createTeamsFileConsentBinding({
-  companyId,
   endpointId,
   tenantId,
   botAppId: appId,
@@ -93,7 +91,7 @@ function invoke(action: "accept" | "decline") {
 function persistence() {
   const rows = new Map<string, ChatSdkStateRecord>();
   const keyFor = (scope: ChatSdkStateScope, key: string) =>
-    JSON.stringify([scope.companyId, scope.endpointId, key]);
+    JSON.stringify([scope.endpointId, key]);
   const state: ChatSdkStatePersistence = {
     async read(scope, key) {
       return rows.get(keyFor(scope, key)) ?? null;
@@ -167,7 +165,6 @@ describe("Teams opt-in file-consent runtime", () => {
     const onMessage = vi.fn();
     const onAction = vi.fn();
     const runtime = createChatSdkEndpointRuntime({
-      companyId,
       endpointId,
       persistence: state,
       logger: "silent",
@@ -245,7 +242,6 @@ describe("Teams opt-in file-consent runtime", () => {
         endpointId,
         provider: "microsoft-teams",
         event: {
-          companyId,
           endpointId,
           tenantId,
           botAppId: appId,
@@ -385,7 +381,7 @@ describe("Teams opt-in file-consent runtime", () => {
     async (scope) => {
       const h = await harness();
       const raw = invoke("accept");
-      if (scope === "tenant") raw.channelData.tenant.id = companyId;
+      if (scope === "tenant") raw.channelData.tenant.id = "33333333-3333-4333-8333-333333333333";
       if (scope === "bot") raw.recipient.id = `28:${endpointId}`;
       if (scope === "group") raw.conversation.conversationType = "groupChat";
       if (scope === "channel") raw.conversation.conversationType = "channel";

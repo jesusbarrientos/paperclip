@@ -7,7 +7,7 @@ import type { ExportFidelityReport } from "@paperclipai/shared/portability-fidel
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompanyExport, resolveExportPreviewImageSrc } from "./CompanyExport";
 
-const mockCompaniesApi = vi.hoisted(() => ({
+const mockOrganizationApi = vi.hoisted(() => ({
   exportPreview: vi.fn(),
   exportBundle: vi.fn(),
   exportFidelity: vi.fn(),
@@ -22,8 +22,8 @@ const mockAuthApi = vi.hoisted(() => ({
   getSession: vi.fn(),
 }));
 
-vi.mock("../api/companies", () => ({
-  companiesApi: mockCompaniesApi,
+vi.mock("../api/organization", () => ({
+  organizationApi: mockOrganizationApi,
 }));
 
 vi.mock("../api/agents", () => ({
@@ -42,12 +42,11 @@ vi.mock("../context/BreadcrumbContext", () => ({
   useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
-  useOptionalCompany: () => null,
+  useOptionalOrganization: () => null,
 }));
 
 vi.mock("../context/ToastContext", () => ({
@@ -56,7 +55,7 @@ vi.mock("../context/ToastContext", () => ({
 
 vi.mock("@/lib/router", () => ({
   useNavigate: () => vi.fn(),
-  useLocation: () => ({ pathname: "/PAP/company/export", search: "" }),
+  useLocation: () => ({ pathname: "/PAP/organization/export", search: "" }),
 }));
 
 vi.mock("../components/MarkdownBody", () => ({
@@ -150,7 +149,6 @@ function buildRichExportPreviewResult() {
 function buildFidelityReport(warnings: ExportFidelityReport["warnings"]): ExportFidelityReport {
   return {
     schema: "paperclip-export-fidelity-v1",
-    companyId: "company-1",
     counts: {
       labelDefinitions: 0,
       issueLabelReferences: 0,
@@ -178,9 +176,9 @@ describe("CompanyExport", () => {
     mockAuthApi.getSession.mockResolvedValue({ user: { id: "user-1" } });
     mockAgentsApi.list.mockResolvedValue([]);
     mockProjectsApi.list.mockResolvedValue([]);
-    mockCompaniesApi.exportPreview.mockResolvedValue(buildExportPreviewResult());
-    mockCompaniesApi.exportBundle.mockResolvedValue({ rootPath: "paperclip", files: {} });
-    mockCompaniesApi.exportFidelity.mockResolvedValue(buildFidelityReport([]));
+    mockOrganizationApi.exportPreview.mockResolvedValue(buildExportPreviewResult());
+    mockOrganizationApi.exportBundle.mockResolvedValue({ rootPath: "paperclip", files: {} });
+    mockOrganizationApi.exportFidelity.mockResolvedValue(buildFidelityReport([]));
     Object.assign(URL, {
       createObjectURL: vi.fn(() => "blob:mock"),
       revokeObjectURL: vi.fn(),
@@ -243,17 +241,17 @@ describe("CompanyExport", () => {
 
     expect(container.textContent).not.toContain("Prepare export preview");
     expect(mockAuthApi.getSession).toHaveBeenCalledTimes(1);
-    expect(mockAgentsApi.list).toHaveBeenCalledWith("company-1");
-    expect(mockProjectsApi.list).toHaveBeenCalledWith("company-1");
-    expect(mockCompaniesApi.exportPreview).toHaveBeenCalledTimes(1);
-    expect(mockCompaniesApi.exportPreview.mock.calls[0]?.[1]).toMatchObject({
+    expect(mockAgentsApi.list).toHaveBeenCalledWith();
+    expect(mockProjectsApi.list).toHaveBeenCalledWith();
+    expect(mockOrganizationApi.exportPreview).toHaveBeenCalledTimes(1);
+    expect(mockOrganizationApi.exportPreview.mock.calls[0]?.[0]).toMatchObject({
       include: { company: true, agents: true, projects: true, issues: false, skills: true },
     });
-    expect(mockCompaniesApi.exportFidelity).toHaveBeenCalledWith("company-1");
+    expect(mockOrganizationApi.exportFidelity).toHaveBeenCalledWith();
   });
 
   it("shows a retryable error instead of a false loading state", async () => {
-    mockCompaniesApi.exportPreview
+    mockOrganizationApi.exportPreview
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValueOnce(buildExportPreviewResult());
 
@@ -269,7 +267,7 @@ describe("CompanyExport", () => {
     expect(retry).toBeDefined();
     await clickElement(retry!);
 
-    expect(mockCompaniesApi.exportPreview).toHaveBeenCalledTimes(2);
+    expect(mockOrganizationApi.exportPreview).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain("Paperclip export");
   });
 
@@ -283,7 +281,7 @@ describe("CompanyExport", () => {
 
     await renderPage();
 
-    expect(mockCompaniesApi.exportPreview).toHaveBeenCalledTimes(1);
+    expect(mockOrganizationApi.exportPreview).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("Paperclip export");
 
     await act(async () => {
@@ -303,11 +301,11 @@ describe("CompanyExport", () => {
   });
 
   it("keeps task history opt-in, then requests all selected files on download", async () => {
-    mockCompaniesApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
+    mockOrganizationApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
 
     await renderPage();
 
-    expect(mockCompaniesApi.exportPreview.mock.calls[0]?.[1]).toMatchObject({
+    expect(mockOrganizationApi.exportPreview.mock.calls[0]?.[0]).toMatchObject({
       include: { issues: false, skills: true },
     });
     expect(container.textContent).toContain("Exporting 3 of 6 files");
@@ -316,15 +314,15 @@ describe("CompanyExport", () => {
     await clickElement(categoryInput("routines"));
     await clickElement(categoryInput("attachments"));
 
-    expect(mockCompaniesApi.exportPreview.mock.calls.some(([, request]) => request.include.issues === true)).toBe(true);
+    expect(mockOrganizationApi.exportPreview.mock.calls.some(([request]) => request.include.issues === true)).toBe(true);
     expect(container.textContent).toContain("Exporting 6 of 6 files");
     // The tree is a pure browser now — no per-file checkboxes.
     expect(container.querySelector('[role="tree"] input[type="checkbox"]')).toBeNull();
 
     await clickElement(exportButton());
 
-    expect(mockCompaniesApi.exportBundle).toHaveBeenCalledTimes(1);
-    const request = mockCompaniesApi.exportBundle.mock.calls[0]![1];
+    expect(mockOrganizationApi.exportBundle).toHaveBeenCalledTimes(1);
+    const request = mockOrganizationApi.exportBundle.mock.calls[0]![0];
     expect(request.selectedFiles).toEqual([
       ".paperclip.yaml",
       "README.md",
@@ -338,7 +336,7 @@ describe("CompanyExport", () => {
   it("keeps controls mounted and aborts a slow task refetch when Tasks is unticked", async () => {
     let requestCount = 0;
     let slowRequestSignal: AbortSignal | undefined;
-    mockCompaniesApi.exportPreview.mockImplementation((_companyId, _request, options) => {
+    mockOrganizationApi.exportPreview.mockImplementation((_request, options) => {
       requestCount += 1;
       if (requestCount !== 2) return Promise.resolve(buildRichExportPreviewResult());
       slowRequestSignal = options?.signal;
@@ -360,8 +358,8 @@ describe("CompanyExport", () => {
     await clickElement(categoryInput("tasks"));
 
     expect(slowRequestSignal?.aborted).toBe(true);
-    expect(mockCompaniesApi.exportPreview).toHaveBeenCalledTimes(3);
-    expect(mockCompaniesApi.exportPreview.mock.calls[2]?.[1]).toMatchObject({
+    expect(mockOrganizationApi.exportPreview).toHaveBeenCalledTimes(3);
+    expect(mockOrganizationApi.exportPreview.mock.calls[2]?.[0]).toMatchObject({
       include: { issues: false },
     });
     expect(categoryInput("tasks").checked).toBe(false);
@@ -371,7 +369,7 @@ describe("CompanyExport", () => {
   it("lets the user cancel a slow refetch without losing the export surface", async () => {
     let requestCount = 0;
     let slowRequestSignal: AbortSignal | undefined;
-    mockCompaniesApi.exportPreview.mockImplementation((_companyId, _request, options) => {
+    mockOrganizationApi.exportPreview.mockImplementation((_request, options) => {
       requestCount += 1;
       if (requestCount === 1) return Promise.resolve(buildRichExportPreviewResult());
       slowRequestSignal = options?.signal;
@@ -399,22 +397,22 @@ describe("CompanyExport", () => {
   });
 
   it("uses the Skills category for preview and bundle generation", async () => {
-    mockCompaniesApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
+    mockOrganizationApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
 
     await renderPage();
     await clickElement(categoryInput("skills"));
 
-    expect(mockCompaniesApi.exportPreview.mock.calls.at(-1)?.[1]).toMatchObject({
+    expect(mockOrganizationApi.exportPreview.mock.calls.at(-1)?.[0]).toMatchObject({
       include: { skills: false },
     });
     await clickElement(exportButton());
-    expect(mockCompaniesApi.exportBundle.mock.calls[0]?.[1]).toMatchObject({
+    expect(mockOrganizationApi.exportBundle.mock.calls[0]?.[0]).toMatchObject({
       include: { skills: false },
     });
   });
 
   it("toggling Tasks off drops one-off task files and their blobs but keeps routines", async () => {
-    mockCompaniesApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
+    mockOrganizationApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
 
     await renderPage();
     await clickElement(categoryInput("tasks"));
@@ -431,8 +429,8 @@ describe("CompanyExport", () => {
 
     await clickElement(exportButton());
 
-    expect(mockCompaniesApi.exportBundle).toHaveBeenCalledTimes(1);
-    const request = mockCompaniesApi.exportBundle.mock.calls[0]![1];
+    expect(mockOrganizationApi.exportBundle).toHaveBeenCalledTimes(1);
+    const request = mockOrganizationApi.exportBundle.mock.calls[0]![0];
     expect(request.selectedFiles).toEqual([
       ".paperclip.yaml",
       "README.md",
@@ -442,7 +440,7 @@ describe("CompanyExport", () => {
   });
 
   it("disables Attachments once both Tasks and Routines are off", async () => {
-    mockCompaniesApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
+    mockOrganizationApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
 
     await renderPage();
 
@@ -454,7 +452,7 @@ describe("CompanyExport", () => {
   });
 
   it("shows the estimated download size and updates it when a category toggles off", async () => {
-    mockCompaniesApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
+    mockOrganizationApi.exportPreview.mockResolvedValue(buildRichExportPreviewResult());
 
     await renderPage();
     await clickElement(categoryInput("tasks"));
@@ -476,7 +474,7 @@ describe("CompanyExport", () => {
   });
 
   it("renders the export fidelity panel with blocker and warning messages", async () => {
-    mockCompaniesApi.exportFidelity.mockResolvedValue(buildFidelityReport([
+    mockOrganizationApi.exportFidelity.mockResolvedValue(buildFidelityReport([
       {
         code: "bundle_incompatible",
         severity: "blocker",
@@ -491,7 +489,7 @@ describe("CompanyExport", () => {
 
     await renderPage();
 
-    expect(mockCompaniesApi.exportFidelity).toHaveBeenCalledWith("company-1");
+    expect(mockOrganizationApi.exportFidelity).toHaveBeenCalledWith();
     expect(container.textContent).toContain("Not included in this export");
     expect(container.textContent).toContain(
       "Importing this export will fail because the bundle references data this board cannot restore.",
@@ -502,7 +500,7 @@ describe("CompanyExport", () => {
   it("renders no fidelity panel when the report has no warnings", async () => {
     await renderPage();
 
-    expect(mockCompaniesApi.exportFidelity).toHaveBeenCalledWith("company-1");
+    expect(mockOrganizationApi.exportFidelity).toHaveBeenCalledWith();
     expect(container.textContent).not.toContain("Not included in this export");
   });
 });

@@ -24,7 +24,6 @@ function setupOptions(
     model: "claude-sonnet-5",
     maxSessionListCostUsd: "1.25",
     acknowledgeRetention: true,
-    companyId: "company-1",
     apiBase: "http://localhost:3100",
     apiKey: "paperclip-board-token",
     json: true,
@@ -195,7 +194,7 @@ describe("managed-agent CLI setup", () => {
       if (url === "https://api.anthropic.com/v1/agents/agent-1/versions") {
         return jsonResponse({ data: [safeAgent()] });
       }
-      if (url === "http://localhost:3100/api/companies/company-1/managed-agent-profiles") {
+      if (url === "http://localhost:3100/api/managed-agent-profiles") {
         return jsonResponse({ id: "profile-1" }, 201);
       }
       throw new Error(`Unexpected request: ${init.method ?? "GET"} ${url}`);

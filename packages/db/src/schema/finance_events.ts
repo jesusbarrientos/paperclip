@@ -1,5 +1,4 @@
 import { pgTable, uuid, text, timestamp, integer, index, boolean, jsonb } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { issues } from "./issues.js";
 import { projects } from "./projects.js";
@@ -11,7 +10,6 @@ export const financeEvents = pgTable(
   "finance_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     agentId: uuid("agent_id").references(() => agents.id),
     issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
     projectId: uuid("project_id").references(() => projects.id),
@@ -39,28 +37,23 @@ export const financeEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyOccurredIdx: index("finance_events_company_occurred_idx").on(table.companyId, table.occurredAt),
+    companyOccurredIdx: index("finance_events_company_occurred_idx").on(table.occurredAt),
     companyBillerOccurredIdx: index("finance_events_company_biller_occurred_idx").on(
-      table.companyId,
       table.biller,
       table.occurredAt,
     ),
     companyKindOccurredIdx: index("finance_events_company_kind_occurred_idx").on(
-      table.companyId,
       table.eventKind,
       table.occurredAt,
     ),
     companyDirectionOccurredIdx: index("finance_events_company_direction_occurred_idx").on(
-      table.companyId,
       table.direction,
       table.occurredAt,
     ),
     companyHeartbeatRunIdx: index("finance_events_company_heartbeat_run_idx").on(
-      table.companyId,
       table.heartbeatRunId,
     ),
     companyCostEventIdx: index("finance_events_company_cost_event_idx").on(
-      table.companyId,
       table.costEventId,
     ),
   }),

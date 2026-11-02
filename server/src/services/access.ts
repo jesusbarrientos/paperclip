@@ -39,14 +39,12 @@ export function accessService(db: Db) {
 
   async function sweepMemberConnectionAccess(
     tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-    companyId: string,
     userId: string,
     now: Date,
   ) {
     const departingAudienceRows = await tx.select({
       grantId: connectionGrantMembers.grantId,
     }).from(connectionGrantMembers).where(and(
-      eq(connectionGrantMembers.companyId, companyId),
       eq(connectionGrantMembers.subjectType, "user"),
       eq(connectionGrantMembers.subjectId, userId),
     ));
@@ -55,14 +53,12 @@ export function accessService(db: Db) {
       grantId: connectionGrantMembers.grantId,
       subjectId: connectionGrantMembers.subjectId,
     }).from(connectionGrantMembers).where(and(
-      eq(connectionGrantMembers.companyId, companyId),
       eq(connectionGrantMembers.subjectType, "user"),
       inArray(connectionGrantMembers.grantId, departingAudienceGrantIds),
     ));
     const activeOrganizationAudienceGrants = departingAudienceGrantIds.length === 0 ? [] : await tx.select({
       id: connectionGrants.id,
     }).from(connectionGrants).where(and(
-      eq(connectionGrants.companyId, companyId),
       eq(connectionGrants.kind, "organization"),
       eq(connectionGrants.status, "active"),
       inArray(connectionGrants.id, departingAudienceGrantIds),
@@ -78,7 +74,6 @@ export function accessService(db: Db) {
       connectionId: connectionGrants.connectionId,
       credentialSecretRefs: connectionGrants.credentialSecretRefs,
     }).from(connectionGrants).where(and(
-      eq(connectionGrants.companyId, companyId),
       eq(connectionGrants.kind, "user"),
       eq(connectionGrants.subjectUserId, userId),
     ));
@@ -98,7 +93,6 @@ export function accessService(db: Db) {
       id: companySecrets.id,
       userSecretDefinitionId: companySecrets.userSecretDefinitionId,
     }).from(companySecrets).where(and(
-      eq(companySecrets.companyId, companyId),
       eq(companySecrets.scope, "user"),
       eq(companySecrets.ownerUserId, userId),
       inArray(companySecrets.id, referencedSecretIds),
@@ -137,35 +131,26 @@ export function accessService(db: Db) {
           secretId: companySecretBindings.secretId,
           targetType: companySecretBindings.targetType,
           targetId: companySecretBindings.targetId,
-        }).from(companySecretBindings).where(and(
-          eq(companySecretBindings.companyId, companyId),
-          inArray(companySecretBindings.secretId, ownedSecretIds),
-        )),
+        }).from(companySecretBindings).where(inArray(companySecretBindings.secretId, ownedSecretIds)),
         definitionIds.length === 0 ? Promise.resolve([]) : tx.select({
           userSecretDefinitionId: userSecretDeclarations.userSecretDefinitionId,
-        }).from(userSecretDeclarations).where(and(
-          eq(userSecretDeclarations.companyId, companyId),
-          inArray(userSecretDeclarations.userSecretDefinitionId, definitionIds),
-        )),
+        }).from(userSecretDeclarations).where(inArray(userSecretDeclarations.userSecretDefinitionId, definitionIds)),
         tx.select({
           id: connectionGrants.id,
           connectionId: connectionGrants.connectionId,
           kind: connectionGrants.kind,
           status: connectionGrants.status,
           credentialSecretRefs: connectionGrants.credentialSecretRefs,
-        }).from(connectionGrants).where(eq(connectionGrants.companyId, companyId)),
+        }).from(connectionGrants),
         tx.select({
           id: toolConnections.id,
           credentialRefs: toolConnections.credentialRefs,
           credentialSecretRefs: toolConnections.credentialSecretRefs,
-        }).from(toolConnections).where(eq(toolConnections.companyId, companyId)),
+        }).from(toolConnections),
         tx.select({
           grantId: connectionGrantMembers.grantId,
           subjectId: connectionGrantMembers.subjectId,
-        }).from(connectionGrantMembers).where(and(
-          eq(connectionGrantMembers.companyId, companyId),
-          eq(connectionGrantMembers.subjectType, "user"),
-        )),
+        }).from(connectionGrantMembers).where(eq(connectionGrantMembers.subjectType, "user")),
         tx.select({ userId: companyMemberships.principalId }).from(companyMemberships).where(and(
           eq(companyMemberships.principalType, "user"),
           ne(companyMemberships.principalId, userId),
@@ -231,10 +216,7 @@ export function accessService(db: Db) {
     );
     const removedDelegations = grantIds.length === 0 ? [] : await tx
       .delete(connectionGrantDelegations)
-      .where(and(
-        eq(connectionGrantDelegations.companyId, companyId),
-        inArray(connectionGrantDelegations.grantId, grantIds),
-      ))
+      .where(inArray(connectionGrantDelegations.grantId, grantIds))
       .returning();
     if (grantIds.length > 0) {
       await tx.update(connectionGrants).set({
@@ -244,10 +226,7 @@ export function accessService(db: Db) {
         revokedByUserId: null,
         revokedByAgentId: null,
         updatedAt: now,
-      }).where(and(
-        eq(connectionGrants.companyId, companyId),
-        inArray(connectionGrants.id, grantIds),
-      ));
+      }).where(inArray(connectionGrants.id, grantIds));
     }
     if (ownedSecretIds.length > 0) {
       for (const grant of grantRefs) {
@@ -307,21 +286,16 @@ export function accessService(db: Db) {
       }
       if (affectedConnectionIds.length > 0 && connectionSecretIdsToRemove.size > 0) {
         await tx.delete(companySecretBindings).where(and(
-          eq(companySecretBindings.companyId, companyId),
           eq(companySecretBindings.targetType, "tool_connection"),
           inArray(companySecretBindings.targetId, affectedConnectionIds),
           inArray(companySecretBindings.secretId, [...connectionSecretIdsToRemove]),
         ));
       }
       if (secretIdsToDelete.length > 0) {
-        await tx.delete(companySecrets).where(and(
-          eq(companySecrets.companyId, companyId),
-          inArray(companySecrets.id, secretIdsToDelete),
-        ));
+        await tx.delete(companySecrets).where(inArray(companySecrets.id, secretIdsToDelete));
       }
     }
     await tx.delete(connectionGrantMembers).where(and(
-      eq(connectionGrantMembers.companyId, companyId),
       eq(connectionGrantMembers.subjectType, "user"),
       eq(connectionGrantMembers.subjectId, userId),
       soleAudienceGrantIds.size > 0
@@ -331,7 +305,6 @@ export function accessService(db: Db) {
     if (removedDelegations.length > 0) {
       const connectionByGrant = new Map(ownedGrants.map((grant) => [grant.id, grant.connectionId]));
       await tx.insert(toolAccessAuditEvents).values(removedDelegations.map((delegation) => ({
-        companyId,
         connectionId: connectionByGrant.get(delegation.grantId) ?? null,
         actorType: "system",
         actorId: null,
@@ -359,7 +332,6 @@ export function accessService(db: Db) {
   }
 
   async function getMembership(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
   ): Promise<MembershipRow | null> {
@@ -376,13 +348,11 @@ export function accessService(db: Db) {
   }
 
   async function hasPermission(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
     permissionKey: PermissionKey,
   ): Promise<boolean> {
     return authorization.decidePrincipalGrant({
-      companyId,
       principalType,
       principalId,
       permissionKey,
@@ -391,14 +361,13 @@ export function accessService(db: Db) {
   }
 
   async function canUser(
-    companyId: string,
     userId: string | null | undefined,
     permissionKey: PermissionKey,
   ): Promise<boolean> {
     return authorization.decide({
       actor: { type: "board", userId },
       action: permissionKey,
-      resource: { type: "company", companyId },
+      resource: { type: "company" },
     }).then((decision) => decision.allowed);
   }
 
@@ -411,14 +380,14 @@ export function accessService(db: Db) {
     return authorization.decide(input);
   }
 
-  async function listMembers(companyId: string) {
+  async function listMembers() {
     return db
       .select()
       .from(companyMemberships)
       .orderBy(sql`${companyMemberships.createdAt} desc`);
   }
 
-  async function getMemberById(companyId: string, memberId: string) {
+  async function getMemberById(memberId: string) {
     return db
       .select()
       .from(companyMemberships)
@@ -426,7 +395,7 @@ export function accessService(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
-  async function listActiveUserMemberships(companyId: string) {
+  async function listActiveUserMemberships() {
     return db
       .select()
       .from(companyMemberships)
@@ -440,12 +409,11 @@ export function accessService(db: Db) {
   }
 
   async function setMemberPermissions(
-    companyId: string,
     memberId: string,
     grants: GrantInput[],
     grantedByUserId: string | null,
   ) {
-    const member = await getMemberById(companyId, memberId);
+    const member = await getMemberById(memberId);
     if (!member) return null;
 
     await db.transaction(async (tx) => {
@@ -476,7 +444,6 @@ export function accessService(db: Db) {
   }
 
   async function updateMemberAndPermissions(
-    companyId: string,
     memberId: string,
     data: {
       membershipRole?: string | null;
@@ -531,7 +498,7 @@ export function accessService(db: Db) {
 
       const now = new Date();
       if (existing.status === "active" && nextStatus !== "active" && existing.principalType === "user") {
-        await sweepMemberConnectionAccess(tx, companyId, existing.principalId, now);
+        await sweepMemberConnectionAccess(tx, existing.principalId, now);
       }
       const updated = await tx
         .update(companyMemberships)
@@ -571,7 +538,6 @@ export function accessService(db: Db) {
   }
 
   async function assertCanRemoveActiveOwner(
-    companyId: string,
     principalType: PrincipalType,
     status: string,
     membershipRole: string | null,
@@ -602,7 +568,6 @@ export function accessService(db: Db) {
   }
 
   async function assertAssignableArchiveTarget(
-    companyId: string,
     input: MemberArchiveInput["reassignment"],
     tx: Pick<Db, "select">,
   ) {
@@ -628,10 +593,10 @@ export function accessService(db: Db) {
       return;
     }
 
-    await assertAssignableAgent(tx as Db, companyId, input.assigneeAgentId, { kind: "work" });
+    await assertAssignableAgent(tx as Db, input.assigneeAgentId, { kind: "work" });
   }
 
-  async function archiveMember(companyId: string, memberId: string, input: MemberArchiveInput = {}) {
+  async function archiveMember(memberId: string, input: MemberArchiveInput = {}) {
     return db.transaction(async (tx) => {
       await tx.execute(sql`
         select ${companyMemberships.id}
@@ -660,23 +625,21 @@ export function accessService(db: Db) {
       }
 
       await assertCanRemoveActiveOwner(
-        companyId,
         existing.principalType,
         existing.status,
         existing.membershipRole,
         tx,
       );
-      await assertAssignableArchiveTarget(companyId, input.reassignment, tx);
+      await assertAssignableArchiveTarget(input.reassignment, tx);
 
       const now = new Date();
-      await sweepMemberConnectionAccess(tx, companyId, existing.principalId, now);
+      await sweepMemberConnectionAccess(tx, existing.principalId, now);
       const assignmentPatch = {
         assigneeAgentId: input.reassignment?.assigneeAgentId ?? null,
         assigneeUserId: input.reassignment?.assigneeUserId ?? null,
         updatedAt: now,
       };
       const assignedOpenIssueWhere = and(
-        eq(issues.companyId, companyId),
         eq(issues.assigneeUserId, existing.principalId),
         sql`${issues.status} not in ('done', 'cancelled')`,
       );
@@ -757,7 +720,7 @@ export function accessService(db: Db) {
       .from(companyMemberships)
       .where(and(eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId)))
       .orderBy(sql`${companyMemberships.createdAt} desc`);
-    return rows.map((row) => ({ ...row, companyId: organizationId }));
+    return rows.map((row) => ({ ...row }));
   }
 
   async function setUserCompanyAccess(
@@ -790,7 +753,7 @@ export function accessService(db: Db) {
           throw conflict("Owners and admins cannot be removed from company access");
         }
         const now = new Date();
-        await sweepMemberConnectionAccess(tx, organizationId!, existing.principalId, now);
+        await sweepMemberConnectionAccess(tx, existing.principalId, now);
         await tx
           .update(companyMemberships)
           .set({ status: "archived", updatedAt: now })
@@ -831,13 +794,12 @@ export function accessService(db: Db) {
   }
 
   async function ensureMembership(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
     membershipRole: string | null = "member",
     status: "pending" | "active" | "suspended" = "active",
   ) {
-    const existing = await getMembership(companyId, principalType, principalId);
+    const existing = await getMembership(principalType, principalId);
     if (existing) {
       if (existing.status !== status || existing.membershipRole !== membershipRole) {
         const updated = await db
@@ -864,7 +826,6 @@ export function accessService(db: Db) {
   }
 
   async function setPrincipalGrants(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
     grants: GrantInput[],
@@ -895,7 +856,6 @@ export function accessService(db: Db) {
   }
 
   async function ensureRoleDefaultGrants(
-    companyId: string,
     principalId: string,
     membershipRole: string | null | undefined,
     grantedByUserId: string | null,
@@ -908,7 +868,6 @@ export function accessService(db: Db) {
   }
 
   async function listPrincipalGrants(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
   ) {
@@ -925,7 +884,6 @@ export function accessService(db: Db) {
   }
 
   async function setPrincipalPermission(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
     permissionKey: PermissionKey,
@@ -946,7 +904,7 @@ export function accessService(db: Db) {
       return;
     }
 
-    await ensureMembership(companyId, principalType, principalId, "member", "active");
+    await ensureMembership(principalType, principalId, "member", "active");
 
     const existing = await db
       .select()
@@ -984,7 +942,6 @@ export function accessService(db: Db) {
   }
 
   async function updateMember(
-    companyId: string,
     memberId: string,
     data: {
       membershipRole?: string | null;
@@ -1041,7 +998,7 @@ export function accessService(db: Db) {
         existing.status !== "suspended" &&
         nextStatus === "suspended"
       ) {
-        await sweepMemberConnectionAccess(tx, companyId, existing.principalId, now);
+        await sweepMemberConnectionAccess(tx, existing.principalId, now);
       }
 
       return tx

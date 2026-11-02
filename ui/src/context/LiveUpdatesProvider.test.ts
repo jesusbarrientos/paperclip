@@ -23,36 +23,36 @@ describe("LiveUpdatesProvider issue invalidation", () => {
     ["chat-2", "issue.conversation_opened", "user", "user-2", false],
   ])("refreshes only the owner's chat list for relevant activity: %s %s %s %s", (entityId, action, actorType, actorId, refresh) => {
     const client = new QueryClient();
-    const key = queryKeys.agentChats.list("company-1", "user-1");
+    const key = queryKeys.agentChats.list("user-1");
     client.setQueryData(key, [{ id: "chat-1" }]);
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    __liveUpdatesTestUtils.invalidateActivityQueries(client, "company-1", {
+    __liveUpdatesTestUtils.invalidateActivityQueries(client, {
       entityType: "issue", entityId, action, actorType, actorId,
     }, { userId: "user-1", agentId: null });
     if (refresh) expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
     else expect(invalidate).not.toHaveBeenCalledWith({ queryKey: key });
-    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.agentChats.list("company-1", "user-2") });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.agentChats.list("user-2") });
     client.clear();
   });
 
   it("refreshes the source task activity when a company skill is created", () => {
     const client = new QueryClient();
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    __liveUpdatesTestUtils.invalidateActivityQueries(client, "company-1", {
+    __liveUpdatesTestUtils.invalidateActivityQueries(client, {
       entityType: "company_skill", entityId: "skill-1", action: "company.skill_created",
       details: { sourceIssueId: "issue-1" },
     }, { userId: "user-1", agentId: null });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.activity("issue-1") });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.companySkills.detail("company-1", "skill-1") });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.companySkills.detail("skill-1") });
     client.clear();
   });
   it.each(["issue.attachment_added", "issue.attachment_removed", "issue.work_product_created", "issue.work_product_updated"])("refreshes visible delivered files for %s", action => {
     const client = new QueryClient();
     client.setQueryData(queryKeys.issues.detail("issue-1"), { id: "issue-1", companyId: "company-1", identifier: "PAP-1" });
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    __liveUpdatesTestUtils.invalidateActivityQueries(client, "company-1", {
+    __liveUpdatesTestUtils.invalidateActivityQueries(client, {
       entityType: "issue", entityId: "issue-1", actorType: "agent", actorId: "agent-1", action,
-    }, { userId: "user-1", agentId: null }, { pathname: "/PAP/issues/PAP-1", isForegrounded: true });
+    }, { userId: "user-1", agentId: null }, { pathname: "/issues/PAP-1", isForegrounded: true });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.attachments("issue-1") });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.workProducts("issue-1") });
     client.clear();
@@ -68,20 +68,19 @@ describe("LiveUpdatesProvider issue invalidation", () => {
   it("uses the current person's canonical chat for live updates and refreshes reset boundaries", () => {
     const client = new QueryClient();
     client.setQueryData(queryKeys.auth.session, { user: { id: "user-1" } });
-    client.setQueryData(queryKeys.companies.list("user-1"), { companies: [{ id: "company-1", issuePrefix: "PAP" }], unauthorized: false });
-    client.setQueryData(queryKeys.agents.list("company-1"), [{ id: "agent-1", name: "Coder", urlKey: "coder" }]);
+    client.setQueryData(queryKeys.agents.list(), [{ id: "agent-1", name: "Coder", urlKey: "coder" }]);
     const chat = { id: "chat-1", companyId: "company-1", identifier: "PAP-1", assigneeAgentId: "agent-1" };
-    client.setQueryData(queryKeys.agentChats.detail("company-1", "user-1", "agent-1"), chat);
-    client.setQueryData(queryKeys.agentChats.detail("company-1", "user-2", "agent-1"), { ...chat, id: "other-chat" });
+    client.setQueryData(queryKeys.agentChats.detail("user-1", "agent-1"), chat);
+    client.setQueryData(queryKeys.agentChats.detail("user-2", "agent-1"), { ...chat, id: "other-chat" });
     client.setQueryData(queryKeys.issues.detail("chat-1"), chat);
-    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(client, "/PAP/chats/agent-1", { issueId: "chat-1", runId: "run-1" }, { isForegrounded: true })).toBe(true);
-    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(client, "/PAP/chats/agent-1", { issueId: "other-chat", runId: "run-2" }, { isForegrounded: true })).toBe(false);
+    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(client, "/chats/agent-1", { issueId: "chat-1", runId: "run-1" }, { isForegrounded: true })).toBe(true);
+    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(client, "/chats/agent-1", { issueId: "other-chat", runId: "run-2" }, { isForegrounded: true })).toBe(false);
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    __liveUpdatesTestUtils.invalidateActivityQueries(client, "company-1", { entityType: "issue", entityId: "chat-1", action: "issue.conversation_session_started", actorType: "system" }, { userId: "user-1", agentId: null }, { pathname: "/PAP/chats/agent-1", isForegrounded: true });
+    __liveUpdatesTestUtils.invalidateActivityQueries(client, { entityType: "issue", entityId: "chat-1", action: "issue.conversation_session_started", actorType: "system" }, { userId: "user-1", agentId: null }, { pathname: "/chats/agent-1", isForegrounded: true });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.comments("chat-1") });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["issues", "tree-control-state", "chat-1"] });
     invalidate.mockClear();
-    __liveUpdatesTestUtils.invalidateVisibleIssueRunQueries(client, "/PAP/chats/agent-1", { agentId: "agent-1", runId: "run-1", status: "succeeded" }, { isForegrounded: true });
+    __liveUpdatesTestUtils.invalidateVisibleIssueRunQueries(client, "/chats/agent-1", { agentId: "agent-1", runId: "run-1", status: "succeeded" }, { isForegrounded: true });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.comments("chat-1") });
     client.clear();
   });
@@ -90,11 +89,10 @@ describe("LiveUpdatesProvider issue invalidation", () => {
       const invalidateQueries = vi.fn();
       __liveUpdatesTestUtils.invalidateActivityQueries(
         { invalidateQueries, getQueryData: () => undefined } as never,
-        "company-1", { entityType: "connection_grant", entityId: "grant-1", action },
+        { entityType: "connection_grant", entityId: "grant-1", action },
         { userId: "owner", agentId: null },
       );
-      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["ai-connections", "company-1"] });
-      expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["ai-connections"] });
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["ai-connections"] });
     },
   );
 
@@ -109,7 +107,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -120,13 +117,13 @@ describe("LiveUpdatesProvider issue invalidation", () => {
     );
 
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.issues.listMineByMe("company-1"),
+      queryKey: queryKeys.issues.listMineByMe(),
     });
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.issues.listTouchedByMe("company-1"),
+      queryKey: queryKeys.issues.listTouchedByMe(),
     });
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.issues.listUnreadTouchedByMe("company-1"),
+      queryKey: queryKeys.issues.listUnreadTouchedByMe(),
     });
     expect(invalidations).toContainEqual({
       queryKey: queryKeys.issues.detail("issue-1"),
@@ -168,7 +165,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -193,7 +189,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateHeartbeatProgressQueries(
       queryClient as never,
-      "company-1",
       {
         agentId: "agent-1",
         runId: "run-1",
@@ -204,25 +199,25 @@ describe("LiveUpdatesProvider issue invalidation", () => {
       queryKey: queryKeys.agents.detail("agent-1"),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.liveRuns("company-1"),
+      queryKey: queryKeys.liveRuns(),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.heartbeats("company-1"),
+      queryKey: queryKeys.heartbeats(),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.heartbeats("company-1", "agent-1"),
+      queryKey: queryKeys.heartbeats("agent-1"),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.agents.list("company-1"),
+      queryKey: queryKeys.agents.list(),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.dashboard("company-1"),
+      queryKey: queryKeys.dashboard(),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.costs("company-1"),
+      queryKey: queryKeys.costs(),
     });
     expect(invalidations).not.toContainEqual({
-      queryKey: queryKeys.sidebarBadges("company-1"),
+      queryKey: queryKeys.sidebarBadges(),
     });
   });
 
@@ -236,7 +231,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateHeartbeatQueries(
       queryClient as never,
-      "company-1",
       { runId: "run-1", agentId: "agent-1" },
     );
 
@@ -247,7 +241,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
   it("applies heartbeat progress payloads directly to cached visible issue runs", () => {
     const cache = new Map<string, unknown>([
-      [JSON.stringify(queryKeys.liveRuns("company-1")), [{ id: "run-1", currentStatusMessage: null }]],
+      [JSON.stringify(queryKeys.liveRuns()), [{ id: "run-1", currentStatusMessage: null }]],
       [JSON.stringify(queryKeys.issues.detail("DEMO-759")), {
         id: "issue-1",
         identifier: "DEMO-759",
@@ -281,7 +275,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     const changed = __liveUpdatesTestUtils.applyRunLiveStatusPatchToCaches(
       queryClient as never,
-      "company-1",
       "/DEMO/issues/DEMO-759",
       {
         runId: "run-1",
@@ -297,7 +290,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
     );
 
     expect(changed).toBe(true);
-    expect(cache.get(JSON.stringify(queryKeys.liveRuns("company-1")))).toEqual([
+    expect(cache.get(JSON.stringify(queryKeys.liveRuns()))).toEqual([
       expect.objectContaining({
         id: "run-1",
         currentStatusMessage: "Syncing workspace",
@@ -383,7 +376,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -396,7 +388,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
         },
       },
       { userId: "user-1", agentId: null },
-      { pathname: "/PAP/issues/PAP-9403", isForegrounded: true },
+      { pathname: "/issues/PAP-9403", isForegrounded: true },
     );
 
     expect(invalidations).toContainEqual({
@@ -443,7 +435,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -480,7 +471,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -519,7 +509,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "routine",
         entityId: "routine-1",
@@ -554,7 +543,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "case",
         entityId: "case-1",
@@ -571,7 +559,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
     );
 
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.cases.list("company-1"),
+      queryKey: queryKeys.cases.list(),
     });
     expect(invalidations).toContainEqual({
       queryKey: queryKeys.cases.detail("case-1"),
@@ -595,7 +583,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -632,7 +619,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -678,7 +664,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -691,7 +676,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
         },
       },
       { userId: null, agentId: null },
-      { pathname: "/PAP/issues/PAP-759", isForegrounded: true },
+      { pathname: "/issues/PAP-759", isForegrounded: true },
     );
 
     expect(invalidations).toContainEqual({
@@ -724,7 +709,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -737,7 +721,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
         },
       },
       { userId: "user-1", agentId: null },
-      { pathname: "/PAP/issues/PAP-759", isForegrounded: true },
+      { pathname: "/issues/PAP-759", isForegrounded: true },
     );
 
     expect(invalidations).toContainEqual({
@@ -772,7 +756,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -788,7 +771,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
         },
       },
       { userId: null, agentId: null },
-      { pathname: "/PAP/issues/PAP-759", isForegrounded: true },
+      { pathname: "/issues/PAP-759", isForegrounded: true },
     );
 
     expect(invalidations).toContainEqual({
@@ -824,7 +807,6 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -838,7 +820,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
         },
       },
       { userId: null, agentId: null },
-      { pathname: "/PAP/issues/PAP-759", isForegrounded: true },
+      { pathname: "/issues/PAP-759", isForegrounded: true },
     );
 
     expect(invalidations).toContainEqual({
@@ -901,7 +883,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     const invalidated = __liveUpdatesTestUtils.invalidateVisibleIssueRunQueries(
       queryClient as never,
-      "/PAP/issues/PAP-759",
+      "/issues/PAP-759",
       {
         runId: "run-1",
         agentId: "agent-1",
@@ -971,7 +953,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
       };
       expect(__liveUpdatesTestUtils.invalidateVisibleIssueRunQueries(
         queryClient as never,
-        "/PAP/issues/PAP-759",
+        "/issues/PAP-759",
         { runId: "run-1", agentId: "agent-1", status },
         { isForegrounded: true },
       )).toBe(true);
@@ -1013,7 +995,7 @@ describe("LiveUpdatesProvider issue invalidation", () => {
 
     const invalidated = __liveUpdatesTestUtils.invalidateVisibleIssueRunQueries(
       queryClient as never,
-      "/PAP/issues/PAP-759",
+      "/issues/PAP-759",
       {
         runId: "run-2",
         agentId: "agent-2",
@@ -1031,7 +1013,6 @@ describe("LiveUpdatesProvider visible issue comment hydration", () => {
   it("hydrates the visible issue comments cache with only the new comment", async () => {
     getCommentMock.mockResolvedValueOnce({
       id: "comment-2",
-      companyId: "company-1",
       issueId: "issue-1",
       authorAgentId: "agent-1",
       authorUserId: null,
@@ -1054,7 +1035,6 @@ describe("LiveUpdatesProvider visible issue comment hydration", () => {
           return {
             pages: [[{
               id: "comment-1",
-              companyId: "company-1",
               issueId: "issue-1",
               authorAgentId: null,
               authorUserId: "user-1",
@@ -1076,7 +1056,7 @@ describe("LiveUpdatesProvider visible issue comment hydration", () => {
 
     await __liveUpdatesTestUtils.hydrateVisibleIssueComment(
       queryClient as never,
-      "/PAP/issues/PAP-759",
+      "/issues/PAP-759",
       {
         entityType: "issue",
         entityId: "issue-1",
@@ -1096,7 +1076,6 @@ describe("LiveUpdatesProvider visible issue comment hydration", () => {
       pages: [[
         {
           id: "comment-2",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: "agent-1",
           authorUserId: null,
@@ -1106,7 +1085,6 @@ describe("LiveUpdatesProvider visible issue comment hydration", () => {
         },
         {
           id: "comment-1",
-          companyId: "company-1",
           issueId: "issue-1",
           authorAgentId: null,
           authorUserId: "user-1",
@@ -1138,7 +1116,7 @@ describe("LiveUpdatesProvider visible issue toast suppression", () => {
     expect(
       __liveUpdatesTestUtils.shouldSuppressActivityToastForVisibleIssue(
         queryClient as never,
-        "/PAP/issues/PAP-759",
+        "/issues/PAP-759",
         {
           entityType: "issue",
           entityId: "issue-1",
@@ -1151,7 +1129,7 @@ describe("LiveUpdatesProvider visible issue toast suppression", () => {
     expect(
       __liveUpdatesTestUtils.shouldSuppressActivityToastForVisibleIssue(
         queryClient as never,
-        "/PAP/issues/PAP-759",
+        "/issues/PAP-759",
         {
           entityType: "issue",
           entityId: "issue-2",
@@ -1180,7 +1158,7 @@ describe("LiveUpdatesProvider visible issue toast suppression", () => {
     expect(
       __liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(
         queryClient as never,
-        "/PAP/issues/PAP-759",
+        "/issues/PAP-759",
         {
           runId: "run-1",
           agentId: "agent-1",
@@ -1192,7 +1170,7 @@ describe("LiveUpdatesProvider visible issue toast suppression", () => {
     expect(
       __liveUpdatesTestUtils.shouldSuppressAgentStatusToastForVisibleIssue(
         queryClient as never,
-        "/PAP/issues/PAP-759",
+        "/issues/PAP-759",
         {
           agentId: "agent-1",
           status: "running",
@@ -1217,7 +1195,6 @@ describe("LiveUpdatesProvider run lifecycle toasts", () => {
         },
         () => "CodexCoder",
         queryClient as never,
-        "company-1",
       ),
     ).toBeNull();
 
@@ -1258,7 +1235,6 @@ describe("LiveUpdatesProvider run lifecycle toasts", () => {
         },
         () => "CodexCoder",
         queryClient as never,
-        "company-1",
       ),
     ).toMatchObject({
       title: "CodexCoder errored",
@@ -1363,7 +1339,7 @@ describe("applyRunLifecycleToCompanyLiveRuns", () => {
   function makeClient(initial: Array<{ id: string; status: string }>) {
     const initialDetail = initial.find((run) => run.id === "run-1");
     const cache = new Map<string, unknown>([
-      [JSON.stringify(queryKeys.liveRuns("company-1")), initial],
+      [JSON.stringify(queryKeys.liveRuns()), initial],
       [JSON.stringify(queryKeys.runDetail("run-1")), initialDetail],
     ]);
     const client = {
@@ -1374,7 +1350,7 @@ describe("applyRunLifecycleToCompanyLiveRuns", () => {
         cache.set(cacheKey, typeof updater === "function" ? updater(current) : updater);
       },
     };
-    const read = () => cache.get(JSON.stringify(queryKeys.liveRuns("company-1")));
+    const read = () => cache.get(JSON.stringify(queryKeys.liveRuns()));
     const readDetail = () => cache.get(JSON.stringify(queryKeys.runDetail("run-1")));
     return { client, read, readDetail };
   }
@@ -1383,7 +1359,6 @@ describe("applyRunLifecycleToCompanyLiveRuns", () => {
     const { client, read, readDetail } = makeClient([{ id: "run-1", status: "running" }, { id: "run-2", status: "running" }]);
     const patched = __liveUpdatesTestUtils.applyRunLifecycleToCompanyLiveRuns(
       client as never,
-      "company-1",
       {
         runId: "run-1",
         status: "succeeded",
@@ -1406,7 +1381,6 @@ describe("applyRunLifecycleToCompanyLiveRuns", () => {
     const { client, read } = makeClient([{ id: "run-1", status: "queued" }]);
     const patched = __liveUpdatesTestUtils.applyRunLifecycleToCompanyLiveRuns(
       client as never,
-      "company-1",
       { runId: "run-1", status: "running" },
     );
     expect(patched).toBe(true);
@@ -1418,7 +1392,6 @@ describe("applyRunLifecycleToCompanyLiveRuns", () => {
 
     __liveUpdatesTestUtils.applyRunLifecycleToCompanyLiveRuns(
       client as never,
-      "company-1",
       {
         runId: "run-1",
         status: "running",
@@ -1441,7 +1414,6 @@ describe("applyRunLifecycleToCompanyLiveRuns", () => {
     const { client, read } = makeClient([{ id: "run-1", status: "running" }]);
     const patched = __liveUpdatesTestUtils.applyRunLifecycleToCompanyLiveRuns(
       client as never,
-      "company-1",
       { runId: "run-new", status: "running" },
     );
     expect(patched).toBe(false);
@@ -1461,7 +1433,6 @@ describe("LiveUpdatesProvider summary slot invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "summary_slot",
         entityId: "slot-1",
@@ -1477,10 +1448,10 @@ describe("LiveUpdatesProvider summary slot invalidation", () => {
     );
 
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.summarySlots.detail("company-1", "project", "header", "project-1"),
+      queryKey: queryKeys.summarySlots.detail("project", "header", "project-1"),
     });
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.summarySlots.revisions("company-1", "project", "header", "project-1"),
+      queryKey: queryKeys.summarySlots.revisions("project", "header", "project-1"),
     });
   });
 
@@ -1495,7 +1466,6 @@ describe("LiveUpdatesProvider summary slot invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "summary_slot",
         entityId: "slot-1",
@@ -1506,10 +1476,10 @@ describe("LiveUpdatesProvider summary slot invalidation", () => {
     );
 
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.summarySlots.detail("company-1", "company", "header", null),
+      queryKey: queryKeys.summarySlots.detail("company", "header", null),
     });
     expect(invalidations).toContainEqual({
-      queryKey: queryKeys.summarySlots.revisions("company-1", "company", "header", null),
+      queryKey: queryKeys.summarySlots.revisions("company", "header", null),
     });
   });
 
@@ -1524,7 +1494,6 @@ describe("LiveUpdatesProvider summary slot invalidation", () => {
 
     __liveUpdatesTestUtils.invalidateActivityQueries(
       queryClient as never,
-      "company-1",
       {
         entityType: "summary_slot",
         entityId: "slot-1",
@@ -1547,7 +1516,6 @@ describe("LiveUpdatesProvider summary slot invalidation", () => {
 describe("dispatchLiveEventToSubscribers", () => {
   const baseEvent = {
     id: 1,
-    companyId: "company-1",
     type: "heartbeat.run.progress" as const,
     createdAt: "2026-07-15T00:00:00.000Z",
     payload: { issueId: "issue-1" },
@@ -1562,24 +1530,10 @@ describe("dispatchLiveEventToSubscribers", () => {
 
     __liveUpdatesTestUtils.dispatchLiveEventToSubscribers(
       subscribers as never,
-      "company-1",
       baseEvent as never,
     );
 
     expect(received).toHaveLength(2);
-  });
-
-  it("drops events for other companies", () => {
-    const received: unknown[] = [];
-    const subscribers = new Set<(event: never) => void>([() => received.push("hit")]);
-
-    __liveUpdatesTestUtils.dispatchLiveEventToSubscribers(
-      subscribers as never,
-      "company-2",
-      baseEvent as never,
-    );
-
-    expect(received).toHaveLength(0);
   });
 
   it("isolates a throwing subscriber from the rest", () => {
@@ -1594,7 +1548,6 @@ describe("dispatchLiveEventToSubscribers", () => {
     expect(() =>
       __liveUpdatesTestUtils.dispatchLiveEventToSubscribers(
         subscribers as never,
-        "company-1",
         baseEvent as never,
       ),
     ).not.toThrow();
@@ -1608,23 +1561,23 @@ describe("task subtree notification context", () => {
   const queryClient = {
     getQueryData: (key: unknown) => {
       if (JSON.stringify(key) === JSON.stringify(queryKeys.issues.detail("PAP-204"))) return root;
-      if (JSON.stringify(key) === JSON.stringify(queryKeys.issues.listByDescendantRoot("company", "root"))) return descendants;
+      if (JSON.stringify(key) === JSON.stringify(queryKeys.issues.listByDescendantRoot("root"))) return descendants;
     },
   };
   it("suppresses descendant cancellation and activity on the visible subtree", () => {
-    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/PAP/issues/PAP-204", { runId: "child-run", agentId: "child-agent", status: "cancelled" }, { isForegrounded: true })).toBe(true);
-    expect(__liveUpdatesTestUtils.shouldSuppressActivityToastForVisibleIssue(queryClient as never, "/PAP/issues/PAP-204", { entityType: "issue", entityId: "child" }, { isForegrounded: true })).toBe(true);
+    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/issues/PAP-204", { runId: "child-run", agentId: "child-agent", status: "cancelled" }, { isForegrounded: true })).toBe(true);
+    expect(__liveUpdatesTestUtils.shouldSuppressActivityToastForVisibleIssue(queryClient as never, "/issues/PAP-204", { entityType: "issue", entityId: "child" }, { isForegrounded: true })).toBe(true);
   });
   it("uses the event task when a terminal run has already left the cache", () => {
-    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/PAP/issues/PAP-204", { issueId: "root", runId: "finished-run" }, { isForegrounded: true })).toBe(true);
-    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/PAP/issues/PAP-204", { issueId: "unrelated", runId: "child-run", agentId: "child-agent" }, { isForegrounded: true })).toBe(false);
+    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/issues/PAP-204", { issueId: "root", runId: "finished-run" }, { isForegrounded: true })).toBe(true);
+    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/issues/PAP-204", { issueId: "unrelated", runId: "child-run", agentId: "child-agent" }, { isForegrounded: true })).toBe(false);
   });
   it("retains notifications for unrelated tasks and background pages", () => {
     for (const [agentId, foregrounded] of [["other-agent", true], ["child-agent", true], ["child-agent", false]] as const) {
-      expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/PAP/issues/PAP-204", { agentId, runId: "another-run", status: "cancelled" }, { isForegrounded: foregrounded })).toBe(false);
+      expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/issues/PAP-204", { agentId, runId: "another-run", status: "cancelled" }, { isForegrounded: foregrounded })).toBe(false);
     }
   });
   it("suppresses the run shown on its own run detail page", () => {
-    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/PAP/agents/alex/runs/child-run", { runId: "child-run" }, { isForegrounded: true })).toBe(true);
+    expect(__liveUpdatesTestUtils.shouldSuppressRunStatusToastForVisibleIssue(queryClient as never, "/agents/alex/runs/child-run", { runId: "child-run" }, { isForegrounded: true })).toBe(true);
   });
 });

@@ -60,11 +60,10 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
     return companyId;
   }
 
-  async function seedAgent(companyId: string, name = "CEO") {
+  async function seedAgent(name = "CEO") {
     const agentId = randomUUID();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name,
       role: "engineer",
       status: "running",
@@ -76,11 +75,10 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
     return agentId;
   }
 
-  async function seedIssue(companyId: string, overrides: Partial<typeof issues.$inferInsert> = {}) {
+  async function seedIssue(overrides: Partial<typeof issues.$inferInsert> = {}) {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Fixture issue",
       status: "in_progress",
       priority: "medium",
@@ -103,15 +101,14 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
       // other issues were left with execution_run_id pointing at a finalized run —
       // an orphan lock that blocked any future agent from checking them out.
       const companyId = await seedCompany();
-      const ceoAgentId = await seedAgent(companyId, "CEO");
+      const ceoAgentId = await seedAgent("CEO");
 
-      const contextIssueId = await seedIssue(companyId);
-      const orphanIssueId = await seedIssue(companyId);
+      const contextIssueId = await seedIssue();
+      const orphanIssueId = await seedIssue();
 
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId: ceoAgentId,
         invocationSource: "assignment",
         status: "queued",
@@ -158,17 +155,16 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
       // what we actually observed in the field. The bulk UPDATE path should be
       // O(n) without per-row round-trips, so exercise n>2 explicitly.
       const companyId = await seedCompany();
-      const ceoAgentId = await seedAgent(companyId, "CEO");
+      const ceoAgentId = await seedAgent("CEO");
 
-      const contextIssueId = await seedIssue(companyId);
-      const orphanAId = await seedIssue(companyId);
-      const orphanBId = await seedIssue(companyId);
-      const orphanCId = await seedIssue(companyId);
+      const contextIssueId = await seedIssue();
+      const orphanAId = await seedIssue();
+      const orphanBId = await seedIssue();
+      const orphanCId = await seedIssue();
 
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId: ceoAgentId,
         invocationSource: "assignment",
         status: "queued",
@@ -188,7 +184,7 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
 
       await heartbeatService(db).cancelRun(runId);
 
-      const rows = await db.select().from(issues).where(eq(issues.companyId, companyId));
+      const rows = await db.select().from(issues);
       expect(rows).toHaveLength(4);
       for (const row of rows) {
         expect(row.executionRunId).toBeNull();
@@ -205,15 +201,14 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
       // deferred-wake promotion, which we intentionally preserve, but cleanup
       // must span all matches.
       const companyId = await seedCompany();
-      const ceoAgentId = await seedAgent(companyId, "CEO");
+      const ceoAgentId = await seedAgent("CEO");
 
-      const orphanAId = await seedIssue(companyId);
-      const orphanBId = await seedIssue(companyId);
+      const orphanAId = await seedIssue();
+      const orphanBId = await seedIssue();
 
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId: ceoAgentId,
         invocationSource: "assignment",
         status: "queued",
@@ -240,64 +235,6 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
       expect(orphanBAfter?.executionRunId).toBeNull();
     });
 
-    it("never clears execution locks on issues in another company", async () => {
-      // Defense-in-depth regression: a finalizing run in company A must never
-      // affect rows in company B even if (pathologically) an issue in B carries
-      // the same execution_run_id. The `company_id = run.companyId` scope in
-      // the cleanup query is the only line protecting tenant isolation here.
-      const companyAId = await seedCompany();
-      const companyBId = await seedCompany();
-      const agentAId = await seedAgent(companyAId, "CEO-A");
-
-      const issueAId = await seedIssue(companyAId);
-      const issueBId = await seedIssue(companyBId);
-
-      const runAId = randomUUID();
-      await db.insert(heartbeatRuns).values({
-        id: runAId,
-        companyId: companyAId,
-        agentId: agentAId,
-        invocationSource: "assignment",
-        status: "queued",
-        contextSnapshot: { issueId: issueAId },
-      });
-
-      // Company B's issue pathologically references company A's run id. The FK
-      // from issues.execution_run_id → heartbeat_runs.id permits this because
-      // it doesn't enforce a company-match constraint; in production this
-      // state is only reachable via a bug, but the scoping predicate should
-      // make us robust against it.
-      await db
-        .update(issues)
-        .set({
-          executionRunId: runAId,
-          executionAgentNameKey: "ceo-a",
-          executionLockedAt: new Date(),
-        })
-        .where(eq(issues.id, issueAId));
-      await db
-        .update(issues)
-        .set({
-          executionRunId: runAId,
-          executionAgentNameKey: "ceo-b",
-          executionLockedAt: new Date(),
-        })
-        .where(eq(issues.id, issueBId));
-
-      await heartbeatService(db).cancelRun(runAId);
-
-      const [issueAAfter] = await db.select().from(issues).where(eq(issues.id, issueAId));
-      const [issueBAfter] = await db.select().from(issues).where(eq(issues.id, issueBId));
-
-      expect(issueAAfter?.executionRunId).toBeNull();
-      expect(issueAAfter?.companyId).toBe(companyAId);
-
-      expect(issueBAfter?.executionRunId).toBe(runAId);
-      expect(issueBAfter?.executionAgentNameKey).toBe("ceo-b");
-      expect(issueBAfter?.executionLockedAt).not.toBeNull();
-      expect(issueBAfter?.companyId).toBe(companyBId);
-    });
-
     it("clears checkout_run_id on every sibling and preserves an in-flight retry's execution_run_id pointer", async () => {
       // Exercises the second of the two scoped bulk UPDATEs in
       // releaseIssueExecutionAndPromote, and the invariant that motivated
@@ -318,18 +255,17 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
       //     execution_run_id null — covers the post-status-change shape where the
       //     issue's checkout pointer outlived its execution lock.
       const companyId = await seedCompany();
-      const ceoAgentId = await seedAgent(companyId, "CEO");
+      const ceoAgentId = await seedAgent("CEO");
 
-      const dualLockIssueId = await seedIssue(companyId);
-      const retryIssueId = await seedIssue(companyId);
-      const checkoutOnlyIssueId = await seedIssue(companyId);
+      const dualLockIssueId = await seedIssue();
+      const retryIssueId = await seedIssue();
+      const checkoutOnlyIssueId = await seedIssue();
 
       const finalizingRunId = randomUUID();
       const retryRunId = randomUUID();
       await db.insert(heartbeatRuns).values([
         {
           id: finalizingRunId,
-          companyId,
           agentId: ceoAgentId,
           invocationSource: "assignment",
           status: "queued",
@@ -342,7 +278,6 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
           // point of this test). In production, retries are typically already
           // running by the time the original failing run finalizes.
           id: retryRunId,
-          companyId,
           agentId: ceoAgentId,
           invocationSource: "assignment",
           status: "running",
@@ -403,19 +338,18 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
 
     it("does not touch execution locks on issues owned by unrelated runs", async () => {
       const companyId = await seedCompany();
-      const ceoAgentId = await seedAgent(companyId, "CEO");
-      const seAgentId = await seedAgent(companyId, "SE1");
+      const ceoAgentId = await seedAgent("CEO");
+      const seAgentId = await seedAgent("SE1");
 
       const finalizingRunId = randomUUID();
       const unrelatedRunId = randomUUID();
 
-      const contextIssueId = await seedIssue(companyId);
-      const unrelatedIssueId = await seedIssue(companyId);
+      const contextIssueId = await seedIssue();
+      const unrelatedIssueId = await seedIssue();
 
       await db.insert(heartbeatRuns).values([
         {
           id: finalizingRunId,
-          companyId,
           agentId: ceoAgentId,
           invocationSource: "assignment",
           status: "queued",
@@ -423,7 +357,6 @@ describeEmbeddedPostgres("execution lock orphan cleanup", () => {
         },
         {
           id: unrelatedRunId,
-          companyId,
           agentId: seAgentId,
           invocationSource: "assignment",
           status: "running",

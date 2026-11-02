@@ -42,6 +42,7 @@ import { resolveExecutionWorkspaceEnvironmentId } from "./execution-workspace-po
 import { emailConnectionService } from "./email-connections.js";
 import { secretService } from "./secrets.js";
 import { authorizationService } from "./authorization.js";
+import { organizationService } from "./organization.js";
 import { issueService } from "./issues.js";
 import { logActivity } from "./activity-log.js";
 import { instanceSettingsService } from "./instance-settings.js";
@@ -153,7 +154,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     const config = await getConfig(endpoint.id);
     return {
       id: endpoint.id,
-      companyId: endpoint.companyId,
       connectionId: endpoint.connectionId,
       assignedAgentId: endpoint.assignedAgentId,
       address: endpoint.botExternalId,
@@ -168,10 +168,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .select()
       .from(toolConnections)
       .where(
-        and(
-          eq(toolConnections.companyId, endpoint.companyId),
-          eq(toolConnections.id, endpoint.connectionId),
-        ),
+        eq(toolConnections.id, endpoint.connectionId),
       );
     const ref = connection?.credentialSecretRefs.find(
       (r) => r.configPath === `credentials.${key}`,
@@ -181,7 +178,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         "Reconnect this AgentMail inbox to restore its credential",
       );
     return secrets.resolveSecretValue(
-      endpoint.companyId,
       ref.secretId,
       ref.versionSelector ?? "latest",
       {
@@ -222,7 +218,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           ),
         );
       await tx.insert(companySecretBindings).values({
-        companyId: endpoint.companyId,
         secretId,
         targetType: "tool_connection",
         targetId: endpoint.connectionId,
@@ -247,7 +242,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     if (!bound) await secrets.remove(id);
   }
   async function vault(endpoint: Endpoint, key: string, value: string) {
-    const secret = await secrets.create(endpoint.companyId, {
+    const secret = await secrets.create({
       name: `AgentMail ${endpoint.id} ${key} ${randomUUID()}`,
       provider: "local_encrypted",
       value,
@@ -261,7 +256,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     details: Record<string, unknown> = {},
   ) {
     await logActivity(db, {
-      companyId: endpoint.companyId,
       actorType: actor.agentId ? "agent" : actor.userId ? "user" : "system",
       actorId: actor.agentId ?? actor.userId ?? "agentmail",
       action,
@@ -284,7 +278,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     const [row] = await client
       .insert(chatEndpointLeases)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         leaseKey: key,
         token,
@@ -381,21 +374,19 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       throw conflict("This email inbox is not active");
     const runtimeSecretId = connection.credentialSecretRefs.find((ref) => ref.configPath === "credentials.apiKey")?.secretId;
     const [runtimeSecret] = runtimeSecretId ? await db.select({ id: companySecrets.id }).from(companySecrets).where(and(
-      eq(companySecrets.id, runtimeSecretId), eq(companySecrets.companyId, endpoint.companyId),
+      eq(companySecrets.id, runtimeSecretId),
       eq(companySecrets.status, "active"), isNull(companySecrets.deletedAt),
     )) : [];
     if (!runtimeSecret) throw conflict("This email inbox credential is unavailable");
     const sourceId = connection.config.credentialConnectionId;
     if (typeof sourceId === "string")
       await emailConnectionService(db, fetchImpl).assertAgentAccess(
-        endpoint.companyId,
         sourceId,
         current.assignedAgentId,
       );
     return current;
   }
   async function authorizeRead(
-    companyId: string,
     issueId: string,
     actor: EmailActor,
   ) {
@@ -404,34 +395,28 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       actor: {
         type: "agent",
         agentId: actor.agentId,
-        companyId,
         runId: actor.runId,
       },
       action: "issue:read",
-      resource: { type: "issue", companyId, issueId },
+      resource: { type: "issue", issueId },
     });
     if (!decision.allowed) throw forbidden(decision.explanation);
   }
-  async function inboundPlacement(companyId: string, agentId: string) {
+  async function inboundPlacement(agentId: string) {
     const [agent] = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)));
+      .where(eq(agents.id, agentId));
     if (!agent) throw notFound("Assigned agent not found");
     if (agent.permissions.trustPreset !== "low_trust_review") return {};
     const boundary = (agent.permissions as Partial<AgentPermissions>)
       .authorizationPolicy?.trustBoundary;
-    if (boundary?.companyId && boundary.companyId !== companyId)
-      throw forbidden("Low-trust boundary belongs to another company");
     if (boundary?.rootIssueId) {
       const [root] = await db
         .select()
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, companyId),
-            eq(issues.id, boundary.rootIssueId),
-          ),
+          eq(issues.id, boundary.rootIssueId),
         );
       if (root)
         return {
@@ -446,7 +431,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         .select()
         .from(projects)
         .where(
-          and(eq(projects.companyId, companyId), eq(projects.id, projectId)),
+          eq(projects.id, projectId),
         );
       if (project)
         return {
@@ -468,7 +453,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .select()
       .from(issues)
       .where(
-        and(eq(issues.companyId, endpoint.companyId), eq(issues.id, issueId)),
+        eq(issues.id, issueId),
       );
     if (!task) throw notFound("Task not found");
     if (actor.userId) {
@@ -479,7 +464,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       const sourceId = connection?.config.credentialConnectionId;
       if (typeof sourceId === "string")
         await emailConnectionService(db, fetchImpl).get(
-          endpoint.companyId,
           sourceId,
           actor,
         );
@@ -519,15 +503,12 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         throw forbidden(
           "Only the assigned agent can use this inbox for its tasks",
         );
-      await authorizeRead(endpoint.companyId, issueId, actor);
+      await authorizeRead(issueId, actor);
       const [agent] = await db
         .select()
         .from(agents)
         .where(
-          and(
-            eq(agents.companyId, endpoint.companyId),
-            eq(agents.id, actor.agentId),
-          ),
+          eq(agents.id, actor.agentId),
         );
       if (
         !agent ||
@@ -543,7 +524,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         .from(heartbeatRuns)
         .where(
           and(
-            eq(heartbeatRuns.companyId, endpoint.companyId),
             eq(heartbeatRuns.id, actor.runId),
             eq(heartbeatRuns.agentId, actor.agentId),
           ),
@@ -559,7 +539,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         )
         .where(
           and(
-            eq(chatConversations.companyId, endpoint.companyId),
             eq(chatConversations.issueId, task.id),
             eq(chatEndpoints.externalExecutionPolicy, "restricted"),
           ),
@@ -586,7 +565,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
   ) {
     const service = toolAccessPolicyService(db);
     const request = {
-      companyId: endpoint.companyId,
       actor: {
         actorType: actor.agentId ? ("agent" as const) : ("user" as const),
         actorId: actor.agentId ?? actor.userId ?? "board",
@@ -609,7 +587,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
   }
 
   async function setup(
-    companyId: string,
     input: EmailEndpointSetupInput,
     actor: EmailActor,
   ) {
@@ -617,14 +594,11 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .select()
       .from(agents)
       .where(
-        and(
-          eq(agents.companyId, companyId),
-          eq(agents.id, input.assignedAgentId),
-        ),
+        eq(agents.id, input.assignedAgentId),
       );
     if (!agent || ["terminated", "pending_approval"].includes(agent.status))
       throw badRequest("Select an available company agent");
-    await inboundPlacement(companyId, agent.id);
+    await inboundPlacement(agent.id);
     if (agent.permissions.trustPreset === "low_trust_review") {
       const settings = instanceSettingsService(db);
       const experimental = await settings.getExperimental();
@@ -633,9 +607,9 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           "Low-trust email agents require isolated workspaces and a sandbox environment. Complete runtime setup before connecting this inbox.",
         );
       const envs = environmentService(db);
-      const local = await envs.ensureLocalEnvironment(companyId);
+      const local = await envs.ensureLocalEnvironment();
       const managed = experimental.enableManagedSandboxOnly
-        ? await envs.findManagedSandboxEnvironment(companyId)
+        ? await envs.findManagedSandboxEnvironment()
         : null;
       const selected = resolveExecutionWorkspaceEnvironmentId({
         agentDefaultEnvironmentId: agent.defaultEnvironmentId,
@@ -646,13 +620,9 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         managedSandboxEnvironmentId: managed?.id,
       });
       const environment = await envs.getById(selected.environmentId);
-      const owners = environment
-        ? await envs.listBoundCompanyIds(environment.id)
-        : [];
       if (
         environment?.driver !== "sandbox" ||
-        environment.status !== "active" ||
-        (owners.length && !owners.includes(companyId))
+        environment.status !== "active"
       )
         throw badRequest(
           "Select an active sandbox environment for this low-trust email agent before connecting its inbox.",
@@ -664,8 +634,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .where(eq(chatEndpoints.id, input.idempotencyKey));
     if (
       endpoint &&
-      (endpoint.companyId !== companyId ||
-        endpoint.provider !== "agentmail" ||
+      (endpoint.provider !== "agentmail" ||
         endpoint.assignedAgentId !== input.assignedAgentId)
     )
       throw conflict("Setup request already belongs to another inbox");
@@ -678,10 +647,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
             .select()
             .from(toolApplications)
             .where(
-              and(
-                eq(toolApplications.companyId, companyId),
-                eq(toolApplications.id, input.applicationId),
-              ),
+              eq(toolApplications.id, input.applicationId),
             );
           if (
             !app ||
@@ -692,7 +658,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         } else
           await tx.insert(toolApplications).values({
             id: applicationId,
-            companyId,
             applicationKey: `agentmail:${input.idempotencyKey}`,
             name: `AgentMail — ${agent.name} ${input.idempotencyKey.slice(0, 8)}`,
             type: "chat",
@@ -701,7 +666,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           });
         await tx.insert(toolConnections).values({
           id: connectionId,
-          companyId,
           applicationId,
           name: `Email — ${agent.name}`,
           uid: `agentmail-${input.idempotencyKey}`,
@@ -717,7 +681,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         });
         await tx.insert(chatEndpoints).values({
           id: input.idempotencyKey,
-          companyId,
           connectionId,
           publicId: randomUUID(),
           provider: "agentmail",
@@ -730,28 +693,27 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         });
         await tx.insert(emailEndpoints).values({
           endpointId: input.idempotencyKey,
-          companyId,
           receiveMode: input.receiveMode,
         });
         const profileId = randomUUID();
         await tx.insert(toolProfiles).values({
           id: profileId,
-          companyId,
           profileKey: `email:${input.idempotencyKey}`,
           name: `Email ${agent.name} ${input.idempotencyKey.slice(0, 8)}`,
           defaultAction: "deny",
           metadata: { applicationId },
         });
         await tx.insert(toolProfileEntries).values({
-          companyId,
           profileId,
           selectorType: "connection",
           connectionId,
           effect: "include",
         });
+        const organizationId = await organizationService(tx).findId();
+        if (!organizationId) throw notFound("Organization not found");
         await tx.insert(toolProfileBindings).values([
-          { companyId, profileId, targetType: "agent", targetId: agent.id },
-          { companyId, profileId, targetType: "company", targetId: companyId },
+          { profileId, targetType: "agent", targetId: agent.id },
+          { profileId, targetType: "company", targetId: organizationId },
         ]);
       });
       endpoint = await getEndpoint(input.idempotencyKey);
@@ -769,7 +731,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       let controlKey = input.apiKey;
       if (input.credentialConnectionId) {
         const saved = await emailConnectionService(db, fetchImpl).credential(
-          companyId,
           input.credentialConnectionId,
           actor,
         );
@@ -785,7 +746,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           })
           .where(eq(toolConnections.id, endpoint.connectionId));
         await emailConnectionService(db, fetchImpl).allowAgent(
-          companyId,
           input.credentialConnectionId,
           agent.id,
           actor,
@@ -920,7 +880,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     await db
       .insert(chatDeliveries)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         providerEventId: event.eventId,
         deduplicationKey: `${event.kind}:${event.message_id}`,
@@ -1016,7 +975,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         await reader.cancel();
       }
       const stored = await options.storage.putFile({
-        companyId: endpoint.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: (attachment.filename ?? "attachment")
           .replace(/[\/\\\u0000-\u001f]/g, "_")
@@ -1054,7 +1012,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .where(
         and(
           eq(emailSends.endpointId, endpoint.id),
-          eq(emailSends.companyId, endpoint.companyId),
           eq(emailSends.publicationId, publicationId),
         ),
       );
@@ -1138,7 +1095,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         tx,
       );
     await tx.insert(emailMessages).values({
-      companyId: endpoint.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       providerMessageId: message.message_id,
@@ -1153,7 +1109,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     await tx
       .insert(chatMessageLinks)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         deliveryId,
@@ -1302,11 +1257,9 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         }
         if (!conversation) {
           const placement = await inboundPlacement(
-            endpoint.companyId,
             endpoint.assignedAgentId,
           );
           const task = await issueService(db).create(
-            endpoint.companyId,
             {
               ...placement,
               title: message.subject.slice(0, 200),
@@ -1324,7 +1277,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           [conversation] = await tx
             .insert(chatConversations)
             .values({
-              companyId: endpoint.companyId,
               endpointId: endpoint.id,
               issueId: task.id,
               externalConversationId: endpoint.botExternalId!,
@@ -1440,13 +1392,10 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .where(eq(chatDeliveries.id, delivery.id));
   }
   async function queueSend(
-    companyId: string,
     input: EmailSendInput,
     actor: EmailActor,
   ): Promise<EmailPublicationSummary> {
     const endpoint = await getEndpoint(input.endpointId);
-    if (endpoint.companyId !== companyId)
-      throw notFound("Email inbox not found");
     await active(endpoint);
     let [conversation] = input.conversationId
       ? await db
@@ -1468,17 +1417,14 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .select()
       .from(emailSends)
       .where(
-        and(
-          eq(emailSends.companyId, companyId),
-          eq(emailSends.publicationId, input.idempotencyKey),
-        ),
+        eq(emailSends.publicationId, input.idempotencyKey),
       );
     if (previous) {
       if (previous.digest !== digest)
         throw conflict(
           "Email idempotency key was reused with different content",
         );
-      return publication(input.idempotencyKey, companyId);
+      return publication(input.idempotencyKey);
     }
     await policy(endpoint, input, actor, true);
     const attachmentIssueId = input.parentIssueId ?? conversation!.issueId;
@@ -1486,7 +1432,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       const attachment = await issueService(db).getAttachmentById(id);
       if (
         !attachment ||
-        attachment.companyId !== companyId ||
         attachment.issueId !== attachmentIssueId
       )
         throw forbidden("Email attachments must belong to the source task");
@@ -1498,13 +1443,12 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         .from(emailSends)
         .where(eq(emailSends.publicationId, input.idempotencyKey));
       if (prior) {
-        if (prior.companyId !== companyId || prior.digest !== digest)
+        if (prior.digest !== digest)
           throw conflict("Email idempotency key conflict");
         return;
       }
       if (!conversation) {
         const task = await issueService(db).create(
-          companyId,
           {
             title: input.subject!,
             parentId: input.parentIssueId,
@@ -1524,7 +1468,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         [conversation] = await tx
           .insert(chatConversations)
           .values({
-            companyId,
             endpointId: endpoint.id,
             issueId: task.id,
             externalConversationId: endpoint.botExternalId!,
@@ -1550,7 +1493,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       }
       await tx.insert(chatPublications).values({
         id: input.idempotencyKey,
-        companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -1559,7 +1501,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       });
       await tx.insert(emailSends).values({
         publicationId: input.idempotencyKey,
-        companyId,
         endpointId: endpoint.id,
         request: input,
         actor,
@@ -1570,11 +1511,10 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       publicationId: input.idempotencyKey,
     });
     if (timer) void tick().catch(() => {});
-    return publication(input.idempotencyKey, companyId);
+    return publication(input.idempotencyKey);
   }
   async function publication(
     id: string,
-    companyId: string,
   ): Promise<EmailPublicationSummary> {
     const [row] = await db
       .select({ publication: chatPublications, send: emailSends })
@@ -1584,10 +1524,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         eq(chatPublications.id, emailSends.publicationId),
       )
       .where(
-        and(
-          eq(emailSends.companyId, companyId),
-          eq(emailSends.publicationId, id),
-        ),
+        eq(emailSends.publicationId, id),
       );
     if (!row) throw notFound("Email delivery not found");
     return {
@@ -1645,10 +1582,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         .select()
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, endpoint.companyId),
-            eq(issues.id, pub.issueId),
-          ),
+          eq(issues.id, pub.issueId),
         );
       if (
         !emailTask ||
@@ -1667,13 +1601,11 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         if (
           !options.storage ||
           !attachment ||
-          attachment.companyId !== endpoint.companyId ||
           attachment.issueId !== sourceId ||
           attachment.byteSize > MAX_ATTACHMENT_BYTES
         )
           throw forbidden("Email attachment is no longer available");
         const object = await options.storage.getObject(
-          endpoint.companyId,
           attachment.objectKey,
         );
         const chunks: Buffer[] = [];
@@ -2295,7 +2227,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           .from(companySecretBindings)
           .where(
             and(
-              eq(companySecretBindings.companyId, endpoint.companyId),
               eq(companySecretBindings.targetType, "tool_connection"),
               eq(companySecretBindings.targetId, endpoint.connectionId),
             ),
@@ -2304,7 +2235,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
           .delete(companySecretBindings)
           .where(
             and(
-              eq(companySecretBindings.companyId, endpoint.companyId),
               eq(companySecretBindings.targetType, "tool_connection"),
               eq(companySecretBindings.targetId, endpoint.connectionId),
             ),
@@ -2402,7 +2332,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     });
     if (!result) throw conflict("An email operation is running; retry shortly");
     return setup(
-      endpoint.companyId,
       {
         assignedAgentId: endpoint.assignedAgentId,
         apiKey,
@@ -2433,12 +2362,11 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     }
   }
   async function resolveUncertain(
-    companyId: string,
     publicationId: string,
     resolution: { outcome: "sent" | "failed"; providerMessageId?: string },
     actor: EmailActor,
   ) {
-    const pub = await publication(publicationId, companyId);
+    const pub = await publication(publicationId);
     if (pub.outcome !== "uncertain")
       throw conflict("This send is not uncertain");
     const [record] = await db
@@ -2449,7 +2377,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     const resolved = await withLease(
       endpoint,
       async () => {
-        const latest = await publication(publicationId, companyId);
+        const latest = await publication(publicationId);
         if (latest.outcome !== "uncertain")
           throw conflict("Delivery was already resolved");
         if (resolution.outcome === "sent") {
@@ -2500,10 +2428,9 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     );
     if (!resolved)
       throw conflict("An email operation is running; retry shortly");
-    return publication(publicationId, companyId);
+    return publication(publicationId);
   }
   async function thread(
-    companyId: string,
     issueId: string,
   ): Promise<EmailThreadSummary | null> {
     const [conversation] = await db
@@ -2515,7 +2442,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       )
       .where(
         and(
-          eq(chatConversations.companyId, companyId),
           eq(chatConversations.issueId, issueId),
           eq(chatEndpoints.provider, "agentmail"),
         ),
@@ -2526,29 +2452,20 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
       .select()
       .from(emailMessages)
       .where(
-        and(
-          eq(emailMessages.companyId, companyId),
-          eq(emailMessages.conversationId, binding.id),
-        ),
+        eq(emailMessages.conversationId, binding.id),
       )
       .orderBy(asc(emailMessages.timestamp));
     const publications = await db
       .select({ id: chatPublications.id })
       .from(chatPublications)
       .where(
-        and(
-          eq(chatPublications.companyId, companyId),
-          eq(chatPublications.conversationId, binding.id),
-        ),
+        eq(chatPublications.conversationId, binding.id),
       );
     const links = await db
       .select()
       .from(chatMessageLinks)
       .where(
-        and(
-          eq(chatMessageLinks.companyId, companyId),
-          eq(chatMessageLinks.conversationId, binding.id),
-        ),
+        eq(chatMessageLinks.conversationId, binding.id),
       );
     return {
       conversationId: binding.id,
@@ -2570,20 +2487,20 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
             ?.commentId ?? null,
       })),
       publications: await Promise.all(
-        publications.map((p) => publication(p.id, companyId)),
+        publications.map((p) => publication(p.id)),
       ),
     };
   }
-  async function assignedInboxes(companyId: string, agentId: string) {
+  async function assignedInboxes(agentId: string) {
     const rows = await db.select().from(chatEndpoints).where(and(
-      eq(chatEndpoints.companyId, companyId), eq(chatEndpoints.assignedAgentId, agentId),
+      eq(chatEndpoints.assignedAgentId, agentId),
       eq(chatEndpoints.provider, "agentmail"), eq(chatEndpoints.status, "active"),
     ));
     const result: Awaited<ReturnType<typeof summary>>[] = [];
     for (const row of rows) {
       try {
         const current = await active(row);
-        if (current.companyId === companyId && current.assignedAgentId === agentId)
+        if (current.assignedAgentId === agentId)
           result.push(await summary(current));
       } catch (error) {
         if (!(error instanceof HttpError) || ![403, 404, 409].includes(error.status)) throw error;
@@ -2606,7 +2523,7 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
     control,
     reconnect,
     resolveUncertain,
-    list: async (companyId: string) =>
+    list: async () =>
       Promise.all(
         (
           await db
@@ -2614,7 +2531,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
             .from(chatEndpoints)
             .where(
               and(
-                eq(chatEndpoints.companyId, companyId),
                 eq(chatEndpoints.provider, "agentmail"),
                 ne(chatEndpoints.status, "archived"),
               ),

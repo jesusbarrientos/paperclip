@@ -42,7 +42,7 @@ function AgentFilesStory({ failedSync = false, fullStorageRun = false, historica
       ["notes/context.txt", file("notes/context.txt", "Use short, concrete updates.\n")],
       ["cache.bin", file("cache.bin", "", true)],
     ]);
-    const bundle = () => ({ agentId: agent.id, companyId: agent.companyId, persistence: "agent_files", mode: "managed",
+    const bundle = () => ({ agentId: agent.id, persistence: "agent_files", mode: "managed",
       rootPath: root, managedRootPath: root, entryFile: "AGENTS.md", resolvedEntryPath: `${root}/AGENTS.md`, editable: true,
       warnings: [], legacyPromptTemplateActive: false, legacyBootstrapPromptTemplateActive: false,
       files: [...files.values()].map(({ content: _content, ...summary }) => summary),
@@ -97,7 +97,7 @@ function AgentFilesStory({ failedSync = false, fullStorageRun = false, historica
           errorCode: failedSync ? "AGENT_FILES_LIMIT_EXCEEDED" : null,
           errorMessage: failedSync ? syncFailure : null, storageWarning: fullStorageRun ? storageWarning : null } }} />
       </section>}
-      {ready && <PromptsTab agent={agent} companyId={agent.companyId} onDirtyChange={setDirty} onSavingChange={setSaving}
+      {ready && <PromptsTab agent={agent} onDirtyChange={setDirty} onSavingChange={setSaving}
         onSaveActionChange={onSave} onCancelActionChange={onCancel} />}
       <div className="flex items-center justify-between border-t border-border pt-4">
         <Button variant="outline" disabled={!dirty || saving} onClick={() => cancel.current?.()}>Cancel changes</Button>

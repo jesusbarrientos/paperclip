@@ -15,7 +15,7 @@ import type {
 function memoryPersistence(): ChatSdkStatePersistence {
   const rows = new Map<string, ChatSdkStateRecord>();
   const key = (scope: ChatSdkStateScope, value: string) =>
-    `${scope.companyId}:${scope.endpointId}:${value}`;
+    `${scope.endpointId}:${value}`;
   return {
     async read(scope, value) {
       return rows.get(key(scope, value)) ?? null;
@@ -142,7 +142,6 @@ describe("GitHub published adapter stress contract", () => {
           if (event.trigger === "mention") await event.thread.subscribe();
         },
       },
-      companyId: "company-github-provider-stress",
       endpointId: "endpoint-github-provider-stress",
       logger: "silent",
       persistence: memoryPersistence(),
@@ -369,7 +368,6 @@ describe("GitHub published adapter stress contract", () => {
     );
     const runtime = createChatSdkEndpointRuntime({
       callbacks: { onMessage() {} },
-      companyId: "company-github-inline-egress",
       endpointId: "endpoint-github-inline-egress",
       logger: "silent",
       persistence: memoryPersistence(),
@@ -414,7 +412,6 @@ describe("GitHub published adapter stress contract", () => {
           deliveries.push(event);
         },
       },
-      companyId: "company-github-reorder-stress",
       endpointId: "endpoint-github-reorder-stress",
       logger: "silent",
       persistence: memoryPersistence(),

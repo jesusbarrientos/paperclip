@@ -177,7 +177,7 @@ export function mockBrowserUse(
     );
     return { accepted: true };
   };
-  browserUseApi.settings = async (_company, grant) => {
+  browserUseApi.settings = async (grant) => {
     if (options.loading) return new Promise(() => {});
     return settings.get(grant) ?? { allowedProfileIds: [], maxCostUsd: 1 };
   };
@@ -197,7 +197,7 @@ export function mockBrowserUse(
           },
         ];
   };
-  browserUseApi.saveSettings = async (_company, grant, value) => {
+  browserUseApi.saveSettings = async (grant, value) => {
     if (options.saveError) throw new Error("Simulated save failure");
     settings.set(grant, value);
     return value;

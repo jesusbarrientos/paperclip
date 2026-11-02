@@ -5,11 +5,11 @@ import type { Decision, DecisionEffectExecution } from "@/api/decisions";
 // --- fixtures ---------------------------------------------------------------
 
 const ISSUES: Record<string, DecisionIssueRef> = {
-  "issue-origin": { id: "issue-origin", identifier: "PAP-123", title: "Gardener sweep", href: "/PAP/issues/PAP-123", status: "in_progress" },
-  "issue-target": { id: "issue-target", identifier: "PAP-456", title: "Stale integration epic", href: "/PAP/issues/PAP-456", status: "backlog" },
-  "issue-child-1": { id: "issue-child-1", identifier: "PAP-457", title: "Wire the adapter", href: "/PAP/issues/PAP-457", status: "backlog" },
-  "issue-child-2": { id: "issue-child-2", identifier: "PAP-458", title: "Backfill fixtures", href: "/PAP/issues/PAP-458", status: "todo" },
-  "issue-new": { id: "issue-new", identifier: "PAP-999", title: "Follow-up: document rollout", href: "/PAP/issues/PAP-999", status: "todo" },
+  "issue-origin": { id: "issue-origin", identifier: "PAP-123", title: "Gardener sweep", href: "/issues/PAP-123", status: "in_progress" },
+  "issue-target": { id: "issue-target", identifier: "PAP-456", title: "Stale integration epic", href: "/issues/PAP-456", status: "backlog" },
+  "issue-child-1": { id: "issue-child-1", identifier: "PAP-457", title: "Wire the adapter", href: "/issues/PAP-457", status: "backlog" },
+  "issue-child-2": { id: "issue-child-2", identifier: "PAP-458", title: "Backfill fixtures", href: "/issues/PAP-458", status: "todo" },
+  "issue-new": { id: "issue-new", identifier: "PAP-999", title: "Follow-up: document rollout", href: "/issues/PAP-999", status: "todo" },
 };
 
 const resolveIssue = (id: string): DecisionIssueRef | null => ISSUES[id] ?? null;
@@ -20,7 +20,6 @@ const originIssue = ISSUES["issue-origin"]!;
 function mkDecision(overrides: Partial<Decision> = {}): Decision {
   return {
     id: "decision-1",
-    companyId: "company-storybook",
     bundleId: null,
     originAgentId: "agent-gardener",
     originIssueId: "issue-origin",

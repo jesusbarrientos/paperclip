@@ -10,7 +10,6 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const ownerId = z.string().regex(/^[a-f0-9]{32}$/);
 const scopeSchema = z
   .object({
-    companyId: z.uuid(),
     endpointId: z.uuid(),
     applicationId: snowflake,
     guildId: snowflake,

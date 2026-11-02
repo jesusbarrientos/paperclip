@@ -61,7 +61,7 @@ describe("HiddenSettingsPageGate", () => {
     });
 
     expect(container.querySelector('[data-testid="navigate"]')?.getAttribute("data-to")).toBe(
-      "/company/settings",
+      "/organization/settings",
     );
     expect(container.querySelector('[data-testid="page-content"]')).toBeNull();
   });

@@ -134,7 +134,6 @@ export class CapabilityChatSession {
       identity: {
         runId,
         sessionId: `session-capability-chat-${entry.id}`,
-        companyId: fixture.seed.company!.id!,
         issueId: fixture.taskId,
         agentId: fixture.actorId,
       },

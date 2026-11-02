@@ -45,7 +45,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi, beforeEach } from "vitest";
-import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
   agentWakeupRequests,
@@ -134,11 +134,10 @@ import {
 import * as discordQuestionForms from "../services/chat-discord-question-forms.js";
 import { issueService } from "../services/issues.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
-import { getExternalChannelBindingSummary } from "../services/chat-channel-binding.js";
 import { PaperclipRunnerToolAuthority } from "../services/native-runtime/paperclip-runner-tool-authority.js";
 import { NativeChatAttachmentReadScope } from "../services/native-runtime/chat-attachment-read.js";
 import { logActivity } from "../services/activity-log.js";
-import { subscribeCompanyLiveEvents } from "../services/live-events.js";
+import { subscribeLiveEvents } from "../services/live-events.js";
 import { issueThreadInteractionService } from "../services/issue-thread-interactions.js";
 import { questionResponseDeliveryService } from "../services/question-response-delivery.js";
 import * as chatQuestionForms from "../services/chat-question-forms.js";
@@ -960,27 +959,26 @@ function makeMessage(input: {
   } as unknown as Message;
 }
 
-function boardActor(companyId: string, userId = "owner-user") {
+function boardActor(userId = "owner-user", member = true) {
   return {
     type: "board" as const,
     source: "session" as const,
     userId,
     isInstanceAdmin: false,
-    companyIds: [companyId],
-    memberships: [{ companyId, status: "active", membershipRole: "operator" }],
+    memberships: member ? [{ status: "active", membershipRole: "operator" }] : [],
   };
 }
 
 function routesApp(
   db: TestDb,
-  companyId: string,
   service: ChatChannelService,
   userId = "owner-user",
+  member = true,
 ) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.actor = boardActor(companyId, userId);
+    req.actor = boardActor(userId, member);
     next();
   });
   app.use(
@@ -1031,10 +1029,24 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
       db = createDb(tempDb.connectionString);
     }
+    const tables = await db.execute<{ tablename: string }>(
+      sql`select tablename from pg_tables where schemaname = 'public'`,
+    );
+    for (const { tablename } of tables) {
+      const [row] = await db.execute<{ empty: boolean }>(
+        sql.raw(`select not exists (select 1 from "${tablename}") as empty`),
+      );
+      if (row?.empty) initiallyEmptyTables.push(tablename);
+    }
   }, 30_000);
 
+  // Tables are no longer partitioned by company, so every case starts from the
+  // post-migration state; migration-seeded tables are left intact.
+  const initiallyEmptyTables: string[] = [];
   beforeEach(async () => {
-    await resetOrganizationState(db);
+    await db.execute(sql.raw(
+      `TRUNCATE ${initiallyEmptyTables.map((name) => `"${name}"`).join(", ")} CASCADE`,
+    ));
   });
 
   afterAll(async () => {
@@ -1053,47 +1065,46 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     try {
       await Promise.all([...fixtureServices].map((service) => service.shutdown()));
     } finally {
-      const companyIds = [...fixtureCompanies];
-      await retireFixtureState(companyIds);
-      if (companyIds.length > 0) {
+      if (fixtureCompanies.size > 0) {
+        await retireFixtureState();
         // Pausing an endpoint does not remove its rows from global recovery
         // selectors. After every assertion and worker shutdown, settle leftover
         // fixture work so later cases cannot claim its leases or retry its I/O.
         await db.update(chatActions).set({ status: "cancelled" })
-          .where(and(inArray(chatActions.companyId, companyIds), notInArray(chatActions.status, ["processed", "cancelled"])));
+          .where(notInArray(chatActions.status, ["processed", "cancelled"]));
         await db.update(chatDeliveries).set({ state: "failed", nextAttemptAt: null })
-          .where(and(inArray(chatDeliveries.companyId, companyIds), inArray(chatDeliveries.state, ["received", "processing", "retry"])));
+          .where(inArray(chatDeliveries.state, ["received", "processing", "retry"]));
         await db.update(chatPublications).set({ state: "cancelled", nextAttemptAt: null })
-          .where(and(inArray(chatPublications.companyId, companyIds), inArray(chatPublications.state, ["pending", "awaiting_consent", "streaming", "retry"])));
+          .where(inArray(chatPublications.state, ["pending", "awaiting_consent", "streaming", "retry"]));
       }
       fixtureServices.clear();
       fixtureCompanies.clear();
     }
   });
 
-  async function retireFixtureState(companyIds: string[]) {
-    if (companyIds.length === 0) return;
+  async function retireFixtureState(endpointIds?: string[]) {
+    const scoped = <T,>(column: T) => endpointIds ? inArray(column as never, endpointIds) : undefined;
     // Verifying endpoints can also own receipts. Once a receipt is 60s old,
     // another test's global sweep can reclaim it. Retire every live endpoint,
     // then release synthetic lease owners after their services have stopped.
     await db.update(chatEndpoints).set({ status: "paused" })
-      .where(and(inArray(chatEndpoints.companyId, companyIds), notInArray(chatEndpoints.status, ["archived", "revoked"])));
-    await db.delete(chatEndpointLeases)
-      .where(inArray(chatEndpointLeases.companyId, companyIds));
+      .where(and(scoped(chatEndpoints.id), notInArray(chatEndpoints.status, ["archived", "revoked"])));
+    await db.delete(chatEndpointLeases).where(scoped(chatEndpointLeases.endpointId));
     // The milestone scanner includes paused endpoints with active bindings.
     await db.update(chatConversations).set({ state: "completed" })
-      .where(and(inArray(chatConversations.companyId, companyIds), inArray(chatConversations.state, ["active", "waiting"])));
+      .where(and(scoped(chatConversations.endpointId), inArray(chatConversations.state, ["active", "waiting"])));
   }
 
+
   async function seedCompany() {
-    const companyId = randomUUID();
-    fixtureCompanies.add(companyId);
+    const organizationId = randomUUID();
+    fixtureCompanies.add(organizationId);
     const assignedAgentId = randomUUID();
     const replacementAgentId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
-      name: `Chat Test ${companyId.slice(0, 8)}`,
-      issuePrefix: `C${companyId.replace(/-/g, "").toUpperCase()}`,
+      id: organizationId,
+      name: `Chat Test ${organizationId.slice(0, 8)}`,
+      issuePrefix: `C${organizationId.replace(/-/g, "").toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
     const now = new Date();
@@ -1124,7 +1135,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await db.insert(agents).values([
       {
         id: assignedAgentId,
-        companyId,
         name: "Maya",
         role: "engineer",
         status: "idle",
@@ -1135,7 +1145,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
       {
         id: replacementAgentId,
-        companyId,
         name: "Linus",
         role: "engineer",
         status: "idle",
@@ -1145,7 +1154,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         permissions: {},
       },
     ]);
-    return { companyId, assignedAgentId, replacementAgentId };
+    return { organizationId, assignedAgentId, replacementAgentId };
   }
 
   // A truthy return is not a durable scheduler receipt. These transport tests
@@ -1171,7 +1180,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .insert(agentWakeupRequests)
             .values({
               id: request.id,
-              companyId: request.companyId,
               agentId,
               source: opts.source ?? "assignment",
               triggerDetail: opts.triggerDetail,
@@ -1276,7 +1284,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const storage: StorageService = {
       provider: "local_disk",
       putFile,
-      getObject: vi.fn(async (_companyId, objectKey) => {
+      getObject: vi.fn(async (objectKey) => {
         const body = objects.get(objectKey);
         if (!body) throw new Error(`Missing test object ${objectKey}`);
         return {
@@ -1284,11 +1292,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           contentLength: body.length,
         };
       }),
-      headObject: vi.fn(async (_companyId, objectKey) => ({
+      headObject: vi.fn(async (objectKey) => ({
         exists: objects.has(objectKey),
         contentLength: objects.get(objectKey)?.length,
       })),
-      deleteObject: vi.fn(async (_companyId, objectKey) => {
+      deleteObject: vi.fn(async (objectKey) => {
         objects.delete(objectKey);
       }),
     };
@@ -1487,13 +1495,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   async function addSelectedChatFinal(input: {
     agentId: string;
     body: string;
-    companyId: string;
     issueId: string;
     runId: string;
   }) {
     const authorizationReason =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: input.companyId,
         issueId: input.issueId,
         runId: input.runId,
       });
@@ -1557,7 +1563,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: endpoint.companyId,
       agentId: endpoint.assignedAgentId,
       status: "succeeded",
       contextSnapshot,
@@ -1565,7 +1570,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: endpoint.assignedAgentId,
       body: "Setup round trip complete",
-      companyId: endpoint.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -1607,7 +1611,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       overrides,
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.assignedAgentId,
@@ -1632,8 +1635,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       "owner-user",
     );
     if (overrides.linkedBoardUser) {
-      const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
-      await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+      const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
+      await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
     }
     await recordSlackUrlVerification(context.service, endpoint.publicId);
     await context.service.configure(
@@ -1682,7 +1685,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { userId: "owner-user" },
     );
     const stored = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: `${label}.txt`,
       contentType: "text/plain",
@@ -1702,7 +1704,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -1766,7 +1767,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await db.update(chatActions).set({ status: "processing", updatedAt: new Date(Date.now() - 61_000) })
       .where(eq(chatActions.id, receipt!.id));
     await db.insert(chatEndpointLeases).values({
-      companyId: fixture.companyId,
       endpointId: context.endpoint.id,
       leaseKey: "credentials",
       token: "retired-fixture-owner",
@@ -1775,11 +1775,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const other = await seedCompany();
     const next = createService();
-    const otherEndpoint = await next.service.create(other.companyId, {
+    const otherEndpoint = await next.service.create({
       provider: "slack", assignedAgentId: other.assignedAgentId,
     }, "owner-user");
     const [otherLease] = await db.insert(chatEndpointLeases).values({
-      companyId: other.companyId,
       endpointId: otherEndpoint.id,
       leaseKey: "credentials",
       token: "other-fixture-owner",
@@ -1787,7 +1786,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }).returning();
     let recovery: Promise<number> | undefined;
     try {
-      await retireFixtureState([fixture.companyId]);
+      await retireFixtureState([context.endpoint.id]);
       recovery = next.service.processPendingDeliveries();
       await expect.poll(async () => db.select({ status: chatActions.status }).from(chatActions)
         .where(eq(chatActions.id, receipt!.id)), { timeout: 5_000 })
@@ -1798,7 +1797,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .toEqual([otherLease]);
     } finally {
       // Release synthetic owners even when a regression blocks recovery.
-      await db.delete(chatEndpointLeases).where(inArray(chatEndpointLeases.companyId, [fixture.companyId, other.companyId]));
+      await db.delete(chatEndpointLeases);
       await recovery;
       await next.service.shutdown();
     }
@@ -1828,7 +1827,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       overrides,
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: fixture.assignedAgentId,
@@ -1915,7 +1913,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         ) => Promise<Response | undefined>)
       | null = null;
     const appRegistrationId = Number.parseInt(
-      fixture.companyId.replaceAll("-", "").slice(0, 8),
+      fixture.organizationId.replaceAll("-", "").slice(0, 8),
       16,
     );
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
@@ -1949,7 +1947,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         return new Response(
           JSON.stringify({
             id: appRegistrationId,
-            slug: `maya-${fixture.companyId.slice(0, 8)}`,
+            slug: `maya-${fixture.organizationId.slice(0, 8)}`,
             name: "Maya Paperclip",
             owner: { login: "paperclipai" },
             permissions: appPermissions,
@@ -2023,7 +2021,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         : overrides,
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       {
         provider: "github",
         assignedAgentId: fixture.assignedAgentId,
@@ -2115,7 +2112,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [principal] = await db
         .insert(chatExternalPrincipals)
         .values({
-          companyId: fixture.companyId,
           provider: "github",
           providerAccountId: endpoint.providerAccountId!,
           externalId: "42",
@@ -2126,7 +2122,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatIdentityLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal.id,
         paperclipUserId: "owner-user",
@@ -2158,7 +2153,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         { publicBaseUrl: "https://reviews.example.test" },
       );
       const endpoint = await service.create(
-        fixture.companyId,
         { provider: "github", assignedAgentId: fixture.assignedAgentId },
         "owner-user",
       );
@@ -2312,7 +2306,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     it("keeps GitHub publication I/O outside transactions and fences an expired owner's receipt", async () => {
       const f = await reviewBotFixture();
       const scope = {
-        companyId: f.companyId,
         endpointId: f.endpoint.id,
         repositoryId: "97531",
         number: 9876,
@@ -2474,7 +2467,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(task.sourceTrust?.preset).toBe("low_trust_review");
       expect(task.executionPolicy?.authorizationPolicy).toMatchObject({
         trustBoundary: {
-          companyId: f.companyId,
           rootIssueId: task.id,
           allowedAgentIds: [f.assignedAgentId],
         },
@@ -2482,15 +2474,14 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [run] = await db
         .insert(heartbeatRuns)
         .values({
-          companyId: f.companyId,
           agentId: f.assignedAgentId,
           invocationSource: "assignment",
           status: "running",
           contextSnapshot: { issueId: task.id, wakeCommentId: link.commentId },
         })
         .returning();
-      await initializeRunIdentity(db, { companyId: f.companyId, runId: run.id, issueId: task.id, responsibleUserId: "owner-user", cause: "issue_responsible_user" });
-      const exported = await resolveGitHubOperationCredentials(db, { companyId: f.companyId, agentId: f.assignedAgentId, runId: run.id });
+      await initializeRunIdentity(db, { runId: run.id, issueId: task.id, responsibleUserId: "owner-user", cause: "issue_responsible_user" });
+      const exported = await resolveGitHubOperationCredentials(db, { agentId: f.assignedAgentId, runId: run.id });
       expect(exported.status).toBe("unavailable");
       expect(exported.env).toEqual({});
       await db
@@ -2502,7 +2493,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         githubChatReviewService(db, f.providerFetch).execute(
           {
-            companyId: f.companyId,
             agentId: f.assignedAgentId,
             issueId: task.id,
             runId: run.id,
@@ -2588,7 +2578,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(comments[0].body).toContain("untrusted provider data");
       expect(comments[0].authorUserId).toBe("owner-user");
       const [run] = await db.insert(heartbeatRuns).values({
-        companyId: f.companyId,
         agentId: f.assignedAgentId,
         invocationSource: "assignment",
         status: "running",
@@ -2598,7 +2587,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         ? Response.json({ ...payload.pull_request, head: { sha: "c".repeat(40) } })
         : undefined);
       await expect(githubChatReviewService(db, f.providerFetch).execute({
-        companyId: f.companyId,
         agentId: f.assignedAgentId,
         issueId: task.id,
         runId: run.id,
@@ -2637,7 +2625,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(chatGitHubReviews.endpointId, f.endpoint.id))).length, { timeout: 10000 }).toBe(1);
       const [late] = await db.select().from(chatGitHubReviews).where(eq(chatGitHubReviews.endpointId, f.endpoint.id));
       const [unrelated] = await db.insert(chatGitHubReviews).values({
-        companyId: late.companyId, endpointId: late.endpointId, issueId: late.issueId,
+        endpointId: late.endpointId, issueId: late.issueId,
         repositoryId: late.repositoryId, repository: late.repository, pullNumber: late.pullNumber,
         headSha: late.headSha, deliveryId: randomUUID(), configurationRevision: late.configurationRevision,
         policySnapshot: late.policySnapshot, event: late.event, state: "queued",
@@ -2650,7 +2638,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const publicOrigin = vi.spyOn(cloudRuntimeIdentity, "runtimePublicOrigin").mockReturnValue("https://current-vanity.example");
       onTestFinished(() => publicOrigin.mockRestore());
       const f = await reviewBotFixture();
-      const [company] = await db.select().from(companies).where(eq(companies.id, f.companyId));
+      const [company] = await db.select().from(companies).where(eq(companies.id, f.organizationId));
       const head = "b".repeat(40);
       const event = githubAutomaticReviewEvent({
         action: "opened", installation: { id: 2468 },
@@ -2687,7 +2675,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const publicOrigin = vi.spyOn(cloudRuntimeIdentity, "runtimePublicOrigin").mockReturnValue("https://current-vanity.example");
       onTestFinished(() => publicOrigin.mockRestore());
       const f = await reviewBotFixture();
-      const [company] = await db.select().from(companies).where(eq(companies.id, f.companyId));
+      const [company] = await db.select().from(companies).where(eq(companies.id, f.organizationId));
       const thread = makeThread({
         channelId: "paperclipai/paperclip",
         id: "github:paperclipai/paperclip:91",
@@ -2723,7 +2711,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [run] = await db
         .insert(heartbeatRuns)
         .values({
-          companyId: f.companyId,
           agentId: f.assignedAgentId,
           invocationSource: "assignment",
           status: "running",
@@ -2734,7 +2721,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       const session = {
-        companyId: f.companyId,
         agentId: f.assignedAgentId,
         issueId: conversation.issueId,
         runId: run.id,
@@ -2909,7 +2895,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         resourceId: conversation.resourceId,
         externalConversationId: conversation.externalConversationId,
       });
-      const taskCount = (await db.select().from(issues).where(eq(issues.companyId, f.companyId))).length;
+      const taskCount = (await db.select().from(issues)).length;
       await deliverMessage({
         callbacks: f.callbacks,
         endpointId: f.endpoint.id,
@@ -2923,7 +2909,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         eq(chatMessageLinks.providerMessageId, "inline-finding-followup"),
       ));
       expect(replyLink.conversationId).toBe(findingThread.id);
-      expect((await db.select().from(issues).where(eq(issues.companyId, f.companyId))).length).toBe(taskCount);
+      expect((await db.select().from(issues)).length).toBe(taskCount);
       await expect(
         service.execute(session, "submit_review", { ...assessment, score: 5 }),
       ).rejects.toThrow("already submitted its assessment");
@@ -3048,7 +3034,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       overrides,
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       {
         provider: "telegram",
         assignedAgentId: fixture.assignedAgentId,
@@ -3122,8 +3107,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         }),
       ]);
       // The task banner uses a different route from the conversation list;
-      // issue-detail responses also consume this exact company-scoped helper.
-      server = createServer(routesApp(db, fixture.companyId, service));
+      // issue-detail responses also consume this exact helper.
+      server = createServer(routesApp(db, service));
       await new Promise<void>((resolve, reject) => {
         server!.once("error", reject);
         server!.listen(0, "127.0.0.1", () => {
@@ -3139,9 +3124,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         binding: binding?.externalUrl,
         route: response.body.externalUrl,
       }).toEqual({ binding: expectedUrl, route: expectedUrl });
-      await expect(
-        getExternalChannelBindingSummary(db, randomUUID(), conversation!.issueId),
-      ).resolves.toBeNull();
       await expect(
         db
           .select({ providerUrl: chatConversations.providerUrl })
@@ -3198,7 +3180,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       overrides,
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       {
         provider: "discord",
         assignedAgentId: fixture.assignedAgentId,
@@ -3312,7 +3293,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       ) as unknown as typeof globalThis.fetch;
       const context = createService(new FakeChatSdkRuntime(), providerFetch);
       const endpoint = await context.service.create(
-        fixture.companyId,
         {
           provider: "discord",
           assignedAgentId: fixture.assignedAgentId,
@@ -3930,10 +3910,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   it("creates a channel-purpose connection and rejects attempts to change its assigned agent", async () => {
     const fixture = await seedCompany();
     const { service } = createService();
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
 
     const createResponse = await request(app)
-      .post(`/api/companies/${fixture.companyId}/chat-endpoints`)
+      .post(`/api/chat-endpoints`)
       .send({ provider: "slack", assignedAgentId: fixture.assignedAgentId })
       .expect(201);
 
@@ -3981,8 +3961,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   it("persists Slack manifest draft details and the registered command, then locks them once connected", async () => {
     const fixture = await seedCompany();
     const { service } = createService();
-    const app = routesApp(db, fixture.companyId, service);
-    const endpoint = await service.create(fixture.companyId, { provider: "slack", assignedAgentId: fixture.assignedAgentId });
+    const app = routesApp(db, service);
+    const endpoint = await service.create({ provider: "slack", assignedAgentId: fixture.assignedAgentId });
     const slackApp = { appName: "Research Ops", botName: "research-ops", command: "/research" };
     await request(app).patch(`/api/chat-endpoints/${endpoint.id}`).send({ slackApp }).expect(200);
     expect((await service.get(endpoint.id)).setup).toMatchObject({ slackApp, command: "/research" });
@@ -3994,31 +3974,27 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await request(app).patch(`/api/chat-endpoints/${endpoint.id}`)
       .send({ slackApp: { ...slackApp, command: "/different" } }).expect(409);
     expect((await service.get(endpoint.id)).setup.command).toBe("/research");
-    const github = await service.create(fixture.companyId, { provider: "github", assignedAgentId: fixture.assignedAgentId });
+    const github = await service.create({ provider: "github", assignedAgentId: fixture.assignedAgentId });
     await request(app).patch(`/api/chat-endpoints/${github.id}`).send({ slackApp }).expect(422);
   });
 
-  it("saves Slack communication instructions with validation, company isolation, and audit attribution", async () => {
+  it("saves Slack communication instructions with validation and audit attribution", async () => {
     const fixture = await seedCompany();
     const { service } = createService();
-    const app = routesApp(db, fixture.companyId, service);
-    const endpoint = await service.create(fixture.companyId, { provider: "slack", assignedAgentId: fixture.assignedAgentId });
+    const app = routesApp(db, service);
+    const endpoint = await service.create({ provider: "slack", assignedAgentId: fixture.assignedAgentId });
     expect(endpoint.communicationInstructions).toBe("");
     await request(app).patch(`/api/chat-endpoints/${endpoint.id}`)
       .send({ communicationInstructions: "  Use customer-facing names.  " }).expect(200);
     expect((await service.get(endpoint.id)).communicationInstructions).toBe("Use customer-facing names.");
-    const entries = await db.select().from(activityLog).where(and(eq(activityLog.companyId, fixture.companyId), eq(activityLog.entityId, endpoint.connectionId)));
+    const entries = await db.select().from(activityLog).where(eq(activityLog.entityId, endpoint.connectionId));
     expect(entries.find((entry) => entry.action === "chat_endpoint.updated")?.details).toMatchObject({ fields: ["communicationInstructions"] });
     expect(JSON.stringify(entries)).not.toContain("Use customer-facing names.");
     await request(app).patch(`/api/chat-endpoints/${endpoint.id}`)
       .send({ communicationInstructions: "a".repeat(4001) }).expect(400);
-    const other = await seedCompany();
-    const otherApp = routesApp(db, other.companyId, service);
-    expect((await request(otherApp).patch(`/api/chat-endpoints/${endpoint.id}`).send({ communicationInstructions: "Wrong company" })).status).toBeOneOf([403, 404]);
-    expect((await service.get(endpoint.id)).communicationInstructions).toBe("Use customer-facing names.");
     await request(app).patch(`/api/chat-endpoints/${endpoint.id}`).send({ communicationInstructions: "" }).expect(200);
     expect((await service.get(endpoint.id)).communicationInstructions).toBe("");
-    const github = await service.create(fixture.companyId, { provider: "github", assignedAgentId: fixture.assignedAgentId });
+    const github = await service.create({ provider: "github", assignedAgentId: fixture.assignedAgentId });
     await request(app).patch(`/api/chat-endpoints/${github.id}`).send({ communicationInstructions: "Not enabled" }).expect(422);
   });
 
@@ -4033,8 +4009,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [conversation] = await service.listConversations(endpoint.id);
     runtime.endpoints.get(endpoint.id)!.posts.length = 0;
     wakeup.mockClear();
-    const [boardPrincipal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
-    await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: boardPrincipal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+    const [boardPrincipal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
+    await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: boardPrincipal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
     const clientRequestId = randomUUID();
     const comment = await issueService(db).addComment(conversation.issueId, "Please make the plan", { userId: "owner-user" },
       { authorType: "user", mirrorToSlack: true, clientRequestId });
@@ -4045,15 +4021,15 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { threadId: channel.thread.id, text: "**Owner User (via Paperclip)**\n\nPlease make the plan" },
     ]);
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: fixture.companyId, agentId: fixture.assignedAgentId,
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: fixture.assignedAgentId,
       status: "running", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId, source: "issue.comment", wakeCommentId: comment.id } });
-    await initializeRunIdentity(db, { companyId: fixture.companyId, runId, issueId: conversation.issueId, responsibleUserId: "owner-user", messageIds: [comment.id], cause: "user_message" });
+    await initializeRunIdentity(db, { runId, issueId: conversation.issueId, responsibleUserId: "owner-user", messageIds: [comment.id], cause: "user_message" });
     const { resolveSlackTaskAuthority } = await import("../services/connectors/slack-authority.js");
-    await expect(resolveSlackTaskAuthority(db, { companyId: fixture.companyId, agentId: fixture.assignedAgentId, runId, issueId: conversation.issueId, endpointId: endpoint.id })).resolves.toMatchObject({
+    await expect(resolveSlackTaskAuthority(db, { agentId: fixture.assignedAgentId, runId, issueId: conversation.issueId, endpointId: endpoint.id })).resolves.toMatchObject({
       slackUserId: "UBOARD", conversation: { id: conversation.id }, deliveryId: null,
     });
     await issueService(db).addComment(conversation.issueId, "Internal bookkeeping", { agentId: fixture.assignedAgentId, runId }, { authorizationReason: "internal_agent_write" });
-    await addSelectedChatFinal({ companyId: fixture.companyId, issueId: conversation.issueId, agentId: fixture.assignedAgentId, runId, body: "The plan is ready." });
+    await addSelectedChatFinal({ issueId: conversation.issueId, agentId: fixture.assignedAgentId, runId, body: "The plan is ready." });
     await service.processPendingPublications();
     await service.processPendingPublications();
     expect(runtime.endpoints.get(endpoint.id)!.posts.map(post => post.text)).toEqual([
@@ -4099,13 +4075,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     runtime.endpoints.get(endpoint.id)!.posts.length = 0;
     await expect(issueService(db).addComment(conversation.issueId, "Unlinked Board message", { userId: "owner-user" },
       { authorType: "user", mirrorToSlack: true })).rejects.toMatchObject({ status: 403 });
-    const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
-    const [link] = await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() }).returning();
+    const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
+    const [link] = await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() }).returning();
     const comment = await issueService(db).addComment(conversation.issueId, "Queued before access changed", { userId: "owner-user" }, { authorType: "user", mirrorToSlack: true });
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: fixture.companyId, agentId: fixture.assignedAgentId, status: "running", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId, source: "issue.comment", wakeCommentId: comment.id } });
-    await initializeRunIdentity(db, { companyId: fixture.companyId, runId, issueId: conversation.issueId, responsibleUserId: "owner-user", messageIds: [comment.id], cause: "user_message" });
-    await addSelectedChatFinal({ companyId: fixture.companyId, issueId: conversation.issueId, agentId: fixture.assignedAgentId, runId, body: "Queued final before access changed" });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: fixture.assignedAgentId, status: "running", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId, source: "issue.comment", wakeCommentId: comment.id } });
+    await initializeRunIdentity(db, { runId, issueId: conversation.issueId, responsibleUserId: "owner-user", messageIds: [comment.id], cause: "user_message" });
+    await addSelectedChatFinal({ issueId: conversation.issueId, agentId: fixture.assignedAgentId, runId, body: "Queued final before access changed" });
     expect(await db.select().from(chatPublications).where(eq(chatPublications.endpointId, endpoint.id))).toHaveLength(2);
     if (change === "later-cancelled") {
       const later = await issueService(db).addComment(conversation.issueId, "A different, cancelled request", { userId: "owner-user" }, { authorType: "user", mirrorToSlack: true });
@@ -4115,11 +4091,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     else {
       await db.update(chatIdentityLinks).set({ status: "revoked", revokedAt: new Date() }).where(eq(chatIdentityLinks.id, link.id));
       if (change === "relinked") {
-        const [other] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UOTHER" }).returning();
-        await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: other.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+        const [other] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UOTHER" }).returning();
+        await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: other.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
       }
       const { slackBoardReplyBindings } = await import("../services/slack-board-messages.js");
-      expect(await slackBoardReplyBindings(db, { companyId: fixture.companyId, issueId: conversation.issueId, agentId: fixture.assignedAgentId, userId: "owner-user", commentIds: [comment.id] })).toEqual([]);
+      expect(await slackBoardReplyBindings(db, { issueId: conversation.issueId, agentId: fixture.assignedAgentId, userId: "owner-user", commentIds: [comment.id] })).toEqual([]);
     }
     await service.processPendingPublications();
     if (change === "later-cancelled") {
@@ -4141,8 +4117,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       message: makeMessage({ id: "8100.1", text: "@maya start here", mentioned: true }), trigger: "mention" });
     await db.update(chatEndpoints).set({ status: "active" }).where(eq(chatEndpoints.id, endpoint.id));
     const [conversation] = await service.listConversations(endpoint.id);
-    const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
-    await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+    const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
+    await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
     runtime.endpoints.get(endpoint.id)!.posts.length = 0;
     wakeup.mockClear();
     wakeup.mockRejectedValueOnce(new Error("scheduler unavailable"));
@@ -4150,14 +4126,14 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(wakeup).toHaveBeenCalledTimes(1);
     expect(runtime.endpoints.get(endpoint.id)!.posts).toEqual([]);
     if (guard === "cancelled") await db.update(issues).set({ status: "cancelled" }).where(eq(issues.id, conversation.issueId));
-    if (guard === "paused") await db.insert(issueTreeHolds).values({ companyId: fixture.companyId, rootIssueId: conversation.issueId, mode: "pause", status: "active" });
+    if (guard === "paused") await db.insert(issueTreeHolds).values({ rootIssueId: conversation.issueId, mode: "pause", status: "active" });
     if (guard === "blocked") {
-      const [blocker] = await db.insert(issues).values({ companyId: fixture.companyId, title: "Unresolved prerequisite", status: "todo" }).returning();
-      await db.insert(issueRelations).values({ companyId: fixture.companyId, issueId: blocker.id, relatedIssueId: conversation.issueId, type: "blocks" });
+      const [blocker] = await db.insert(issues).values({ title: "Unresolved prerequisite", status: "todo" }).returning();
+      await db.insert(issueRelations).values({ issueId: blocker.id, relatedIssueId: conversation.issueId, type: "blocks" });
     }
     if (guard === "closed-workspace") {
-      const [project] = await db.insert(projects).values({ companyId: fixture.companyId, name: "Workspace guard" }).returning();
-      const [workspace] = await db.insert(executionWorkspaces).values({ companyId: fixture.companyId, projectId: project.id, mode: "isolated_workspace", strategyType: "git_worktree", name: "Closed", status: "archived", closedAt: new Date() }).returning();
+      const [project] = await db.insert(projects).values({ name: "Workspace guard" }).returning();
+      const [workspace] = await db.insert(executionWorkspaces).values({ projectId: project.id, mode: "isolated_workspace", strategyType: "git_worktree", name: "Closed", status: "archived", closedAt: new Date() }).returning();
       await db.update(issues).set({ executionWorkspaceId: workspace.id }).where(eq(issues.id, conversation.issueId));
     }
     const before = await db.select().from(issueComments).where(eq(issueComments.issueId, conversation.issueId));
@@ -4203,7 +4179,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await service.processPendingDeliveries();
       expect((await issueService(db).getById(conversation.issueId))!.status).toBe("done");
       expect(wakeup).toHaveBeenCalledTimes(mode === "concurrent" ? 1 : 2);
-      const resumes = await db.select().from(activityLog).where(and(eq(activityLog.companyId, fixture.companyId), eq(activityLog.entityId, conversation.issueId), eq(sql<string>`${activityLog.details}->>'source'`, "slack_board_message")));
+      const resumes = await db.select().from(activityLog).where(and(eq(activityLog.entityId, conversation.issueId), eq(sql<string>`${activityLog.details}->>'source'`, "slack_board_message")));
       expect(resumes).toHaveLength(1);
     } finally {
       release();
@@ -4246,13 +4222,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { endpoint, service } = await configuredSlackEndpoint(fixture, { allowUnlinkedPeople: false });
     await db.update(chatEndpoints).set({ status: "active" }).where(eq(chatEndpoints.id, endpoint.id));
-    const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UROUTINE" }).returning();
-    await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
-    const [issue] = await db.insert(issues).values({ companyId: fixture.companyId, title: "10am daily briefing", status: "todo", assigneeAgentId: fixture.assignedAgentId, responsibleUserId: "owner-user" }).returning();
+    const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UROUTINE" }).returning();
+    await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+    const [issue] = await db.insert(issues).values({ title: "10am daily briefing", status: "todo", assigneeAgentId: fixture.assignedAgentId, responsibleUserId: "owner-user" }).returning();
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: fixture.companyId, agentId: fixture.assignedAgentId, status: "running", responsibleUserId: "owner-user", contextSnapshot: { issueId: issue.id, source: "routine" } });
-    await initializeRunIdentity(db, { companyId: fixture.companyId, runId, issueId: issue.id, responsibleUserId: "owner-user", cause: "routine" });
-    const binding = { companyId: fixture.companyId, agentId: fixture.assignedAgentId, runId, issueId: issue.id, endpointId: endpoint.id };
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: fixture.assignedAgentId, status: "running", responsibleUserId: "owner-user", contextSnapshot: { issueId: issue.id, source: "routine" } });
+    await initializeRunIdentity(db, { runId, issueId: issue.id, responsibleUserId: "owner-user", cause: "routine" });
+    const binding = { agentId: fixture.assignedAgentId, runId, issueId: issue.id, endpointId: endpoint.id };
     const assignments = await resolveConnectorAssignments(db, binding);
     expect(assignments.map(item => item.key)).toEqual(["slack"]);
     expect(assignments[0].resources[0]).toMatchObject({ id: endpoint.id, metadata: { requesterId: "UROUTINE" } });
@@ -4286,7 +4262,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(executeConnectorTool(db, { ...binding, endpointId: undefined }, "slack_open_dm", { endpointId: randomUUID(), idempotencyKey: randomUUID() })).rejects.toThrow();
     // Native-style arguments select the same verified assignment as the CLI route.
     await expect(executeConnectorTool(db, { ...binding, endpointId: undefined }, "slack_open_dm", { endpointId: endpoint.id, idempotencyKey: randomUUID() })).resolves.toMatchObject({ status: "completed" });
-    await db.insert(chatEndpointResources).values({ companyId: fixture.companyId, endpointId: endpoint.id, type: "channel", providerResourceId: "CPUBLIC", label: "Public", enabled: true, availability: "available" });
+    await db.insert(chatEndpointResources).values({ endpointId: endpoint.id, type: "channel", providerResourceId: "CPUBLIC", label: "Public", enabled: true, availability: "available" });
     await expect(executeConnectorTool(db, binding, "slack_history", { channel: "CPRIVATE" })).resolves.toMatchObject({ status: "completed" });
     await expect(executeConnectorTool(db, binding, "slack_post_message", { channel: "CPUBLIC", text: "Private research", idempotencyKey: randomUUID() })).rejects.toThrow();
     await expect(executeConnectorTool(db, binding, "slack_post_message", { channel: "DROUTINE", text: "Your private briefing", idempotencyKey: randomUUID() })).resolves.toMatchObject({ status: "completed" });
@@ -4305,8 +4281,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await instanceSettingsService(db).updateExperimental({ enableChatConnectors: true });
     const fixture = await seedCompany();
     const { callbacks, endpoint, service } = await configuredSlackEndpoint(fixture, { allowUnlinkedPeople: false });
-    const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UTOOLS" }).returning();
-    await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+    const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UTOOLS" }).returning();
+    await db.insert(chatIdentityLinks).values({ endpointId: endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
     const thread = makeThread({ channelId: "slack:CTOOLS", id: "slack:CTOOLS:7100.1", name: "tools" });
     await deliverMessage({ callbacks, endpointId: endpoint.id, thread: thread.thread, message: makeMessage({ id: "7100.1", text: "@maya read this channel", mentioned: true, userId: "UTOOLS" }), trigger: "mention" });
     const [conversation] = await db.select().from(chatConversations).where(eq(chatConversations.endpointId, endpoint.id));
@@ -4314,9 +4290,9 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [action] = await db.select().from(chatActions).where(and(eq(chatActions.endpointId, endpoint.id), eq(chatActions.kind, "inbound_wakeup")));
     expect(action.payload.requestedByActorId).toBe("owner-user");
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: fixture.companyId, agentId: fixture.assignedAgentId, status: "running", invocationSource: "assignment", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId } });
-    const origin = await initializeRunIdentity(db, { companyId: fixture.companyId, runId, issueId: conversation.issueId, responsibleUserId: "owner-user", messageIds: [String(action.payload.commentId)], cause: "instruction" });
-    const binding = { companyId: fixture.companyId, agentId: fixture.assignedAgentId, runId, issueId: conversation.issueId };
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: fixture.assignedAgentId, status: "running", invocationSource: "assignment", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId } });
+    const origin = await initializeRunIdentity(db, { runId, issueId: conversation.issueId, responsibleUserId: "owner-user", messageIds: [String(action.payload.commentId)], cause: "instruction" });
+    const binding = { agentId: fixture.assignedAgentId, runId, issueId: conversation.issueId };
     // An ingress transaction may briefly own the endpoint while a retained
     // run resolves its tools. Resolution waits, then rechecks authorization.
     let unlockEndpoint!: () => void;
@@ -4351,7 +4327,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(JSON.stringify(assignments)).not.toContain("xoxb-test-token");
     await expect(resolveConnectorAssignments(db, { ...binding, agentId: fixture.replacementAgentId })).resolves.toEqual([]);
     await expect(resolveConnectorAssignments(db, { ...binding, issueId: randomUUID() })).resolves.toEqual([]);
-    await expect(resolveConnectorAssignments(db, { ...binding, companyId: randomUUID() })).resolves.toEqual([]);
     const fetched = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const method = String(input).split("/").at(-1);
       const args = Object.fromEntries(new URLSearchParams(String(init?.body ?? "")));
@@ -4392,25 +4367,23 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const cliApp = express();
     cliApp.use(express.json());
     cliApp.use((req, _res, next) => {
-      req.actor = { type: "agent", source: "agent_key", companyId: binding.companyId, agentId: binding.agentId, runId: binding.runId };
+      req.actor = { type: "agent", source: "agent_key", agentId: binding.agentId, runId: binding.runId };
       next();
     });
     cliApp.use("/api", slackToolRoutes(db, "https://paperclip.example"));
     cliApp.use(errorHandler);
-    await request(cliApp).post(`/api/companies/${binding.companyId}/slack/tasks/${binding.issueId}/tools`).send({ tool: "slack_channel_info", arguments: { channel: "COTHER" } }).expect(200);
-    await request(cliApp).post(`/api/companies/${randomUUID()}/slack/tasks/${binding.issueId}/tools`).send({ tool: "slack_history", arguments: { channel: "COTHER" } }).expect(403);
-    await request(cliApp).post(`/api/companies/${binding.companyId}/slack/tasks/${randomUUID()}/tools`).send({ tool: "slack_history", arguments: { channel: "COTHER" } }).expect(403);
-    await request(cliApp).post(`/api/companies/${binding.companyId}/slack/tasks/${binding.issueId}/tools`).send({ tool: "slack_history", arguments: { channel: "COTHER", token: "forged" } }).expect(400);
+    await request(cliApp).post(`/api/slack/tasks/${binding.issueId}/tools`).send({ tool: "slack_channel_info", arguments: { channel: "COTHER" } }).expect(200);
+    await request(cliApp).post(`/api/slack/tasks/${randomUUID()}/tools`).send({ tool: "slack_history", arguments: { channel: "COTHER" } }).expect(403);
+    await request(cliApp).post(`/api/slack/tasks/${binding.issueId}/tools`).send({ tool: "slack_history", arguments: { channel: "COTHER", token: "forged" } }).expect(400);
     const send = { channel: "CTOOLS", thread_ts: "7100.1", text: "Recorded the decision.", idempotencyKey: randomUUID() };
     await expect(executeConnectorTool(db, binding, "slack_post_message", send)).resolves.toMatchObject({ status: "completed" });
     await executeConnectorTool(db, binding, "slack_post_message", send);
     expect(postFetch.mock.calls.filter(call => String(call[0]).endsWith("/chat.postMessage"))).toHaveLength(1);
     const { slackExplicitPublicationDuplicate } = await import("../services/connectors/slack-publication.js");
-    const [finalComment] = await db.insert(issueComments).values({ companyId: binding.companyId, issueId: binding.issueId, authorAgentId: binding.agentId, createdByRunId: runId, body: send.text }).returning();
-    const publication = { companyId: binding.companyId, issueId: binding.issueId, endpointId: endpoint.id, conversationId: conversation.id, commentId: finalComment.id, payload: { text: send.text } } as Parameters<typeof slackExplicitPublicationDuplicate>[1];
+    const [finalComment] = await db.insert(issueComments).values({ issueId: binding.issueId, authorAgentId: binding.agentId, createdByRunId: runId, body: send.text }).returning();
+    const publication = { issueId: binding.issueId, endpointId: endpoint.id, conversationId: conversation.id, commentId: finalComment.id, payload: { text: send.text } } as Parameters<typeof slackExplicitPublicationDuplicate>[1];
     await expect(slackExplicitPublicationDuplicate(db, publication)).resolves.toBe("delivered");
     await expect(slackExplicitPublicationDuplicate(db, { ...publication, payload: { text: "A distinct outcome summary" } })).resolves.toBeNull();
-    await expect(slackExplicitPublicationDuplicate(db, { ...publication, companyId: randomUUID() })).resolves.toBeNull();
     const [explicitSend] = await db.select().from(chatActions).where(and(eq(chatActions.endpointId, endpoint.id), eq(chatActions.providerActionId, `slack-tool:${binding.issueId}:${send.idempotencyKey}`)));
     await db.update(chatActions).set({ status: "uncertain" }).where(eq(chatActions.id, explicitSend.id));
     await expect(slackExplicitPublicationDuplicate(db, publication)).resolves.toBe("unresolved");
@@ -4452,10 +4425,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(executeSlackTool(db, binding, "slack_delivery", { actionId: uncertainAction.id }, postFetch as typeof fetch)).resolves.toMatchObject({ state: "delivered", receipt: { reconciled: true } });
     await expect(executeConnectorTool(db, binding, "slack_create_channel", { name: "approval-required", is_private: true, idempotencyKey: randomUUID() })).rejects.toMatchObject({ reasonCode: expect.stringMatching(/approval/) });
     expect(postFetch.mock.calls.some(call => String(call[0]).endsWith("/conversations.create"))).toBe(false);
-    const [approval] = await db.select().from(toolActionRequests).where(eq(toolActionRequests.companyId, fixture.companyId));
+    const [approval] = await db.select().from(toolActionRequests);
     await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.id, runId));
     const { createToolGatewayService } = await import("../services/tool-gateway.js");
-    await createToolGatewayService(db).approveActionRequest({ companyId: fixture.companyId, actionRequestId: approval.id, actor: { userId: "owner-user" } });
+    await createToolGatewayService(db).approveActionRequest({ actionRequestId: approval.id, actor: { userId: "owner-user" } });
     const [invocation] = await db.select().from(toolInvocations).where(eq(toolInvocations.id, approval.invocationId));
     expect(invocation, invocation.errorMessage ?? undefined).toMatchObject({ status: "succeeded", approvalState: "approved" });
     expect(postFetch.mock.calls.filter(call => String(call[0]).endsWith("/conversations.create"))).toHaveLength(1);
@@ -4480,18 +4453,16 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     } }).where(eq(heartbeatRuns.id, runId));
     let continuationRunId = "";
     const approvalWake = vi.fn(async (agentId: string, input: any) => {
-      const [wake] = await db.insert(agentWakeupRequests).values({ companyId: fixture.companyId,
-        agentId, source: input.source, status: "completed", idempotencyKey: input.idempotencyKey,
+      const [wake] = await db.insert(agentWakeupRequests).values({ agentId, source: input.source, status: "completed", idempotencyKey: input.idempotencyKey,
         payload: input.payload }).returning();
-      const [run] = await db.insert(heartbeatRuns).values({ companyId: fixture.companyId,
-        agentId, status: "succeeded", wakeupRequestId: wake.id, contextSnapshot: input.contextSnapshot }).returning();
+      const [run] = await db.insert(heartbeatRuns).values({ agentId, status: "succeeded", wakeupRequestId: wake.id, contextSnapshot: input.contextSnapshot }).returning();
       continuationRunId = run.id;
       await db.update(agentWakeupRequests).set({ runId: run.id }).where(eq(agentWakeupRequests.id, wake.id));
       return run;
     });
     await toolActionDeliveryService(db, { wakeup: approvalWake as any }).deliver(approval.id);
     expect(approvalWake).toHaveBeenCalledWith(fixture.assignedAgentId, expect.objectContaining({ allowRunCoalescing: false }));
-    const presentation = { companyId: fixture.companyId, issueId: conversation.issueId, runId: continuationRunId };
+    const presentation = { issueId: conversation.issueId, runId: continuationRunId };
     await expect(resolveChatRunPresentationAuthorizationReason(db, presentation)).resolves.toBe(CHAT_RUN_PRESENTATION_AUTHORIZATION_REASON);
     const approvalBookkeeping = await issueService(db).addComment(
       conversation.issueId, "Recorded approved operation", { agentId: fixture.assignedAgentId, runId: continuationRunId },
@@ -4503,14 +4474,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { authorType: "agent", authorizationReason: CHAT_RUN_PRESENTATION_AUTHORIZATION_REASON },
     );
     expect(await db.select().from(chatPublications).where(eq(chatPublications.commentId, approvalFinal.id))).toHaveLength(1);
-    await expect(resolveChatRunPresentationAuthorizationReason(db, { ...presentation, companyId: randomUUID() })).resolves.toBe("internal_agent_write");
     await db.update(agentWakeupRequests).set({ payload: { ...approvalWake.mock.calls[0][1].payload, sourceRunId: randomUUID() } }).where(eq(agentWakeupRequests.runId, continuationRunId));
     await expect(resolveChatRunPresentationAuthorizationReason(db, presentation)).resolves.toBe("internal_agent_write");
     globalThis.fetch = originalFetch;
     const recoveredRun = randomUUID();
     await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.id, runId));
-    await db.insert(heartbeatRuns).values({ id: recoveredRun, companyId: fixture.companyId, agentId: fixture.assignedAgentId, status: "running", invocationSource: "assignment", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId } });
-    await initializeRunIdentity(db, { companyId: fixture.companyId, runId: recoveredRun, issueId: conversation.issueId, responsibleUserId: "owner-user", parentContextId: origin.id, cause: "recovery" });
+    await db.insert(heartbeatRuns).values({ id: recoveredRun, agentId: fixture.assignedAgentId, status: "running", invocationSource: "assignment", responsibleUserId: "owner-user", contextSnapshot: { issueId: conversation.issueId } });
+    await initializeRunIdentity(db, { runId: recoveredRun, issueId: conversation.issueId, responsibleUserId: "owner-user", parentContextId: origin.id, cause: "recovery" });
     const recovered = { ...binding, runId: recoveredRun };
     await expect(resolveSlackTaskAuthority(db, recovered)).resolves.toMatchObject({ slackUserId: "UTOOLS" });
     const { slackSearchOAuthService } = await import("../services/connectors/slack-search-oauth.js");
@@ -4529,26 +4499,26 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error("Unexpected OAuth request");
     });
     const oauth = slackSearchOAuthService(db, "https://paperclip.example", oauthFetch as typeof fetch);
-    await oauth.configure(fixture.companyId, endpoint.id, "owner-user", { clientId: "123.456", clientSecret: "fixture-client-secret" });
-    const started = await oauth.start(fixture.companyId, endpoint.id, "owner-user");
+    await oauth.configure(endpoint.id, "owner-user", { clientId: "123.456", clientSecret: "fixture-client-secret" });
+    const started = await oauth.start(endpoint.id, "owner-user");
     const state = new URL(started.url).searchParams.get("state")!;
     await expect(oauth.complete(state, "test-code", "other-user")).rejects.toThrow("belongs to another user");
     await oauth.complete(state, "test-code", "owner-user");
-    await expect(oauth.status(fixture.companyId, endpoint.id, "owner-user")).resolves.toMatchObject({ configured: true, connected: true, nativeSearchAvailable: false });
-    await expect(oauth.accessToken(fixture.companyId, endpoint.id, "owner-user")).resolves.toMatchObject({ token: "xoxp-search-only-test" });
+    await expect(oauth.status(endpoint.id, "owner-user")).resolves.toMatchObject({ configured: true, connected: true, nativeSearchAvailable: false });
+    await expect(oauth.accessToken(endpoint.id, "owner-user")).resolves.toMatchObject({ token: "xoxp-search-only-test" });
     expect(oauthFetch.mock.calls.some(call => new URLSearchParams(String(call[1]?.body)).get("grant_type") === "refresh_token")).toBe(true);
-    const again = await oauth.start(fixture.companyId, endpoint.id, "owner-user");
+    const again = await oauth.start(endpoint.id, "owner-user");
     holdExchange = true; exchangeStarted = false;
     const late = oauth.complete(new URL(again.url).searchParams.get("state")!, "second-code", "owner-user");
     const rejected = expect(late).rejects.toThrow("disconnected or expired");
     await vi.waitFor(() => expect(exchangeStarted).toBe(true));
-    await oauth.disconnect(fixture.companyId, endpoint.id, "owner-user");
+    await oauth.disconnect(endpoint.id, "owner-user");
     releaseExchange!();
     await rejected;
-    await expect(oauth.status(fixture.companyId, endpoint.id, "owner-user")).resolves.toMatchObject({ connected: false });
+    await expect(oauth.status(endpoint.id, "owner-user")).resolves.toMatchObject({ connected: false });
     await expect(oauth.status(randomUUID(), endpoint.id, "owner-user")).rejects.toThrow("not found");
     const { toolProfiles, toolProfileBindings } = await import("@paperclipai/db");
-    const [slackProfile] = await db.select().from(toolProfiles).where(and(eq(toolProfiles.companyId, fixture.companyId), eq(toolProfiles.profileKey, `slack-bot:${endpoint.id}`)));
+    const [slackProfile] = await db.select().from(toolProfiles).where(eq(toolProfiles.profileKey, `slack-bot:${endpoint.id}`));
     const [removedBinding] = await db.delete(toolProfileBindings).where(and(eq(toolProfileBindings.profileId, slackProfile.id), eq(toolProfileBindings.targetId, binding.agentId))).returning();
     await expect(resolveConnectorAssignments(db, recovered)).resolves.toEqual([]);
     expect(await db.select().from(toolProfileBindings).where(eq(toolProfileBindings.id, removedBinding.id))).toEqual([]);
@@ -4589,7 +4559,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   it("rejects chat endpoints for non-invokable agents", async () => {
     const fixture = await seedCompany();
     const { service } = createService();
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
 
     for (const status of ["paused", "terminated"] as const) {
       await db
@@ -4598,7 +4568,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(agents.id, fixture.assignedAgentId));
 
       const response = await request(app)
-        .post(`/api/companies/${fixture.companyId}/chat-endpoints`)
+        .post(`/api/chat-endpoints`)
         .send({ provider: "slack", assignedAgentId: fixture.assignedAgentId })
         .expect(422);
 
@@ -4609,8 +4579,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const endpoints = await db
       .select({ id: chatEndpoints.id })
-      .from(chatEndpoints)
-      .where(eq(chatEndpoints.companyId, fixture.companyId));
+      .from(chatEndpoints);
     expect(endpoints).toEqual([]);
   });
 
@@ -4619,7 +4588,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const fixture = await seedCompany();
       const context = createService();
       const endpoint = await context.service.create(
-        fixture.companyId,
         {
           provider: "slack",
           assignedAgentId: fixture.assignedAgentId,
@@ -4630,7 +4598,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .insert(chatEndpointResources)
         .values([
           {
-            companyId: fixture.companyId,
             endpointId: endpoint.id,
             type: "channel",
             providerResourceId: "C-AUDIT-FIRST",
@@ -4640,7 +4607,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             availability: "available",
           },
           {
-            companyId: fixture.companyId,
             endpointId: endpoint.id,
             type: "channel",
             providerResourceId: "C-AUDIT-SECOND",
@@ -4655,10 +4621,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .select()
           .from(activityLog)
           .where(
-            and(
-              eq(activityLog.companyId, fixture.companyId),
-              eq(activityLog.action, "chat_endpoint.resources_updated"),
-            ),
+            eq(activityLog.action, "chat_endpoint.resources_updated"),
           )
           .orderBy(asc(activityLog.createdAt));
       return {
@@ -4667,16 +4630,16 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         endpoint,
         resources,
         audits,
-        app: routesApp(db, fixture.companyId, context.service),
+        app: routesApp(db, context.service),
       };
     }
 
     it("records exact actual changes and authenticated route actor, without resource content", async () => {
       const context = await setupResourceAudit();
-      const { app, audits, companyId, endpoint, resources, service, wakeup } =
+      const { app, audits, endpoint, resources, service, wakeup } =
         context;
       const events: unknown[] = [];
-      const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+      const unsubscribe = subscribeLiveEvents((event) => {
         if (
           event.type === "activity.logged" &&
           event.payload.action === "chat_endpoint.resources_updated"
@@ -4696,7 +4659,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const rows = await audits();
         expect(rows).toHaveLength(1);
         expect(rows[0]).toMatchObject({
-          companyId,
           actorType: "user",
           actorId: "owner-user",
           responsibleUserId: "owner-user",
@@ -4764,7 +4726,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const fixture = await seedCompany();
       const context = createService(undefined, undefined, overrides);
       const endpoint = await context.service.create(
-        fixture.companyId,
         {
           provider: "slack",
           assignedAgentId: fixture.assignedAgentId,
@@ -4774,7 +4735,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [resource] = await db
         .insert(chatEndpointResources)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           type: "channel",
           providerResourceId: "C-RESOURCE-AUDIT",
@@ -4788,10 +4748,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .select()
           .from(activityLog)
           .where(
-            and(
-              eq(activityLog.companyId, fixture.companyId),
-              eq(activityLog.action, "chat_endpoint.resources_updated"),
-            ),
+            eq(activityLog.action, "chat_endpoint.resources_updated"),
           )
           .orderBy(asc(activityLog.createdAt));
       const current = () =>
@@ -4800,8 +4757,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(chatEndpointResources)
           .where(eq(chatEndpointResources.id, resource!.id));
       const events: unknown[] = [];
-      const unsubscribe = subscribeCompanyLiveEvents(
-        fixture.companyId,
+      const unsubscribe = subscribeLiveEvents(
         (event) => {
           if (
             event.type === "activity.logged" &&
@@ -4876,7 +4832,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const [other] = await db
             .insert(chatEndpointResources)
             .values({
-              companyId: context.companyId,
               endpointId: context.endpoint.id,
               type: "channel",
               providerResourceId: "C-UNAVAILABLE",
@@ -4940,13 +4895,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                     .select()
                     .from(activityLog)
                     .where(
-                      and(
-                        eq(activityLog.companyId, context.companyId),
-                        eq(
-                          activityLog.action,
-                          "chat_endpoint.resources_updated",
-                        ),
-                      ),
+                      eq(
+                                                  activityLog.action,
+                                                  "chat_endpoint.resources_updated",
+                                                ),
                     );
                   expect(rows).toHaveLength(1);
                   sawAudit = true;
@@ -5121,7 +5073,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { service } = createService();
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "github",
         assignedAgentId: fixture.assignedAgentId,
@@ -5145,17 +5096,17 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert);
 
-    const memberApp = routesApp(db, fixture.companyId, service, memberUserId);
+    const memberApp = routesApp(db, service, memberUserId);
     await request(memberApp)
       .get(`/api/chat-endpoints/${endpoint.id}`)
       .expect(200);
     await request(memberApp)
-      .get(`/api/companies/${fixture.companyId}/chat-endpoints`)
+      .get(`/api/chat-endpoints`)
       .expect(200);
 
     const deniedMutations = [
       request(memberApp)
-        .post(`/api/companies/${fixture.companyId}/chat-endpoints`)
+        .post(`/api/chat-endpoints`)
         .send({ provider: "slack", assignedAgentId: fixture.assignedAgentId }),
       request(memberApp)
         .patch(`/api/chat-endpoints/${endpoint.id}`)
@@ -5202,7 +5153,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
     }
 
-    const managerApp = routesApp(db, fixture.companyId, service);
+    const managerApp = routesApp(db, service);
     await request(managerApp)
       .patch(`/api/chat-endpoints/${endpoint.id}`)
       .send({ allowDirectMessages: true })
@@ -5212,27 +5163,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       });
   });
 
-  it("returns not found rather than revealing another company's chat endpoint", async () => {
-    const viewerCompany = await seedCompany();
-    const ownerCompany = await seedCompany();
-    const { service } = createService();
-    const endpoint = await service.create(
-      ownerCompany.companyId,
-      {
-        provider: "telegram",
-        assignedAgentId: ownerCompany.assignedAgentId,
-      },
-      "owner-user",
-    );
-    const app = routesApp(db, viewerCompany.companyId, service);
-
-    await request(app).get(`/api/chat-endpoints/${endpoint.id}`).expect(404);
-    await request(app)
-      .patch(`/api/chat-endpoints/${endpoint.id}`)
-      .send({ allowDirectMessages: true })
-      .expect(404);
-  });
-
   it("does not let two live agent connections claim the same native bot or spoof its verified identity", async () => {
     const fixture = await seedCompany();
     const { service } = createService(
@@ -5240,7 +5170,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       fakeSlackFetch("U-ONE-NATIVE-BOT") as typeof globalThis.fetch,
     );
     const first = await service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.assignedAgentId,
@@ -5248,7 +5177,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       "owner-user",
     );
     const second = await service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.replacementAgentId,
@@ -5287,7 +5215,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
 
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
     await request(app)
       .post(`/api/chat-endpoints/${second.id}/setup`)
       .send({
@@ -5345,7 +5273,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         providerFetch,
       );
       const endpoint = await service.create(
-        fixture.companyId,
         { provider, assignedAgentId: fixture.assignedAgentId },
         "owner-user",
       );
@@ -5475,7 +5402,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerFetch("transferred-owner", 8102),
     );
     const firstEndpoint = await first.service.create(
-      firstCompany.companyId,
       {
         provider: "github",
         assignedAgentId: firstCompany.assignedAgentId,
@@ -5483,7 +5409,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       "owner-user",
     );
     const secondEndpoint = await second.service.create(
-      secondCompany.companyId,
       {
         provider: "github",
         assignedAgentId: secondCompany.assignedAgentId,
@@ -5662,14 +5587,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { scheduleDeferredWork: () => undefined },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "github",
         assignedAgentId: fixture.assignedAgentId,
       },
       "owner-user",
     );
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
     const generatedSecretResponse = await request(app)
       .post(`/api/chat-endpoints/${endpoint.id}/setup-secret`)
       .send({})
@@ -6051,7 +5975,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { id: firstResource!.id, enabled: false },
     ]);
     await db.insert(chatEndpointResources).values({
-      companyId: endpoint.companyId,
       endpointId: endpoint.id,
       type: "repository",
       providerResourceId: "paperclipai/paperclip-second",
@@ -6129,7 +6052,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as unknown as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -6142,7 +6064,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       endpoint.publicId,
       webhookSecret,
     );
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
 
     await request(app)
       .post(`/api/chat-endpoints/${endpoint.id}/setup`)
@@ -6264,7 +6186,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -6335,7 +6256,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
     }) as typeof globalThis.fetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -6401,7 +6321,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
     }) as typeof globalThis.fetch);
     const slackEndpoint = await slack.service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -6452,7 +6371,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
     }) as typeof globalThis.fetch);
     const githubEndpoint = await github.service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -6734,7 +6652,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { service } = createService();
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -7066,7 +6983,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { endpoint, runtime, service } =
       await configuredGitHubEndpoint(fixture);
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
 
     const [first, second] = await Promise.all([
       request(app)
@@ -7145,7 +7062,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { endpoint, runtime, service } =
       await configuredGitHubEndpoint(fixture);
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
 
     const [rotation, reconnect] = await Promise.all([
       request(app)
@@ -7522,7 +7439,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
           eq(chatExternalPrincipals.provider, "github"),
           eq(chatExternalPrincipals.externalId, githubUserId),
         ),
@@ -8649,7 +8565,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runtime = new FakeChatSdkRuntime();
     const { service } = createService(runtime);
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "github",
         assignedAgentId: fixture.assignedAgentId,
@@ -8705,7 +8620,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runtime = new FakeChatSdkRuntime();
     const { service } = createService(runtime);
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "github",
         assignedAgentId: fixture.assignedAgentId,
@@ -8960,7 +8874,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!providerRuntime) throw new Error("Expected GitHub provider runtime");
     providerRuntime.webhookRequest = null;
     await db.insert(chatEndpointLeases).values({
-      companyId: endpoint.companyId,
       endpointId: endpoint.id,
       leaseKey: "credentials",
       token: "external-credential-mutation",
@@ -9236,7 +9149,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       // A coincident GUID in another endpoint's inbox is not this callback's
       // receipt, even when that other endpoint has already processed it.
       const other = await service.create(
-        context.fixture.companyId,
         {
           provider: "github",
           assignedAgentId: context.fixture.assignedAgentId,
@@ -9245,7 +9157,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         "owner-user",
       );
       await db.insert(chatActions).values({
-        companyId: context.fixture.companyId,
         endpointId: other.id,
         kind: "github_webhook_ingress",
         providerActionId: `github_webhook_ingress:${context.guid}`,
@@ -9286,8 +9197,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(context.wakeup).toHaveBeenCalledTimes(1);
       const tasks = await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, context.fixture.companyId));
+        .from(issues);
       expect(tasks).toHaveLength(1);
       const comments = await db
         .select({ body: issueComments.body })
@@ -9827,8 +9737,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(
         await db
           .select({ id: issues.id })
-          .from(issues)
-          .where(eq(issues.companyId, context.fixture.companyId)),
+          .from(issues),
       ).toEqual([]);
     } finally {
       await retirePublicationFixture(context.service, context.endpoint.id);
@@ -10074,12 +9983,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { id: resources[0]!.id, enabled: true },
     ]);
     await service.processPendingDeliveries();
-    expect(
-      wakeup.mock.calls.some(
-        ([, options]) =>
-          options?.durableChatRequest?.companyId === fixture.companyId,
-      ),
-    ).toBe(false);
+    expect(wakeup).not.toHaveBeenCalled();
     expect(providerRuntime.webhookRequest).toBeNull();
     await service.shutdown();
   });
@@ -10351,8 +10255,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(
         await db
           .select({ id: issueComments.id })
-          .from(issueComments)
-          .where(eq(issueComments.companyId, context.fixture.companyId)),
+          .from(issueComments),
       ).toEqual([]);
       expect(context.wakeup).not.toHaveBeenCalled();
     } finally {
@@ -10372,7 +10275,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         unknown
       >;
       await db.insert(chatActions).values({
-        companyId: context.fixture.companyId,
         endpointId: context.endpoint.id,
         kind: "github_webhook_recovery",
         providerActionId: `github_webhook_recovery:${context.guid}`,
@@ -10607,8 +10509,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toHaveLength(1);
   });
 
@@ -10637,7 +10538,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerFetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: fixture.assignedAgentId,
@@ -10711,7 +10611,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       nativeBotIdentityClaimBarrier: claimBarrier,
     });
     const firstEndpoint = await first.service.create(
-      firstCompany.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: firstCompany.assignedAgentId,
@@ -10719,7 +10618,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       "owner-user",
     );
     const secondEndpoint = await second.service.create(
-      secondCompany.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: secondCompany.assignedAgentId,
@@ -10788,7 +10686,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const ownerRuntime = new FakeChatSdkRuntime();
     const owner = createService(ownerRuntime, providerFetch);
     const endpoint = await owner.service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -10930,7 +10827,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const commentCountBefore = await db
       .select({ id: issueComments.id })
       .from(issueComments)
-      .where(eq(issueComments.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const wakeupCountBefore = wakeup.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -10986,7 +10882,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db
         .select({ id: issueComments.id })
         .from(issueComments)
-        .where(eq(issueComments.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).toBe(commentCountBefore);
     expect(wakeup).toHaveBeenCalledTimes(wakeupCountBefore);
@@ -11009,7 +10904,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       discordGatewayLeaseTtlMs: 200,
     });
     const endpoint = await owner.service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -11144,7 +11038,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
     const endpoint = await owner.service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -11250,7 +11143,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const commentCountBefore = await db
       .select({ id: issueComments.id })
       .from(issueComments)
-      .where(eq(issueComments.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const wakeupCountBefore = owner.wakeup.mock.calls.length;
     holdOldCallbacks = true;
@@ -11364,7 +11256,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await db
           .select({ id: issueComments.id })
           .from(issueComments)
-          .where(eq(issueComments.companyId, fixture.companyId))
           .then((rows) => rows.length),
       ).toBe(commentCountBefore + 1);
       expect(owner.wakeup).toHaveBeenCalledTimes(wakeupCountBefore);
@@ -11391,7 +11282,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       fakeDiscordFetch(applicationId) as typeof globalThis.fetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -11442,7 +11332,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -11553,7 +11442,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -11696,7 +11584,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerFetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "discord", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -12187,8 +12074,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: companySecrets.id })
-        .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId)),
+        .from(companySecrets),
     ).resolves.toHaveLength(0);
     expect(runtime.endpoints.has(endpoint.id)).toBe(false);
     await service.shutdown();
@@ -12269,12 +12155,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoints = await Promise.all([
       service.create(
-        fixture.companyId,
         { provider: "discord", assignedAgentId: fixture.assignedAgentId },
         "owner-user",
       ),
       service.create(
-        fixture.companyId,
         { provider: "discord", assignedAgentId: fixture.replacementAgentId },
         "owner-user",
       ),
@@ -12355,7 +12239,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerFetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: fixture.assignedAgentId,
@@ -12416,8 +12299,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: companySecrets.id })
-        .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId)),
+        .from(companySecrets),
     ).resolves.toHaveLength(3);
 
     await expect(
@@ -12457,7 +12339,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })) as typeof globalThis.fetch,
     );
     const endpoint = await context.service.create(
-      fixture.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: fixture.assignedAgentId,
@@ -12506,7 +12387,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -12518,7 +12398,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     for (const progressState of ["queued", "working"] as const) {
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -12535,7 +12414,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "Final Teams result",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -12581,7 +12459,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       webhookPublicBaseUrl: "https://unsupported-telegram-origin.example:10000",
     });
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "telegram",
         assignedAgentId: fixture.assignedAgentId,
@@ -12632,7 +12509,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(companySecretBindings)
         .where(
           and(
-            eq(companySecretBindings.companyId, fixture.companyId),
             eq(companySecretBindings.targetType, "tool_connection"),
             eq(companySecretBindings.targetId, endpoint.connectionId),
           ),
@@ -12641,8 +12517,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: companySecrets.id })
-        .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId)),
+        .from(companySecrets),
     ).resolves.toEqual([]);
     await expect(service.get(endpoint.id)).resolves.toMatchObject({
       status: "draft",
@@ -12676,8 +12551,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .where(eq(toolConnections.id, configured.endpoint.connectionId));
     const secretIdsBefore = await db
       .select({ id: companySecrets.id })
-      .from(companySecrets)
-      .where(eq(companySecrets.companyId, fixture.companyId));
+      .from(companySecrets);
     expect(connectionBefore?.refs).toHaveLength(2);
 
     const providerFetch = vi.fn(async () => {
@@ -12714,8 +12588,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: companySecrets.id })
-        .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId)),
+        .from(companySecrets),
     ).resolves.toEqual(secretIdsBefore);
     await reconnect.service.shutdown();
   });
@@ -12821,7 +12694,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         { webhookPublicBaseUrl },
       );
       const endpoint = await service.create(
-        fixture.companyId,
         {
           provider: "telegram",
           assignedAgentId: fixture.assignedAgentId,
@@ -13040,7 +12912,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -13242,7 +13113,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -13341,7 +13211,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -13461,7 +13330,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -13577,8 +13445,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(
         await db
           .select()
-          .from(issues)
-          .where(eq(issues.companyId, fixture.companyId)),
+          .from(issues),
       ).toHaveLength(1);
       expect(wakeup).toHaveBeenCalledTimes(1);
     },
@@ -13762,8 +13629,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(1);
     await expect(service.listResources(endpoint.id)).resolves.toEqual([
       expect.objectContaining({ availability: "unavailable", enabled: true }),
@@ -13920,7 +13786,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })) as typeof globalThis.fetch,
     );
     const teamsEndpoint = await teams.service.create(
-      fixture.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: fixture.assignedAgentId,
@@ -14111,8 +13976,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toHaveLength(1);
 
     const personalPayload = (action: "add" | "remove") => ({
@@ -14219,7 +14083,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       fakeTelegramFetch(445566) as typeof globalThis.fetch,
     );
     const telegramEndpoint = await telegram.service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.replacementAgentId },
       "owner-user",
     );
@@ -14401,7 +14264,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { runtime, service } = createService();
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.assignedAgentId,
@@ -14533,7 +14395,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -14614,7 +14475,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const { service } = context;
         const endpoints = [];
         for (const provider of ["slack", "github", "microsoft-teams", "telegram"] as const) {
-          endpoints.push(await service.create(fixture.companyId, {
+          endpoints.push(await service.create({
             provider,
             assignedAgentId: fixture.assignedAgentId,
           }, "owner-user"));
@@ -14633,7 +14494,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             ? { messagingEndpoint: callback }
             : { webhookUrl: callback });
           const [principal] = await db.insert(chatExternalPrincipals).values({
-            companyId: fixture.companyId,
             provider: endpoint.provider,
             providerAccountId: "",
             externalId: randomUUID(),
@@ -14645,7 +14505,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             /^https:\/\/claimed-fixture\.staging\.paperclip\.app\/chat-identity\/confirm\?token=/,
           );
         }
-        const fresh = await service.create(fixture.companyId, {
+        const fresh = await service.create({
           provider: "slack",
           assignedAgentId: fixture.assignedAgentId,
         }, "owner-user");
@@ -14680,7 +14540,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           }
           return telegramFetch(input);
         }) as typeof globalThis.fetch, { publicBaseUrl: poolOrigin, webhookPublicBaseUrl });
-        const endpoint = await telegram.service.create(fixture.companyId, {
+        const endpoint = await telegram.service.create({
           provider: "telegram",
           assignedAgentId: fixture.assignedAgentId,
         }, "owner-user");
@@ -14731,7 +14591,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         "telegram",
       ] as const) {
         const endpoint = await service.create(
-          fixture.companyId,
           {
             provider,
             assignedAgentId: fixture.assignedAgentId,
@@ -14747,7 +14606,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [principal] = await db
           .insert(chatExternalPrincipals)
           .values({
-            companyId: fixture.companyId,
             provider,
             providerAccountId: "",
             externalId: randomUUID(),
@@ -14774,21 +14632,21 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   it("paginates mixed activity beyond 100 rows without losing timestamp ties", async () => {
     const fixture = await seedCompany();
     const { service } = createService(new FakeChatSdkRuntime(), fakeSlackFetch());
-    const endpoint = await service.create(fixture.companyId, { provider: "slack", assignedAgentId: fixture.assignedAgentId }, "owner-user");
-    const other = await service.create(fixture.companyId, { provider: "slack", assignedAgentId: fixture.assignedAgentId }, "owner-user");
+    const endpoint = await service.create({ provider: "slack", assignedAgentId: fixture.assignedAgentId }, "owner-user");
+    const other = await service.create({ provider: "slack", assignedAgentId: fixture.assignedAgentId }, "owner-user");
     const createdAt = new Date("2026-01-01T00:00:00.123Z");
     const deliveries = await db.insert(chatDeliveries).values(Array.from({ length: 110 }, (_, index) => ({
-      companyId: fixture.companyId, endpointId: endpoint.id,
+      endpointId: endpoint.id,
       providerEventId: `page-${index}`, deduplicationKey: `page-${index}`,
       eventKind: "message" as const, normalizedEvent: {}, state: "processed" as const, createdAt,
     }))).returning();
     const actions = await db.insert(chatActions).values(Array.from({ length: 15 }, (_, index) => ({
-      companyId: fixture.companyId, endpointId: endpoint.id,
+      endpointId: endpoint.id,
       kind: "slack_session_sync", providerActionId: `page-${index}`,
       // Activity for session actions follows updatedAt, not createdAt.
       createdAt: new Date("2025-01-01T00:00:00Z"), updatedAt: createdAt,
     }))).returning();
-    await db.insert(chatActions).values({ companyId: fixture.companyId, endpointId: other.id, kind: "slash_task_start", providerActionId: "other-endpoint", createdAt });
+    await db.insert(chatActions).values({ endpointId: other.id, kind: "slash_task_start", providerActionId: "other-endpoint", createdAt });
     const expected = [...deliveries, ...actions].map((row) => row.id).sort((a, b) => b.localeCompare(a));
     const found: string[] = [];
     let cursor: string | undefined;
@@ -14800,7 +14658,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       cursor = result.nextCursor ?? undefined;
       if (page === 0) {
         // New arrivals must not shift the older pages.
-        await db.insert(chatActions).values({ companyId: fixture.companyId, endpointId: endpoint.id, kind: "slash_task_start", providerActionId: "new-arrival", createdAt: new Date("2026-01-02T00:00:00Z") });
+        await db.insert(chatActions).values({ endpointId: endpoint.id, kind: "slash_task_start", providerActionId: "new-arrival", createdAt: new Date("2026-01-02T00:00:00Z") });
       }
     }
     expect(found).toEqual(expected);
@@ -15109,7 +14967,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     for (const progressState of ["queued", "working"] as const) {
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -15128,7 +14985,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }
 
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -15155,7 +15011,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: endpoint.assignedAgentId,
       status: "succeeded",
       contextSnapshot,
@@ -15163,7 +15018,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: endpoint.assignedAgentId,
       body: "Setup completed successfully.",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -15210,7 +15064,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const rootRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: rootRunId,
-      companyId: fixture.companyId,
       agentId: endpoint.assignedAgentId,
       status: "succeeded",
       contextSnapshot: rootContext,
@@ -15218,7 +15071,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: endpoint.assignedAgentId,
       body: "The earlier root turn finished after the follow-up arrived.",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId: rootRunId,
     });
@@ -15250,7 +15102,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const followUpRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: followUpRunId,
-      companyId: fixture.companyId,
       agentId: endpoint.assignedAgentId,
       status: "succeeded",
       contextSnapshot: {
@@ -15264,7 +15115,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: endpoint.assignedAgentId,
       body: "The qualifying follow-up was handled successfully.",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId: followUpRunId,
     });
@@ -15331,7 +15181,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
           eq(chatExternalPrincipals.provider, "slack"),
           eq(
             chatExternalPrincipals.providerAccountId,
@@ -15357,7 +15206,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       createdAt: new Date((eventSecond - 2) * 1_000),
@@ -15574,7 +15422,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
           eq(chatExternalPrincipals.provider, "slack"),
           eq(
             chatExternalPrincipals.providerAccountId,
@@ -15620,11 +15467,9 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     // running run seeded below, not an extra queued target for Slack Stop.
     await db
       .update(agentWakeupRequests)
-      .set({ status: "claimed", runId: guestRunId })
-      .where(eq(agentWakeupRequests.companyId, fixture.companyId));
+      .set({ status: "claimed", runId: guestRunId });
     await db.insert(heartbeatRuns).values({
       id: guestRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       createdAt: new Date((guestEventSecond - 2) * 1_000),
@@ -15686,7 +15531,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const newerRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: newerRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       // This run begins less than one second after Slack's fractional Stop
@@ -15741,7 +15585,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [queuedWake] = await db
       .insert(agentWakeupRequests)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         source: "assignment",
         status: "queued",
@@ -15798,7 +15641,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const finishedRaceRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: finishedRaceRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       createdAt: new Date((finishedRaceEventSecond - 2) * 1_000),
@@ -15863,7 +15705,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [promotedWake] = await db
       .insert(agentWakeupRequests)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         source: "assignment",
         status: "queued",
@@ -15942,7 +15783,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const promotedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: promotedRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       wakeupRequestId: promotedWake.id,
@@ -16004,7 +15844,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       scheduleDeferredWork: (task) => deferred.push(task),
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -16489,7 +16328,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         issues: await db
           .select({ id: issues.id })
           .from(issues)
-          .where(eq(issues.companyId, fixture.companyId))
           .orderBy(asc(issues.id)),
         conversations: await db
           .select({
@@ -16503,7 +16341,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         comments: await db
           .select({ id: issueComments.id })
           .from(issueComments)
-          .where(eq(issueComments.companyId, fixture.companyId))
           .orderBy(asc(issueComments.id)),
         actions: await db
           .select({ id: chatActions.id })
@@ -17273,7 +17110,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       scheduleDeferredWork: (task) => deferred.push(task),
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -17408,7 +17244,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       scheduleDeferredWork: (task) => deferred.push(task),
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -17537,7 +17372,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const { callbacks, endpoint, runtime, service, wakeup } =
       await configuredSlackEndpoint(fixture);
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-DELAYED-ROOT",
@@ -17614,7 +17448,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const { callbacks, endpoint, service, wakeup } =
       await configuredSlackEndpoint(fixture);
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-ORPHAN-ONLY",
@@ -17720,10 +17553,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .select({ id: chatExternalPrincipals.id })
         .from(chatExternalPrincipals)
         .where(
-          and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
-            eq(chatExternalPrincipals.provider, "microsoft-teams"),
-          ),
+          eq(chatExternalPrincipals.provider, "microsoft-teams"),
         ),
     ).resolves.toHaveLength(0);
 
@@ -18041,7 +17871,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .insert(heartbeatRuns)
         .values({
           id: runId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           nativeIssueId: current.issueId,
           runtimeMode: "native",
@@ -18060,7 +17889,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(agentWakeupRequests.id, action!.id));
       await expect(
         resolveChatRunPresentationAuthorizationReason(db, {
-          companyId: fixture.companyId,
           issueId: current.issueId,
           runId,
         }),
@@ -18153,8 +17981,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: chatExternalPrincipals.id })
-        .from(chatExternalPrincipals)
-        .where(eq(chatExternalPrincipals.companyId, fixture.companyId)),
+        .from(chatExternalPrincipals),
     ).resolves.toHaveLength(0);
 
     await service.update(
@@ -18213,7 +18040,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const serviceUrl = "https://smba.trafficmanager.net/amer/";
     const groupConversationId = "19:teams-group-reach@unq.gbl.spaces";
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "group_chat",
       providerResourceId: groupConversationId,
@@ -18277,7 +18103,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [channelResource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: channelConversationId,
@@ -18339,7 +18164,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "microsoft-teams"),
             eq(chatExternalPrincipals.externalId, "U-TEAMS-DISABLED-CHANNEL"),
           ),
@@ -18403,7 +18227,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "microsoft-teams"),
             eq(chatExternalPrincipals.externalId, "U-TEAMS-DISABLED-CHANNEL"),
           ),
@@ -18472,7 +18295,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [resource] = await db
           .insert(chatEndpointResources)
           .values({
-            companyId: fixture.companyId,
             endpointId: endpoint.id,
             type: scenario.kind,
             providerResourceId: conversationId,
@@ -18534,8 +18356,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db
           .select({ id: issues.id })
-          .from(issues)
-          .where(eq(issues.companyId, fixture.companyId)),
+          .from(issues),
       ).resolves.toEqual([]);
       const [delivery] = await db
         .select({
@@ -18575,7 +18396,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(chatExternalPrincipals)
           .where(
             and(
-              eq(chatExternalPrincipals.companyId, fixture.companyId),
               eq(chatExternalPrincipals.provider, "microsoft-teams"),
               eq(chatExternalPrincipals.externalId, externalPrincipalId),
             ),
@@ -18637,8 +18457,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toEqual([]);
     const [delivery] = await db
       .select({
@@ -18676,7 +18495,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "slack"),
             eq(chatExternalPrincipals.externalId, externalPrincipalId),
           ),
@@ -18712,7 +18530,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [principal] = await db
         .insert(chatExternalPrincipals)
         .values({
-          companyId: fixture.companyId,
           provider: "slack",
           providerAccountId: currentEndpoint.providerAccountId,
           externalId: externalPrincipalId,
@@ -18723,7 +18540,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatIdentityLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal.id,
         paperclipUserId: "owner-user",
@@ -18779,8 +18595,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db
           .select({ id: issues.id })
-          .from(issues)
-          .where(eq(issues.companyId, fixture.companyId)),
+          .from(issues),
       ).resolves.toEqual([]);
       const [delivery] = await db
         .select({
@@ -18875,8 +18690,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toEqual([]);
     const [delivery] = await db
       .select({
@@ -18961,8 +18775,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toEqual([]);
     const [delivery] = await db
       .select({
@@ -18997,7 +18810,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "telegram"),
             eq(chatExternalPrincipals.externalId, chatId),
           ),
@@ -19166,10 +18978,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .select({ externalId: chatExternalPrincipals.externalId })
       .from(chatExternalPrincipals)
       .where(
-        and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
-          eq(chatExternalPrincipals.provider, "microsoft-teams"),
-        ),
+        eq(chatExternalPrincipals.provider, "microsoft-teams"),
       );
     expect(principals).toEqual([{ externalId: aadObjectId }]);
     const [conversation] = await db
@@ -19260,7 +19069,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                     .png()
                     .toBuffer();
           const stored = await storage.storage.putFile({
-            companyId: fixture.companyId,
             namespace: `issues/${conversation!.issueId}`,
             originalFilename: "teams-picture.png",
             contentType: "image/png",
@@ -19555,7 +19363,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: await chatWakeContext({
@@ -19568,12 +19375,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const comment = await addSelectedChatFinal({
         agentId: fixture.assignedAgentId,
         body: item.text,
-        companyId: fixture.companyId,
         issueId: item.conversation.issueId,
         runId,
       });
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${item.conversation.issueId}`,
         originalFilename: item.filename,
         contentType: "text/plain",
@@ -19935,8 +19740,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             await expect(
               db
                 .select({ id: issueAttachments.id })
-                .from(issueAttachments)
-                .where(eq(issueAttachments.companyId, fixture.companyId)),
+                .from(issueAttachments),
             ).resolves.toHaveLength(0);
             return;
           }
@@ -19952,8 +19756,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             await expect(
               db
                 .select({ id: issueAttachments.id })
-                .from(issueAttachments)
-                .where(eq(issueAttachments.companyId, fixture.companyId)),
+                .from(issueAttachments),
             ).resolves.toHaveLength(0);
             return;
           }
@@ -19980,8 +19783,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await expect(
             db
               .select({ id: issueAttachments.id })
-              .from(issueAttachments)
-              .where(eq(issueAttachments.companyId, fixture.companyId)),
+              .from(issueAttachments),
           ).resolves.toHaveLength(1);
           await (restarted?.service ?? service).processPendingDeliveries(
             25,
@@ -20140,8 +19942,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issueAttachments.id })
-        .from(issueAttachments)
-        .where(eq(issueAttachments.companyId, fixture.companyId)),
+        .from(issueAttachments),
     ).resolves.toHaveLength(1);
   });
 
@@ -20326,8 +20127,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect(
           await db
             .select({ id: issueAttachments.id })
-            .from(issueAttachments)
-            .where(eq(issueAttachments.companyId, fixture.companyId)),
+            .from(issueAttachments),
         ).toEqual([]);
       } finally {
         descriptor.mockRestore();
@@ -20403,7 +20203,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           );
         }
         await db.insert(chatEndpointResources).values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           type: surface === "channel" ? "channel" : "group_chat",
           providerResourceId: conversationId,
@@ -20570,14 +20369,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await expect(
           db
             .select({ id: issueAttachments.id })
-            .from(issueAttachments)
-            .where(eq(issueAttachments.companyId, fixture.companyId)),
+            .from(issueAttachments),
         ).resolves.toEqual([]);
         await expect(
           db
             .select({ id: issueComments.id })
-            .from(issueComments)
-            .where(eq(issueComments.companyId, fixture.companyId)),
+            .from(issueComments),
         ).resolves.toHaveLength(2);
       } finally {
         await service.shutdown();
@@ -20658,8 +20455,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: chatExternalPrincipals.id })
-        .from(chatExternalPrincipals)
-        .where(eq(chatExternalPrincipals.companyId, fixture.companyId)),
+        .from(chatExternalPrincipals),
     ).resolves.toHaveLength(0);
     expect(deferredReply.nextAttemptAt).not.toBeNull();
     expect(await service.listConversations(endpoint.id)).toHaveLength(0);
@@ -20759,7 +20555,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const serviceUrl = "https://smba.trafficmanager.net/amer/";
     const rootMessageId = "1740000000020";
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: conversationId,
@@ -20906,8 +20701,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: chatExternalPrincipals.id })
-        .from(chatExternalPrincipals)
-        .where(eq(chatExternalPrincipals.companyId, fixture.companyId)),
+        .from(chatExternalPrincipals),
     ).resolves.toHaveLength(0);
 
     await service.shutdown();
@@ -20933,8 +20727,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: chatExternalPrincipals.id })
-        .from(chatExternalPrincipals)
-        .where(eq(chatExternalPrincipals.companyId, fixture.companyId)),
+        .from(chatExternalPrincipals),
     ).resolves.toHaveLength(0);
     expect(wakeup).not.toHaveBeenCalled();
     await restarted.service.shutdown();
@@ -21141,8 +20934,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const storedAttachments = await db
             .select({ sha256: assets.sha256 })
             .from(issueAttachments)
-            .innerJoin(assets, eq(assets.id, issueAttachments.assetId))
-            .where(eq(issueAttachments.companyId, fixture.companyId));
+            .innerJoin(assets, eq(assets.id, issueAttachments.assetId));
           expect(storedAttachments).toHaveLength(Math.min(20, count));
           expect(
             storedAttachments.every(
@@ -21164,8 +20956,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           expect(
             await db
               .select()
-              .from(issueAttachments)
-              .where(eq(issueAttachments.companyId, fixture.companyId)),
+              .from(issueAttachments),
           ).toHaveLength(0);
         }
         await restarted.service.processPendingDeliveries();
@@ -21271,7 +21062,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                       ),
                     );
                   await tx.execute(
-                    sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${fixture.companyId}:${action!.principalId}`}, 0))`,
+                    sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${action!.principalId}`}, 0))`,
                   );
                 }
                 const [backend] = (await tx.execute(
@@ -21385,8 +21176,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         );
         const stored = await db
           .select()
-          .from(issueAttachments)
-          .where(eq(issueAttachments.companyId, fixture.companyId));
+          .from(issueAttachments);
         const imported = revokeAt === "none" || revokeAt === "signed_anchor";
         expect(stored).toHaveLength(imported ? 1 : 0);
         expect(restarted.wakeup).toHaveBeenCalledTimes(
@@ -21465,7 +21255,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await first.service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -21554,7 +21343,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(storage.putFile).toHaveBeenCalledTimes(1);
     expect(storage.putFile).toHaveBeenCalledWith(
       expect.objectContaining({
-        companyId: fixture.companyId,
         originalFilename: "restart-note.txt",
         contentType: "text/plain",
         body: attachmentBody,
@@ -21604,7 +21392,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -21692,8 +21479,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+        .from(heartbeatRuns),
     ).toEqual([]);
     expect(storage.putFile).toHaveBeenCalledTimes(1);
     await db
@@ -21706,8 +21492,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issueAttachments.id })
-        .from(issueAttachments)
-        .where(eq(issueAttachments.companyId, fixture.companyId)),
+        .from(issueAttachments),
     ).resolves.toHaveLength(1);
     await expect(
       db
@@ -21871,8 +21656,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(agentWakeupRequests)
-        .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+        .from(agentWakeupRequests),
     ).toHaveLength(3);
     await service.shutdown();
   });
@@ -21921,8 +21705,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(agentWakeupRequests)
-        .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+        .from(agentWakeupRequests),
     ).toEqual([]);
     expect(
       await db
@@ -21986,10 +21769,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .select({ id: issues.id })
         .from(issues)
         .where(
-          and(
-            eq(issues.companyId, fixture.companyId),
-            unadmittedChatWakeupCondition(issues.id, issues.companyId),
-          ),
+          unadmittedChatWakeupCondition(issues.id),
         );
     expect(await heldIssues()).toHaveLength(1);
     await db
@@ -22012,8 +21792,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     // A later execution failure does not erase historical authorization.
     await db
       .update(agentWakeupRequests)
-      .set({ status: "failed" })
-      .where(eq(agentWakeupRequests.companyId, fixture.companyId));
+      .set({ status: "failed" });
     expect(await heldIssues()).toEqual([]);
     await service.shutdown();
   });
@@ -22026,7 +21805,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       fakeSlackFetch("U-BOT-WORKSPACE-SCOPE") as typeof globalThis.fetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -22176,7 +21954,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       publicBaseUrl: "https://paperclip.example",
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -22266,7 +22043,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .from(chatDeliveries)
               .where(
                 and(
-                  eq(chatDeliveries.companyId, fixture.companyId),
                   eq(chatDeliveries.endpointId, endpoint.id),
                   sql`${chatDeliveries.normalizedEvent}->'message'->>'providerMessageId' = '9200.1'`,
                 ),
@@ -22398,8 +22174,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect(
           await db
             .select()
-            .from(issues)
-            .where(eq(issues.companyId, fixture.companyId)),
+            .from(issues),
         ).toHaveLength(1);
       });
     } finally {
@@ -22617,14 +22392,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect(
           await db
             .select({ id: issues.id })
-            .from(issues)
-            .where(eq(issues.companyId, fixture.companyId)),
+            .from(issues),
         ).toEqual([]);
         expect(
           await db
             .select({ id: heartbeatRuns.id })
-            .from(heartbeatRuns)
-            .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+            .from(heartbeatRuns),
         ).toEqual([]);
         expect(wakeup).not.toHaveBeenCalled();
       } finally {
@@ -22702,7 +22475,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       scheduleDeferredWork: (task) => deferred.push(task),
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -22806,20 +22578,17 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(0);
     expect(
       await db
         .select()
-        .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+        .from(heartbeatRuns),
     ).toHaveLength(0);
     expect(
       await db
         .select()
-        .from(chatPublications)
-        .where(eq(chatPublications.companyId, fixture.companyId)),
+        .from(chatPublications),
     ).toHaveLength(0);
   });
 
@@ -22830,7 +22599,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       fakeSlackFetch() as typeof globalThis.fetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -22874,7 +22642,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     const providerEventId = `${thread.thread.id}:${processingMessage.id}`;
     await db.insert(chatDeliveries).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       providerEventId,
       deduplicationKey: createHash("sha256")
@@ -23001,8 +22768,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(0);
 
     const freshCallbacks = runtime.configurations.get(endpoint.id)?.callbacks;
@@ -23030,8 +22796,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(1);
     await service.shutdown();
   });
@@ -23108,8 +22873,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issueComments)
-        .where(eq(issueComments.companyId, fixture.companyId)),
+        .from(issueComments),
     ).toHaveLength(1);
     await service.shutdown();
   });
@@ -23120,7 +22884,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await configuredSlackEndpoint(fixture);
     const serializedEndpointResponses = JSON.stringify({
       detail: await service.get(endpoint.id),
-      list: await service.list(fixture.companyId),
+      list: await service.list(),
     });
     expect(serializedEndpointResponses).not.toContain("xoxb-test-token");
     expect(serializedEndpointResponses).not.toContain("test-signing-secret");
@@ -23176,8 +22940,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .where(eq(chatConversations.endpointId, endpoint.id));
     let endpointIssues = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, fixture.companyId));
+      .from(issues);
     let deliveries = await db
       .select()
       .from(chatDeliveries)
@@ -23225,8 +22988,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .where(eq(chatConversations.endpointId, endpoint.id));
     endpointIssues = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, fixture.companyId));
+      .from(issues);
     comments = await db
       .select()
       .from(issueComments)
@@ -23276,8 +23038,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(2);
 
     const finance = resources.find((resource) => resource.label === "finance");
@@ -23305,8 +23066,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(2);
   });
 
@@ -23367,7 +23127,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await service.confirmIdentityLink(token, "owner-user");
 
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "none",
@@ -23439,7 +23199,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     await questionResolutionEntered;
     await issueThreadInteractionService(db).answerQuestions(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       interaction.id,
       { answers: [{ questionId: "choice", optionIds: ["two"] }] },
       { userId: "owner-user" },
@@ -23463,7 +23223,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.companyId, fixture.companyId),
             eq(activityLog.action, "issue.thread_interaction_answered"),
             eq(activityLog.entityId, conversation.issueId),
           ),
@@ -23505,7 +23264,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .insert(heartbeatRuns)
         .values({
           id: runId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           status: "succeeded",
           contextSnapshot: await chatWakeContext({
@@ -23516,7 +23274,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           }),
         });
       await addSelectedChatFinal({
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         agentId: fixture.assignedAgentId,
         runId,
@@ -23726,7 +23483,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .insert(heartbeatRuns)
           .values({
             id: runId,
-            companyId: fixture.companyId,
             agentId: fixture.assignedAgentId,
             status: "succeeded",
             contextSnapshot: await chatWakeContext({
@@ -23737,7 +23493,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             }),
           });
         await addSelectedChatFinal({
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           agentId: fixture.assignedAgentId,
           runId,
@@ -24054,8 +23809,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(
         await db
           .select()
-          .from(issues)
-          .where(eq(issues.companyId, fixture.companyId)),
+          .from(issues),
       ).toHaveLength(1);
       const activity = (await service.listActivity(endpoint.id)).find(
         (item) => item.id === delivery.id,
@@ -24135,7 +23889,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [conversation] = await service.listConversations(endpoint.id);
         await db.insert(heartbeatRuns).values({
           id: runId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           status: "succeeded",
           contextSnapshot: await chatWakeContext({
@@ -24148,7 +23901,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await addSelectedChatFinal({
           agentId: fixture.assignedAgentId,
           body: "SLACK-RECEIPT-FINAL",
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           runId,
         });
@@ -24160,7 +23912,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await request.authorize(tx as never);
           await tx.insert(agentWakeupRequests).values({
             id: request.id,
-            companyId: request.companyId,
             agentId,
             source: opts.source!,
             triggerDetail: opts.triggerDetail,
@@ -24275,7 +24026,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const retryRunId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: retryRunId,
-            companyId: fixture.companyId,
             agentId: fixture.assignedAgentId,
             runtimeMode: "native",
             status: "running",
@@ -24481,7 +24231,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: await chatWakeContext({
@@ -24494,7 +24243,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await addSelectedChatFinal({
         agentId: fixture.assignedAgentId,
         body: "SLACK-FAST-FINAL",
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -24647,7 +24395,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runtime = new FakeChatSdkRuntime();
     const { service } = createService(runtime, providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -24780,7 +24527,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await db.insert(authUsers).values({
       id: "linked-paperclip-user",
       name: "Linked User",
-      email: `linked-${fixture.companyId}@example.com`,
+      email: `linked-${fixture.organizationId}@example.com`,
       emailVerified: true,
       createdAt: now,
       updatedAt: now,
@@ -24804,7 +24551,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!token) throw new Error("Identity-link confirmation token was absent");
     await expect(service.previewIdentityLink(token)).resolves.toMatchObject({
       endpointId: endpoint.id,
-      companyId: fixture.companyId,
       provider: "slack",
       externalLabel: "Alex External",
     });
@@ -25029,20 +24775,17 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(0);
     expect(
       await db
         .select()
-        .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+        .from(heartbeatRuns),
     ).toHaveLength(0);
     expect(
       await db
         .select()
-        .from(chatPublications)
-        .where(eq(chatPublications.companyId, fixture.companyId)),
+        .from(chatPublications),
     ).toHaveLength(0);
     const deliveries = await db
       .select()
@@ -25106,7 +24849,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [queuedDelivery] = await db
       .insert(chatDeliveries)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: seedEffect.principalId,
         providerEventId: "queued-provider-effect-reach-revoke",
@@ -25120,7 +24862,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [queuedEffect] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         deliveryId: queuedDelivery!.id,
         principalId: seedEffect.principalId,
@@ -25170,7 +24911,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       fakeSlackFetch("U-BOT-IDENTITY-B") as typeof globalThis.fetch,
     );
     const first = await firstContext.service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.assignedAgentId,
@@ -25178,7 +24918,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       "owner-user",
     );
     const second = await secondContext.service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.replacementAgentId,
@@ -25234,7 +24973,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       {
         id: "paperclip-user-a",
         name: "Paperclip User A",
-        email: `identity-a-${fixture.companyId}@example.com`,
+        email: `identity-a-${fixture.organizationId}@example.com`,
         emailVerified: true,
         createdAt: now,
         updatedAt: now,
@@ -25242,7 +24981,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       {
         id: "paperclip-user-b",
         name: "Paperclip User B",
-        email: `identity-b-${fixture.companyId}@example.com`,
+        email: `identity-b-${fixture.organizationId}@example.com`,
         emailVerified: true,
         createdAt: now,
         updatedAt: now,
@@ -25457,7 +25196,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: {
@@ -25516,7 +25254,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const authorizationReason =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -25614,7 +25351,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: await chatWakeContext({
@@ -25643,7 +25379,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const authorizationReason =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -25703,7 +25438,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db
         .update(companies)
         .set({ defaultResponsibleUserId: "owner-user" })
-        .where(eq(companies.id, fixture.companyId));
+        .where(eq(companies.id, fixture.organizationId));
       await db
         .update(agents)
         .set({
@@ -25722,7 +25457,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [principal] = await db
         .insert(chatExternalPrincipals)
         .values({
-          companyId: fixture.companyId,
           provider: "slack",
           providerAccountId: configuredEndpoint.providerAccountId!,
           externalId: "U-SHORTCUT-LINKED",
@@ -25731,7 +25465,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatIdentityLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal!.id,
         paperclipUserId: "owner-user",
@@ -25772,10 +25505,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .select()
         .from(heartbeatRuns)
         .where(
-          and(
-            eq(heartbeatRuns.companyId, fixture.companyId),
-            eq(heartbeatRuns.agentId, fixture.assignedAgentId),
-          ),
+          eq(heartbeatRuns.agentId, fixture.assignedAgentId),
         )
         .then((rows) => rows.find((row) => row.status === "succeeded"));
       expect(firstRun).toBeDefined();
@@ -25802,7 +25532,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: trustedWakeContext,
@@ -25811,7 +25540,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25823,7 +25551,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25835,7 +25562,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.replacementAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: trustedWakeContext,
@@ -25844,7 +25570,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25856,16 +25581,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: randomUUID(),
-          agentId: fixture.assignedAgentId,
-          issueId: conversation!.issueId,
-          contextSnapshot: trustedWakeContext,
-        }),
-      ).resolves.toBeNull();
-      await expect(
-        resolveExternalChatWakeProvider({
-          db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: randomUUID(),
           contextSnapshot: trustedWakeContext,
@@ -25874,7 +25589,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25886,7 +25600,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25899,7 +25612,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [internalComment] = await db
         .insert(issueComments)
         .values({
-          companyId: fixture.companyId,
           issueId: conversation!.issueId,
           authorType: "user",
           authorUserId: "owner-user",
@@ -25907,7 +25619,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatMessageLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation!.id,
         commentId: internalComment!.id,
@@ -25917,7 +25628,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25929,7 +25639,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         resolveExternalChatWakeProvider({
           db,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation!.issueId,
           contextSnapshot: {
@@ -25975,10 +25684,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .select()
         .from(heartbeatRuns)
         .where(
-          and(
-            eq(heartbeatRuns.companyId, fixture.companyId),
-            eq(heartbeatRuns.agentId, fixture.assignedAgentId),
-          ),
+          eq(heartbeatRuns.agentId, fixture.assignedAgentId),
         );
       const succeededRuns = runs.filter((row) => row.status === "succeeded");
       expect(succeededRuns).toHaveLength(2);
@@ -26064,7 +25770,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -26075,7 +25780,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       }),
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -26085,7 +25789,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     await service.processPendingPublications();
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -26097,7 +25800,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const finalComment = await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "Final GitHub result",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -26155,13 +25857,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const replacementRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: replacementRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: { issueId: conversation.issueId },
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -26178,7 +25878,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       status: 404,
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -26224,13 +25923,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const ambiguousRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: ambiguousRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: { issueId: conversation.issueId },
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -26241,7 +25938,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await service.processPendingPublications();
     providerRuntime.postError = new Error("socket reset after write");
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -26293,7 +25989,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         },
       );
       const endpoint = await context.service.create(
-        fixture.companyId,
         {
           provider: "telegram",
           assignedAgentId: fixture.assignedAgentId,
@@ -26315,7 +26010,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(chatEndpoints.id, endpoint.id));
       const chatId = privateChat ? 456 : -100123;
       await db.insert(chatEndpointResources).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "group",
         providerResourceId: String(chatId),
@@ -26330,7 +26024,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [principal] = await db
           .insert(chatExternalPrincipals)
           .values({
-            companyId: fixture.companyId,
             provider: "telegram",
             providerAccountId: stored.providerAccountId!,
             externalId: "456",
@@ -26339,7 +26032,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           })
           .returning();
         await db.insert(chatIdentityLinks).values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           principalId: principal.id,
           status: "linked",
@@ -26935,7 +26627,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -26946,7 +26637,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       }),
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -27027,7 +26717,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "telegram-status-race-final",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -27107,7 +26796,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const oldRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: oldRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: await chatWakeContext({
@@ -27120,7 +26808,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "old-generation-final",
-      companyId: fixture.companyId,
       issueId: oldConversation.issueId,
       runId: oldRunId,
     });
@@ -27210,7 +26897,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const newRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: newRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: await chatWakeContext({
@@ -27223,7 +26909,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "new-generation-final",
-      companyId: fixture.companyId,
       issueId: newConversation.issueId,
       runId: newRunId,
     });
@@ -27239,8 +26924,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(2);
   });
 
@@ -27467,7 +27151,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "running",
         contextSnapshot: await chatWakeContext({
@@ -27480,7 +27163,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [progress] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -27764,7 +27446,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .insert(heartbeatRuns)
             .values({
               id: anotherRun,
-              companyId: f.companyId,
               agentId: f.assignedAgentId,
               status: "running",
               contextSnapshot: await chatWakeContext({
@@ -27777,7 +27458,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await db
             .insert(chatPublications)
             .values({
-              companyId: f.companyId,
               endpointId: f.endpoint.id,
               conversationId: f.conversation.id,
               issueId: f.conversation.issueId,
@@ -27800,7 +27480,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const final = await addSelectedChatFinal({
             agentId: f.assignedAgentId,
             body: "An authored answer must never be overwritten",
-            companyId: f.companyId,
             issueId: f.conversation.issueId,
             runId: f.runId,
           });
@@ -27872,7 +27551,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         try {
           const close = await f.stageClose();
           const interaction = await issueThreadInteractionService(db).create(
-            { id: f.conversation.issueId, companyId: f.companyId },
+            { id: f.conversation.issueId },
             {
               kind,
               continuationPolicy: "wake_assignee",
@@ -27966,13 +27645,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .insert(heartbeatRuns)
           .values({
             id: otherRunId,
-            companyId: f.companyId,
             agentId: f.assignedAgentId,
             status: "running",
             contextSnapshot: { issueId: f.conversation.issueId },
           });
         const interaction = await issueThreadInteractionService(db).create(
-          { id: f.conversation.issueId, companyId: f.companyId },
+          { id: f.conversation.issueId },
           {
             kind: "request_confirmation",
             continuationPolicy: "wake_assignee",
@@ -28049,7 +27727,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             const comment = await addSelectedChatFinal({
               agentId: f.assignedAgentId,
               body: "Preserve this possibly delivered final",
-              companyId: f.companyId,
               issueId: f.conversation.issueId,
               runId: f.runId,
             });
@@ -28060,7 +27737,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .then((rows) => rows[0]!.id);
           } else {
             const interaction = await issueThreadInteractionService(db).create(
-              { id: f.conversation.issueId, companyId: f.companyId },
+              { id: f.conversation.issueId },
               {
                 kind: "request_confirmation",
                 continuationPolicy: "wake_assignee",
@@ -28166,7 +27843,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const comment = await addSelectedChatFinal({
             agentId: f.assignedAgentId,
             body: "Retained terminal consumer",
-            companyId: f.companyId,
             issueId: f.conversation.issueId,
             runId: f.runId,
           });
@@ -28224,7 +27900,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await addSelectedChatFinal({
           agentId: f.assignedAgentId,
           body: "The final won",
-          companyId: f.companyId,
           issueId: f.conversation.issueId,
           runId: f.runId,
         });
@@ -28363,7 +28038,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             await addSelectedChatFinal({
               agentId: f.assignedAgentId,
               body: "The Slack final must remain",
-              companyId: f.companyId,
               issueId: f.conversation.issueId,
               runId: f.runId,
             });
@@ -28384,7 +28058,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             const final = await addSelectedChatFinal({
               agentId: f.assignedAgentId,
               body: "Possibly delivered Slack final",
-              companyId: f.companyId,
               issueId: f.conversation.issueId,
               runId: f.runId,
             });
@@ -28480,7 +28153,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "running",
         contextSnapshot: await chatWakeContext({
@@ -28491,7 +28163,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         }),
       });
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -28519,7 +28190,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await addSelectedChatFinal({
           agentId: fixture.assignedAgentId,
           body: "answer-final",
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           runId,
         }),
@@ -28649,7 +28319,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(chatConversations.endpointId, first.endpoint.id))
         .then((rows) => rows[0]!);
       await db.insert(chatPublications).values({
-        companyId: firstFixture.companyId,
         endpointId: first.endpoint.id,
         conversationId: firstConversation.id,
         issueId: firstConversation.issueId,
@@ -28703,7 +28372,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(chatConversations.endpointId, second.endpoint.id))
         .then((rows) => rows[0]!);
       await db.insert(chatPublications).values({
-        companyId: secondFixture.companyId,
         endpointId: second.endpoint.id,
         conversationId: secondConversation.id,
         issueId: secondConversation.issueId,
@@ -28801,7 +28469,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -28814,7 +28481,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [working] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -28896,7 +28562,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "SLACK-SESSION-DONE",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -29020,14 +28685,14 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       issueId = conversation.issueId;
       conversationId = conversation.id;
       const runId = randomUUID();
-      await db.insert(heartbeatRuns).values({ id: runId, companyId: fixture.companyId,
+      await db.insert(heartbeatRuns).values({ id: runId,
         agentId: fixture.assignedAgentId, status: "succeeded", runtimeMode: "legacy", finishedAt: new Date(),
         contextSnapshot: await chatWakeContext({ endpointId: endpoint.id, issueId, provider: "slack", providerMessageId }) });
       // Model execution consuming the admitted wake and committing its checkout.
       await db.update(agentWakeupRequests).set({ status: "completed", runId })
-        .where(and(eq(agentWakeupRequests.companyId, fixture.companyId), eq(agentWakeupRequests.status, "queued")));
+        .where(eq(agentWakeupRequests.status, "queued"));
       await db.update(issues).set({ status: "in_progress" }).where(eq(issues.id, issueId));
-      await addSelectedChatFinal({ companyId: fixture.companyId, agentId: fixture.assignedAgentId,
+      await addSelectedChatFinal({ agentId: fixture.assignedAgentId,
         issueId, runId, body: index === 0 ? "Yes, I'm here." : "I'm Maya." });
       await service.processPendingPublications();
       await vi.waitFor(async () => {
@@ -29072,7 +28737,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -29084,7 +28748,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     for (const milestone of ["queued", "working"] as const) {
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -29100,14 +28763,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const principal = await db
       .select({ id: chatExternalPrincipals.id })
       .from(chatExternalPrincipals)
-      .where(eq(chatExternalPrincipals.companyId, fixture.companyId))
       .then((rows) => rows[0]);
     if (!principal) throw new Error("Slack principal was not created");
     const stageControlPublication = async (text: string) => {
       const [publication] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -29121,7 +28782,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning({ id: chatPublications.id });
       await db.insert(chatActions).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         principalId: principal.id,
@@ -29138,7 +28798,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const finalComment = await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: finalText,
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -29244,7 +28903,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: { issueId: conversation.issueId },
@@ -29257,7 +28915,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .where(eq(heartbeatRuns.id, runId));
       }
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -29335,7 +28992,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [sourceRun] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: {
@@ -29348,7 +29004,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .returning();
     if (!sourceRun) throw new Error("Expected Telegram source run");
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "request_confirmation",
         continuationPolicy: "wake_assignee",
@@ -29374,7 +29030,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [wakeRequest] = await db
       .insert(agentWakeupRequests)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         source: "automation",
         triggerDetail: "system",
@@ -29387,7 +29042,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [continuationRun] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "failed",
         wakeupRequestId: wakeRequest.id,
@@ -29457,7 +29111,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const forgedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: forgedRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "failed",
       contextSnapshot: {
@@ -29470,7 +29123,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: new Date(Date.now() + 1_000),
     });
     await db.insert(agentWakeupRequests).values({
-      companyId: fixture.companyId,
       agentId: fixture.replacementAgentId,
       source: "automation",
       triggerDetail: "system",
@@ -29488,7 +29140,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     ).resolves.toHaveLength(0);
 
     const cancelledQuestion = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "wake_assignee",
@@ -29531,7 +29183,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [cancelledWake] = await db
       .insert(agentWakeupRequests)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         source: "automation",
         triggerDetail: "system",
@@ -29545,7 +29196,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [cancelledRun] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "failed",
         wakeupRequestId: cancelledWake.id,
@@ -29648,7 +29298,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     ] as const;
     const resolverRejectedRuns = Array.from({ length: 30 }, (_, index) => ({
       id: randomUUID(),
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running" as const,
       contextSnapshot: {
@@ -29671,7 +29320,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       ...resolverRejectedRuns,
       {
         id: internalRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "running",
         contextSnapshot: {
@@ -29684,7 +29332,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
       ...runCases.map(({ id, status, ...runCase }, index) => ({
         id,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status,
         errorCode: "errorCode" in runCase ? runCase.errorCode : null,
@@ -29753,7 +29400,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const lanes = [];
     for (let index = 0; index < count; index += 1) {
       const endpoint = await service.create(
-        fixture.companyId,
         {
           provider: "slack",
           assignedAgentId: fixture.assignedAgentId,
@@ -29778,7 +29424,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(chatEndpoints.id, endpoint.id));
       const channelId = `C-LANE-${endpoint.id}`;
       await db.insert(chatEndpointResources).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: channelId,
@@ -29822,7 +29467,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [publication] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -29880,7 +29524,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         { userId: "owner-user" },
       );
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${lanes[0]!.conversation.issueId}`,
         originalFilename: "slow.txt",
         contentType: "text/plain",
@@ -29938,7 +29581,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const sourceRunId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: sourceRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: {
@@ -29947,7 +29589,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         },
       });
       const interaction = await issueThreadInteractionService(db).create(
-        { id: lanes[1]!.conversation.issueId, companyId: fixture.companyId },
+        { id: lanes[1]!.conversation.issueId },
         {
           kind: "ask_user_questions",
           continuationPolicy: "wake_assignee",
@@ -30021,10 +29663,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .select()
           .from(chatEndpointLeases)
           .where(
-            and(
-              eq(chatEndpointLeases.companyId, fixture.companyId),
-              like(chatEndpointLeases.leaseKey, "publication:%"),
-            ),
+            like(chatEndpointLeases.leaseKey, "publication:%"),
           ),
       ).toHaveLength(0);
     } finally {
@@ -30056,7 +29695,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [conversation] = await db
           .insert(chatConversations)
           .values({
-            companyId: fixture.companyId,
             endpointId: original.endpointId,
             resourceId: original.resourceId,
             issueId: original.issueId,
@@ -30066,7 +29704,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           })
           .returning();
         await db.insert(chatPublications).values({
-          companyId: fixture.companyId,
           endpointId: original.endpointId,
           conversationId: conversation!.id,
           issueId: original.issueId,
@@ -30152,7 +29789,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatEndpointLeases)
         .where(eq(chatEndpointLeases.leaseKey, `publication:${live.id}:1`));
       expect(lease).toMatchObject({
-        companyId: fixture.companyId,
         endpointId: live.endpointId,
       });
       expect(lease!.expiresAt.getTime()).toBeGreaterThan(Date.now());
@@ -30190,7 +29826,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ state: "streaming", attempts: 7, updatedAt: staleAt })
           .where(eq(chatPublications.id, orphan.id));
         await db.insert(chatEndpointLeases).values({
-          companyId: fixture.companyId,
           endpointId:
             kind === "wrong-endpoint"
               ? lanes[0]!.endpoint.id
@@ -30431,7 +30066,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await db.insert(chatPublications).values([
       {
         id: secondId,
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -30442,7 +30076,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
       {
         id: firstId,
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -30518,7 +30151,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const baseTime = new Date("2026-09-05T15:10:00.000Z");
     await db.insert(chatPublications).values([
       {
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: blockedConversation.id,
         issueId: blockedConversation.issueId,
@@ -30528,7 +30160,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         createdAt: baseTime,
       },
       ...Array.from({ length: 30 }, (_, index) => ({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: blockedConversation.id,
         issueId: blockedConversation.issueId,
@@ -30538,7 +30169,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         createdAt: new Date(baseTime.getTime() + index + 1),
       })),
       {
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: readyConversation.id,
         issueId: readyConversation.issueId,
@@ -30615,12 +30245,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerFetch as typeof globalThis.fetch,
     );
     const blockedEndpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
     const readyEndpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.replacementAgentId },
       "owner-user",
     );
@@ -30656,7 +30284,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }
     await db.insert(chatEndpointResources).values([
       {
-        companyId: fixture.companyId,
         endpointId: blockedEndpoint.id,
         type: "channel",
         providerResourceId: "C-PAUSED-ENDPOINT",
@@ -30665,7 +30292,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         enabled: true,
       },
       {
-        companyId: fixture.companyId,
         endpointId: readyEndpoint.id,
         type: "channel",
         providerResourceId: "C-READY-ENDPOINT",
@@ -30741,7 +30367,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const providerRetryAt = new Date(Date.now() + 60_000);
     await db.insert(chatPublications).values([
       {
-        companyId: fixture.companyId,
         endpointId: blockedEndpoint.id,
         conversationId: blockedConversation.id,
         issueId: blockedConversation.issueId,
@@ -30751,7 +30376,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         createdAt,
       },
       {
-        companyId: fixture.companyId,
         endpointId: readyEndpoint.id,
         conversationId: readyConversation.id,
         issueId: readyConversation.issueId,
@@ -30761,7 +30385,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         createdAt: new Date(createdAt.getTime() + 1),
       },
       {
-        companyId: fixture.companyId,
         endpointId: blockedEndpoint.id,
         conversationId: blockedConversation.id,
         issueId: blockedConversation.issueId,
@@ -30901,7 +30524,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -31036,7 +30658,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -31214,7 +30835,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -31348,7 +30968,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -31410,7 +31029,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -31482,7 +31100,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .delete(companySecretBindings)
               .where(
                 and(
-                  eq(companySecretBindings.companyId, fixture.companyId),
                   eq(companySecretBindings.targetType, "tool_connection"),
                   eq(companySecretBindings.targetId, connectionId),
                 ),
@@ -31498,7 +31115,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -31527,7 +31143,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -31567,13 +31182,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
     await db.insert(chatActions).values([
       {
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         kind: "slash_task_start",
         providerActionId: `slash_task:lease-recovery-resolving-${randomUUID()}`,
@@ -31583,7 +31196,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         updatedAt: new Date(0),
       },
       {
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         kind: "slash_task_start",
         providerActionId: `slash_task:lease-recovery-validating-${randomUUID()}`,
@@ -31618,7 +31230,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-STALE-FAILURE-FENCE",
@@ -31798,14 +31409,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "slack", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
     const [action] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         kind: "slash_task_start",
         providerActionId: `slash_task:lease-cancel-${randomUUID()}`,
@@ -31855,7 +31464,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error("Slack slash command setup was incomplete");
     }
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-LEASE-RETRY",
@@ -31968,7 +31576,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -32086,10 +31693,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .select()
       .from(chatExternalPrincipals)
       .where(
-        and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
-          eq(chatExternalPrincipals.externalId, "U-CONTROL-CLAIM"),
-        ),
+        eq(chatExternalPrincipals.externalId, "U-CONTROL-CLAIM"),
       );
     if (!conversation || !principal) {
       throw new Error("Expected the Slack control authorization fixture");
@@ -32097,7 +31701,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -32113,7 +31716,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [authorization] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         principalId: principal.id,
@@ -32160,7 +31762,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
       const authorizationLockProbe = db.transaction(async (tx) => {
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${fixture.companyId}:${principal.id}`}, 0))`,
+          sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${principal.id}`}, 0))`,
         );
         return "authorization-lock-released" as const;
       });
@@ -32265,7 +31867,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [publication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -32322,7 +31923,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [revokedPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -32363,7 +31963,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [dmPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: dmConversation.id,
         issueId: dmConversation.issueId,
@@ -32418,7 +32017,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [revokedDmPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: dmConversation.id,
         issueId: dmConversation.issueId,
@@ -32938,7 +32536,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "failed",
         errorCode: "low_trust_isolation_unavailable",
@@ -33103,7 +32700,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .insert(heartbeatRuns)
             .values({
               id: continuationRunId,
-              companyId: fixture.companyId,
               agentId,
               status: "succeeded",
               contextSnapshot: options.contextSnapshot,
@@ -33197,7 +32793,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "discord"),
             eq(
               chatExternalPrincipals.providerAccountId,
@@ -33255,7 +32850,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const sourceRunId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: sourceRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: {
@@ -33265,7 +32859,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         },
       });
       const interaction = await issueThreadInteractionService(db).create(
-        { id: conversation.issueId, companyId: fixture.companyId },
+        { id: conversation.issueId },
         {
           kind: "ask_user_questions",
           continuationPolicy: "wake_assignee",
@@ -33444,7 +33038,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(continuationWakeCount).toBe(1);
       const presentationAuthorization =
         await resolveChatRunPresentationAuthorizationReason(db, {
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           runId: continuationRunId,
         });
@@ -33588,7 +33181,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(chatExternalPrincipals)
           .where(
             and(
-              eq(chatExternalPrincipals.companyId, fixture.companyId),
               eq(chatExternalPrincipals.provider, "discord"),
               eq(
                 chatExternalPrincipals.providerAccountId,
@@ -33631,7 +33223,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const sourceRunId = randomUUID();
         await db.insert(heartbeatRuns).values({
           id: sourceRunId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           status: "succeeded",
           contextSnapshot: {
@@ -33641,7 +33232,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           },
         });
         const interaction = await issueThreadInteractionService(db).create(
-          { id: conversation.issueId, companyId: fixture.companyId },
+          { id: conversation.issueId },
           {
             kind: "ask_user_questions",
             continuationPolicy: "wake_assignee",
@@ -34317,9 +33908,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                     'select "enabled", "status", "credential_secret_refs" from "tool_connections"',
                   ) &&
                   query.sql.endsWith("for no key update") &&
-                  query.params.length === 2 &&
-                  query.params[0] === fixture.companyId &&
-                  query.params[1] === before!.connectionId
+                  query.params.length === 1 &&
+                  query.params[0] === before!.connectionId
                 ) {
                   capturedModalQuery = true;
                   const [backend] = (await tx.execute(
@@ -34683,7 +34273,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const discordLongRunId = randomUUID();
     const replacementCreatedAt = new Date();
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -34697,7 +34286,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [replacementPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -34749,7 +34337,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const rejectedRunId = randomUUID();
     const rejectedCreatedAt = new Date();
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -34763,7 +34350,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [rejectedPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -34804,13 +34390,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .select()
       .from(chatPublications)
       .where(
-        and(
-          eq(chatPublications.companyId, fixture.companyId),
-          like(
-            chatPublications.idempotencyKey,
-            `attachment-failure-notice:${rejectedBatch[1]!.id}:%`,
-          ),
-        ),
+        like(
+                      chatPublications.idempotencyKey,
+                      `attachment-failure-notice:${rejectedBatch[1]!.id}:%`,
+                    ),
       );
     expect(definiteFailureNotices).toHaveLength(1);
     const rejectedAttachmentNotice =
@@ -34843,7 +34426,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const staleNoticeId = randomUUID();
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -34867,7 +34449,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const cardKey = `discord-card-not-split:${endpoint.id}`;
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -34900,7 +34481,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const ambiguousRunId = randomUUID();
     const ambiguousCreatedAt = new Date();
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -34917,7 +34497,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [ambiguousPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -34953,7 +34532,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatPublications)
         .where(
           and(
-            eq(chatPublications.companyId, fixture.companyId),
             eq(chatPublications.state, "published"),
             like(
               chatPublications.idempotencyKey,
@@ -35035,7 +34613,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .insert(chatPublications)
       .values([
         {
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -35046,7 +34623,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           updatedAt: createdAt,
         },
         {
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -35087,7 +34663,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [transient] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -35427,7 +35002,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     const workingCreatedAt = new Date();
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -35441,7 +35015,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [finalPublication] = await db
       .insert(chatPublications)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -35718,7 +35291,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [resource] = await db
         .insert(chatEndpointResources)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           type: "chat",
           providerResourceId: chatId,
@@ -35815,7 +35387,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "chat",
         providerResourceId: chatId,
@@ -35973,7 +35544,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await configuredTelegramEndpoint(fixture);
     const chatId = "-10092345678";
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "chat",
       providerResourceId: chatId,
@@ -36119,7 +35689,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .insert(heartbeatRuns)
             .values({
               id: continuationRunId,
-              companyId: fixture.companyId,
               agentId,
               status: "succeeded",
               contextSnapshot: options.contextSnapshot,
@@ -36165,7 +35734,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const sourceRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       // The prompt itself is the external causal edge. A same-agent internal
@@ -36180,8 +35748,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const interaction = await issueThreadInteractionService(db).create(
       {
-        id: conversation.issueId,
-        companyId: fixture.companyId,
+        id: conversation.issueId
       },
       {
         kind: "ask_user_questions",
@@ -36621,7 +36188,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(activityLog)
       .where(
         and(
-          eq(activityLog.companyId, fixture.companyId),
           eq(activityLog.action, "issue.thread_interaction_answered"),
           eq(activityLog.entityId, conversation.issueId),
         ),
@@ -36640,7 +36206,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const continuationPresentationAuthorization =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId: continuationRunId,
       });
@@ -36707,7 +36272,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const unrelatedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: unrelatedRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: {
@@ -36720,7 +36284,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     await expect(
       resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId: unrelatedRunId,
       }),
@@ -36784,7 +36347,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const steeredRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: steeredRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       // Direct question-response steering may target an already-running run
@@ -36804,7 +36366,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const steeredComment = await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "SLACK-STEERED-COLOR-High",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId: steeredRunId,
     });
@@ -36823,7 +36384,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const reassignedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: reassignedRunId,
-      companyId: fixture.companyId,
       agentId: fixture.replacementAgentId,
       status: "succeeded",
       contextSnapshot: {
@@ -36955,7 +36515,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "slack"),
             eq(chatExternalPrincipals.externalId, externalUserId),
           ),
@@ -36987,7 +36546,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       if (!identityToken) throw new Error("Expected modal identity token");
       await service.confirmIdentityLink(identityToken, linkedUserId);
       const interaction = await issueThreadInteractionService(db).create(
-        { id: conversation.issueId, companyId: fixture.companyId },
+        { id: conversation.issueId },
         {
           kind: "ask_user_questions",
           continuationPolicy: "wake_assignee",
@@ -37217,7 +36776,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(chatSdkState)
           .where(
             and(
-              eq(chatSdkState.companyId, fixture.companyId),
               eq(chatSdkState.endpointId, endpoint.id),
               eq(
                 chatSdkState.stateKey,
@@ -37250,7 +36808,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(activityLog)
           .where(
             and(
-              eq(activityLog.companyId, fixture.companyId),
               eq(activityLog.entityId, conversation.issueId),
               eq(activityLog.action, "issue.thread_interaction_answered"),
             ),
@@ -37350,7 +36907,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const accepted = await submissionState();
       expect(accepted.interactions).toEqual([
         expect.objectContaining({
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           status: "answered",
           resolvedByUserId: linkedUserId,
@@ -37485,7 +37041,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 },
               );
               const endpoint = await created.service.create(
-                fixture.companyId,
                 {
                   provider: "microsoft-teams",
                   assignedAgentId: fixture.assignedAgentId,
@@ -37587,7 +37142,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, provider),
             eq(chatExternalPrincipals.externalId, externalUserId),
           ),
@@ -37605,7 +37159,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await service.confirmIdentityLink(identityToken, linkedUserId);
 
       const interaction = await issueThreadInteractionService(db).create(
-        { id: conversation.issueId, companyId: fixture.companyId },
+        { id: conversation.issueId },
         {
           kind: "ask_user_questions",
           continuationPolicy: "wake_assignee",
@@ -38000,7 +37554,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(activityLog)
           .where(
             and(
-              eq(activityLog.companyId, fixture.companyId),
               eq(activityLog.entityId, conversation.issueId),
               eq(activityLog.action, "issue.thread_interaction_answered"),
             ),
@@ -38364,7 +37917,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const sourceRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -38381,7 +37933,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -38410,7 +37961,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerMessageId: expect.any(String),
     });
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "wake_assignee",
@@ -38470,7 +38021,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const sourcePresentationAuthorization =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId: sourceRunId,
       });
@@ -38608,7 +38158,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .where(eq(issueThreadInteractions.id, interaction.id));
     await expect(
       resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId: sourceRunId,
       }),
@@ -38617,7 +38166,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const continuationRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: continuationRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: {
@@ -38629,7 +38177,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
     await db.insert(issueQuestionResponseDeliveries).values({
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       interactionId: interaction.id,
       sourceRunId,
@@ -38641,7 +38188,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     const continuationAuthorization =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId: continuationRunId,
       });
@@ -38709,7 +38255,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const sourceRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -38726,7 +38271,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     });
     await db.insert(chatPublications).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       issueId: conversation.issueId,
@@ -38752,7 +38296,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }
 
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "request_confirmation",
         continuationPolicy: "wake_assignee",
@@ -38770,7 +38314,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const authorization = await resolveChatRunPresentationAuthorizationReason(
       db,
       {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId: sourceRunId,
       },
@@ -38913,7 +38456,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   it("acknowledges denied Telegram actions after one durable, payload-free notice", async () => {
     const fixture = await seedCompany();
     const botId = Number.parseInt(
-      fixture.companyId.replaceAll("-", "").slice(0, 12),
+      fixture.organizationId.replaceAll("-", "").slice(0, 12),
       16,
     );
     const botToken = `${botId}:telegram-denial-webhook-test`;
@@ -39000,7 +38543,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     try {
       const endpoint = await service.create(
-        fixture.companyId,
         { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
         "owner-user",
       );
@@ -39241,8 +38783,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     async function publishQuestion(title: string) {
       const interaction = await issueThreadInteractionService(db).create(
         {
-          id: conversation.issueId,
-          companyId: fixture.companyId,
+          id: conversation.issueId
         },
         {
           kind: "ask_user_questions",
@@ -39322,7 +38863,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       TELEGRAM_CALLBACK_DATA_LIMIT_BYTES,
     );
     expect(first.token).toMatchObject({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       principalId: null,
@@ -39691,7 +39231,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
           eq(chatExternalPrincipals.provider, "telegram"),
           eq(chatExternalPrincipals.externalId, externalUserId),
         ),
@@ -39711,8 +39250,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const interaction = await issueThreadInteractionService(db).create(
       {
-        id: conversation.issueId,
-        companyId: fixture.companyId,
+        id: conversation.issueId
       },
       {
         kind: "request_confirmation",
@@ -40033,7 +39571,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .set({ status: "processing", updatedAt: new Date(Date.now() - 60_000) })
       .where(eq(chatActions.id, confirmationWake.id));
     await db.insert(agentWakeupRequests).values({
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       source: "automation",
       reason: "issue_commented",
@@ -40056,7 +39593,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     ]);
 
     const boardRace = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "request_confirmation",
         continuationPolicy: "wake_assignee",
@@ -40103,10 +39640,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .select()
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, fixture.companyId),
-          eq(issues.id, conversation.issueId),
-        ),
+        eq(issues.id, conversation.issueId),
       )
       .then((rows) => rows[0]);
     if (!boardIssue) throw new Error("Expected board-race issue");
@@ -40117,7 +39651,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { userId: linkedUserId },
     );
     await db.insert(agentWakeupRequests).values({
-      companyId: fixture.companyId,
       agentId: fixture.replacementAgentId,
       source: "automation",
       reason: "issue_commented",
@@ -40220,7 +39753,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [retryingInteraction] = await db
       .insert(issueThreadInteractions)
       .values({
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         kind: "request_confirmation",
         continuationPolicy: "none",
@@ -40237,7 +39769,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const retryingWakeId = randomUUID();
     await db.insert(chatActions).values({
       id: retryingWakeId,
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       principalId: principal.id,
@@ -40336,7 +39867,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [deferredInteraction] = await db
       .insert(issueThreadInteractions)
       .values({
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         kind: "request_confirmation",
         continuationPolicy: "none",
@@ -40353,7 +39883,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const deferredWakeId = randomUUID();
     await db.insert(chatActions).values({
       id: deferredWakeId,
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       conversationId: conversation.id,
       principalId: principal.id,
@@ -40416,7 +39945,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await deferredWakeService.service.shutdown();
 
     const governed = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "request_confirmation",
         continuationPolicy: "wake_assignee",
@@ -40487,7 +40016,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatConversations)
       .where(eq(chatConversations.endpointId, endpoint.id));
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         payload: {
@@ -40578,7 +40107,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatConversations)
         .where(eq(chatConversations.endpointId, endpoint.id));
       const interaction = await issueThreadInteractionService(db).create(
-        { id: conversation!.issueId, companyId: fixture.companyId },
+        { id: conversation!.issueId },
         {
           kind: "ask_user_questions",
           payload: {
@@ -40665,7 +40194,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .insert(heartbeatRuns)
           .values({
             id: continuationRunId,
-            companyId: fixture.companyId,
             agentId,
             status: "running",
             contextSnapshot: options.contextSnapshot,
@@ -40708,7 +40236,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const sourceRunId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: sourceRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: await chatWakeContext({
@@ -40719,7 +40246,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         }),
       });
       const interaction = await issueThreadInteractionService(db).create(
-        { id: conversation.issueId, companyId: fixture.companyId },
+        { id: conversation.issueId },
         {
           kind: "ask_user_questions",
           continuationPolicy: "wake_assignee",
@@ -40772,7 +40299,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       });
 
       await issueThreadInteractionService(db).answerQuestions(
-        { id: conversation.issueId, companyId: fixture.companyId },
+        { id: conversation.issueId },
         interaction.id,
         { answers: [{ questionId: "color", optionIds: ["blue"] }] },
         { userId: "owner-user" },
@@ -40815,7 +40342,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(heartbeatRuns.id, continuationRunId));
       const authorizationReason =
         await resolveChatRunPresentationAuthorizationReason(db, {
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           runId: continuationRunId,
         });
@@ -40919,7 +40445,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .then((rows) => rows[0]?.commentId ?? null);
     if (!sourceCommentId) throw new Error("Expected GitHub source comment");
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: fixture.companyId },
+      { id: conversation.issueId },
       {
         kind: "request_confirmation",
         continuationPolicy: "wake_assignee",
@@ -40982,7 +40508,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const failedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: failedRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "failed",
       errorCode: "continuation_failed",
@@ -41066,7 +40591,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: await chatWakeContext({
@@ -41079,12 +40603,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const comment = await addSelectedChatFinal({
         agentId: fixture.assignedAgentId,
         body: "The report is ready.",
-        companyId: fixture.companyId,
         issueId: conversation!.issueId,
         runId,
       });
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${conversation!.issueId}`,
         originalFilename: "report.txt",
         contentType: "text/plain",
@@ -41154,7 +40676,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!conversation) throw new Error("Expected Slack file conversation");
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const stored = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: "provider-rejected.png",
       contentType: "image/png",
@@ -41203,7 +40724,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatPublications)
       .where(
         and(
-          eq(chatPublications.companyId, fixture.companyId),
           eq(chatPublications.conversationId, conversation.id),
           or(
             eq(chatPublications.commentId, failed.commentId!),
@@ -41305,7 +40825,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { service } = createService();
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "slack",
         assignedAgentId: fixture.assignedAgentId,
@@ -41353,8 +40872,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     ).toBe(true);
     const afterRotation = await db
       .select()
-      .from(companySecrets)
-      .where(eq(companySecrets.companyId, fixture.companyId));
+      .from(companySecrets);
     expect(afterRotation.map((secret) => secret.id).sort()).toEqual(
       rotatedConnection.credentialSecretRefs.map((ref) => ref.secretId).sort(),
     );
@@ -41368,8 +40886,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId)),
+        .from(companySecrets),
     ).toHaveLength(0);
   });
 
@@ -41425,7 +40942,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const credentialCount = await db
         .select({ id: companySecrets.id })
         .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId))
         .then((rows) => rows.length);
       expect(credentialCount).toBe(provider === "github" ? 4 : 3);
       const deliveryCount = await db
@@ -41453,8 +40969,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db
           .select({ id: companySecrets.id })
-          .from(companySecrets)
-          .where(eq(companySecrets.companyId, fixture.companyId)),
+          .from(companySecrets),
       ).resolves.toHaveLength(0);
       await expect(
         db
@@ -41502,8 +41017,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select()
-        .from(companySecrets)
-        .where(eq(companySecrets.companyId, fixture.companyId)),
+        .from(companySecrets),
     ).resolves.toHaveLength(0);
     await expect(
       service.configure(endpoint.id, { action: "remove" }, "owner-user"),
@@ -41551,7 +41065,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       providerFetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "telegram",
         assignedAgentId: fixture.assignedAgentId,
@@ -41612,7 +41125,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }) as unknown as typeof globalThis.fetch;
     const { service } = createService(new FakeChatSdkRuntime(), providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "telegram",
         assignedAgentId: fixture.assignedAgentId,
@@ -41683,7 +41195,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .insert(chatPublications)
       .values([
         {
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -41694,7 +41205,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           providerMessageId: "status-provider-id",
         },
         {
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -41705,7 +41215,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         },
       ])
       .returning();
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
     const path = `/api/chat-endpoints/${endpoint.id}/conversations/${conversation.id}/publications/${textPart.id}/status`;
     const initialPosts = runtime.endpoints.get(endpoint.id)?.posts.length;
     const initialWakes = wakeup.mock.calls.length;
@@ -41751,15 +41261,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .expect(400);
     const foreign = await seedCompany();
     const foreignEndpoint = await service.create(
-      foreign.companyId,
       { provider: "slack", assignedAgentId: foreign.assignedAgentId },
       "owner-user",
     );
     await request(app)
       .get(path.replace(endpoint.id, foreignEndpoint.id))
-      .expect(404);
-    await request(routesApp(db, foreign.companyId, service))
-      .get(path)
       .expect(404);
   });
 
@@ -41794,7 +41300,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatConversations)
       .where(eq(chatConversations.endpointId, endpoint.id));
     const stored = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: "selected-result.txt",
       contentType: "text/plain",
@@ -41878,7 +41383,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     ]);
 
     const blockedStored = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: "blocked-result.txt",
       contentType: "text/plain",
@@ -41957,7 +41461,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatConversations)
         .where(eq(chatConversations.endpointId, context.endpoint.id));
       const stored = await storage.storage.putFile({
-        companyId: company.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: "private-original.txt",
         contentType: "text/plain",
@@ -42095,7 +41598,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const receipts = await fixture.receipts();
         expect(receipts).toHaveLength(1);
         expect(receipts[0]).toMatchObject({
-          companyId: fixture.endpoint.companyId,
           endpointId: fixture.endpoint.id,
           conversationId: fixture.conversation.id,
           status: "processed",
@@ -42140,7 +41642,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     it("returns the exact HTTP rejection with only the bound subset and replays that receipt unchanged", async () => {
       const fixture = await rejectionFixture();
-      const app = routesApp(db, fixture.endpoint.companyId, fixture.service);
+      const app = routesApp(db, fixture.service);
       const server = createServer(app);
       try {
         await new Promise<void>((resolve, reject) => {
@@ -42154,7 +41656,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
         );
         const stored = await fixture.storage.storage.putFile({
-          companyId: fixture.endpoint.companyId,
           namespace: `issues/${fixture.conversation.issueId}`,
           originalFilename: "still-unbound.txt",
           contentType: "text/plain",
@@ -42245,7 +41746,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const endpoint =
         configured?.endpoint ??
         (await context.service.create(
-          company.companyId,
           {
             provider: "microsoft-teams",
             assignedAgentId: company.assignedAgentId,
@@ -42259,7 +41759,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         [issue] = await db
           .insert(issues)
           .values({
-            companyId: company.companyId,
             title: "Seeded file receipt projection",
             status: "backlog",
           })
@@ -42267,7 +41766,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         [conversation] = await db
           .insert(chatConversations)
           .values({
-            companyId: company.companyId,
             endpointId: endpoint.id,
             issueId: issue!.id,
             externalConversationId: `teams:projection:${randomUUID()}`,
@@ -42321,7 +41819,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [principal] = await db
         .insert(chatExternalPrincipals)
         .values({
-          companyId: company.companyId,
           provider: "microsoft-teams",
           providerAccountId: randomUUID(),
           externalId: `projection-user-${randomUUID()}`,
@@ -42331,7 +41828,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [comment] = await db
           .insert(issueComments)
           .values({
-            companyId: company.companyId,
             issueId: issue!.id,
             authorUserId: "owner-user",
             body: "PRIVATE-COMMENT-PROJECTION-CANARY",
@@ -42342,7 +41838,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const [publication] = await db
             .insert(chatPublications)
             .values({
-              companyId: company.companyId,
               endpointId: endpoint.id,
               conversationId: conversation!.id,
               issueId: issue!.id,
@@ -42358,7 +41853,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           publications.push(publication!);
           if (part.transfer) {
             await db.insert(chatTeamsFileTransfers).values({
-              companyId: company.companyId,
               endpointId: endpoint.id,
               conversationId: conversation!.id,
               publicationId: publication!.id,
@@ -42408,49 +41902,41 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         publications: await db
           .select()
           .from(chatPublications)
-          .where(eq(chatPublications.companyId, company.companyId))
           .orderBy(asc(chatPublications.id)),
         transfers: await db
           .select()
           .from(chatTeamsFileTransfers)
-          .where(eq(chatTeamsFileTransfers.companyId, company.companyId))
           .orderBy(asc(chatTeamsFileTransfers.id)),
         comments: await db
           .select()
           .from(issueComments)
-          .where(eq(issueComments.companyId, company.companyId))
           .orderBy(asc(issueComments.id)),
         actions: await db
           .select()
           .from(chatActions)
-          .where(eq(chatActions.companyId, company.companyId))
           .orderBy(asc(chatActions.id)),
         deliveries: await db
           .select()
           .from(chatDeliveries)
-          .where(eq(chatDeliveries.companyId, company.companyId))
           .orderBy(asc(chatDeliveries.id)),
         links: await db
           .select()
           .from(chatMessageLinks)
-          .where(eq(chatMessageLinks.companyId, company.companyId))
           .orderBy(asc(chatMessageLinks.id)),
         wakes: await db
           .select()
           .from(agentWakeupRequests)
-          .where(eq(agentWakeupRequests.companyId, company.companyId))
           .orderBy(asc(agentWakeupRequests.id)),
         audit: await db
           .select()
           .from(activityLog)
-          .where(eq(activityLog.companyId, company.companyId))
           .orderBy(asc(activityLog.id)),
       });
       const statusPath = (publicationId: string) =>
         `/api/chat-endpoints/${endpoint.id}/conversations/${conversation!.id}/publications/${publicationId}/status`;
       const read = async (publicationId: string) => {
         const before = await snapshot();
-        const app = routesApp(db, company.companyId, context.service);
+        const app = routesApp(db, context.service);
         // Own one ready loopback listener for both reads. Creating and closing
         // a separate implicit Supertest listener per GET can reset the TCP
         // connection before Express receives it under the loaded macOS suite.
@@ -42741,13 +42227,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
 
-    it("requires exact endpoint, conversation, publication and Board company scope", async () => {
+    it("requires exact endpoint, conversation and publication", async () => {
       const fixture = await projectionFixture();
       const other = await projectionFixture();
       try {
         const [part] = await fixture.batch([{ transfer: {} }]);
         const [foreign] = await other.batch([{ transfer: {} }]);
-        const app = routesApp(db, fixture.companyId, fixture.service);
+        const app = routesApp(db, fixture.service);
         const before = await fixture.snapshot();
         await request(app).get(fixture.statusPath(foreign!.id)).expect(404);
         await request(app)
@@ -42757,11 +42243,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .replace(fixture.conversation.id, other.conversation.id),
           )
           .expect(404);
-        // Cross-company resources are deliberately concealed as not found.
         await request(app).get(other.statusPath(part!.id)).expect(404);
-        await request(app)
-          .get(`/api/chat-endpoints/${other.endpoint.id}/activity`)
-          .expect(404);
         expect(await fixture.snapshot()).toEqual(before);
         const { status, activity } = await fixture.read(part!.id);
         expect(status.total).toBe(1);
@@ -42782,7 +42264,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [otherConversation] = await db
           .insert(chatConversations)
           .values({
-            companyId: fixture.companyId,
             endpointId: fixture.endpoint.id,
             issueId: fixture.issue.id,
             externalConversationId: `teams:other:${randomUUID()}`,
@@ -42835,7 +42316,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             },
           ]);
           const before = await fixture.snapshot();
-          const app = routesApp(db, fixture.companyId, fixture.service);
+          const app = routesApp(db, fixture.service);
           // A missing or stale transfer hint must never fall through to ordinary
           // message retry, mark-delivered, or cancellation.
           for (const action of [
@@ -42881,7 +42362,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         ]);
         const before = await fixture.snapshot();
         const response = await request(
-          routesApp(db, fixture.companyId, fixture.service),
+          routesApp(db, fixture.service),
         )
           .post(
             `/api/chat-endpoints/${fixture.endpoint.id}/publications/${part!.id}/replay`,
@@ -42916,7 +42397,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [part] = await fixture.batch([{ state: "delivery_unknown" }]);
         const before = await fixture.snapshot();
         const response = await request(
-          routesApp(db, fixture.companyId, fixture.service),
+          routesApp(db, fixture.service),
         )
           .post(
             `/api/chat-endpoints/${fixture.endpoint.id}/publications/${part!.id}/resolve`,
@@ -43094,7 +42575,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         );
         for (const [index, body] of bodies.entries()) {
           const stored = await storage.storage.putFile({
-            companyId: fixture.companyId,
             namespace: `issues/${conversation.issueId}`,
             originalFilename: `selected-${index + 1}.txt`,
             contentType: "text/plain",
@@ -43211,7 +42691,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           [],
         );
         const partial = await request(
-          routesApp(db, fixture.companyId, restarted),
+          routesApp(db, restarted),
         )
           .get(
             `/api/chat-endpoints/${endpoint.id}/conversations/${conversation.id}/publications/${prefix[0]!.id}/status`,
@@ -43366,7 +42846,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         { userId: "owner-user" },
       );
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: "accepted-once.txt",
         contentType: "text/plain",
@@ -43386,7 +42865,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [publication] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -43479,7 +42957,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .where(eq(chatActions.id, receipt!.id));
       const heldEndpoint = await service.create(
-        fixture.companyId,
         {
           provider: "slack",
           assignedAgentId: fixture.assignedAgentId,
@@ -43493,7 +42970,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(chatEndpoints.id, heldEndpoint.id));
       await db.insert(chatActions).values(
         Array.from({ length: 25 }, (_, index) => ({
-          companyId: fixture.companyId,
           endpointId: heldEndpoint.id,
           kind: "slack_file_upload_receipt",
           providerActionId: `paused-slack-file-receipt:${index}:${randomUUID()}`,
@@ -43579,7 +43055,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [conflictingPublication] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -43592,7 +43067,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatMessageLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         publicationId: conflictingPublication!.id,
@@ -43740,7 +43214,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         { userId: "owner-user" },
       );
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: "streaming-once.txt",
         contentType: "text/plain",
@@ -43760,7 +43233,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [publication] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -43826,7 +43298,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [malformed] = await db
         .insert(chatActions)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           kind: "slack_file_upload_receipt",
           providerActionId: `malformed-slack-file-receipt:${randomUUID()}`,
@@ -43863,7 +43334,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(providerRuntime.slackFileReceiptLookups).toHaveLength(0);
       const blockerToken = `test-blocker-${randomUUID()}`;
       await db.insert(chatEndpointLeases).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         leaseKey: "credentials",
         token: blockerToken,
@@ -44063,7 +43533,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await qualifySetupRoundTrip(service, endpoint.id);
       await service.test(endpoint.id, "owner-user");
       await db.insert(chatEndpointResources).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-BOARD-HEALTHY-FILE",
@@ -44103,14 +43572,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const damagedBody = Buffer.from("registered outbound evidence", "utf8");
       const healthyBody = Buffer.from("healthy outbound evidence", "utf8");
       const damagedStored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${damagedConversation.issueId}`,
         originalFilename: "damaged.txt",
         contentType: "text/plain",
         body: damagedBody,
       });
       const healthyStored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${healthyConversation.issueId}`,
         originalFilename: "healthy.txt",
         contentType: "text/plain",
@@ -44366,7 +43833,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await qualifySetupRoundTrip(service, endpoint.id);
     await service.test(endpoint.id, "owner-user");
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-BOARD-IDEMPOTENCY-TWO",
@@ -44470,7 +43936,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!conversation) throw new Error("Expected Telegram file conversation");
     const body = Buffer.from("telegram selected result", "utf8");
     const stored = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: "telegram-result.txt",
       contentType: "text/plain",
@@ -44626,7 +44091,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const filename = `original-${mode}.${format}`;
         const mimeType = `image/${format}`;
         const stored = await storage.storage.putFile({
-          companyId: fixture.companyId,
           namespace: `issues/${conversation.issueId}`,
           originalFilename: filename,
           contentType: mimeType,
@@ -44698,7 +44162,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           }),
         );
         pinned = createChatSdkEndpointRuntime({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           callbacks: { onMessage() {} },
           logger: "silent",
@@ -44854,7 +44317,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .toBuffer()
           : Buffer.from(`native-${item.type}`, "utf8");
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: item.filename,
         contentType: item.contentType,
@@ -44945,7 +44407,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const attachmentIds: string[] = [];
       for (const item of media) {
         const stored = await storage.storage.putFile({
-          companyId: fixture.companyId,
           namespace: `issues/${conversation!.issueId}`,
           originalFilename: item.filename,
           contentType: item.mimeType,
@@ -45051,7 +44512,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: await chatWakeContext({
@@ -45062,7 +44522,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       }),
     });
     const stored = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: "agent-result.txt",
       contentType: "text/plain",
@@ -45081,7 +44540,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     const authorizationReason =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -45233,7 +44691,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId,
         status,
         contextSnapshot: await chatWakeContext({
@@ -45253,7 +44710,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       contentType = "image/png",
     ) => {
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: filename,
         contentType,
@@ -45322,7 +44778,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       { authorType: "agent", authorizationReason: "paperclip_runner_protocol" },
     );
     const storedDirect = await storage.storage.putFile({
-      companyId: fixture.companyId,
       namespace: `issues/${conversation.issueId}`,
       originalFilename: "direct-selection.png",
       contentType: "image/png",
@@ -45539,7 +44994,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const authorizationReason =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -45685,7 +45139,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: await chatWakeContext({
@@ -45699,7 +45152,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     for (let index = 0; index < 21; index += 1) {
       const body = Buffer.from(`selected file ${index + 1}`, "utf8");
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${conversation.issueId}`,
         originalFilename: `selected-${String(index + 1).padStart(2, "0")}.txt`,
         contentType: "text/plain",
@@ -45840,7 +45292,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
 
     const authorizationReason =
       await resolveChatRunPresentationAuthorizationReason(db, {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -45900,7 +45351,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const nonChatRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: nonChatRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "succeeded",
       contextSnapshot: {
@@ -46039,7 +45489,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: firstRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: {
@@ -46051,7 +45500,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
       {
         id: secondRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: {
@@ -46063,7 +45511,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
       {
         id: internalRecoveryRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "succeeded",
         contextSnapshot: {
@@ -46078,7 +45525,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const firstResponse = await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "First queued answer",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId: firstRunId,
     });
@@ -46116,7 +45562,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const secondResponse = await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "Second queued answer",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId: secondRunId,
     });
@@ -46439,7 +45884,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         },
       });
       const endpoint = await context.service.create(
-        fixture.companyId,
         {
           provider: "discord",
           assignedAgentId: fixture.assignedAgentId,
@@ -46523,7 +45967,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "discord"),
             eq(chatExternalPrincipals.providerAccountId, guildId),
             eq(chatExternalPrincipals.externalId, externalUserId),
@@ -46541,7 +45984,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         "owner-user",
       );
       const scope = {
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         applicationId,
         guildId,
@@ -46809,7 +46251,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const runId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: runId,
-            companyId: f.fixture.companyId,
             agentId: f.fixture.assignedAgentId,
             status: "running",
             contextSnapshot: await chatWakeContext({
@@ -46822,7 +46263,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const [progress] = await db
             .insert(chatPublications)
             .values({
-              companyId: f.fixture.companyId,
               endpointId: f.endpoint.id,
               conversationId: f.conversation.id,
               issueId: f.conversation.issueId,
@@ -46842,7 +46282,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             await addSelectedChatFinal({
               agentId: f.fixture.assignedAgentId,
               body: "The Discord final must remain",
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId,
             });
@@ -46868,7 +46307,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             const final = await addSelectedChatFinal({
               agentId: f.fixture.assignedAgentId,
               body: "Possibly delivered Discord final",
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId,
             });
@@ -47570,7 +47008,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           // real binding/milestone/final publication code, not an auth mock.
           await db.insert(heartbeatRuns).values({
             id: runId,
-            companyId: f.fixture.companyId,
             agentId: f.fixture.assignedAgentId,
             runtimeMode: "native",
             nativeIssueId: f.conversation.issueId,
@@ -47670,7 +47107,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const f = await reopenedFixture();
         try {
           const scope = {
-            companyId: f.fixture.companyId,
             issueId: f.conversation.issueId,
           };
           await expect(
@@ -47752,7 +47188,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           expect(admitted.action.status).toBe("processed");
           await expect(
             resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId: admitted.runId,
             }),
@@ -47771,14 +47206,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           );
           await expect(
             resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId: f.duringConfirmation!.runId,
             }),
           ).resolves.toBe("internal_agent_write");
           await expect(
             resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId: f.fresh.runId,
             }),
@@ -47816,14 +47249,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               source = await f.bindRun(messageId);
               await expect(
                 resolveChatRunPresentationAuthorizationReason(db, {
-                  companyId: f.fixture.companyId,
                   issueId: f.conversation.issueId,
                   runId: source.runId,
                 }),
               ).resolves.toBe("allow_chat_run_presentation");
             }
             if (mode === "newer_issue_mismatch") {
-              const unrelated = await issueService(db).create(f.fixture.companyId, {
+              const unrelated = await issueService(db).create({
                 title: "Independent task must not supply control proof",
                 createdByUserId: "owner-user",
               });
@@ -47859,7 +47291,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             }
             await expect(
               resolveChatRunPresentationAuthorizationReason(db, {
-                companyId: f.fixture.companyId,
                 issueId: f.conversation.issueId,
                 runId: source.runId,
               }),
@@ -47880,7 +47311,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               wakeId = randomUUID();
             await db.insert(agentWakeupRequests).values({
               id: wakeId,
-              companyId: f.fixture.companyId,
               agentId: f.fixture.assignedAgentId,
               source: "automation",
               triggerDetail: "system",
@@ -47894,7 +47324,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             });
             await db.insert(heartbeatRuns).values({
               id: runId,
-              companyId: f.fixture.companyId,
               agentId: f.fixture.assignedAgentId,
               nativeIssueId: f.conversation.issueId,
               runtimeMode: "native",
@@ -47914,7 +47343,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .where(eq(agentWakeupRequests.id, wakeId));
             await expect(
               resolveChatRunPresentationAuthorizationReason(db, {
-                companyId: f.fixture.companyId,
                 issueId: f.conversation.issueId,
                 runId,
               }),
@@ -47940,7 +47368,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           // this mutable subset, must determine whether the batch is fresh.
           await expect(
             resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId: f.fresh.runId,
             }),
@@ -47961,7 +47388,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(heartbeatRuns.id, f.fresh.runId));
           await expect(
             resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId: f.fresh.runId,
             }),
@@ -48026,7 +47452,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(heartbeatRuns.id, f.fresh.runId));
           await expect(
             resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: f.fixture.companyId,
               issueId: f.conversation.issueId,
               runId: f.fresh.runId,
             }),
@@ -48058,7 +47483,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             "active",
           );
           const scope = {
-            companyId: f.fixture.companyId,
             issueId: f.conversation.issueId,
           };
           await expect(
@@ -48203,7 +47627,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 .where(eq(issueComments.id, f.fresh.context.wakeCommentId));
             if (mode === "pending_lifecycle")
               await db.insert(chatDeliveries).values({
-                companyId: f.fixture.companyId,
                 endpointId: f.endpoint.id,
                 conversationId: f.conversation.id,
                 providerEventId: `edit:${randomUUID()}`,
@@ -48284,7 +47707,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 .where(eq(issues.id, f.conversation.issueId));
             await expect(
               resolveChatRunPresentationAuthorizationReason(db, {
-                companyId: f.fixture.companyId,
                 issueId: f.conversation.issueId,
                 runId: f.fresh.runId,
               }),
@@ -48383,7 +47805,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(post).not.toHaveBeenCalled();
     expect(await db.select().from(chatActions).where(and(eq(chatActions.endpointId, endpoint.id), eq(chatActions.kind, "slack_connect")))).toHaveLength(1);
     expect(await db.select().from(chatActions).where(and(eq(chatActions.endpointId, endpoint.id), eq(chatActions.kind, "slash_task_start")))).toHaveLength(0);
-    const other = await service.create(fixture.companyId, { provider: "slack", assignedAgentId: fixture.assignedAgentId }, "owner-user");
+    const other = await service.create({ provider: "slack", assignedAgentId: fixture.assignedAgentId }, "owner-user");
     await db.update(chatEndpoints).set({ status: "verifying", providerAccountId: (await service.get(endpoint.id)).providerAccountId }).where(eq(chatEndpoints.id, other.id));
     expect((await service.listPrincipals(other.id))[0]?.lastConnectAt).toBeNull();
     const notice = String((postEphemeral.mock.calls[0] as unknown[])[1]);
@@ -48393,10 +47815,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(await service.previewIdentityLink(token, "owner-user")).toMatchObject({ selfService: true, canConfirm: true, externalLabel: "Connect Person" });
     expect(await service.setupTestStatus(endpoint.id, "owner-user")).toEqual({ messageReceivedAt: null });
     await expect(service.finishSlackSetup(endpoint.id, "owner-user")).rejects.toMatchObject({ status: 403 });
-    const outsiderId = `outsider-${fixture.companyId}`;
+    const outsiderId = `outsider-${fixture.organizationId}`;
     const now = new Date();
     await db.insert(authUsers).values({ id: outsiderId, name: "Outside Person", email: `${outsiderId}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
-    const outsideApp = routesApp(db, randomUUID(), service, outsiderId);
+    const outsideApp = routesApp(db, service, outsiderId, false);
     expect((await request(outsideApp).get(`/api/chat-identity-links/preview?token=${token}`)).body).toMatchObject({ selfService: true, canConfirm: false });
     await expect(service.confirmIdentityLink(token, outsiderId)).rejects.toMatchObject({ status: 403 });
     await request(outsideApp).post("/api/chat-identity-links/confirm").send({ token }).expect(403);
@@ -48428,19 +47850,19 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const fixture = await seedCompany();
     const { endpoint, service } = await configuredSlackEndpoint(fixture);
     const now = new Date();
-    const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: (await service.get(endpoint.id)).providerAccountId!, externalId: "U-TEST", kind: "user", displayName: "Test" }).returning();
+    const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: (await service.get(endpoint.id)).providerAccountId!, externalId: "U-TEST", kind: "user", displayName: "Test" }).returning();
     const intent = await service.createLinkIntent(endpoint.id, principal.id, 600);
     const token = new URL(intent.confirmationUrl).searchParams.get("token")!;
     await db.update(chatIdentityLinks).set({ expiresAt: new Date(now.getTime() - 1) }).where(eq(chatIdentityLinks.principalId, principal.id));
     await expect(service.confirmIdentityLink(token, "owner-user")).rejects.toMatchObject({ status: 422 });
     const fresh = await service.createLinkIntent(endpoint.id, principal.id, 600);
     await service.confirmIdentityLink(new URL(fresh.confirmationUrl).searchParams.get("token")!, "owner-user");
-    await db.insert(chatActions).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, kind: "slash_task_start", providerActionId: "old-test-message", createdAt: new Date(now.getTime() - 60_000), status: "processed" });
+    await db.insert(chatActions).values({ endpointId: endpoint.id, principalId: principal.id, kind: "slash_task_start", providerActionId: "old-test-message", createdAt: new Date(now.getTime() - 60_000), status: "processed" });
     expect(await service.setupTestStatus(endpoint.id, "owner-user")).toEqual({ messageReceivedAt: null });
     if (kind === "slash") {
-    await db.insert(chatActions).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, kind: "slash_task_start", providerActionId: "current-test-message", status: "processed" });
+    await db.insert(chatActions).values({ endpointId: endpoint.id, principalId: principal.id, kind: "slash_task_start", providerActionId: "current-test-message", status: "processed" });
     } else {
-      await db.insert(chatDeliveries).values({ companyId: fixture.companyId, endpointId: endpoint.id, principalId: principal.id, providerEventId: "current-test-message", deduplicationKey: "current-test-message", eventKind: kind, normalizedEvent: {}, state: "processed" });
+      await db.insert(chatDeliveries).values({ endpointId: endpoint.id, principalId: principal.id, providerEventId: "current-test-message", deduplicationKey: "current-test-message", eventKind: kind, normalizedEvent: {}, state: "processed" });
     }
     expect(await service.setupTestStatus(endpoint.id, "owner-user")).toMatchObject({ messageReceivedAt: expect.any(String) });
     expect(await service.setupTestStatus(endpoint.id, "someone-else")).toEqual({ messageReceivedAt: null });
@@ -48460,7 +47882,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!callbacks.onSlashCommand)
       throw new Error("Slack slash command callback was not registered");
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-COMMANDS",
@@ -48564,7 +47985,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!callbacks.onSlashCommand)
       throw new Error("Slack slash command callback was not registered");
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-COMMAND-RETRY",
@@ -48716,7 +48136,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-COMMAND-LOCK-PROBE",
@@ -48812,8 +48231,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toEqual([]);
     await expect(
       db
@@ -48883,7 +48301,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .insert(chatEndpointResources)
       .values([
         {
-          companyId: pausedFixture.companyId,
           endpointId: paused.endpoint.id,
           type: "channel" as const,
           providerResourceId: "C-PAUSED-CONFIRMED-STARTER",
@@ -48892,7 +48309,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           enabled: true,
         },
         {
-          companyId: activeFixture.companyId,
           endpointId: active.endpoint.id,
           type: "channel" as const,
           providerResourceId: "C-ACTIVE-CONFIRMED-STARTER",
@@ -48906,7 +48322,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .insert(chatExternalPrincipals)
       .values([
         {
-          companyId: pausedFixture.companyId,
           provider: "slack" as const,
           providerAccountId: pausedEndpoint.providerAccountId,
           externalId: "U-PAUSED-CONFIRMED-STARTER",
@@ -48916,7 +48331,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           isBot: false,
         },
         {
-          companyId: activeFixture.companyId,
           provider: "slack" as const,
           providerAccountId: activeEndpoint.providerAccountId,
           externalId: "U-ACTIVE-CONFIRMED-STARTER",
@@ -48932,7 +48346,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .insert(chatActions)
       .values([
         {
-          companyId: pausedFixture.companyId,
           endpointId: paused.endpoint.id,
           principalId: pausedPrincipal!.id,
           kind: "slash_task_start" as const,
@@ -48952,7 +48365,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           createdAt,
         },
         {
-          companyId: activeFixture.companyId,
           endpointId: active.endpoint.id,
           principalId: activePrincipal!.id,
           kind: "slash_task_start" as const,
@@ -49032,7 +48444,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-CONFIRMED-STARTER",
@@ -49044,7 +48455,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [principal] = await db
       .insert(chatExternalPrincipals)
       .values({
-        companyId: fixture.companyId,
         provider: "slack",
         providerAccountId: configured.providerAccountId,
         externalId: "U-CONFIRMED-STARTER",
@@ -49059,7 +48469,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [action] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal!.id,
         kind: "slash_task_start",
@@ -49165,7 +48574,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error("Slack endpoint setup was incomplete");
     }
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-RECLAIMED-ADMISSION",
@@ -49176,7 +48584,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [principal] = await db
       .insert(chatExternalPrincipals)
       .values({
-        companyId: fixture.companyId,
         provider: "slack",
         providerAccountId: configured.providerAccountId,
         externalId: "U-RECLAIMED-ADMISSION",
@@ -49191,7 +48598,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [action] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: null,
         kind: "slash_task_start",
@@ -49293,7 +48699,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [resource] = await db
         .insert(chatEndpointResources)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           type: "channel",
           providerResourceId: `C-CONFIRMED-AUTH-${authorizationChange}`,
@@ -49305,7 +48710,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [principal] = await db
         .insert(chatExternalPrincipals)
         .values({
-          companyId: fixture.companyId,
           provider: "slack",
           providerAccountId: configured.providerAccountId,
           externalId: externalPrincipalId,
@@ -49316,7 +48720,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatIdentityLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal!.id,
         paperclipUserId: "owner-user",
@@ -49328,7 +48731,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [action] = await db
         .insert(chatActions)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           principalId: principal!.id,
           kind: "slash_task_start",
@@ -49389,8 +48791,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db
           .select({ id: issues.id })
-          .from(issues)
-          .where(eq(issues.companyId, fixture.companyId)),
+          .from(issues),
       ).resolves.toEqual([]);
       await expect(
         db
@@ -49445,7 +48846,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-QUEUED-STARTER",
@@ -49457,7 +48857,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [principal] = await db
       .insert(chatExternalPrincipals)
       .values({
-        companyId: fixture.companyId,
         provider: "slack",
         providerAccountId: configured.providerAccountId,
         externalId: "U-QUEUED-STARTER",
@@ -49473,7 +48872,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [action] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal!.id,
         kind: "slash_task_start",
@@ -49608,8 +49006,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toEqual([]);
     await expect(
       db
@@ -49648,7 +49045,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-QUEUED-REVOKE",
@@ -49734,7 +49130,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error("Slack slash command setup was incomplete");
     }
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-QUEUED-RATE-LIMIT",
@@ -49848,7 +49243,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error("Slack slash command callback was not registered");
     }
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-COMMAND-RECOVERY",
@@ -49945,7 +49339,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       ]),
     );
 
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
     providerRuntime.postError = null;
     let releaseRetryPost!: () => void;
     const retryPostEntered = vi.fn();
@@ -50027,7 +49421,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [cancelAction] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         kind: "slash_task_start",
         providerActionId: `slash_task:cancel-${randomUUID()}`,
@@ -50161,8 +49554,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(1);
   });
 
@@ -50185,7 +49577,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: "C-COMMAND-ORPHAN",
@@ -50276,7 +49667,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }
     const authorizationLockProbe = db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${fixture.companyId}:${taskStart.principalId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`chat-identity:${taskStart.principalId}`}, 0))`,
       );
       return "authorization-lock-released" as const;
     });
@@ -50377,8 +49768,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await expect(
       db
         .select({ id: issues.id })
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).resolves.toEqual([]);
     expect(wakeup).not.toHaveBeenCalled();
     expect(providerRuntime.posts).toEqual([
@@ -50470,8 +49860,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       runtime.endpoints.get(endpoint.id)?.posts.length ?? 0;
     const issuesBeforeStatus = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, fixture.companyId));
+      .from(issues);
     const firstIssue = issuesBeforeStatus.find(
       (issue) => issue.title === "Start the first DM task",
     );
@@ -50490,8 +49879,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(issuesBeforeStatus.length);
     await service.processPendingPublications();
     expect(runtime.endpoints.get(endpoint.id)?.posts.at(-1)?.text).toMatch(
@@ -50502,8 +49890,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(issuesBeforeStatus.length);
     await expect(service.listConversations(endpoint.id)).resolves.toEqual([
       expect.objectContaining({ state: "active" }),
@@ -50529,15 +49916,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     const issuesBeforeClose = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, fixture.companyId));
+      .from(issues);
     expect(issuesBeforeClose).toHaveLength(issuesBeforeStatus.length + 1);
     await invokeControl("close");
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(issuesBeforeClose.length);
     expect(
       (await service.listConversations(endpoint.id)).map(
@@ -50554,7 +49939,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db
         .select({ id: issues.id, status: issues.status })
         .from(issues)
-        .where(eq(issues.companyId, fixture.companyId))
         .orderBy(asc(issues.id)),
     ).toEqual(
       issuesBeforeClose
@@ -50658,7 +50042,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error("Slack slash command callback was not registered");
     }
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-CONTROL-GUIDANCE",
@@ -50717,8 +50100,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(0);
     // The ephemeral post is observable before its provider_effect row
     // settles, so under suite load the third row can still be
@@ -50805,8 +50187,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(0);
     expect(
       await db
@@ -51161,13 +50542,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const providerRuntime = runtime.endpoints.get(endpoint.id);
     if (!providerRuntime) throw new Error("Expected Telegram runtime");
     const initialPostCount = providerRuntime.posts.length;
-    const app = routesApp(db, fixture.companyId, service);
+    const app = routesApp(db, service);
 
     const insertAmbiguousEffect = async (suffix: string, text: string) => {
       const [delivery] = await db
         .insert(chatDeliveries)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           providerEventId: `provider-effect-resolution:${suffix}`,
@@ -51181,7 +50561,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [action] = await db
         .insert(chatActions)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           deliveryId: delivery!.id,
           conversationId: conversation.id,
@@ -51328,7 +50707,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const terminalCreatedAt = new Date("2026-01-01T00:00:00.000Z");
     await db.insert(chatActions).values(
       Array.from({ length: 25 }, (_, index) => ({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         kind: "provider_effect",
         providerActionId: `provider_effect:terminal:${randomUUID()}`,
@@ -51342,7 +50720,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [actionable] = await db
       .insert(chatActions)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: seedEffect.principalId,
         kind: "provider_effect",
@@ -51635,14 +51012,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(1);
     expect(
       await db
         .select()
-        .from(issueComments)
-        .where(eq(issueComments.companyId, fixture.companyId)),
+        .from(issueComments),
     ).toHaveLength(1);
   });
 
@@ -51738,7 +51113,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     try {
       const endpoint = await service.create(
-        fixture.companyId,
         { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
         "owner-user",
       );
@@ -51869,8 +51243,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(
         await db
           .select()
-          .from(issues)
-          .where(eq(issues.companyId, fixture.companyId)),
+          .from(issues),
       ).toHaveLength(0);
       expect(wakeup).not.toHaveBeenCalled();
     } finally {
@@ -51890,7 +51263,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const topicId = 77;
     const topicThreadId = `telegram:${chatId}:${topicId}`;
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "chat",
       providerResourceId: chatId,
@@ -51990,8 +51362,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(1);
     expect(
       await db
@@ -52058,8 +51429,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     expect(
       await db
         .select()
-        .from(issues)
-        .where(eq(issues.companyId, fixture.companyId)),
+        .from(issues),
     ).toHaveLength(1);
     expect(
       (
@@ -52091,7 +51461,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     if (!callbacks.onSlashCommand)
       throw new Error("Slack slash command callback was not registered");
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "channel",
       providerResourceId: "C-COMMAND-DENY",
@@ -52371,14 +51740,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         });
         runId = randomUUID();
         const binding = {
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation.issueId,
           runId,
         };
         await db.insert(heartbeatRuns).values({
           id: runId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           status: "running",
           runtimeMode: "native",
@@ -52400,7 +51767,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .where(eq(issues.id, conversation.issueId));
         const authority = () =>
           resolveChatRunPresentationAuthorizationReason(db, {
-            companyId: fixture.companyId,
             issueId: conversation.issueId,
             runId: runId!,
           });
@@ -52493,7 +51859,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const comment = await addSelectedChatFinal({
             agentId: fixture.assignedAgentId,
             body: "Exact source answer remains deliverable.",
-            companyId: fixture.companyId,
             issueId: conversation.issueId,
             runId,
           });
@@ -52877,7 +52242,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
   });
 
   async function linkLifecycleFixtureActor(input: {
-    companyId: string;
     endpointId: string;
     externalId: string;
   }) {
@@ -52885,14 +52249,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .select()
       .from(chatExternalPrincipals)
       .where(
-        and(
-          eq(chatExternalPrincipals.companyId, input.companyId),
-          eq(chatExternalPrincipals.externalId, input.externalId),
-        ),
+        eq(chatExternalPrincipals.externalId, input.externalId),
       );
     if (!principal) throw new Error("Expected original lifecycle principal");
     await db.insert(chatIdentityLinks).values({
-      companyId: input.companyId,
       endpointId: input.endpointId,
       principalId: principal.id,
       paperclipUserId: "owner-user",
@@ -52903,10 +52263,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(chatEndpoints)
       .set({ allowUnlinkedPeople: false })
       .where(
-        and(
-          eq(chatEndpoints.companyId, input.companyId),
-          eq(chatEndpoints.id, input.endpointId),
-        ),
+        eq(chatEndpoints.id, input.endpointId),
       );
     return principal.id;
   }
@@ -52991,7 +52348,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [conversation] = await service.listConversations(endpoint.id);
         const linkedPrincipalId = relinkActor
           ? await linkLifecycleFixtureActor({
-              companyId: fixture.companyId,
               endpointId: endpoint.id,
               externalId: original.author.userId,
             })
@@ -53003,7 +52359,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect(attachment?.issueCommentId).toBeTruthy();
         const runId = randomUUID();
         const binding = {
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           issueId: conversation.issueId,
           runId,
@@ -53262,10 +52617,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(chatConversations)
           .set({ state: "completed" })
           .where(
-            and(
-              eq(chatConversations.companyId, fixture.companyId),
-              eq(chatConversations.endpointId, endpoint.id),
-            ),
+            eq(chatConversations.endpointId, endpoint.id),
           );
         await retirePublicationFixture(service, endpoint.id);
         rmSync(workspaceRoot, { recursive: true, force: true });
@@ -53292,7 +52644,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               )[0]!.principalId
             : null;
         const input = {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -53401,10 +52752,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(chatConversations)
           .set({ state: "completed" })
           .where(
-            and(
-              eq(chatConversations.companyId, context.fixture.companyId),
-              eq(chatConversations.id, context.conversation.id),
-            ),
+            eq(chatConversations.id, context.conversation.id),
           );
         await retirePublicationFixture(context.service, context.endpoint.id);
       }
@@ -53536,10 +52884,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(chatConversations)
           .set({ state: "completed" })
           .where(
-            and(
-              eq(chatConversations.companyId, context.fixture.companyId),
-              eq(chatConversations.id, context.conversation.id),
-            ),
+            eq(chatConversations.id, context.conversation.id),
           );
         await retirePublicationFixture(context.service, context.endpoint.id);
       }
@@ -53565,7 +52910,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const webhookSecret =
           configuration.providerConfig.credentials.webhookSecret;
         const input = {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -53709,10 +53053,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(chatConversations)
           .set({ state: "completed" })
           .where(
-            and(
-              eq(chatConversations.companyId, context.fixture.companyId),
-              eq(chatConversations.id, context.conversation.id),
-            ),
+            eq(chatConversations.id, context.conversation.id),
           );
         await retirePublicationFixture(context.service, context.endpoint.id);
       }
@@ -53818,10 +53159,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .update(chatConversations)
         .set({ state: "completed" })
         .where(
-          and(
-            eq(chatConversations.companyId, context.fixture.companyId),
-            eq(chatConversations.id, context.conversation.id),
-          ),
+          eq(chatConversations.id, context.conversation.id),
         );
       await retirePublicationFixture(context.service, context.endpoint.id);
     }
@@ -54251,7 +53589,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -54499,7 +53836,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })) as typeof globalThis.fetch,
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "microsoft-teams", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -55143,7 +54479,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .from(chatExternalPrincipals)
       .where(
         and(
-          eq(chatExternalPrincipals.companyId, fixture.companyId),
           eq(chatExternalPrincipals.provider, "telegram"),
           eq(chatExternalPrincipals.externalId, chatId),
         ),
@@ -55168,7 +54503,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       membershipRole: "operator",
     }).onConflictDoUpdate(membershipUpsert);
     await db.insert(chatIdentityLinks).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       principalId: principal.id,
       paperclipUserId: linkedUserId,
@@ -55278,7 +54612,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -55358,7 +54691,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: lateMilestone === "queued" ? "running" : "queued",
         contextSnapshot: await chatWakeContext({
@@ -55393,7 +54725,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [stale] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: endpoint.id,
           conversationId: conversation.id,
           issueId: conversation.issueId,
@@ -55453,7 +54784,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -55592,7 +54922,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "running",
         contextSnapshot: await chatWakeContext({
@@ -55607,7 +54936,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const resolvedAuthorizationReason =
         authorizationReason === "allow_chat_run_presentation"
           ? await resolveChatRunPresentationAuthorizationReason(db, {
-              companyId: fixture.companyId,
               issueId: conversation.issueId,
               runId,
             })
@@ -55648,7 +54976,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const laterQueuedRunId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: laterQueuedRunId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "queued",
         contextSnapshot: await chatWakeContext({
@@ -55714,7 +55041,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [action] = await db
         .insert(issueRecoveryActions)
         .values({
-          companyId: context.fixture.companyId,
           sourceIssueId: context.issue.id,
           kind: "active_run_watchdog",
           status: "active",
@@ -55730,7 +55056,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const app = express();
       app.use(express.json());
       app.use((req, _res, next) => {
-        req.actor = boardActor(context.fixture.companyId);
+        req.actor = boardActor();
         next();
       });
       app.use(
@@ -55819,7 +55145,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 await receipt.authorize(tx);
                 await tx.insert(agentWakeupRequests).values({
                   id: receipt.id,
-                  companyId: receipt.companyId,
                   agentId,
                   source: opts.source!,
                   triggerDetail: opts.triggerDetail,
@@ -56063,7 +55388,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: context.fixture.companyId,
       agentId: context.fixture.assignedAgentId,
       status: "failed",
       errorCode: "adapter_failed",
@@ -56147,7 +55471,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           schema: "paperclip.native-execution-input.v1",
           provider: { kind: "codex", model: null },
           binding: {
-            companyId: context.fixture.companyId,
             runId: id,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
@@ -56202,7 +55525,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const olderId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: olderId,
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             status: "succeeded",
             finishedAt: new Date(Date.now() - 60_000),
@@ -56241,7 +55563,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect(action).toBeDefined();
         await db.insert(heartbeatRuns).values({
           id: runId,
-          companyId: context.fixture.companyId,
           agentId: context.fixture.assignedAgentId,
           status: "failed",
           errorCode: "adapter_failed",
@@ -56275,7 +55596,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                     : "same-retained-thread",
               providerSessionId: checkpointAccount,
               identity: {
-                companyId: context.fixture.companyId,
                 issueId: context.issue.id,
                 agentId: context.fixture.assignedAgentId,
                 runId,
@@ -56289,7 +55609,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ status: "failed", runId })
           .where(eq(agentWakeupRequests.id, action.id));
         await db.insert(nativeRunFinalizations).values({
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           runId,
           phase: "observed",
@@ -56297,7 +55616,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           leaseOwner: mode === "leased" ? "other-owner" : null,
         });
         await db.insert(environmentLeases).values({
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           heartbeatRunId: runId,
           provider: "local",
@@ -56323,7 +55641,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(
             canonical({
               schema: "paperclip.native-session-scope.v2",
-              companyId: context.fixture.companyId,
               agentId: context.fixture.assignedAgentId,
               workspace: { kind: "transient", ...inputFor(runId).workspace },
               provider: {
@@ -56423,7 +55740,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             path.join(root, "cleanup-activation.json"),
             JSON.stringify({
               schema: "paperclip.native_cleanup_activation.v1",
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               runId: context.runId,
               requestId:
@@ -56442,7 +55758,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           );
         if (mode === "late_event")
           await db.insert(heartbeatRunEvents).values({
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             runId,
             seq: 1,
@@ -56458,7 +55773,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const stage = () =>
           db.transaction((tx) =>
             context.service.prepareFailedChatRunRetry(tx, {
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               agentId: context.fixture.assignedAgentId,
               failedRunId: runId,
@@ -56579,7 +55893,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           schema: "paperclip.native-execution-input.v1",
           provider: { kind: "codex", model: null },
           binding: {
-            companyId: context.fixture.companyId,
             runId: context.runId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
@@ -56657,7 +55970,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         if (kind !== "missing_coordinator")
           await db.insert(nativeRunFinalizations).values({
             runId: context.runId,
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             attempt: 3,
             phase:
@@ -56687,7 +55999,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           });
         if (kind === "late_provider_event")
           await db.insert(heartbeatRunEvents).values({
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             runId: context.runId,
             seq: 1,
@@ -56711,7 +56022,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               : JSON.stringify(value);
           const scope = {
             schema: "paperclip.native-session-scope.v2",
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             workspace: { kind: "transient", ...nativeExecutionInput.workspace },
             provider: {
@@ -56765,13 +56075,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         }
         if (kind === "active_environment")
           await db.insert(environmentLeases).values({
-            companyId: context.fixture.companyId,
             heartbeatRunId: context.runId,
             status: "active",
           });
         const attempt = db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -56821,7 +56129,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const stage = () =>
           db.transaction((tx) =>
             context.service.prepareFailedChatRunRetry(tx, {
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               agentId: context.fixture.assignedAgentId,
               failedRunId: context.runId,
@@ -56838,7 +56145,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .from(agentWakeupRequests)
           .where(eq(agentWakeupRequests.id, first.actionId));
         expect(retry).toMatchObject({
-          companyId: context.fixture.companyId,
           agentId: context.fixture.assignedAgentId,
           requestedByActorType: context.receipt.requestedByActorType,
           requestedByActorId: context.receipt.requestedByActorId,
@@ -56860,10 +56166,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .select()
             .from(agentWakeupRequests)
             .where(
-              and(
-                eq(agentWakeupRequests.companyId, context.fixture.companyId),
-                eq(agentWakeupRequests.id, first.actionId),
-              ),
+              eq(agentWakeupRequests.id, first.actionId),
             ),
         ).toHaveLength(1);
       } finally {
@@ -56877,7 +56180,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     try {
       const staged = await db.transaction((tx) =>
         context.service.prepareFailedChatRunRetry(tx, {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -56921,7 +56223,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       try {
         const staged = await db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -56961,7 +56262,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .from(chatDeliveries)
             .where(eq(chatDeliveries.id, context.action.deliveryId!));
           await db.insert(chatDeliveries).values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             principalId: context.action.principalId,
@@ -56979,7 +56279,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await db
             .insert(chatIdentityLinks)
             .values({
-              companyId: context.fixture.companyId,
               endpointId: context.endpoint.id,
               principalId: context.action.principalId!,
               status: "linked",
@@ -57038,7 +56337,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       try {
         const staged = await db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -57054,7 +56352,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           unknown
         >;
         await db.insert(chatDeliveries).values({
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           // This is the durable shape produced by recordLifecycleDelivery:
           // authenticated, but not yet assigned a conversation by its worker.
@@ -57120,7 +56417,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -57197,7 +56493,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const stage = () =>
         db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -57242,7 +56537,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       try {
         const staged = await db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -57273,7 +56567,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const retryRunId = randomUUID();
         await db.insert(heartbeatRuns).values({
           id: retryRunId,
-          companyId: context.fixture.companyId,
           agentId: context.fixture.assignedAgentId,
           status: "running",
           wakeupRequestId: staged.actionId,
@@ -57289,7 +56582,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ status: "in_progress", executionRunId: retryRunId })
           .where(eq(issues.id, context.issue.id));
         await db.insert(chatPublications).values({
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           conversationId: context.conversation.id,
           issueId: context.issue.id,
@@ -57306,7 +56598,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ status: "succeeded", finishedAt: new Date() })
           .where(eq(heartbeatRuns.id, retryRunId));
         const final = await addSelectedChatFinal({
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           runId: retryRunId,
@@ -57337,7 +56628,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     try {
       const staged = await db.transaction((tx) =>
         context.service.prepareFailedChatRunRetry(tx, {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -57367,7 +56657,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await request.authorize(tx);
           await tx.insert(agentWakeupRequests).values({
             id: request.id,
-            companyId: request.companyId,
             agentId,
             source: opts.source!,
             triggerDetail: opts.triggerDetail,
@@ -57415,7 +56704,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     try {
       const staged = await db.transaction((tx) =>
         context.service.prepareFailedChatRunRetry(tx, {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -57430,7 +56718,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: context.fixture.companyId,
         agentId: context.fixture.assignedAgentId,
         status: "succeeded",
         finishedAt: new Date(),
@@ -57443,7 +56730,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ runId, status: "completed" })
         .where(eq(agentWakeupRequests.id, staged.actionId));
       const final = await addSelectedChatFinal({
-        companyId: context.fixture.companyId,
         issueId: context.issue.id,
         agentId: context.fixture.assignedAgentId,
         runId,
@@ -57500,7 +56786,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const context = await failedChatRetryFixture("telegram");
     try {
       const input = {
-        companyId: context.fixture.companyId,
         issueId: context.issue.id,
         agentId: context.fixture.assignedAgentId,
         failedRunId: context.runId,
@@ -57517,7 +56802,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const failedRetryRunId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: failedRetryRunId,
-        companyId: context.fixture.companyId,
         agentId: context.fixture.assignedAgentId,
         status: "failed",
         errorCode: "adapter_failed",
@@ -57618,7 +56902,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       })
       .where(eq(heartbeatRuns.id, context.runId));
     await db.insert(heartbeatRunEvents).values({
-      companyId: context.fixture.companyId,
       agentId: context.fixture.assignedAgentId,
       runId: context.runId,
       seq: 1,
@@ -57644,7 +56927,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const stage = () =>
         db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -57663,7 +56945,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(agentWakeupRequests.id, first.actionId));
       expect(receipts).toEqual([
         expect.objectContaining({
-          companyId: context.fixture.companyId,
           agentId: context.fixture.assignedAgentId,
           requestedByActorType: context.receipt.requestedByActorType,
           requestedByActorId: context.receipt.requestedByActorId,
@@ -57709,7 +56990,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     try {
       const staged = await db.transaction((tx) =>
         context.service.prepareFailedChatRunRetry(tx, {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -57718,7 +56998,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
       const wakeCount = context.wakeup.mock.calls.length;
       await db.insert(heartbeatRunEvents).values({
-        companyId: context.fixture.companyId,
         agentId: context.fixture.assignedAgentId,
         runId: context.runId,
         seq: 2,
@@ -57771,7 +57050,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(heartbeatRunEvents.runId, context.runId));
         if (change === "provider_event")
           await db.insert(heartbeatRunEvents).values({
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             runId: context.runId,
             seq: 2,
@@ -57801,13 +57079,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(heartbeatRuns.id, context.runId));
         if (change === "environment_lease")
           await db.insert(environmentLeases).values({
-            companyId: context.fixture.companyId,
             heartbeatRunId: context.runId,
             status: "released",
           });
         if (change === "uncertain_publication")
           await db.insert(chatPublications).values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             issueId: context.issue.id,
@@ -57819,7 +57095,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const [comment] = await db
             .insert(issueComments)
             .values({
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               authorAgentId: context.fixture.assignedAgentId,
               authorType: "agent",
@@ -57828,7 +57103,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             })
             .returning();
           await db.insert(chatPublications).values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             issueId: context.issue.id,
@@ -57860,7 +57134,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await expect(
           db.transaction((tx) =>
             context.service.prepareFailedChatRunRetry(tx, {
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               agentId: context.fixture.assignedAgentId,
               failedRunId: context.runId,
@@ -57875,10 +57148,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .select()
             .from(chatActions)
             .where(
-              and(
-                eq(chatActions.companyId, context.fixture.companyId),
-                eq(chatActions.kind, "failed_run_retry"),
-              ),
+              eq(chatActions.kind, "failed_run_retry"),
             ),
         ).toEqual([]);
       } finally {
@@ -57899,7 +57169,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await expect(
           db.transaction((tx) =>
             context.service.prepareFailedChatRunRetry(tx, {
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               agentId: context.fixture.assignedAgentId,
               failedRunId: context.runId,
@@ -57930,7 +57199,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db.transaction((tx) =>
           context.service.prepareFailedChatRunRetry(tx, {
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             agentId: context.fixture.assignedAgentId,
             failedRunId: context.runId,
@@ -57945,10 +57213,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .select()
           .from(chatActions)
           .where(
-            and(
-              eq(chatActions.companyId, context.fixture.companyId),
-              eq(chatActions.kind, "failed_run_retry"),
-            ),
+            eq(chatActions.kind, "failed_run_retry"),
           ),
       ).toEqual([]);
     } finally {
@@ -57965,7 +57230,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const contractId = randomUUID();
           await db.insert(completionContracts).values({
             id: contractId,
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             revision: 1,
             schemaVersion: "1",
@@ -57986,7 +57250,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             })
             .where(eq(heartbeatRuns.id, context.runId));
           await db.insert(nativeRunResults).values({
-            companyId: context.fixture.companyId,
             issueId: context.issue.id,
             runId: context.runId,
             completionContractId: contractId,
@@ -58000,7 +57263,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           if (commentId)
             await db.insert(issueComments).values({
               id: commentId,
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               authorType: "agent",
               authorAgentId: context.fixture.assignedAgentId,
@@ -58008,7 +57270,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               body: "Already selected answer",
             });
           await db.insert(chatPublications).values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             issueId: context.issue.id,
@@ -58022,7 +57283,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await expect(
           db.transaction((tx) =>
             context.service.prepareFailedChatRunRetry(tx, {
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               agentId: context.fixture.assignedAgentId,
               failedRunId: context.runId,
@@ -58044,7 +57304,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     try {
       const staged = await db.transaction((tx) =>
         context.service.prepareFailedChatRunRetry(tx, {
-          companyId: context.fixture.companyId,
           issueId: context.issue.id,
           agentId: context.fixture.assignedAgentId,
           failedRunId: context.runId,
@@ -58062,7 +57321,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         db.transaction((tx) =>
           authorizeFailedChatRunRetryWake(db, tx as unknown as TestDb, {
             phase: "promotion",
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             issueId: context.issue.id,
             wakeupRequestId: staged.actionId,
@@ -58163,7 +57421,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 });
     if (provider === "microsoft-teams" && teamsSurface === "channel") {
       await db.insert(chatEndpointResources).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "channel",
         providerResourceId: teamsConversationId,
@@ -58178,7 +57435,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         externalActorId ??
         (provider === "telegram" ? telegramChatId : "U-SAFE-PROGRESS");
       await db.insert(chatExternalPrincipals).values({
-        companyId: fixture.companyId,
         provider,
         providerAccountId: currentEndpoint.providerAccountId!,
         externalId: originalActorId,
@@ -58186,7 +57442,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         isBot: false,
       });
       await linkLifecycleFixtureActor({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         externalId: originalActorId,
       });
@@ -58246,7 +57501,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const baseCreatedAt = new Date(Date.now() - 60_000);
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         runtimeMode: "native",
         status: "running",
@@ -58258,7 +57512,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         }),
       });
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -58281,7 +57534,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       createdAt = new Date(run.baseCreatedAt.getTime() + 30_000 + seq),
     ) => {
       await db.insert(heartbeatRunEvents).values({
-        companyId: fixture.companyId,
         runId: run.runId,
         agentId: fixture.assignedAgentId,
         seq,
@@ -58326,14 +57578,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const finalComment = await addSelectedChatFinal({
         agentId: final.fixture.assignedAgentId,
         body: "The unrelated final is ready",
-        companyId: final.fixture.companyId,
         issueId: final.conversation.issueId,
         runId: finalRun.runId,
       });
       const interaction = await issueThreadInteractionService(db).create(
         {
-          id: question.conversation.issueId,
-          companyId: question.fixture.companyId,
+          id: question.conversation.issueId
         },
         {
           kind: "ask_user_questions",
@@ -58494,8 +57744,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         if (winner === "question") {
           await issueThreadInteractionService(db).create(
             {
-              id: context.conversation.issueId,
-              companyId: context.fixture.companyId,
+              id: context.conversation.issueId
             },
             {
               kind: "ask_user_questions",
@@ -58524,7 +57773,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await addSelectedChatFinal({
             agentId: context.fixture.assignedAgentId,
             body: "Current selected final",
-            companyId: context.fixture.companyId,
             issueId: context.conversation.issueId,
             runId: run.runId,
           });
@@ -58642,7 +57890,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await addSelectedChatFinal({
         agentId: context.fixture.assignedAgentId,
         body: "The successor's authoritative answer",
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         runId: successor.runId,
       });
@@ -58718,7 +57965,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const final = await addSelectedChatFinal({
           agentId: context.fixture.assignedAgentId,
           body: "The selected final remains authoritative",
-          companyId: context.fixture.companyId,
           issueId: context.conversation.issueId,
           runId: run.runId,
         });
@@ -58793,7 +58039,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           addSelectedChatFinal({
             agentId: context.fixture.assignedAgentId,
             body: "The original selected answer remains available",
-            companyId: context.fixture.companyId,
             issueId: context.conversation.issueId,
             runId: original.runId,
           });
@@ -59005,7 +58250,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const phases = ["intent", "spawned", "initialization_failed"];
         await db.insert(heartbeatRunEvents).values(
           phases.map((phase, index) => ({
-            companyId: context.fixture.companyId,
             agentId: context.fixture.assignedAgentId,
             runId: run.runId,
             seq: index + 1,
@@ -59158,7 +58402,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const finalComment = await addSelectedChatFinal({
       agentId: context.fixture.assignedAgentId,
       body: "Authoritative final after restart",
-      companyId: context.fixture.companyId,
       issueId: context.conversation.issueId,
       runId: run.runId,
     });
@@ -59256,7 +58499,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const runId = randomUUID();
         await db.insert(heartbeatRuns).values({
           id: runId,
-          companyId: context.fixture.companyId,
           agentId: context.fixture.assignedAgentId,
           runtimeMode: "native",
           status: "running",
@@ -59268,7 +58510,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           }),
         });
         await db.insert(chatPublications).values({
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           conversationId: context.conversation.id,
           issueId: context.conversation.issueId,
@@ -59294,7 +58535,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const finalComment = await addSelectedChatFinal({
         agentId: context.fixture.assignedAgentId,
         body: `Final response ${index + 1}`,
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         runId: run.runId,
       });
@@ -59412,7 +58652,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const questionRun = await context.createRun("a question");
       await context.addEvent(questionRun);
       await db.insert(issueThreadInteractions).values({
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         kind: "ask_user_questions",
         continuationPolicy: "wake_assignee",
@@ -59472,7 +58711,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const finalComment = await addSelectedChatFinal({
         agentId: context.fixture.assignedAgentId,
         body: "Authoritative final answer",
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         runId: finalRun.runId,
       });
@@ -59564,7 +58802,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       contextSnapshot: await chatWakeContext({
@@ -59576,7 +58813,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     for (const progressState of ["queued", "working"] as const) {
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -59593,7 +58829,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await addSelectedChatFinal({
       agentId: fixture.assignedAgentId,
       body: "Final Telegram result",
-      companyId: fixture.companyId,
       issueId: conversation.issueId,
       runId,
     });
@@ -59680,13 +58915,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const commentCount = await db
       .select()
       .from(issueComments)
-      .where(eq(issueComments.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const wakeupCount = wakeup.mock.calls.length;
     const runCount = await db
       .select()
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const emoji = {
       name: "thumbs_up",
@@ -59757,7 +58990,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db
         .select()
         .from(issueComments)
-        .where(eq(issueComments.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).toBe(commentCount);
     expect(wakeup).toHaveBeenCalledTimes(wakeupCount);
@@ -59765,7 +58997,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db
         .select()
         .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).toBe(runCount);
   });
@@ -60092,12 +59323,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const issueCount = await db
       .select({ id: issues.id })
       .from(issues)
-      .where(eq(issues.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const runCount = await db
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const wakeupCount = wakeup.mock.calls.length;
     await db
@@ -60143,14 +59372,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       db
         .select({ id: issues.id })
         .from(issues)
-        .where(eq(issues.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).resolves.toBe(issueCount);
     await expect(
       db
         .select({ id: heartbeatRuns.id })
         .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).resolves.toBe(runCount);
     expect(wakeup).toHaveBeenCalledTimes(wakeupCount);
@@ -60284,7 +59511,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runCount = await db
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const wakeupCount = wakeup.mock.calls.length;
     await service.shutdown();
@@ -60341,7 +59567,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         db
           .select({ id: heartbeatRuns.id })
           .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, fixture.companyId))
           .then((rows) => rows.length),
       ).resolves.toBe(runCount);
       expect(wakeup).toHaveBeenCalledTimes(wakeupCount);
@@ -60575,16 +59800,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           Promise.all([
             db
               .select({ id: issueComments.id })
-              .from(issueComments)
-              .where(eq(issueComments.companyId, fixture.companyId)),
+              .from(issueComments),
             db
               .select({ id: issues.id })
-              .from(issues)
-              .where(eq(issues.companyId, fixture.companyId)),
+              .from(issues),
             db
               .select({ id: heartbeatRuns.id })
-              .from(heartbeatRuns)
-              .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+              .from(heartbeatRuns),
             db
               .select({ id: chatPublications.id })
               .from(chatPublications)
@@ -60806,7 +60028,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .where(eq(chatPublications.id, publication.id));
       await tx.insert(chatMessageLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         publicationId: publication.id,
@@ -61302,7 +60523,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runCount = await db
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, fixture.companyId))
       .then((rows) => rows.length);
     await db
       .update(chatDeliveries)
@@ -61323,7 +60543,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       db
         .select({ id: heartbeatRuns.id })
         .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).resolves.toBe(runCount);
   });
@@ -61397,12 +60616,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runCountBefore = await db
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const issueCountBefore = await db
       .select({ id: issues.id })
       .from(issues)
-      .where(eq(issues.companyId, fixture.companyId))
       .then((rows) => rows.length);
     const emoji = {
       name: "thumbs_up",
@@ -61460,14 +60677,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       db
         .select({ id: heartbeatRuns.id })
         .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).resolves.toBe(runCountBefore);
     await expect(
       db
         .select({ id: issues.id })
         .from(issues)
-        .where(eq(issues.companyId, fixture.companyId))
         .then((rows) => rows.length),
     ).resolves.toBe(issueCountBefore);
     await expect(service.listConversations(endpoint.id)).resolves.toHaveLength(
@@ -61568,7 +60783,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 )[0]!
               : conversation!;
           await db.insert(chatMessageLinks).values({
-            companyId: fixture.companyId,
             endpointId: endpoint.id,
             conversationId: target.id,
             providerMessageId: "99084",
@@ -61732,7 +60946,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       name: "paperclipai/chat-lifecycle-order",
     });
     await db.insert(chatEndpointResources).values({
-      companyId: fixture.companyId,
       endpointId: endpoint.id,
       type: "repository",
       providerResourceId: "paperclipai/chat-lifecycle-order",
@@ -61961,7 +61174,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       throw new Error(`Unexpected provider request: ${url}`);
     }) as typeof globalThis.fetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "github", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -62204,7 +61416,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "failed",
         errorCode: "adapter_failed",
@@ -62225,7 +61436,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ status: "failed", runId })
         .where(eq(agentWakeupRequests.id, originalAction!.id));
       const retryInput = {
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         agentId: fixture.assignedAgentId,
         failedRunId: runId,
@@ -62352,10 +61562,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .update(chatConversations)
         .set({ state: "completed" })
         .where(
-          and(
-            eq(chatConversations.companyId, fixture.companyId),
-            eq(chatConversations.endpointId, endpoint.id),
-          ),
+          eq(chatConversations.endpointId, endpoint.id),
         );
       await retirePublicationFixture(service, endpoint.id);
     }
@@ -62375,7 +61582,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [previousResource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "chat",
         providerResourceId: previousChatId,
@@ -62511,7 +61717,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [resource] = await db
       .insert(chatEndpointResources)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         type: "chat",
         providerResourceId: chatId,
@@ -62637,10 +61842,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .select({ id: chatExternalPrincipals.id })
         .from(chatExternalPrincipals)
         .where(
-          and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
-            eq(chatExternalPrincipals.provider, "telegram"),
-          ),
+          eq(chatExternalPrincipals.provider, "telegram"),
         ),
     ).resolves.toHaveLength(0);
 
@@ -62826,7 +62028,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .from(chatExternalPrincipals)
         .where(
           and(
-            eq(chatExternalPrincipals.companyId, fixture.companyId),
             eq(chatExternalPrincipals.provider, "telegram"),
             inArray(chatExternalPrincipals.externalId, [
               "telegram-bystander",
@@ -63018,8 +62219,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await expect(
             db
               .select({ id: issueAttachments.id })
-              .from(issueAttachments)
-              .where(eq(issueAttachments.companyId, fixture.companyId)),
+              .from(issueAttachments),
           ).resolves.toEqual([]);
           return;
         }
@@ -63115,7 +62315,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       },
     );
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -63559,7 +62758,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [conversation] = await service.listConversations(endpoint.id);
         await db.insert(heartbeatRuns).values({
           id: runId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           status: "succeeded",
           contextSnapshot: await chatWakeContext({
@@ -63572,7 +62770,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await addSelectedChatFinal({
           agentId: fixture.assignedAgentId,
           body: "TELEGRAM-RECEIPT-FINAL",
-          companyId: fixture.companyId,
           issueId: conversation.issueId,
           runId,
         });
@@ -63584,7 +62781,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           await request.authorize(tx as never);
           await tx.insert(agentWakeupRequests).values({
             id: request.id,
-            companyId: request.companyId,
             agentId,
             source: opts.source!,
             triggerDetail: opts.triggerDetail,
@@ -63973,7 +63169,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const runtime = new FakeChatSdkRuntime();
     const { service } = createService(runtime, providerFetch);
     const endpoint = await service.create(
-      fixture.companyId,
       { provider: "telegram", assignedAgentId: fixture.assignedAgentId },
       "owner-user",
     );
@@ -64109,7 +63304,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const contractSha256 = `recovered-response-${randomUUID()}`;
     await db.insert(completionContracts).values({
       id: contractId,
-      companyId: context.fixture.companyId,
       issueId: context.issue.id,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -64184,7 +63378,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       statusDecisionId: randomUUID(),
     };
     const binding = {
-      companyId: context.fixture.companyId,
       issueId: context.issue.id,
       runId: context.runId,
       agentId: context.fixture.assignedAgentId,
@@ -64204,7 +63397,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     } else {
       const controlPlaneSourceInstanceId = `control-${context.runId}`;
       const port = new PaperclipControlPlanePort(db, {
-        companyId: binding.companyId,
         issueId: binding.issueId,
         runId: binding.runId,
         agentId: binding.agentId,
@@ -64216,7 +63408,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       });
       await port.openRun({
         identity: {
-          companyId: binding.companyId,
           issueId: binding.issueId,
           runId: binding.runId,
           agentId: binding.agentId,
@@ -64231,7 +63422,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         turnId: `turn-${context.runId}`,
       });
       await db.insert(heartbeatRunEvents).values({
-        companyId: binding.companyId,
         agentId: binding.agentId,
         runId: binding.runId,
         seq: 1,
@@ -64270,7 +63460,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .where(eq(issues.id, context.issue.id));
     const repair = () =>
       repairCommittedNativeChatResponse(db, {
-        companyId: context.fixture.companyId,
         issueId: context.issue.id,
         runId: context.runId,
       });
@@ -64372,7 +63561,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     "digest_changed",
     "private_disposition",
     "missing_authority",
-    "cross_company",
     "cross_run",
     "ambiguous_delivery",
     "live_heartbeat",
@@ -64417,7 +63605,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(chatEndpoints.id, context.endpoint.id));
         if (mutation === "ambiguous_delivery")
           await db.insert(chatPublications).values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             issueId: context.issue.id,
@@ -64450,19 +63637,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .set({ status: "running", finishedAt: null })
             .where(eq(heartbeatRuns.id, context.runId));
         await expect(
-          mutation === "cross_company"
+          mutation === "cross_run"
             ? repairCommittedNativeChatResponse(db, {
-                companyId: randomUUID(),
                 issueId: context.issue.id,
-                runId: context.runId,
+                runId: randomUUID(),
               })
-            : mutation === "cross_run"
-              ? repairCommittedNativeChatResponse(db, {
-                  companyId: context.fixture.companyId,
-                  issueId: context.issue.id,
-                  runId: randomUUID(),
-                })
-              : context.repair(),
+            : context.repair(),
         ).resolves.toBe(false);
         await expect(
           db
@@ -64904,7 +64084,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const historicalRunId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: historicalRunId,
-            companyId: source.fixture.companyId,
             agentId: source.fixture.assignedAgentId,
             status: "failed",
             wakeupRequestId: source.receipt.id,
@@ -65052,7 +64231,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(chatEndpoints.id, context.endpoint.id));
         if (mode === "control")
           await db.insert(chatActions).values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             principalId: context.action.principalId,
@@ -65129,7 +64307,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const [failure] = await db
       .insert(chatPublications)
       .values({
-        companyId: context.fixture.companyId,
         endpointId: context.endpoint.id,
         conversationId: context.conversation.id,
         issueId: context.issue.id,
@@ -65145,7 +64322,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       })
       .returning();
     await db.insert(chatMessageLinks).values({
-      companyId: context.fixture.companyId,
       endpointId: context.endpoint.id,
       conversationId: context.conversation.id,
       publicationId: failure.id,
@@ -65349,7 +64525,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               ? await db
                   .insert(issueComments)
                   .values({
-                    companyId: context.fixture.companyId,
                     issueId: context.issue.id,
                     authorAgentId: context.fixture.assignedAgentId,
                     body: "An already published answer",
@@ -65359,7 +64534,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const [current] = await db
             .insert(chatPublications)
             .values({
-              companyId: context.fixture.companyId,
               endpointId: context.endpoint.id,
               conversationId: context.conversation.id,
               issueId: context.issue.id,
@@ -65439,7 +64613,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [unresolved] = await db
           .insert(chatPublications)
           .values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             conversationId: context.conversation.id,
             issueId: context.issue.id,
@@ -65508,7 +64681,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const failure = await linkedCommittedResponseFailure(context);
       await expect(context.repair()).resolves.toBe(true);
       await db.insert(chatEndpointLeases).values({
-        companyId: context.fixture.companyId,
         endpointId: context.endpoint.id,
         leaseKey: "credentials",
         token: blockerToken,
@@ -65546,7 +64718,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [successor] = await db
         .insert(chatPublications)
         .values({
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           conversationId: context.conversation.id,
           issueId: context.issue.id,
@@ -65747,7 +64918,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await db
       .insert(chatIdentityLinks)
       .values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: inbound.principalId,
         paperclipUserId: "owner-user",
@@ -65787,7 +64957,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     };
     await db.insert(completionContracts).values({
       id: contractId,
-      companyId: fixture.companyId,
       issueId,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -65806,7 +64975,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       runtimeMode: "native",
@@ -65826,7 +64994,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       })
       .where(eq(issues.id, issueId));
     const port = new PaperclipControlPlanePort(db, {
-      companyId: fixture.companyId,
       issueId,
       runId,
       agentId: fixture.assignedAgentId,
@@ -65838,7 +65005,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     await port.openRun({
       identity: {
-        companyId: fixture.companyId,
         issueId,
         runId,
         agentId: fixture.assignedAgentId,
@@ -65901,7 +65067,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const reviewRunnerInstanceId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: reviewRunId,
-      companyId: fixture.companyId,
       agentId: fixture.assignedAgentId,
       status: "running",
       runtimeMode: "native",
@@ -65918,7 +65083,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .set({ executionRunId: reviewRunId })
       .where(eq(issues.id, issueId));
     const reviewPort = new PaperclipControlPlanePort(db, {
-      companyId: fixture.companyId,
       issueId,
       runId: reviewRunId,
       agentId: fixture.assignedAgentId,
@@ -65930,7 +65094,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     await reviewPort.openRun({
       identity: {
-        companyId: fixture.companyId,
         issueId,
         runId: reviewRunId,
         agentId: fixture.assignedAgentId,
@@ -65995,7 +65158,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       ["review-image.png", "image/png", Buffer.from("review image", "utf8")],
     ] as const) {
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${issueId}`,
         originalFilename,
         contentType,
@@ -66292,7 +65454,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .where(eq(agentWakeupRequests.id, owner.id));
           await tx.insert(agentWakeupRequests).values({
             id: request.id,
-            companyId: fixture.companyId,
             agentId,
             source: "assignment",
             reason: "issue_execution_deferred",
@@ -66353,7 +65514,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db.transaction(async (tx) => {
         await tx.insert(heartbeatRuns).values({
           id: runId,
-          companyId: fixture.companyId,
           agentId: fixture.assignedAgentId,
           status: "running",
           runtimeMode: "native",
@@ -66386,8 +65546,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db
           .select()
-          .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+          .from(heartbeatRuns),
       ).resolves.toEqual([]);
       await expect(service.enqueueInboundWakeupPublications()).resolves.toBe(1);
       await service.processPendingPublications();
@@ -66440,13 +65599,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const predecessor = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: predecessor,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         status: "running",
         contextSnapshot: { issueId: conversation.issueId },
       });
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -66461,7 +65618,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(runtime.posts).toHaveLength(1);
       expect(runtime.edits).toEqual([]);
       await db.insert(chatPublications).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         conversationId: conversation.id,
         issueId: conversation.issueId,
@@ -66479,7 +65635,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await addSelectedChatFinal({
         agentId: fixture.assignedAgentId,
         body: "The exact successor answer",
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -66491,7 +65646,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await addSelectedChatFinal({
         agentId: fixture.assignedAgentId,
         body: "A separate second answer",
-        companyId: fixture.companyId,
         issueId: conversation.issueId,
         runId,
       });
@@ -66526,7 +65680,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           addSelectedChatFinal({
             agentId: context.fixture.assignedAgentId,
             body: "The deferred selected answer remains available",
-            companyId: context.fixture.companyId,
             issueId: context.conversation.issueId,
             runId,
           });
@@ -66611,7 +65764,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const interactionId = randomUUID();
       await db.insert(issueThreadInteractions).values({
         id: interactionId,
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         kind: "ask_user_questions",
         status: "pending",
@@ -66630,7 +65782,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         },
       });
       await db.insert(chatPublications).values({
-        companyId: context.fixture.companyId,
         endpointId: context.endpoint.id,
         conversationId: context.conversation.id,
         issueId: context.conversation.issueId,
@@ -66674,7 +65825,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .where(eq(heartbeatRuns.id, runId));
         });
         await db.insert(chatPublications).values({
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           conversationId: context.conversation.id,
           issueId: context.conversation.issueId,
@@ -66824,8 +65974,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await expect(
         db
           .select()
-          .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, context.fixture.companyId)),
+          .from(heartbeatRuns),
       ).resolves.toEqual([]);
     } finally {
       await context.service.shutdown();
@@ -66884,7 +66033,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await addSelectedChatFinal({
         agentId: context.fixture.assignedAgentId,
         body: "Answer to the surviving second message",
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         runId,
       });
@@ -66918,7 +66066,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await addSelectedChatFinal({
         agentId: context.fixture.assignedAgentId,
         body: "Already answered",
-        companyId: context.fixture.companyId,
         issueId: context.conversation.issueId,
         runId,
       });
@@ -67066,7 +66213,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       // Real service admission; the fixture scheduler does not run a model.
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: fixture.companyId,
         agentId: fixture.assignedAgentId,
         runtimeMode: "native",
         nativeIssueId: conversation!.issueId,
@@ -67081,7 +66227,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .where(eq(agentWakeupRequests.id, action!.id));
       const authority = () =>
         resolveChatRunPresentationAuthorizationReason(db, {
-          companyId: fixture.companyId,
           issueId: conversation!.issueId,
           runId,
         });
@@ -67094,7 +66239,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [unprovedControl] = await db
         .insert(chatPublications)
         .values({
-          companyId: fixture.companyId,
           endpointId: context.endpoint.id,
           conversationId: conversation!.id,
           issueId: conversation!.issueId,
@@ -67493,7 +66637,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           credentialFingerprint: string;
         };
         const admission: TeamsPersonalRecipientAdmission = {
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           runtimeGeneration: origin.generation,
           credentialFingerprint: origin.credentialFingerprint,
@@ -67506,7 +66649,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const proof = received!.normalizedEvent.teamsPersonalRecipient;
         expect(proof).toEqual({
           schema: "paperclip.teams.personal-recipient.v1",
-          companyId: context.fixture.companyId,
           endpointId: context.endpoint.id,
           runtimeGeneration: origin.generation,
           credentialFingerprint: origin.credentialFingerprint,
@@ -67547,10 +66689,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .select()
           .from(chatExternalPrincipals)
           .where(
-            and(
-              eq(chatExternalPrincipals.companyId, context.fixture.companyId),
-              eq(chatExternalPrincipals.externalId, context.aadObjectId),
-            ),
+            eq(chatExternalPrincipals.externalId, context.aadObjectId),
           );
         expect(principal).toBeDefined();
         const scope = {
@@ -67634,7 +66773,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const [received] = await db
           .insert(chatDeliveries)
           .values({
-            companyId: context.fixture.companyId,
             endpointId: context.endpoint.id,
             providerEventId,
             deduplicationKey: createHash("sha256")
@@ -67778,7 +66916,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         installTeamsFileConsentHook(
           { on: (name, callback) => handlers.set(name, callback) },
           {
-            companyId: options.companyId,
             endpointId: options.endpointId,
             tenantId: String(options.providerConfig.credentials.appTenantId),
             botAppId: String(options.providerConfig.credentials.appId),
@@ -67820,7 +66957,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       scheduleDeferredWork: () => undefined,
     });
     const endpoint = await service.create(
-      fixture.companyId,
       {
         provider: "microsoft-teams",
         assignedAgentId: fixture.assignedAgentId,
@@ -67876,7 +67012,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const [principal] = await db
         .insert(chatExternalPrincipals)
         .values({
-          companyId: fixture.companyId,
           provider: "microsoft-teams",
           providerAccountId: tenantId,
           externalId: aadObjectId,
@@ -67885,7 +67020,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         })
         .returning();
       await db.insert(chatIdentityLinks).values({
-        companyId: fixture.companyId,
         endpointId: endpoint.id,
         principalId: principal!.id,
         paperclipUserId: recipientUserId,
@@ -67981,7 +67115,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     const createFile = async () => {
       const stored = await storage.storage.putFile({
-        companyId: fixture.companyId,
         namespace: `issues/${issue!.id}`,
         originalFilename: "authority-report.txt",
         contentType: "text/plain",
@@ -68137,7 +67270,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         administrativeFetch,
       );
       const created = await initial.service.create(
-        fixture.companyId,
         {
           provider: "telegram",
           assignedAgentId: fixture.assignedAgentId,
@@ -68428,15 +67560,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         const runId = randomUUID();
         await db.insert(heartbeatRuns).values({
           id: runId,
-          companyId: lane.fixture.companyId,
           agentId: lane.fixture.assignedAgentId,
           status: "running",
           contextSnapshot: {},
         });
         const runsBefore = await db
           .select()
-          .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, lane.fixture.companyId));
+          .from(heartbeatRuns);
         let stoppedId = 0;
         lane.setHook(async (method, body) => {
           if (method.endsWith("Draft") && !stoppedId) {
@@ -68467,8 +67597,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect(
           await db
             .select()
-            .from(heartbeatRuns)
-            .where(eq(heartbeatRuns.companyId, lane.fixture.companyId)),
+            .from(heartbeatRuns),
         ).toEqual(runsBefore);
         expect(lane.context.cancelRun).not.toHaveBeenCalled();
         expect(
@@ -68700,7 +67829,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 setup: { ...templateEndpoint!.setup, runtimeGeneration: 1 },
               });
               await tx.insert(chatActions).values({
-                companyId: lane.fixture.companyId,
                 endpointId: id,
                 kind: "telegram_stop_subscription",
                 providerActionId: `telegram-stop-subscription:1:${fingerprint}:${webhookUrlSha256}`,
@@ -68741,10 +67869,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .from(chatEndpoints)
             .innerJoin(
               toolConnections,
-              and(
-                eq(toolConnections.id, chatEndpoints.connectionId),
-                eq(toolConnections.companyId, chatEndpoints.companyId),
-              ),
+              eq(toolConnections.id, chatEndpoints.connectionId),
             )
             .where(
               and(
@@ -68875,10 +68000,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 .update(chatEndpoints)
                 .set({ status: "archived", archivedAt: new Date() })
                 .where(
-                  and(
-                    eq(chatEndpoints.companyId, lane.fixture.companyId),
-                    inArray(chatEndpoints.id, prefixIds),
-                  ),
+                  inArray(chatEndpoints.id, prefixIds),
                 );
           } finally {
             await lane.close();
@@ -69372,7 +68494,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .digest("hex");
       await db.insert(completionContracts).values({
         id: contractId,
-        companyId: context.fixture.companyId,
         issueId: context.issue.id,
         revision: 1,
         schemaVersion: "paperclip.completion-contract.v1",
@@ -69393,7 +68514,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       });
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId: context.fixture.companyId,
         agentId: context.fixture.assignedAgentId,
         status: "running",
         wakeupRequestId: context.sourceAction.id,
@@ -69416,7 +68536,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ status: "completed", runId })
         .where(eq(agentWakeupRequests.id, context.sourceAction.id));
       const stored = await context.storage.storage.putFile({
-        companyId: context.fixture.companyId,
         namespace: `issues/${context.issue.id}`,
         originalFilename: "authority-report.txt",
         contentType: "text/plain",
@@ -69482,7 +68601,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         statusDecisionId: randomUUID(),
       };
       await new NativeRunCoordinatorStore(db, {
-        companyId: context.fixture.companyId,
         issueId: context.issue.id,
         runId,
         agentId: context.fixture.assignedAgentId,
@@ -69499,7 +68617,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         workspaceFinalizeStatus: "succeeded",
       });
       await repairCommittedNativeChatResponse(db, {
-        companyId: context.fixture.companyId,
         issueId: context.issue.id,
         runId,
       });
@@ -69570,7 +68687,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await expect(
           db.transaction((tx) =>
             context.service.prepareFailedChatRunRetry(tx, {
-              companyId: context.fixture.companyId,
               issueId: context.issue.id,
               agentId: context.fixture.assignedAgentId,
               failedRunId: context.runId,
@@ -69610,7 +68726,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           });
           if (variant === "sibling_unknown") {
             await db.insert(chatPublications).values({
-              companyId: unknown!.companyId,
               endpointId: unknown!.endpointId,
               conversationId: unknown!.conversationId,
               issueId: unknown!.issueId,
@@ -70022,7 +69137,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 .set({ status: "revoked", revokedAt: new Date() })
                 .where(
                   and(
-                    eq(chatIdentityLinks.companyId, context.fixture.companyId),
                     eq(chatIdentityLinks.endpointId, context.endpoint.id),
                     eq(
                       chatIdentityLinks.principalId,
@@ -70227,7 +69341,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           attemptId: null,
           attemptExpiresAt: null,
         });
-        const app = routesApp(db, context.fixture.companyId, context.service);
+        const app = routesApp(db, context.service);
         const before = await db
           .select()
           .from(chatPublications)
@@ -70306,7 +69420,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .from(activityLog)
             .where(
               and(
-                eq(activityLog.companyId, context.fixture.companyId),
                 eq(activityLog.entityId, publication.id),
                 eq(activityLog.action, "chat.publication_cancel"),
               ),
@@ -70383,7 +69496,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .from(activityLog)
             .where(
               and(
-                eq(activityLog.companyId, context.fixture.companyId),
                 eq(activityLog.entityId, publication.id),
                 eq(activityLog.action, "chat.publication_retry_anyway"),
               ),
@@ -70494,13 +69606,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             : await configuredTeamsEndpoint(fixture);
       try {
         if (provider === "slack") {
-          const [principal] = await db.insert(chatExternalPrincipals).values({ companyId: fixture.companyId, provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
-          await db.insert(chatIdentityLinks).values({ companyId: fixture.companyId, endpointId: context.endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
+          const [principal] = await db.insert(chatExternalPrincipals).values({ provider: "slack", providerAccountId: "T-PAPERCLIP", externalId: "UBOARD" }).returning();
+          await db.insert(chatIdentityLinks).values({ endpointId: context.endpoint.id, principalId: principal.id, paperclipUserId: "owner-user", status: "linked", confirmedAt: new Date() });
         }
         const teamsChannel = `teams:${Buffer.from("19:long-publication@thread.tacv2").toString("base64url")}:${Buffer.from("https://smba.trafficmanager.net/amer/").toString("base64url")}`;
         if (provider === "microsoft-teams") {
           await db.insert(chatEndpointResources).values({
-            companyId: fixture.companyId,
             endpointId: context.endpoint.id,
             type: "channel",
             providerResourceId: "19:long-publication@thread.tacv2",
@@ -70864,7 +69975,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           const [publication] = await db
             .insert(chatPublications)
             .values({
-              companyId: fixture.companyId,
               endpointId: endpoint.id,
               conversationId: conversation.id,
               issueId: conversation.issueId,
@@ -70943,7 +70053,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             .set({ status: "active" })
             .where(eq(chatEndpoints.id, first.endpoint.id));
           await db.insert(chatEndpointResources).values({
-            companyId: fixture.companyId,
             endpointId: first.endpoint.id,
             type: "chat",
             providerResourceId: "-100123",
@@ -70999,8 +70108,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           expect(
             await db
               .select()
-              .from(agentWakeupRequests)
-              .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+              .from(agentWakeupRequests),
           ).toEqual([]);
           await first.service.shutdown();
           expect(first.runtime.get(first.endpoint.id)).toBeNull();
@@ -71073,16 +70181,13 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           }
           const commentsBefore = await db
             .select()
-            .from(issueComments)
-            .where(eq(issueComments.companyId, fixture.companyId));
+            .from(issueComments);
           const issuesBefore = await db
             .select()
-            .from(issues)
-            .where(eq(issues.companyId, fixture.companyId));
+            .from(issues);
           const publicationsBefore = await db
             .select()
-            .from(chatPublications)
-            .where(eq(chatPublications.companyId, fixture.companyId));
+            .from(chatPublications);
           restarted = createService(
             new FakeChatSdkRuntime(),
             fakeTelegramFetch() as typeof globalThis.fetch,
@@ -71210,20 +70315,17 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             expect(
               await db
                 .select()
-                .from(issueComments)
-                .where(eq(issueComments.companyId, fixture.companyId)),
+                .from(issueComments),
             ).toEqual(commentsBefore);
             expect(
               await db
                 .select()
-                .from(issues)
-                .where(eq(issues.companyId, fixture.companyId)),
+                .from(issues),
             ).toEqual(issuesBefore);
             expect(
               await db
                 .select()
-                .from(chatPublications)
-                .where(eq(chatPublications.companyId, fixture.companyId)),
+                .from(chatPublications),
             ).toEqual(publicationsBefore);
             if (seededWake)
               expect(
@@ -71254,14 +70356,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           expect(
             await db
               .select()
-              .from(agentWakeupRequests)
-              .where(eq(agentWakeupRequests.companyId, fixture.companyId)),
+              .from(agentWakeupRequests),
           ).toHaveLength(denied ? 0 : 1);
           expect(
             await db
               .select()
-              .from(heartbeatRuns)
-              .where(eq(heartbeatRuns.companyId, fixture.companyId)),
+              .from(heartbeatRuns),
           ).toEqual([]);
           await restarted.service.processPendingDeliveries(25, original.id);
           expect(restarted.wakeup).toHaveBeenCalledTimes(denied ? 0 : 1);
@@ -71460,7 +70560,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .set({ status: "active" })
               .where(eq(chatEndpoints.id, endpoint.id));
             await db.insert(chatEndpointResources).values({
-              companyId: fixture.companyId,
               endpointId: endpoint.id,
               type: "chat",
               providerResourceId: String(chatId),
@@ -71556,8 +70655,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           } else if (mode === "unknown_block" || mode === "malformed_block") {
             const comments = await db
               .select({ body: issueComments.body })
-              .from(issueComments)
-              .where(eq(issueComments.companyId, fixture.companyId));
+              .from(issueComments);
             expect(comments[0]?.body).toContain("could not import");
             expect(JSON.stringify(comments)).not.toContain(
               "PRIVATE_UNSUPPORTED_BODY",
@@ -71578,8 +70676,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               });
               const [comment] = await db
                 .select()
-                .from(issueComments)
-                .where(eq(issueComments.companyId, fixture.companyId));
+                .from(issueComments);
               expect(comment.body).toBe(
                 "Before files\n\nFile section\n\nPhoto caption\n\nQuoted tail\n\nQuote author",
               );
@@ -71729,8 +70826,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           } else {
             const [comment] = await db
               .select()
-              .from(issueComments)
-              .where(eq(issueComments.companyId, fixture.companyId));
+              .from(issueComments);
             expect(comment?.body).toBe(
               mode === "mixed"
                 ? "Before\n\nExact quoted tail\n\nVisible credit\n\nAfter"
@@ -71824,7 +70920,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .set({ status: "active" })
               .where(eq(chatEndpoints.id, endpoint.id));
             await db.insert(chatEndpointResources).values({
-              companyId: fixture.companyId,
               endpointId: endpoint.id,
               type: "chat",
               providerResourceId: String(chatId),
@@ -71973,8 +71068,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             if (mode === "changed_locator") {
               const [comment] = await db
                 .select()
-                .from(issueComments)
-                .where(eq(issueComments.companyId, fixture.companyId));
+                .from(issueComments);
               expect(comment!.body).toContain("could not safely import");
             }
           }
@@ -72144,8 +71238,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
             );
             const [comment] = await db
               .select()
-              .from(issueComments)
-              .where(eq(issueComments.companyId, fixture.companyId));
+              .from(issueComments);
             expect(comment!.body).toContain(
               `under ${formatAttachmentSize(MAX_ATTACHMENT_BYTES)}`,
             );
@@ -72197,7 +71290,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .where(
                 and(
                   eq(chatActions.deliveryId, delivery.id),
-                  eq(agentWakeupRequests.companyId, fixture.companyId),
                   eq(agentWakeupRequests.agentId, fixture.assignedAgentId),
                 ),
               ),

@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { CompanyProvider } from "./context/CompanyContext";
+import { OrganizationProvider } from "./context/OrganizationContext";
 import { DialogProvider, useDialog } from "./context/DialogContext";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import "./index.css";
@@ -181,7 +181,6 @@ function respond(pathname: string, method: string): Response {
   return json({});
 }
 
-
 const realFetch = window.fetch.bind(window);
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -210,12 +209,12 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
-        <CompanyProvider>
+        <OrganizationProvider>
           <DialogProvider>
             <OpenOnConnectStep />
             <OnboardingWizard />
           </DialogProvider>
-        </CompanyProvider>
+        </OrganizationProvider>
       </QueryClientProvider>
     </MemoryRouter>
   </StrictMode>,

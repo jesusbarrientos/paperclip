@@ -8,7 +8,7 @@ import { AiConnectionUsagePanel } from "./AiConnectionUsagePanel";
 
 const api = vi.hoisted(() => ({ probeUsage: vi.fn() }));
 vi.mock("@/api/ai-connections", () => ({ aiConnectionsApi: api }));
-const account: AiManagedConnectionSummary = { id: "connection", grantId: "grant", companyId: "company", provider: "anthropic", method: "subscription", name: "My Claude", ownership: "personal", isDefault: true, status: "connected" };
+const account: AiManagedConnectionSummary = { id: "connection", grantId: "grant", provider: "anthropic", method: "subscription", name: "My Claude", ownership: "personal", isDefault: true, status: "connected" };
 let root: ReturnType<typeof createRoot>;
 let host: HTMLDivElement;
 let client: QueryClient;
@@ -33,7 +33,7 @@ it("checks only on demand and replaces a successful observation with a failed pr
   expect(api.probeUsage).not.toHaveBeenCalled();
   click();
   await vi.waitFor(() => expect(host.textContent).toContain("100% used"));
-  expect(api.probeUsage).toHaveBeenCalledWith("company", "connection", "grant");
+  expect(api.probeUsage).toHaveBeenCalledWith("connection", "grant");
   expect(host.textContent).toContain("Limit reached");
   expect(host.textContent).toContain("OverageOff");
   expect(host.textContent).not.toContain("remaining");

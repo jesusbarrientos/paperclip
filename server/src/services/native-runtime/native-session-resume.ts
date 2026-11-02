@@ -122,7 +122,6 @@ export function isUnusedNativeSessionBootstrap(
 export function selectNativeSessionResumeRun<
   T extends NativeSessionBootstrapState & {
     id: string;
-    companyId: string;
     agentId: string;
     nativeIssueId: string | null;
     nativeSessionId: string | null;
@@ -132,7 +131,6 @@ export function selectNativeSessionResumeRun<
   },
 >(input: {
   runs: readonly T[];
-  companyId: string;
   agentId: string;
   issueId: string;
   normalizedSessionId: string;
@@ -142,8 +140,7 @@ export function selectNativeSessionResumeRun<
 }): T | null {
   for (const run of input.runs) {
     if (
-      run.id === input.currentRunId ||
-      run.companyId !== input.companyId ||
+      (run.id === input.currentRunId) ||
       run.agentId !== input.agentId ||
       run.nativeIssueId !== input.issueId ||
       run.nativeSessionId !== input.normalizedSessionId
@@ -198,7 +195,6 @@ export async function nativeSessionProviderEvidence(
 export async function findNativeSessionResumeRun(
   db: Db,
   input: {
-    companyId: string;
     agentId: string;
     issueId: string;
     normalizedSessionId: string;
@@ -210,7 +206,6 @@ export async function findNativeSessionResumeRun(
   const runs = await db
     .select({
       id: heartbeatRuns.id,
-      companyId: heartbeatRuns.companyId,
       agentId: heartbeatRuns.agentId,
       runnerInstanceId: heartbeatRuns.runnerInstanceId,
       nativeSessionId: heartbeatRuns.nativeSessionId,
@@ -228,7 +223,6 @@ export async function findNativeSessionResumeRun(
     .where(
       and(
         ne(heartbeatRuns.id, input.currentRunId),
-        eq(heartbeatRuns.companyId, input.companyId),
         eq(heartbeatRuns.agentId, input.agentId),
         eq(heartbeatRuns.nativeIssueId, input.issueId),
         eq(heartbeatRuns.nativeSessionId, input.normalizedSessionId),
@@ -455,7 +449,6 @@ export function buildNativeExecutionWithCheckpoint(input: {
 export function rebindNativeSessionCheckpoint(input: {
   previousRun: {
     id: string;
-    companyId: string;
     agentId: string;
     nativeSessionId: string | null;
     runnerProfileJson: unknown;
@@ -478,13 +471,11 @@ export function rebindNativeSessionCheckpoint(input: {
   const current = input.currentExecution;
   const normalizedSessionId = current.session.normalizedSessionId;
   if (
-    !isNativeSessionId(normalizedSessionId) ||
-    input.previousRun.companyId !== current.binding.companyId ||
-    input.previousRun.agentId !== current.binding.agentId ||
-    input.previousRun.nativeSessionId !== normalizedSessionId ||
-    typeof rawCheckpoint.sessionId !== "string" ||
-    checkpointIdentity.runId !== input.previousRun.id ||
-    checkpointIdentity.companyId !== current.binding.companyId ||
+    (!isNativeSessionId(normalizedSessionId) ||
+          input.previousRun.agentId !== current.binding.agentId ||
+          input.previousRun.nativeSessionId !== normalizedSessionId ||
+          typeof rawCheckpoint.sessionId !== "string" ||
+          checkpointIdentity.runId !== input.previousRun.id) ||
     checkpointIdentity.issueId !== current.binding.issueId ||
     checkpointIdentity.agentId !== current.binding.agentId ||
     checkpointIdentity.sessionId !== normalizedSessionId
@@ -500,8 +491,7 @@ export function rebindNativeSessionCheckpoint(input: {
     return null;
   }
   if (
-    previousExecution.binding.runId !== input.previousRun.id ||
-    previousExecution.binding.companyId !== current.binding.companyId ||
+    (previousExecution.binding.runId !== input.previousRun.id) ||
     previousExecution.binding.issueId !== current.binding.issueId ||
     previousExecution.binding.agentId !== current.binding.agentId ||
     previousExecution.session.normalizedSessionId !== normalizedSessionId ||
@@ -548,7 +538,6 @@ export function rebindNativeSessionCheckpoint(input: {
     identity: {
       runId: current.binding.runId,
       sessionId: normalizedSessionId,
-      companyId: current.binding.companyId,
       issueId: current.binding.issueId,
       agentId: current.binding.agentId,
     },

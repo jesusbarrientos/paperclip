@@ -461,7 +461,6 @@ function WorkspaceFileTree({
 
 export interface WorkspaceFileBrowserProps {
   issueId: string;
-  companyId?: string | null;
   onOpen: (ref: {
     path: string;
     workspace: WorkspaceFileSelector;
@@ -495,7 +494,6 @@ export interface WorkspaceFileBrowserProps {
 
 export function WorkspaceFileBrowser({
   issueId,
-  companyId,
   onOpen,
   onBrowseStateChange,
   initialQuery,
@@ -537,9 +535,9 @@ export function WorkspaceFileBrowser({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const projectsQuery = useQuery({
-    queryKey: companyId ? queryKeys.projects.list(companyId) : ["projects", "__none__"],
-    queryFn: () => projectsApi.list(companyId!),
-    enabled: source === "other" && !!companyId,
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
+    enabled: source === "other",
     retry: false,
     staleTime: 30_000,
   });
@@ -983,15 +981,7 @@ export function WorkspaceFileBrowser({
   }
 
   let body: ReactNode;
-  if (source === "other" && !companyId) {
-    body = (
-      <StateMessage
-        icon={<FolderOpen aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
-        title="No organization selected"
-        body="Choose an organization before browsing another project workspace."
-      />
-    );
-  } else if (source === "other" && projectsQuery.isFetching && projectsWithWorkspaces.length === 0) {
+  if (source === "other" && projectsQuery.isFetching && projectsWithWorkspaces.length === 0) {
     body = (
       <StateMessage
         icon={<Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-muted-foreground" />}

@@ -40,7 +40,7 @@ const mockAgentsApi = vi.hoisted(() => ({
   testEnvironment: vi.fn(),
   getClaudeOAuthTokenStatus: vi.fn(),
 }));
-const mockCompaniesApi = vi.hoisted(() => ({ create: vi.fn() }));
+const mockOrganizationApi = vi.hoisted(() => ({ create: vi.fn() }));
 // The hire path resolves the Test environment before it probes: it reads the
 // environment list, the instance settings, and the experimental settings. The
 // test stubs these so the resolution settles on the local default, the same as
@@ -59,18 +59,16 @@ const dialogState = vi.hoisted(() => ({
   closeOnboarding: vi.fn(),
   setOnboardingRouteDismissed: vi.fn(),
 }));
+const ACME = { id: "company-1", name: "Acme", issuePrefix: "PC1" };
 const companyState = vi.hoisted(() => ({
-  companies: [
-    { id: "company-1", name: "Acme", issuePrefix: "PC1" },
-    { id: "company-2", name: "Globex", issuePrefix: "PC2" },
-  ],
+  organization: null as { id: string; name: string; issuePrefix: string } | null,
   loading: false,
-  setSelectedCompanyId: vi.fn(),
+  createOrganization: (input: { name: string }) => mockOrganizationApi.create(input),
 }));
 
 vi.mock("../api/goals", () => ({ goalsApi: mockGoalsApi }));
 vi.mock("@/api/adapters", () => ({ adaptersApi: mockAdaptersApi }));
-vi.mock("../api/companies", () => ({ companiesApi: mockCompaniesApi }));
+vi.mock("../api/organization", () => ({ organizationApi: mockOrganizationApi }));
 vi.mock("../api/agents", () => ({ agentsApi: mockAgentsApi }));
 vi.mock("../api/approvals", () => ({ approvalsApi: { create: vi.fn() } }));
 vi.mock("../api/issues", () => ({ issuesApi: { create: vi.fn() } }));
@@ -88,9 +86,10 @@ vi.mock("../context/DialogContext", () => ({
   useDialog: () => dialogState,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => companyState,
-}));
+vi.mock("../context/OrganizationContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../context/OrganizationContext")>();
+  return { ...actual, useOrganization: () => companyState };
+});
 
 // Canvas/animation leaves — nothing to do with the step machinery.
 vi.mock("./AsciiArtAnimation", () => ({ AsciiArtAnimation: () => null }));
@@ -175,6 +174,7 @@ describe("OnboardingWizard — which step it lands on", () => {
     // an earlier case would decide the next one.
     localStorage.clear();
     routerState.pathname = "/";
+    companyState.organization = null;
     dialogState.onboardingOpen = false;
     dialogState.onboardingOptions = {};
     dialogState.onboardingRouteDismissed = false;
@@ -238,7 +238,8 @@ describe("OnboardingWizard — which step it lands on", () => {
       mockInstanceSettingsApi.getExperimental.mockResolvedValue({
         enableManagedSandboxOnly: true,
       });
-      routerState.pathname = "/PC1/onboarding";
+      routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
       await render();
       await settle();
 
@@ -253,7 +254,8 @@ describe("OnboardingWizard — which step it lands on", () => {
       mockInstanceSettingsApi.getExperimental.mockResolvedValue({
         enableManagedSandboxOnly: false,
       });
-      routerState.pathname = "/PC1/onboarding";
+      routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
       await render();
       await settle();
 
@@ -266,7 +268,8 @@ describe("OnboardingWizard — which step it lands on", () => {
     // The point of the change: Cloud collected the mission at signup and the
     // seed wrote it as a company-level goal, so asking for it again asks a
     // question the customer answered minutes earlier on another origin.
-    routerState.pathname = "/PC1/onboarding";
+    routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
     mockGoalsApi.list.mockResolvedValue([COMPANY_GOAL]);
     await render();
     await settle();
@@ -285,7 +288,8 @@ describe("OnboardingWizard — which step it lands on", () => {
   it("opens on the agent step without waiting for the goals lookup", async () => {
     // This used to stay closed until the lookup settled, because the step it
     // would have picked depended on the answer. Waiting now only delays the open.
-    routerState.pathname = "/PC1/onboarding";
+    routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
     mockGoalsApi.list.mockReturnValue(new Promise(() => {}));
     await render();
     await settle();
@@ -294,7 +298,8 @@ describe("OnboardingWizard — which step it lands on", () => {
   });
 
   it("opens on the agent step when the goals lookup fails outright", async () => {
-    routerState.pathname = "/PC1/onboarding";
+    routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
     mockGoalsApi.list.mockRejectedValue(new Error("goals unavailable"));
     await render();
     await settle();
@@ -307,14 +312,15 @@ describe("OnboardingWizard — which step it lands on", () => {
     // mid-flow used to flip the derived step from 2 to 3 and move the customer
     // mid-sentence. Nothing derives the step from goals any more, so the answer
     // changing is not an event the wizard can see — which is what this asserts.
-    routerState.pathname = "/PC1/onboarding";
+    routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
     mockGoalsApi.list.mockRejectedValue(new Error("goals unavailable"));
     await render();
     await settle();
     expect(currentStep()).toBe("agent");
 
     await act(async () => {
-      queryClient.setQueryData(queryKeys.goals.list("company-1"), [COMPANY_GOAL]);
+      queryClient.setQueryData(queryKeys.goals.list(), [COMPANY_GOAL]);
     });
     await settle();
 
@@ -345,110 +351,6 @@ describe("OnboardingWizard — which step it lands on", () => {
     expect(currentStep()).toBe("agent");
   });
 
-  it("re-decides the company when the route names a different one", async () => {
-    // The step is the same either way now; the company is not, and a route that
-    // names a new one is still a new request.
-    routerState.pathname = "/PC1/onboarding";
-    await render();
-    await settle();
-    expect(currentStep()).toBe("agent");
-
-    routerState.pathname = "/PC2/onboarding";
-    await rerender();
-    await settle();
-
-    expect(currentStep()).toBe("agent");
-  });
-
-  it("withdraws a company the wizard created once the route stops naming it", async () => {
-    // The route only introduces a company when it names one the wizard is not
-    // already holding, so a company the wizard *created* was never recorded as
-    // route-owned and was never withdrawn. Visiting its own onboarding path and
-    // then `/onboarding` left the wizard showing "create an organization" while
-    // still holding it — and the next confirmation wrote into the old company.
-    mockCompaniesApi.create.mockResolvedValue({ id: "company-1", issuePrefix: "PC1" });
-    mockGoalsApi.create.mockResolvedValue({ id: "goal-company-1" });
-    routerState.pathname = "/onboarding";
-    await render();
-    await settle();
-
-    const nameInput = document.body.querySelector("input")! as HTMLInputElement;
-    setControlledValue(nameInput, "Acme");
-    await settle();
-    await act(async () => {
-      [...document.body.querySelectorAll("button")]
-        .find((b) => b.textContent?.trim() === "Continue")!
-        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    await settle();
-    expect(mockCompaniesApi.create).toHaveBeenCalled();
-    expect(currentStep()).toBe("agent");
-
-    // Its own onboarding path, then back to the unprefixed one.
-    routerState.pathname = "/PC1/onboarding";
-    await rerender();
-    await settle();
-    routerState.pathname = "/onboarding";
-    await rerender();
-    await settle();
-
-    // Back at the organization-name step with nothing carried over.
-    const nameAfter = document.body.querySelector("input") as HTMLInputElement | null;
-    expect(nameAfter?.value).toBe("");
-  });
-
-  it("does not adopt a company it created once a route has supplied one", async () => {
-    // The same guard from the other end. Nothing was in hand when the create
-    // started, so "unchanged" means still nothing. A route that supplied a
-    // company while the request was open has taken over the wizard, and
-    // adopting the new company would fight it — and would leave the customer
-    // on a company they never navigated to.
-    let resolveCreate: (company: { id: string; issuePrefix: string }) => void = () => {};
-    mockCompaniesApi.create.mockReturnValue(
-      new Promise<{ id: string; issuePrefix: string }>((resolve) => {
-        resolveCreate = resolve;
-      }),
-    );
-    routerState.pathname = "/onboarding";
-    await render();
-    await settle();
-
-    // Step 1 creates the company on its own now — the mission step used to do
-    // it, and no longer runs.
-    const nameInput = document.body.querySelector("input")! as HTMLInputElement;
-    setControlledValue(nameInput, "Initech");
-    await settle();
-    const next = [...document.body.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Continue",
-    )!;
-    await act(async () => {
-      next.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    // A route supplies an existing company before the create lands.
-    routerState.pathname = "/PC1/onboarding";
-    await rerender();
-    await settle();
-    expect(mockCompaniesApi.create).toHaveBeenCalledWith({ name: "Initech" });
-    await act(async () => resolveCreate({ id: "company-created", issuePrefix: "INI" }));
-    await settle();
-
-    // Adopting the created company would select it globally and take the
-    // customer off the one they navigated to. The selection call is the
-    // assertion; it always was, and the author of this test said so.
-    //
-    // The rendered name used to back it up, but the wizard lands on the agent
-    // step now and that step names no company. Anchored on the step instead, so
-    // a selection call that never happened because nothing rendered would fail
-    // here rather than read as a pass.
-    expect(currentStep()).toBe("agent");
-    expect(companyState.setSelectedCompanyId).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain(
-      "Organization created, but onboarding switched to another organization.",
-    );
-  });
-
   it("finishes advancing when the returned company was already adopted", async () => {
     // The company-created live update can make the surrounding app adopt the
     // returned company before the POST continuation runs. That is not a
@@ -456,7 +358,7 @@ describe("OnboardingWizard — which step it lands on", () => {
     // dropping the continuation leaves the customer on the name step even
     // though the organization now exists.
     let resolveCreate: (company: { id: string; issuePrefix: string }) => void = () => {};
-    mockCompaniesApi.create.mockReturnValue(
+    mockOrganizationApi.create.mockReturnValue(
       new Promise<{ id: string; issuePrefix: string }>((resolve) => {
         resolveCreate = resolve;
       }),
@@ -486,8 +388,7 @@ describe("OnboardingWizard — which step it lands on", () => {
     await settle();
 
     expect(currentStep()).toBe("agent");
-    expect(companyState.setSelectedCompanyId).toHaveBeenCalledWith("company-created");
-    expect(mockCompaniesApi.create).toHaveBeenCalledTimes(1);
+    expect(mockOrganizationApi.create).toHaveBeenCalledTimes(1);
   });
 
   it("applies the step again when the wizard is re-opened", async () => {
@@ -530,7 +431,8 @@ describe("OnboardingWizard — which step it lands on", () => {
     };
 
     async function openOnAgentStep() {
-      routerState.pathname = "/PC1/onboarding";
+      routerState.pathname = "/onboarding";
+    companyState.organization = ACME;
       mockGoalsApi.list.mockResolvedValue([MISSION_GOAL]);
       await render();
       await settle();
@@ -600,7 +502,7 @@ describe("OnboardingWizard — which step it lands on", () => {
       await press(stepCta());
 
       expect(mockAgentsApi.hire).toHaveBeenCalled();
-      const [, payload] = mockAgentsApi.hire.mock.calls.at(-1)!;
+      const [payload] = mockAgentsApi.hire.mock.calls.at(-1)!;
       expect(payload.role).toBe("general");
       expect(payload.name).toBe("Ada");
     });

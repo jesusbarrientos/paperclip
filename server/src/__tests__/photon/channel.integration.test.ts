@@ -53,14 +53,14 @@ import {
 } from "../../services/chat-channels.js";
 import { ChatSdkRuntime } from "../../services/chat-sdk-runtime.js";
 import { issueService } from "../../services/issues.js";
-import { subscribeCompanyLiveEvents } from "../../services/live-events.js";
+import { subscribeLiveEvents } from "../../services/live-events.js";
 import { issueThreadInteractionService } from "../../services/issue-thread-interactions.js";
 import { resolveExternalChatQuestionResponse } from "../../services/native-runtime/external-chat-question-response.js";
 import { resolveChatRunPresentationAuthorizationReason } from "../../services/chat-run-publications.js";
 import { PhotonChatAdapter } from "../../services/photon/adapter.js";
 import { PhotonCloudClient, PhotonError } from "../../services/photon/cloud.js";
 import { photonFixture, photonEvent, photonChat, stream } from "./fixture.js";
-import { membershipUpsert } from "../helpers/reset-organization.js";
+import { captureEmptyTablesReset, membershipUpsert } from "../helpers/reset-organization.js";
 
 function idleStream<T>(): TypedEventStream<T> {
   let close!: () => void;
@@ -80,7 +80,6 @@ describe("iMessage Photon channel control plane", () => {
   let secrets: string;
   const oldKey = process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE;
   const services: ChatChannelService[] = [];
-  const companyIds: string[] = [];
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("paperclip-photon-");
     db = createDb(database.connectionString);
@@ -89,14 +88,14 @@ describe("iMessage Photon channel control plane", () => {
       secrets,
       "master.key",
     );
+    resetTables = await captureEmptyTablesReset(db);
   }, 30_000);
+  let resetTables: () => Promise<void>;
+  beforeEach(async () => {
+    await resetTables();
+  });
   afterEach(async () => {
     await Promise.all(services.splice(0).map((service) => service.shutdown()));
-    for (const id of companyIds.splice(0))
-      await db
-        .update(chatEndpoints)
-        .set({ status: "archived" })
-        .where(eq(chatEndpoints.companyId, id));
     vi.restoreAllMocks();
   });
   afterAll(async () => {
@@ -110,7 +109,6 @@ describe("iMessage Photon channel control plane", () => {
     const companyId = randomUUID(),
       agentId = randomUUID(),
       userId = randomUUID();
-    companyIds.push(companyId);
     await db.insert(companies).values({
       id: companyId,
       name: "Photon test",
@@ -119,7 +117,6 @@ describe("iMessage Photon channel control plane", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Photon Agent",
       role: "engineer",
       status: "idle",
@@ -192,7 +189,6 @@ describe("iMessage Photon channel control plane", () => {
             .insert(agentWakeupRequests)
             .values({
               id: request.id,
-              companyId: request.companyId,
               agentId: assignedAgentId,
               source: opts.source,
               triggerDetail: opts.triggerDetail,
@@ -251,7 +247,6 @@ describe("iMessage Photon channel control plane", () => {
     };
     let service = makeService();
     const endpoint = await service.create(
-      companyId,
       { provider: "imessage-photon", assignedAgentId: agentId },
       userId,
     );
@@ -311,7 +306,6 @@ describe("iMessage Photon channel control plane", () => {
       const runId = randomUUID();
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId,
         status: "succeeded",
         contextSnapshot: {
@@ -323,7 +317,6 @@ describe("iMessage Photon channel control plane", () => {
       });
       const authorizationReason =
         await resolveChatRunPresentationAuthorizationReason(db, {
-          companyId,
           issueId: conversation.issueId,
           runId,
         });
@@ -340,7 +333,6 @@ describe("iMessage Photon channel control plane", () => {
     };
     return {
       f,
-      companyId,
       agentId,
       userId,
       endpoint,
@@ -376,7 +368,7 @@ describe("iMessage Photon channel control plane", () => {
     expect(conversation.externalThreadId).toContain("shared-");
     await t.qualify();
     expect(t.f.client.groups.subscribeEvents).not.toHaveBeenCalled();
-    const duplicate = await t.service.create(t.companyId, { provider: "imessage-photon", assignedAgentId: t.agentId }, t.userId);
+    const duplicate = await t.service.create({ provider: "imessage-photon", assignedAgentId: t.agentId }, t.userId);
     expect(await t.service.inspectPhoton(duplicate.id, {projectId: "project", projectSecret: "secret"})).toMatchObject({ allocation: "shared", eligible: false });
     await expect(t.service.configure(duplicate.id, { action: "configure", photon: { allocation: "shared", projectId: "project" }, credentials: { projectSecret: "secret" } }, t.userId)).rejects.toThrow(/already/);
     const restarted = await t.restart();
@@ -435,7 +427,6 @@ describe("iMessage Photon channel control plane", () => {
     expect(t.wakeup).toHaveBeenCalledTimes(2);
     await service.configure(t.endpoint.id, { action: "pause" }, t.userId);
     const duplicate = await service.create(
-      t.companyId,
       { provider: "imessage-photon", assignedAgentId: t.agentId },
       t.userId,
     );
@@ -490,7 +481,7 @@ describe("iMessage Photon channel control plane", () => {
     const conversation = await t.start();
     if (qualified) await t.qualify();
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: t.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "none",
@@ -611,7 +602,7 @@ describe("iMessage Photon channel control plane", () => {
     await t.deliver(fromSecond(5, "Discover second participant"));
     await t.link("+15555550102", second);
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: t.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "none",
@@ -685,7 +676,7 @@ describe("iMessage Photon channel control plane", () => {
     const conversation = await t.start();
     await t.qualify();
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: t.companyId },
+      { id: conversation.issueId },
       {
         kind: "request_confirmation",
         continuationPolicy: "wake_assignee",
@@ -859,7 +850,7 @@ describe("iMessage Photon channel control plane", () => {
     await db.update(chatConversations).set({ state: "completed" }).where(eq(chatConversations.id, original.id));
     const service = await t.restart();
     const visibleComments: Promise<unknown>[] = [];
-    const unsubscribe = subscribeCompanyLiveEvents(t.companyId, (event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       if (event.type === "activity.logged" && event.payload.action === "issue.comment_added") {
         expect(event.payload.entityId).toBe(original.issueId);
         const details = event.payload.details as { commentId: string };
@@ -1058,7 +1049,6 @@ describe("iMessage Photon channel control plane", () => {
     const sourceCommentId = sourceLink.commentId!;
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId: t.companyId,
       agentId: t.agentId,
       status: "succeeded",
       runtimeMode: "native",
@@ -1076,7 +1066,7 @@ describe("iMessage Photon channel control plane", () => {
       },
     });
     const interaction = await issueThreadInteractionService(db).create(
-      { id: conversation.issueId, companyId: t.companyId },
+      { id: conversation.issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "wake_assignee",
@@ -1151,7 +1141,6 @@ describe("iMessage Photon channel control plane", () => {
     };
     await db.insert(agentWakeupRequests).values({
       id: wakeId,
-      companyId: t.companyId,
       agentId: t.agentId,
       source: "automation",
       status: "running",
@@ -1163,7 +1152,6 @@ describe("iMessage Photon channel control plane", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: t.companyId,
       agentId: t.agentId,
       status: "running",
       runtimeMode: "native",
@@ -1182,7 +1170,6 @@ describe("iMessage Photon channel control plane", () => {
     const proof = await resolveExternalChatQuestionResponse(
       db,
       {
-        companyId: t.companyId,
         agentId: t.agentId,
         issueId: conversation.issueId,
         runId,
@@ -1208,7 +1195,6 @@ describe("iMessage Photon channel control plane", () => {
       await resolveExternalChatQuestionResponse(
         db,
         {
-          companyId: t.companyId,
           agentId: t.agentId,
           issueId: conversation.issueId,
           runId,

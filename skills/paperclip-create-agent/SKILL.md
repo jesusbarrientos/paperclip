@@ -66,7 +66,7 @@ curl -sS "$PAPERCLIP_API_URL/llms/agent-configuration/claude_local.txt" \
 ### 3. Compare existing agent configurations
 
 ```sh
-curl -sS "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-configurations" \
+curl -sS "$PAPERCLIP_API_URL/api/agent-configurations" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
@@ -121,7 +121,7 @@ Before submitting, walk the draft-review checklist end-to-end and fix any item t
 ### 8. Submit hire request
 
 ```sh
-curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-hires" \
+curl -sS -X POST "$PAPERCLIP_API_URL/api/agent-hires" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

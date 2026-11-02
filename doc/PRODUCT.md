@@ -2,7 +2,7 @@
 
 ## What It Is
 
-Paperclip is the control plane for autonomous AI companies. One instance of Paperclip can run multiple companies. A **company** is a first-order object.
+Paperclip is the control plane for autonomous AI companies. One instance of Paperclip runs exactly one company, which the product also calls "the organization". A **company** is a first-order object; to run a second company, run a second instance.
 
 ## Core Concepts
 
@@ -79,7 +79,7 @@ An explicit restricted policy may deny selected operations or switch to a defaul
 
 1. **Unopinionated about how you run your agents.** Your agents could be OpenClaw bots, Python scripts, Node scripts, Claude Code sessions, Codex instances — we don't care. Paperclip defines the control plane for communication and provides utility infrastructure for heartbeats. It does not mandate an agent runtime.
 
-2. **Company is the unit of organization.** Everything lives under a company. One Paperclip instance, many companies.
+2. **Company is the unit of organization.** Everything lives under a company. One Paperclip instance, one company.
 
 3. **Adapter config defines the agent.** Every agent has an adapter type and configuration that controls its identity and behavior. The minimum contract is just "be callable."
 
@@ -89,7 +89,7 @@ An explicit restricted policy may deny selected operations or switch to a defaul
 
 ## User Flow (Dream Scenario)
 
-1. Open Paperclip, create a new company
+1. Open a fresh Paperclip instance and create its company during onboarding
 2. Define the company's goal: "Create the #1 AI note-taking app, $1M MRR in 3 months"
 3. Create the CEO
    - Choose an adapter (e.g., process adapter for Claude Code, HTTP adapter for OpenClaw)
@@ -134,8 +134,8 @@ Paperclip’s core identity is a **control plane for autonomous AI companies**, 
 
 - Do not make the core product a general chat app. The current product definition is explicitly task/comment-centric and “not a chatbot,” and that boundary is valuable.
 - Do not build a complete Jira/GitHub replacement. The repo/docs already position Paperclip as organization orchestration, not focused on pull-request review.
-- Do not build enterprise-grade RBAC first. Paperclip now has authenticated mode, company memberships, instance roles, and permission grants, but fine-grained enterprise governance should remain secondary to the core company control plane.
-- Do not interpret agent-level privacy flags as a project/issue privacy feature in V1; work visibility stays company-scoped.
+- Do not build enterprise-grade RBAC first. Paperclip now has authenticated mode, instance-level memberships, instance roles, and permission grants, but fine-grained enterprise governance should remain secondary to the core company control plane.
+- Do not interpret agent-level privacy flags as a project/issue privacy feature in V1; work visibility stays organization-wide.
 - Do not lead with raw bash logs and transcripts. Default view should be human-readable intent/progress, with raw detail beneath.
 - Do not force users to understand provider/API-key plumbing unless absolutely necessary. There are active onboarding/auth issues already; friction here is clearly real.
 
@@ -188,7 +188,7 @@ See [iMessage Photon](connections/IMESSAGE-PHOTON.md) for the implementation
 contract, setup, recovery, boundaries, and qualification status.
 ### Experimental persistent agent conversations
 
-Agent Chat is an opt-in core task presentation (`enableAgentChat`, off by default). Each person has one persistent task-backed conversation per agent and company, with ordinary company task visibility. The shared task composer, transcript, tools, files, and document panel remain the interaction surface. Agents clarify goals and hand substantial execution to linked, assigned tasks; a reply ends a turn without completing the conversation. `/new` starts fresh provider context in the same conversation while preserving visible history and artifacts. Healthy idle conversations wait for a message and do not count as unfinished execution work. See `doc/plans/2026-09-10-agent-chat.md` for the implementation contract.
+Agent Chat is an opt-in core task presentation (`enableAgentChat`, off by default). Each person has one persistent task-backed conversation per agent, with ordinary task visibility. The shared task composer, transcript, tools, files, and document panel remain the interaction surface. Agents clarify goals and hand substantial execution to linked, assigned tasks; a reply ends a turn without completing the conversation. `/new` starts fresh provider context in the same conversation while preserving visible history and artifacts. Healthy idle conversations wait for a message and do not count as unfinished execution work. See `doc/plans/2026-09-10-agent-chat.md` for the implementation contract.
 
 ### Agent chat project handoff (2026-09-11)
 
@@ -203,7 +203,7 @@ Confirmed project creation appears as a durable card in the shared task transcri
 ### In-app announcements
 
 An optional announcement card shares product news with board users on opening
-or returning to Paperclip. Dismissals persist per user across companies and
+or returning to Paperclip. Dismissals persist per user across
 browsers within an instance. Operators can disable fetching independently of
 telemetry. See [Announcements](ANNOUNCEMENTS.md).
 

@@ -118,7 +118,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Plugin Environment Heartbeat",
       status: "active",
       createdAt: new Date(),
@@ -126,7 +125,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: workspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: workspaceRoot,
@@ -165,7 +163,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     } as any);
     await db.insert(environments).values({
       id: environmentId,
-      companyId,
       name: "Plugin Sandbox",
       driver: "plugin",
       status: "active",
@@ -181,7 +178,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -209,7 +205,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
 
     expect(workerManager.call).toHaveBeenNthCalledWith(1, pluginId, "environmentAcquireLease", {
       driverKey: "sandbox",
-      companyId,
       environmentId,
       executionWorkspaceId: expect.any(String),
       executionWorkspaceSettings: null,
@@ -227,7 +222,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await vi.waitFor(() => {
       expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentReleaseLease", {
         driverKey: "sandbox",
-        companyId,
         environmentId,
         issueId: null,
         config: { template: "base" },
@@ -363,7 +357,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(projects).values([
       {
         id: projectAId,
-        companyId: companyAId,
         name: "Company A Project",
         status: "active",
         createdAt: new Date(),
@@ -371,7 +364,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: projectBId,
-        companyId: companyBId,
         name: "Company B Project",
         status: "active",
         createdAt: new Date(),
@@ -381,7 +373,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(projectWorkspaces).values([
       {
         id: workspaceAId,
-        companyId: companyAId,
         projectId: projectAId,
         name: "Primary",
         cwd: workspaceRootA,
@@ -391,7 +382,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: workspaceBId,
-        companyId: companyBId,
         projectId: projectBId,
         name: "Primary",
         cwd: workspaceRootB,
@@ -403,7 +393,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(agents).values([
       {
         id: agentAId,
-        companyId: companyAId,
         name: "SharedEnvAgent",
         role: "engineer",
         status: "idle",
@@ -417,7 +406,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: agentBId,
-        companyId: companyBId,
         name: "OverrideEnvAgent",
         role: "engineer",
         status: "idle",
@@ -461,7 +449,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     expect(acquireCalls).toHaveLength(2);
     expect(acquirePayloads).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        companyId: companyAId,
         environmentId: sharedEnvironmentId,
         config: { template: "shared" },
         agentId: agentAId,
@@ -469,7 +456,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
         adapterType: "codex_local",
       }),
       expect.objectContaining({
-        companyId: companyBId,
         environmentId: overrideEnvironmentId,
         config: { template: "override" },
         agentId: agentBId,
@@ -525,7 +511,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Plugin Environment Issue",
       status: "active",
       createdAt: new Date(),
@@ -533,7 +518,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: workspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: workspaceRoot,
@@ -573,7 +557,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(environments).values([
       {
         id: oldEnvironmentId,
-        companyId,
         name: "QA SSH",
         driver: "plugin",
         status: "active",
@@ -589,7 +572,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: newEnvironmentId,
-        companyId,
         name: "QA E2B",
         driver: "plugin",
         status: "active",
@@ -606,7 +588,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     ]);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -620,7 +601,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: staleExecutionWorkspaceId,
-      companyId,
       projectId,
       projectWorkspaceId: workspaceId,
       mode: "shared_workspace",
@@ -640,7 +620,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       projectId,
       projectWorkspaceId: workspaceId,
       title: "Environment matrix: e2b / codex_local",
@@ -671,7 +650,6 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
 
     expect(workerManager.call).toHaveBeenNthCalledWith(1, pluginId, "environmentAcquireLease", {
       driverKey: "sandbox",
-      companyId,
       environmentId: newEnvironmentId,
       executionWorkspaceId: expect.any(String),
       executionWorkspaceSettings: { mode: "shared_workspace" },

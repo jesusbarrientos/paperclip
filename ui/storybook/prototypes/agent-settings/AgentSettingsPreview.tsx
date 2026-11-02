@@ -27,7 +27,7 @@ import {
 } from "@/components/AgentConfigForm";
 import { NewIssueDialog } from "@/components/NewIssueDialog";
 import { Button } from "@/components/ui/button";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import {
@@ -77,7 +77,6 @@ export function AgentSettingsPreview({
     createSettingsFixtures(adapterType, testOutcome, saveFails),
   );
   const [ready, setReady] = useState(false);
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   useEffect(() => {
@@ -86,13 +85,13 @@ export function AgentSettingsPreview({
       queryKeys.agents.detail(ID),
       queryKeys.agents.detail(REF),
       queryKeys.agents.skills(ID),
-      queryKeys.companySkills.list(COMPANY),
+      queryKeys.companySkills.list(),
       queryKeys.agents.keys(ID),
       queryKeys.agents.configRevisions(ID),
       queryKeys.instance.experimentalSettings,
       queryKeys.instance.generalSettings,
-      queryKeys.environments.list(COMPANY),
-      queryKeys.secrets.list(COMPANY),
+      queryKeys.environments.list(),
+      queryKeys.secrets.list(),
       ["tools", COMPANY],
       ["tools", "connection", "settings-github"],
     ];
@@ -102,19 +101,18 @@ export function AgentSettingsPreview({
       );
     clearFixtureQueries();
     queryClient.setQueryData(queryKeys.agents.detail(ID), fixtures.agent);
-    setSelectedCompanyId(COMPANY);
-    navigate(`/PAP/agents/${REF}/${initialTab}`, { replace: true });
+    navigate(`/agents/${REF}/${initialTab}`, { replace: true });
     setReady(true);
     return () => {
       uninstall();
       clearFixtureQueries();
     };
-  }, [fixtures, initialTab, queryClient, setSelectedCompanyId]);
-  if (!ready || selectedCompanyId !== COMPANY) return null;
+  }, [fixtures, initialTab, queryClient]);
+  if (!ready) return null;
   return (
     <Routes>
       <Route
-        path="/:companyPrefix/agents/:agentId/:tab?"
+        path="/agents/:agentId/:tab?"
         element={<SettingsPage />}
       />
       <Route
@@ -126,7 +124,7 @@ export function AgentSettingsPreview({
               This preview focuses on agent configuration. The existing
               destination is unchanged.
             </p>
-            <Button onClick={() => navigate(`/PAP/agents/${REF}/overview`)}>
+            <Button onClick={() => navigate(`/agents/${REF}/overview`)}>
               Back to agent
             </Button>
           </div>
@@ -144,11 +142,11 @@ function SettingsPage() {
   const queryClient = useQueryClient();
   const { data: agent } = useQuery({
     queryKey: queryKeys.agents.detail(ID),
-    queryFn: () => agentsApi.get(ID, COMPANY),
+    queryFn: () => agentsApi.get(ID),
   });
   const { data: skills } = useQuery({
     queryKey: queryKeys.agents.skills(ID),
-    queryFn: () => agentsApi.skills(ID, COMPANY),
+    queryFn: () => agentsApi.skills(ID),
     enabled: view === "overview",
   });
   const [dirty, setDirty] = useState(false);
@@ -183,7 +181,7 @@ function SettingsPage() {
   }, []);
   const update = useMutation({
     mutationFn: (patch: Record<string, unknown>) =>
-      agentsApi.update(ID, patch, COMPANY),
+      agentsApi.update(ID, patch),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKeys.agents.detail(ID), updated);
       queryClient.invalidateQueries({
@@ -193,7 +191,7 @@ function SettingsPage() {
   });
   const permissions = useMutation({
     mutationFn: (patch: Parameters<typeof agentsApi.updatePermissions>[1]) =>
-      agentsApi.updatePermissions(ID, patch, COMPANY),
+      agentsApi.updatePermissions(ID, patch),
     onSuccess: (updated) =>
       queryClient.setQueryData(queryKeys.agents.detail(ID), updated),
   });
@@ -308,7 +306,6 @@ function SettingsPage() {
                 </Button>
                 <AgentActionButtons
                   agent={agent}
-                  companyId={COMPANY}
                   assignLabel="Assign Task"
                   showRun={false}
                   showStatus={false}
@@ -341,7 +338,6 @@ function SettingsPage() {
               {view === "instructions" && (
                 <PromptsTab
                   agent={agent}
-                  companyId={COMPANY}
                   showSaveNotice={false}
                   {...callbacks}
                 />
@@ -418,20 +414,19 @@ function SettingsPage() {
               {view === "permissions" && (
                 <ConfigurationTab
                   agent={agent}
-                  companyId={COMPANY}
                   {...callbacks}
                   updatePermissions={permissions}
                   content="permissions"
                 />
               )}
               {view === "tools" && (
-                <AgentToolsTab agent={agent} companyId={COMPANY} />
+                <AgentToolsTab agent={agent} />
               )}
               {view === "api-keys" && (
-                <KeysTab agentId={ID} companyId={COMPANY} />
+                <KeysTab agentId={ID} />
               )}
               {view === "revisions" && (
-                <AgentRevisionsTab agent={agent} companyId={COMPANY} />
+                <AgentRevisionsTab agent={agent} />
               )}
             </div>
             {(saveError || permissions.error) && (

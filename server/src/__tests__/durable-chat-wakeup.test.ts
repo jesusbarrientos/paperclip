@@ -54,7 +54,6 @@ describe("durable inbound chat scheduler receipts", () => {
   const execute = vi.fn<ServerAdapterModule["execute"]>(async (input) => {
     const issueId = String(input.context.issueId);
     await db.insert(issueComments).values({
-      companyId: input.agent.companyId,
       issueId,
       authorAgentId: input.agent.id,
       createdByRunId: input.runId,
@@ -112,7 +111,6 @@ describe("durable inbound chat scheduler receipts", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Maya",
       role: "ceo",
       status: "running",
@@ -122,7 +120,6 @@ describe("durable inbound chat scheduler receipts", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: activeRunId,
-      companyId,
       agentId,
       status: "running",
       // This fixture-owned slot has no provider process/work. Its retirement
@@ -138,7 +135,6 @@ describe("durable inbound chat scheduler receipts", () => {
     liveRunIds.add(activeRunId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Bound chat task",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -156,7 +152,6 @@ describe("durable inbound chat scheduler receipts", () => {
     const request = (commentId = randomUUID(), actor = "board-user") =>
       createDurableChatWakeupRequest({
         id: randomUUID(),
-        companyId,
         agentId,
         issueId,
         commentId,
@@ -179,7 +174,6 @@ describe("durable inbound chat scheduler receipts", () => {
         rethrowOnError: true,
       });
     return {
-      companyId,
       agentId,
       issueId,
       activeRunId,
@@ -190,9 +184,9 @@ describe("durable inbound chat scheduler receipts", () => {
     };
   }
 
-  async function executionHold(f: { companyId: string; issueId: string; agentId: string }) {
+  async function executionHold(f: { issueId: string; agentId: string }) {
     const [action] = await db.insert(issueRecoveryActions).values({
-      companyId: f.companyId, sourceIssueId: f.issueId, kind: "active_run_watchdog",
+      sourceIssueId: f.issueId, kind: "active_run_watchdog",
       ownerType: "board", returnOwnerAgentId: f.agentId,
       cause: "legacy_execution_requires_reconciliation", status: "resolved",
       fingerprint: randomUUID(), evidence: { automaticRecovery: { replay: "blocked" } },
@@ -242,20 +236,18 @@ describe("durable inbound chat scheduler receipts", () => {
     const failedRunId = randomUUID(),
       actionId = randomUUID();
     const commentIds = [randomUUID(), randomUUID()];
-    const taskKey = `D${f.companyId.slice(0, 7)}-1`;
+    const taskKey = `D${f.issueId.slice(0, 7)}-1`;
     await db
       .update(issues)
       .set({ identifier: taskKey })
       .where(eq(issues.id, f.issueId));
     await db.insert(toolApplications).values({
       id: applicationId,
-      companyId: f.companyId,
-      name: "Retry authority",
+      name: `Retry authority ${applicationId}`,
       type: "chat",
     });
     await db.insert(toolConnections).values({
       id: connectionId,
-      companyId: f.companyId,
       applicationId,
       name: "Retry",
       uid: `retry-${connectionId}`,
@@ -265,7 +257,6 @@ describe("durable inbound chat scheduler receipts", () => {
     });
     await db.insert(chatEndpoints).values({
       id: endpointId,
-      companyId: f.companyId,
       connectionId,
       provider: "slack",
       publicId: randomUUID(),
@@ -274,7 +265,6 @@ describe("durable inbound chat scheduler receipts", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: failedRunId,
-      companyId: f.companyId,
       agentId: f.agentId,
       status: "failed",
       finishedAt: new Date(),
@@ -288,7 +278,6 @@ describe("durable inbound chat scheduler receipts", () => {
     await db.insert(issueComments).values(
       commentIds.map((id) => ({
         id,
-        companyId: f.companyId,
         issueId: f.issueId,
         authorUserId: "board-user",
         body: "Exact original request",
@@ -296,7 +285,6 @@ describe("durable inbound chat scheduler receipts", () => {
     );
     await db.insert(chatActions).values({
       id: actionId,
-      companyId: f.companyId,
       endpointId,
       kind: "failed_run_retry",
       providerActionId: `failed_run_retry:${failedRunId}`,
@@ -462,7 +450,6 @@ describe("durable inbound chat scheduler receipts", () => {
       authorizeFailedChatRunRetryWake(db, db, {
         phase: "execution",
         wakeupRequestId: f.actionId,
-        companyId: f.companyId,
         agentId: f.agentId,
         issueId: f.issueId,
         contextSnapshot,
@@ -579,7 +566,6 @@ describe("durable inbound chat scheduler receipts", () => {
     const blockerId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: blockerId,
-      companyId: f.companyId,
       agentId: f.agentId,
       status: "running",
       contextSnapshot: { issueId: randomUUID() },
@@ -834,7 +820,6 @@ describe("durable inbound chat scheduler receipts", () => {
 
   it("keeps committed-response authority exact-Db scoped and separate from retry hints", async () => {
     const input = {
-      companyId: randomUUID(),
       issueId: randomUUID(),
       agentId: randomUUID(),
       runId: randomUUID(),
@@ -860,7 +845,6 @@ describe("durable inbound chat scheduler receipts", () => {
 
   it("preserves the current committed-response authority and exact transient failure", async () => {
     const input = {
-      companyId: randomUUID(),
       issueId: randomUUID(),
       agentId: randomUUID(),
       runId: randomUUID(),
@@ -1114,7 +1098,7 @@ describe("durable inbound chat scheduler receipts", () => {
       const conversationId = randomUUID();
       const originalCommentId = randomUUID();
       const failedCommentId = randomUUID();
-      const taskKey = `D${f.companyId.slice(0, 7)}-1`;
+      const taskKey = `D${f.issueId.slice(0, 7)}-1`;
       await db
         .update(issues)
         .set({
@@ -1124,13 +1108,11 @@ describe("durable inbound chat scheduler receipts", () => {
         .where(eq(issues.id, f.issueId));
       await db.insert(toolApplications).values({
         id: applicationId,
-        companyId: f.companyId,
-        name: "Failed chat retry",
+        name: `Failed chat retry ${applicationId}`,
         type: "chat",
       });
       await db.insert(toolConnections).values({
         id: connectionId,
-        companyId: f.companyId,
         applicationId,
         name: `${provider} failed chat retry`,
         uid: `chat-retry-${connectionId}`,
@@ -1141,7 +1123,6 @@ describe("durable inbound chat scheduler receipts", () => {
       });
       await db.insert(chatEndpoints).values({
         id: endpointId,
-        companyId: f.companyId,
         connectionId,
         provider,
         publicId: randomUUID(),
@@ -1150,7 +1131,6 @@ describe("durable inbound chat scheduler receipts", () => {
       });
       await db.insert(chatConversations).values({
         id: conversationId,
-        companyId: f.companyId,
         endpointId,
         issueId: f.issueId,
         externalConversationId: `${provider}-retry-dm`,
@@ -1163,14 +1143,12 @@ describe("durable inbound chat scheduler receipts", () => {
       await db.insert(issueComments).values([
         {
           id: originalCommentId,
-          companyId: f.companyId,
           issueId: f.issueId,
           authorUserId: "board-user",
           body: "Original request A: describe the original photo.",
         },
         {
           id: failedCommentId,
-          companyId: f.companyId,
           issueId: f.issueId,
           authorUserId: "board-user",
           body: "Later request B: explain the new queue behavior, not the photo.",
@@ -1178,7 +1156,6 @@ describe("durable inbound chat scheduler receipts", () => {
       ]);
       await db.insert(chatMessageLinks).values(
         [originalCommentId, failedCommentId].map((commentId, index) => ({
-          companyId: f.companyId,
           endpointId,
           conversationId,
           commentId,

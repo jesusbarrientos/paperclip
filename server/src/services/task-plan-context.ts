@@ -11,12 +11,11 @@ import { redactQuarantinedBodyForHigherTrust } from "./source-trust.js";
 /** Read the task's durable plan before constructing any provider's assignment. */
 export async function getTaskPlanContext(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   approvedRevisionId?: string | null;
   exposeLowTrustRaw?: boolean;
 }) {
-  const { db, companyId, issueId } = input;
+  const { db, issueId } = input;
   const plan = await db
     .select({
       documentId: documents.id,
@@ -40,10 +39,6 @@ export async function getTaskPlanContext(input: {
     .where(
       and(
         eq(issues.id, issueId),
-        eq(issues.companyId, companyId),
-        eq(issueDocuments.companyId, companyId),
-        eq(documents.companyId, companyId),
-        eq(documentRevisions.companyId, companyId),
         eq(issueDocuments.key, "plan"),
         isNull(issues.conversationAgentId),
       ),

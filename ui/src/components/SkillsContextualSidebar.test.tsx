@@ -13,8 +13,8 @@ vi.mock("@/lib/router", () => ({
   useLocation: () => mockLocation,
   useNavigate: () => vi.fn(),
 }));
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompany: { name: "Paperclip", issuePrefix: "PAP" } }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 vi.mock("@/context/SidebarContext", () => ({
   useSidebar: () => ({ isMobile: false, setSidebarOpen: vi.fn() }),

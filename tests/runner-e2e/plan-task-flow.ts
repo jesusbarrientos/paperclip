@@ -64,7 +64,7 @@ export async function runPlanTaskFlow(input: Input) {
     // Public fixture APIs and normal skill versioning only. No provider begins
     // until the served bytes and all three agents' selections are verified.
     await api.patch(`${company}/budgets`, { budgetMonthlyCents: PLAN_BUDGET_CENTS });
-    source.skills = await preparePlanSkills(api, f.company.id, variant);
+    source.skills = await preparePlanSkills(api, variant);
     const registry = new FixtureRegistry();
     for (const [id, name, role, capabilities] of [
       ["alex", "Alex Metrics", "engineer", "Owns arithmetic verification, operational metrics, and signed order summaries."],
@@ -85,7 +85,7 @@ export async function runPlanTaskFlow(input: Input) {
     for (const id of [f.agent.id, alexId, rileyId]) {
       await api.patch(`/api/agents/${id}/permissions`, { canCreateAgents: false, canAssignTasks: id === f.agent.id });
       await api.patch(`/api/agents/${id}/budgets`, { budgetMonthlyCents: PLAN_BUDGET_CENTS });
-      const skills = await selectPlanSkills(api, f.company.id, id, source.skills);
+      const skills = await selectPlanSkills(api, id, source.skills);
       source.agents.push({ id, skills });
       if (id === f.agent.id) invocations = planInvocations(source.skills, skills);
     }
@@ -108,8 +108,8 @@ export async function runPlanTaskFlow(input: Input) {
         return same >= 2;
       }, reject: o => o.runs.length > PLAN_MAX_RUNS ? "bounded run count exceeded" :
         o.runs.some(r => ["failed", "timed_out", "cancelled"].includes(r.status)) ? "actual run failed; retain original failure" : undefined });
-    await verifyPlanSkills(api, f.company.id, source.skills);
-    for (const id of [f.agent.id, alexId, rileyId]) await verifyPlanSelection(api, f.company.id, id, source.skills);
+    await verifyPlanSkills(api, source.skills);
+    for (const id of [f.agent.id, alexId, rileyId]) await verifyPlanSelection(api, id, source.skills);
     await captureRuns();
     checks = [...grade().checks, exposure()];
     input.observe(parent, observed.runs, checks);

@@ -19,7 +19,7 @@ The host plugin installer runs `npm install` into the managed plugin directory, 
 Configure Daytona from `Instance Settings -> Environments`, not from the plugin's plugin page.
 
 - Put the Daytona API key on the sandbox environment itself.
-- When you save an environment, Paperclip stores pasted API keys as company secrets.
+- When you save an environment, Paperclip stores pasted API keys as Paperclip secrets.
 - `DAYTONA_API_KEY` remains an optional host-level fallback when an environment omits the key.
 - Optional `apiUrl` and `target` settings map directly to the Daytona SDK/client configuration. If `apiUrl` is omitted, the Daytona SDK uses its default endpoint.
 

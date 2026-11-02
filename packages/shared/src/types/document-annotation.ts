@@ -57,7 +57,6 @@ export interface DocumentAnnotationAnchorSnapshot {
 
 export interface DocumentAnnotationThread {
   id: string;
-  companyId: string;
   issueId: string | null;
   routineId?: string | null;
   caseId?: string | null;
@@ -89,7 +88,6 @@ export interface DocumentAnnotationThread {
 
 export interface DocumentAnnotationComment {
   id: string;
-  companyId: string;
   threadId: string;
   issueId: string | null;
   routineId?: string | null;
@@ -107,7 +105,6 @@ export interface DocumentAnnotationComment {
 
 export interface DocumentAnnotationAnchorRemapSnapshot {
   id: string;
-  companyId: string;
   threadId: string;
   documentId: string;
   fromRevisionId: string | null;

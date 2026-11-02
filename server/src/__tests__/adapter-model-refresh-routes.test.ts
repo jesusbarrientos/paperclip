@@ -203,7 +203,7 @@ describe("adapter model refresh route", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get(`/api/companies/company-1/adapters/${refreshableAdapterType}/models?refresh=1`),
+      request(baseUrl).get(`/api/adapters/${refreshableAdapterType}/models?refresh=1`),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -215,7 +215,6 @@ describe("adapter model refresh route", () => {
   it("skips OpenCode model discovery for non-local environments", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: "env-1",
-      companyId: "company-1",
       name: "Remote SSH",
       driver: "ssh",
       config: {},
@@ -223,7 +222,7 @@ describe("adapter model refresh route", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/adapters/opencode_local/models?environmentId=env-1"),
+      request(baseUrl).get("/api/adapters/opencode_local/models?environmentId=env-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -234,7 +233,6 @@ describe("adapter model refresh route", () => {
   it("keeps OpenCode model discovery enabled for local environments", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: "env-1",
-      companyId: "company-1",
       name: "Local",
       driver: "local",
       config: {},
@@ -242,7 +240,7 @@ describe("adapter model refresh route", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/companies/company-1/adapters/opencode_local/models?environmentId=env-1"),
+      request(baseUrl).get("/api/adapters/opencode_local/models?environmentId=env-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);

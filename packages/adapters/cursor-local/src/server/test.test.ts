@@ -83,7 +83,7 @@ exit 7
 `, { mode: 0o755 });
     try {
       const result = await testEnvironment({
-        companyId: "company-1", adapterType: "cursor",
+        adapterType: "cursor",
         config: { command: "agent", cwd: root, env: { PATH: `${root}${path.delimiter}${process.env.PATH ?? ""}`, CURSOR_API_KEY: "fixture-cursor-key" } },
       });
       expect(result.checks).toEqual(expect.arrayContaining([
@@ -110,7 +110,6 @@ exit 7
 
     try {
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "cursor",
         config: {
           command: "agent",

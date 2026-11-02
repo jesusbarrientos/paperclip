@@ -94,7 +94,7 @@ async function evaluateStaleOwner(
     const ownerIssue = await tx
       .select({ status: issues.status, hiddenAt: issues.hiddenAt })
       .from(issues)
-      .where(and(eq(issues.id, owner.id), eq(issues.companyId, lease.companyId)))
+      .where(eq(issues.id, owner.id))
       .then((rows) => rows[0] ?? null);
     if (!ownerIssue) return "owner_issue_missing";
     if (ownerIssue.hiddenAt) return "owner_issue_hidden";
@@ -106,7 +106,7 @@ async function evaluateStaleOwner(
     const ownerRun = await tx
       .select({ status: heartbeatRuns.status })
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.id, owner.id), eq(heartbeatRuns.companyId, lease.companyId)))
+      .where(eq(heartbeatRuns.id, owner.id))
       .then((rows) => rows[0] ?? null);
     if (!ownerRun) return "owner_run_missing";
     if (TERMINAL_HEARTBEAT_RUN_STATUSES.has(ownerRun.status)) return "owner_run_terminal";
@@ -165,7 +165,6 @@ export function workspaceRuntimeLeaseService(db: Db) {
      * and never take the lane away from an agent run.
      */
     async claim(input: {
-      companyId: string;
       executionWorkspaceId: string;
       action: string;
       owner: WorkspaceRuntimeLeaseOwner;
@@ -194,7 +193,6 @@ export function workspaceRuntimeLeaseService(db: Db) {
         const created = await tx
           .insert(executionWorkspaceRuntimeLeases)
           .values({
-            companyId: input.companyId,
             executionWorkspaceId: input.executionWorkspaceId,
             ...ownerColumns,
             lastAction: input.action,
@@ -255,7 +253,6 @@ export function workspaceRuntimeLeaseService(db: Db) {
         const reclaimed = await tx
           .update(executionWorkspaceRuntimeLeases)
           .set({
-            companyId: input.companyId,
             ...ownerColumns,
             lastAction: input.action,
             claimedAt: now,

@@ -38,19 +38,23 @@ const mockDialog = vi.hoisted(() => ({
 
 const mockCompany = vi.hoisted(() => ({
   companies: [] as Array<{ id: string; name: string; issuePrefix: string }>,
-  setSelectedCompanyId: vi.fn(),
+  get organization() {
+    return this.companies[0] ?? null;
+  },
+  createOrganization: (input: { name: string }) => mockOrganizationApi.create(input),
   loading: false,
   error: null as Error | null,
 }));
 
-const mockCompaniesApi = vi.hoisted(() => ({
+const mockOrganizationApi = vi.hoisted(() => ({
   detachInflightList: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  // The gate fetches the list itself now, rather than reading the shared
-  // cache, so ownership cases are driven from here. `mockCompany.companies`
-  // below still feeds the *inner* wizard, which is a different question.
+  // `list` drives the gate's own organization fetch: `get` resolves its first
+  // row, or a 404 when it is empty. `mockCompany.companies` below still feeds
+  // the *inner* wizard, which is a different question.
   list: vi.fn(),
+  get: vi.fn(),
 }));
 const mockGoalsApi = vi.hoisted(() => ({
   create: vi.fn(),
@@ -173,10 +177,15 @@ vi.mock("@/lib/router", () => ({
 vi.mock("../context/DialogContext", () => ({
   useDialog: () => mockDialog,
 }));
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => mockCompany,
-}));
-vi.mock("../api/companies", () => ({ companiesApi: mockCompaniesApi }));
+vi.mock("../context/OrganizationContext", async () => {
+  const actual = await vi.importActual<typeof import("../context/OrganizationContext")>("../context/OrganizationContext");
+  return {
+    ...actual,
+    organizationQueryOptions: { ...actual.organizationQueryOptions, retry: false },
+    useOrganization: () => mockCompany,
+  };
+});
+vi.mock("../api/organization", () => ({ organizationApi: mockOrganizationApi }));
 vi.mock("../api/goals", () => ({ goalsApi: mockGoalsApi }));
 vi.mock("../api/agents", () => ({ agentsApi: mockAgentsApi }));
 vi.mock("../api/approvals", () => ({ approvalsApi: mockApprovalsApi }));
@@ -340,7 +349,12 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     mockCompany.companies = [];
     mockCompany.loading = false;
     mockCompany.error = null;
-    mockCompaniesApi.list.mockResolvedValue([]);
+    mockOrganizationApi.list.mockResolvedValue([]);
+    mockOrganizationApi.get.mockImplementation(async () => {
+      const rows = (await mockOrganizationApi.list()) as Array<{ id: string }>;
+      if (!rows[0]) throw new ApiError("organization_missing", 404, null);
+      return rows[0];
+    });
     mockAdapterRegistry.list = [];
     mockAdapterRegistry.disabled = new Set<string>();
     mockAdapterBuild.buildAdapterConfig.mockReset();
@@ -376,12 +390,12 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     });
     mockAgentsApi.hire.mockReset();
     mockAgentsApi.hire.mockResolvedValue({ agent: { id: "agent-1" }, approval: null });
-    mockCompaniesApi.create.mockResolvedValue({
+    mockOrganizationApi.create.mockResolvedValue({
       id: "created",
       name: "Created Co",
       issuePrefix: "CRE",
     });
-    mockCompaniesApi.update.mockResolvedValue({
+    mockOrganizationApi.update.mockResolvedValue({
       id: "c1",
       name: "Acme Rockets",
       issuePrefix: "PAP",
@@ -409,7 +423,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       mockDialog.onboardingOptions = {};
       mockCompany.companies = [];
       mockCompany.loading = false;
-      mockCompaniesApi.list.mockResolvedValue([]);
+      mockOrganizationApi.list.mockResolvedValue([]);
 
       // The model step needs tiles to pick from, and this suite's default
       // registry is empty.
@@ -439,11 +453,11 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     }
 
     it("creates the organization on Continue and lands on the agent step, no mission", async () => {
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       const { root } = await openStepOne();
       await clickByText((t) => t.startsWith("Continue"));
 
-      expect(mockCompaniesApi.create).toHaveBeenCalledWith({ name: "Initech" });
+      expect(mockOrganizationApi.create).toHaveBeenCalledWith({ name: "Initech" });
       expect(document.body.textContent).toContain("Create your first agent");
       expect(document.body.textContent).not.toContain("Define your mission");
       expect(document.body.textContent).not.toContain("Tell us about your team");
@@ -458,7 +472,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // "Mission" row: onboarding stopped asking, so the row could only ever
       // render unchecked. Both asserted against positive anchors so an
       // unrendered step cannot pass as an absence.
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       const { root } = await openStepOne();
       await clickByText((t) => t.startsWith("Continue"));
       expect(document.body.textContent).toContain("Create your first agent");
@@ -503,8 +517,8 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       mockDialog.onboardingOptions = {};
       mockCompany.companies = [];
       mockCompany.loading = false;
-      mockCompaniesApi.list.mockResolvedValue([]);
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.list.mockResolvedValue([]);
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       mockAgentsApi.list.mockResolvedValueOnce([
         { id: "agent-existing", name: "Ada", adapterType: "claude_local" },
       ]);
@@ -558,7 +572,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       await pickFirstSource(clickText);
       await clickText((t) => isArcPrimary(t));
 
-      expect(mockAgentsApi.list).toHaveBeenCalledWith("company-new");
+      expect(mockAgentsApi.list).toHaveBeenCalledWith();
       expect(mockAgentsApi.hire).not.toHaveBeenCalled();
       expect(document.body.textContent).toContain("ada is ready to work!");
 
@@ -578,8 +592,8 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       mockDialog.onboardingOptions = {};
       mockCompany.companies = [];
       mockCompany.loading = false;
-      mockCompaniesApi.list.mockResolvedValue([]);
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.list.mockResolvedValue([]);
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
 
       // The model step needs tiles to pick from, and this suite's default
       // registry is empty.
@@ -622,7 +636,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // The mock is declared with no parameters, so index the call rather than
       // destructuring a zero-length tuple type.
       const hireArgs = mockAgentsApi.hire.mock.calls.at(-1) as unknown[];
-      expect((hireArgs[1] as { role: string }).role).toBe("general");
+      expect((hireArgs[0] as { role: string }).role).toBe("general");
 
       await act(async () => root.unmount());
     });
@@ -639,7 +653,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           resolveHire = resolve;
         }),
       );
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       const { root } = await openStepOne();
       await clickByText((t) => t.startsWith("Continue"));
       const agentField = document.body.querySelector(
@@ -676,7 +690,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // `loading` guard cannot stop it — `setLoading(true)` has not landed
       // while the same event is still bubbling — so the second caller reads a
       // value the first has not written. Two companies, one keystroke.
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       const { root } = await openStepOne();
 
       const nameInput = document.body.querySelector(
@@ -689,7 +703,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       });
       await flushReact();
 
-      expect(mockCompaniesApi.create).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationApi.create).toHaveBeenCalledTimes(1);
       expect(document.body.textContent).toContain("Create your first agent");
 
       await act(async () => root.unmount());
@@ -703,7 +717,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // it guards resolves. Only a ref written before the request goes out is
       // visible to the caller behind it.
       let resolveCreate: (c: { id: string; issuePrefix: string }) => void = () => {};
-      mockCompaniesApi.create.mockReturnValue(
+      mockOrganizationApi.create.mockReturnValue(
         new Promise<{ id: string; issuePrefix: string }>((resolve) => {
           resolveCreate = resolve;
         }),
@@ -721,7 +735,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
         }
       });
 
-      expect(mockCompaniesApi.create).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationApi.create).toHaveBeenCalledTimes(1);
 
       await act(async () => resolveCreate({ id: "company-new", issuePrefix: "INI" }));
       await flushReact();
@@ -733,7 +747,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     it("sends Back to the screen the run actually came from", async () => {
       // A create run reached the agent step from step 1, so Back owes it step 1 —
       // not the mission screen it never saw.
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       const { root } = await openStepOne();
       await clickByText((t) => t.startsWith("Continue"));
       expect(document.body.textContent).toContain("Create your first agent");
@@ -755,7 +769,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // nothing is chosen until a tile is pressed, a step with no tiles is a step
       // that can never advance.
       mockAdapterRegistry.list = [{ type: "claude_local" }, { type: "codex_local" }];
-      mockCompaniesApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
+      mockOrganizationApi.create.mockResolvedValue({ id: "company-new", issuePrefix: "INI" });
       window.localStorage.setItem(
         ONBOARDING_STORAGE_KEY,
         JSON.stringify({ step: 1, companyName: "Initech" }),
@@ -763,7 +777,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       mockDialog.onboardingOptions = {};
       mockCompany.companies = [];
       mockCompany.loading = false;
-      mockCompaniesApi.list.mockResolvedValue([]);
+      mockOrganizationApi.list.mockResolvedValue([]);
 
       const { root, queryClient } = render();
       await act(async () => {
@@ -881,20 +895,20 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
         : { type: "secret_ref", secretId: "saved-org-key", version: "latest" };
       if (scope === "personal") {
         mockSecretsApi.listMyUserSecrets.mockResolvedValue([{
-          definition: { id: "saved-key", companyId: "company-new", key, name: "Saved key", status: "active" },
-          secret: { companyId: "company-new", status: "active" },
+          definition: { id: "saved-key", key, name: "Saved key", status: "active" },
+          secret: { status: "active" },
         }]);
       } else {
         mockSecretsApi.list.mockResolvedValue([{
-          id: "saved-org-key", companyId: "company-new", key, name: "Saved key", scope: "company", status: "active",
+          id: "saved-org-key", key, name: "Saved key", scope: "company", status: "active",
         }]);
       }
       const { root, clickByText } = await openConnectStep();
       const picker = document.body.querySelector('select[aria-label="Saved API key"]') as HTMLSelectElement;
       expect(picker.value).toBe(scope === "personal" ? "user:saved-key" : "company:saved-org-key");
       await clickByText((t) => isArcPrimary(t));
-      expect((mockAgentsApi.testEnvironment.mock.calls.at(-1) as unknown[])[2]).toMatchObject({ adapterConfig: { env: { [key]: binding } } });
-      expect((mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[1]).toMatchObject({ adapterConfig: { env: { [key]: binding } } });
+      expect((mockAgentsApi.testEnvironment.mock.calls.at(-1) as unknown[])[1]).toMatchObject({ adapterConfig: { env: { [key]: binding } } });
+      expect((mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[0]).toMatchObject({ adapterConfig: { env: { [key]: binding } } });
       expect(mockSecretsApi.createMyUserSecret).not.toHaveBeenCalled();
       expect(mockSecretsApi.rotateMyUserSecret).not.toHaveBeenCalled();
       await act(async () => root.unmount());
@@ -933,8 +947,8 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
         const { root } = await connectWithApiKey();
 
         expect(managedApi.create).toHaveBeenCalledTimes(1);
-        expect(managedApi.create).toHaveBeenCalledWith("company-new", expect.objectContaining({ provider: "anthropic", method: "api_key", ownership: "personal", apiKey: KEY }));
-        const hireBody = (mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[1] as { runtimeConfig: { aiConnection: unknown }; adapterConfig: { env?: Record<string, unknown> } };
+        expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({ provider: "anthropic", method: "api_key", ownership: "personal", apiKey: KEY }));
+        const hireBody = (mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[0] as { runtimeConfig: { aiConnection: unknown }; adapterConfig: { env?: Record<string, unknown> } };
         expect(hireBody.runtimeConfig.aiConnection).toEqual({ provider: "anthropic", method: "api_key", mode: "responsible_user" });
         expect(hireBody.adapterConfig.env?.ANTHROPIC_API_KEY).toBeUndefined();
         // The whole payload, not just that one field: the point is that the key
@@ -949,7 +963,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           { definition: { id: "old-def", key: "ANTHROPIC_API_KEY" }, secret: { id: "secret-existing" } },
         ]);
         const { root } = await connectWithApiKey();
-        expect(managedApi.create).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ apiKey: KEY }));
+        expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({ apiKey: KEY }));
         expect(mockSecretsApi.rotateMyUserSecret).not.toHaveBeenCalled();
         expect(managedApi.create).toHaveBeenCalledTimes(1);
         await act(async () => root.unmount());
@@ -1058,7 +1072,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
 
       expect(mockAgentsApi.hire).toHaveBeenCalled();
       const hireArgs = mockAgentsApi.hire.mock.calls.at(-1) as unknown[];
-      const hireBody = hireArgs[1] as {
+      const hireBody = hireArgs[0] as {
         adapterConfig: { env?: Record<string, unknown> };
         applyStoredClaudeLogin?: boolean;
       };
@@ -1083,7 +1097,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
 
       expect(mockAgentsApi.hire).toHaveBeenCalled();
       const hireArgs = mockAgentsApi.hire.mock.calls.at(-1) as unknown[];
-      const hireBody = hireArgs[1] as {
+      const hireBody = hireArgs[0] as {
         adapterConfig: { env?: Record<string, unknown> };
         applyStoredClaudeLogin?: boolean;
       };
@@ -1111,7 +1125,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // or apply it when the configuration already has an API key.
       expect(mockAgentsApi.getClaudeOAuthTokenStatus).toHaveBeenCalledTimes(1);
       const hireArgs = mockAgentsApi.hire.mock.calls.at(-1) as unknown[];
-      const hireBody = hireArgs[1] as {
+      const hireBody = hireArgs[0] as {
         adapterConfig: { env?: Record<string, unknown> };
         applyStoredClaudeLogin?: boolean;
       };
@@ -1133,7 +1147,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
 
       expect(mockAgentsApi.hire).toHaveBeenCalled();
       const hireArgs = mockAgentsApi.hire.mock.calls.at(-1) as unknown[];
-      const hireBody = hireArgs[1] as { adapterConfig: { env?: Record<string, unknown> } };
+      const hireBody = hireArgs[0] as { adapterConfig: { env?: Record<string, unknown> } };
       const binding = hireBody.adapterConfig.env?.[CLAUDE_OAUTH_TOKEN_ENV_KEY] as
         | { type: string }
         | undefined;
@@ -1158,7 +1172,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
 
       expect(mockAgentsApi.testEnvironment).toHaveBeenCalled();
       const testArgs = mockAgentsApi.testEnvironment.mock.calls.at(-1) as unknown[];
-      const testBody = testArgs[2] as { adapterConfig: { env?: Record<string, unknown> } };
+      const testBody = testArgs[1] as { adapterConfig: { env?: Record<string, unknown> } };
       expect(testBody.adapterConfig.env?.[CLAUDE_OAUTH_TOKEN_ENV_KEY]).toEqual({
         type: "user_secret_ref",
         key: CLAUDE_OAUTH_TOKEN_ENV_KEY,
@@ -1177,7 +1191,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
 
       expect(mockAgentsApi.testEnvironment).toHaveBeenCalled();
       const testArgs = mockAgentsApi.testEnvironment.mock.calls.at(-1) as unknown[];
-      const testBody = testArgs[2] as { adapterConfig: { env?: Record<string, unknown> } };
+      const testBody = testArgs[1] as { adapterConfig: { env?: Record<string, unknown> } };
       expect(testBody.adapterConfig.env?.[CLAUDE_OAUTH_TOKEN_ENV_KEY]).toBeUndefined();
 
       await act(async () => root.unmount());
@@ -1196,7 +1210,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       // block the hire below.
       mockAgentsApi.testEnvironment.mockImplementation(
         (async (...args: unknown[]) => {
-          const request = args[2] as {
+          const request = args[1] as {
             adapterConfig: { env?: Record<string, unknown> };
           };
           const hasBinding = Boolean(
@@ -1285,7 +1299,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
   it("re-syncs a restored draft once companies resolve asynchronously (companies start empty/loading)", async () => {
     // Regression for the initializer-only restore bug: the inner wizard's
     // ~20 useState(saved?.x ?? default) initializers only read `saved` on
-    // their very first render. useCompany() starts with companies=[] and
+    // their very first render. useOrganization() starts with companies=[] and
     // loading=true and resolves later; if the inner component mounted before
     // that resolution, restoreOnboardingState would see an empty companies
     // list and the whole draft would lock to defaults forever, even after
@@ -1307,7 +1321,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     // render, so replacing the mock afterwards would never reach it.
     let resolveList: (companies: Array<{ id: string; name: string; issuePrefix: string }>) => void =
       () => {};
-    mockCompaniesApi.list.mockReturnValue(
+    mockOrganizationApi.list.mockReturnValue(
       new Promise<Array<{ id: string; name: string; issuePrefix: string }>>((resolve) => {
         resolveList = resolve;
       }),
@@ -1362,7 +1376,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     });
   });
 
-  it("keeps the live wizard mounted while a post-create company-list refetch runs", async () => {
+  it("keeps the live wizard mounted while a post-create organization refetch runs", async () => {
     // The authorization fetch needs to delay the first mount when a draft
     // exists. Once the customer has typed, though, invalidating that query is
     // normal background work. Unmounting for the refetch remounted the wizard
@@ -1373,7 +1387,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     );
     let resolveRefetch: (companies: Array<{ id: string; name: string; issuePrefix: string }>) => void =
       () => {};
-    mockCompaniesApi.list
+    mockOrganizationApi.list
       .mockResolvedValueOnce([])
       .mockImplementationOnce(
         () =>
@@ -1381,7 +1395,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
             resolveRefetch = resolve;
           }),
       );
-    mockCompaniesApi.create.mockResolvedValue({
+    mockOrganizationApi.create.mockResolvedValue({
       id: "created",
       name: "Created Co",
       issuePrefix: "CRE",
@@ -1406,8 +1420,12 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     });
     await flushReact();
 
-    expect(mockCompaniesApi.create).toHaveBeenCalledWith({ name: "Created Co" });
-    expect(mockCompaniesApi.list).toHaveBeenCalledTimes(2);
+    expect(mockOrganizationApi.create).toHaveBeenCalledWith({ name: "Created Co" });
+    await act(async () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.organization });
+    });
+    await flushReact();
+    expect(mockOrganizationApi.list).toHaveBeenCalledTimes(2);
     expect(document.querySelector("#onboarding-agent-name")).not.toBeNull();
 
     await act(async () => {
@@ -1435,7 +1453,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     const company = { id: "c1", name: "Saved Co", issuePrefix: "SC" };
     let resolveRetry: (companies: Array<{ id: string; name: string; issuePrefix: string }>) => void =
       () => {};
-    mockCompaniesApi.list
+    mockOrganizationApi.list
       .mockRejectedValueOnce(new Error("company list unavailable"))
       .mockImplementationOnce(
         () =>
@@ -1459,7 +1477,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     mockCompany.companies = [company];
     await act(async () => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.companies.list(SESSION_USER_ID),
+        queryKey: queryKeys.organization,
       });
     });
     await flushReact();
@@ -1473,11 +1491,8 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     });
     await flushReact();
 
-    expect(mockCompaniesApi.list).toHaveBeenCalledTimes(2);
-    expect(queryClient.getQueryData(queryKeys.companies.list(SESSION_USER_ID))).toEqual({
-      companies: [company],
-      unauthorized: false,
-    });
+    expect(mockOrganizationApi.list).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(queryKeys.organization)).toEqual(company);
     const agentNameInput = document.querySelector(
       "#onboarding-agent-name",
     ) as HTMLInputElement | null;
@@ -1502,7 +1517,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     );
     mockCompany.companies = [{ id: "company-new", name: "My Co", issuePrefix: "MC" }];
     mockCompany.loading = false;
-    mockCompaniesApi.list.mockResolvedValue([
+    mockOrganizationApi.list.mockResolvedValue([
       { id: "company-new", name: "My Co", issuePrefix: "MC" },
     ]);
 
@@ -1544,7 +1559,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     mockCompany.companies = [];
     mockCompany.loading = false;
     mockCompany.error = new Error("company list unavailable");
-    mockCompaniesApi.list.mockRejectedValue(new Error("company list unavailable"));
+    mockOrganizationApi.list.mockRejectedValue(new Error("company list unavailable"));
 
     const { root, queryClient } = render();
     await act(async () => {
@@ -1632,7 +1647,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     mockCompany.companies = [{ id: "c1", name: "Saved Co", issuePrefix: "SC" }];
     mockCompany.loading = false;
     mockCompany.error = new Error("refetch failed");
-    mockCompaniesApi.list.mockRejectedValue(new Error("refetch failed"));
+    mockOrganizationApi.list.mockRejectedValue(new Error("refetch failed"));
 
     const { root, queryClient } = render();
     await act(async () => {
@@ -1680,7 +1695,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     mockCompany.companies = [];
     mockCompany.loading = false;
     mockCompany.error = new Error("company list unavailable");
-    mockCompaniesApi.list.mockRejectedValue(new Error("company list unavailable"));
+    mockOrganizationApi.list.mockRejectedValue(new Error("company list unavailable"));
 
     const { root, queryClient } = render();
     await act(async () => {
@@ -1724,7 +1739,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     mockCompany.companies = [{ id: "company-a", name: "Account A Co", issuePrefix: "AAC" }];
     mockCompany.loading = false;
     mockCompany.error = new Error("refetch failed for the new account");
-    mockCompaniesApi.list.mockRejectedValue(new Error("refetch failed for the new account"));
+    mockOrganizationApi.list.mockRejectedValue(new Error("refetch failed for the new account"));
 
     const { root, queryClient } = render();
     await act(async () => {
@@ -1776,7 +1791,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     // do not include A's. Note the fetch must actually complete: leaving it
     // pending would keep the wizard unmounted and the assertion below would
     // hold for the wrong reason.
-    mockCompaniesApi.list.mockResolvedValue([
+    mockOrganizationApi.list.mockResolvedValue([
       { id: "company-b", name: "Account B Co", issuePrefix: "BBC" },
     ]);
 
@@ -1803,16 +1818,14 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     });
   });
 
-  it("does not delete a draft when the company list comes back unauthorized", async () => {
-    // `companiesListQueryOptions` folds 401/403 into
-    // `{ companies: [], unauthorized: true }` rather than throwing, so an auth
-    // blip arrives as a successful fetch of an empty list — which reads as
-    // "this account owns nothing" and would delete the draft.
+  it("does not delete a draft when the organization lookup comes back unauthorized", async () => {
+    // An auth blip must not read as "this account owns nothing", which would
+    // delete the draft.
     window.localStorage.setItem(
       ONBOARDING_STORAGE_KEY,
       JSON.stringify({ step: 3, companyName: "Saved Co", createdCompanyId: "c1" }),
     );
-    mockCompaniesApi.list.mockRejectedValue(
+    mockOrganizationApi.list.mockRejectedValue(
       new ApiError("forbidden", 403, null),
     );
 
@@ -1848,12 +1861,9 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     );
     const { root, queryClient } = render();
     // A's list, already in the cache from their session.
-    queryClient.setQueryData(queryKeys.companies.list(SESSION_USER_ID), {
-      companies: [{ id: "company-a", name: "Account A Co", issuePrefix: "AAC" }],
-      unauthorized: false,
-    });
+    queryClient.setQueryData(queryKeys.organization, { id: "company-a", name: "Account A Co", issuePrefix: "AAC" });
     // B's session: the refetch fails, so A's data is retained.
-    mockCompaniesApi.list.mockRejectedValue(new Error("refetch failed"));
+    mockOrganizationApi.list.mockRejectedValue(new Error("refetch failed"));
 
     await act(async () => {
       root.render(
@@ -1891,11 +1901,8 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     });
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, draft);
     const { root, queryClient } = render();
-    queryClient.setQueryData(queryKeys.companies.list(SESSION_USER_ID), {
-      companies: [{ id: "c1", name: "Saved Co", issuePrefix: "SC" }],
-      unauthorized: false,
-    });
-    mockCompaniesApi.list.mockReturnValue(new Promise(() => {}));
+    queryClient.setQueryData(queryKeys.organization, { id: "c1", name: "Saved Co", issuePrefix: "SC" });
+    mockOrganizationApi.list.mockReturnValue(new Promise(() => {}));
 
     await act(async () => {
       root.render(
@@ -1919,7 +1926,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     // request that cannot change the answer — nor issue one at all.
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "{not json");
     const { root, queryClient } = render();
-    mockCompaniesApi.list.mockReturnValue(new Promise(() => {}));
+    mockOrganizationApi.list.mockReturnValue(new Promise(() => {}));
 
     await act(async () => {
       root.render(
@@ -1931,7 +1938,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     await flushReact();
 
     expect(window.localStorage.getItem(ONBOARDING_STORAGE_KEY)).toBeNull();
-    expect(mockCompaniesApi.list).not.toHaveBeenCalled();
+    expect(mockOrganizationApi.list).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();
@@ -1981,7 +1988,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
     async function openStep4(overrides: Record<string, unknown> = {}) {
       mockCompany.companies = [{ id: "company-new", name: "Initech", issuePrefix: "INI" }];
       mockCompany.loading = false;
-      mockCompaniesApi.list.mockResolvedValue(mockCompany.companies);
+      mockOrganizationApi.list.mockResolvedValue(mockCompany.companies);
       window.localStorage.setItem(
         ONBOARDING_STORAGE_KEY,
         JSON.stringify({
@@ -2027,9 +2034,9 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
         // The connection activity event arrives before the login poll. It must
         // not replace/unmount the controller that still owns the completion.
         await act(async () => {
-          queryClient.setQueryData(["ai-connections", "company-new"], {
+          queryClient.setQueryData(["ai-connections"], {
             currentUserId: "user-1",
-            connections: [{ id: "managed-connection", grantId: "managed-grant", companyId: "company-new", provider, method: "subscription", name: "My subscription", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true }],
+            connections: [{ id: "managed-connection", grantId: "managed-grant", provider, method: "subscription", name: "My subscription", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true }],
           });
         });
         for (let i = 0; i < 4; i++) await flushReact();
@@ -2037,7 +2044,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
         expect(mockAgentsApi.hire).not.toHaveBeenCalled();
         await act(async () => {
           queryClient.setQueryData(
-            adapterType === "claude_local" ? [statusKey, "company-new", sessionId] : [statusKey, "company-new", adapterType, sessionId],
+            adapterType === "claude_local" ? [statusKey, sessionId] : [statusKey, adapterType, sessionId],
             { sessionId, status: "authenticated", expiresAt: new Date(Date.now() + 600_000).toISOString() },
           );
         });
@@ -2045,7 +2052,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); });
         }
         expect(mockAgentsApi.hire).toHaveBeenCalledTimes(1);
-        expect(mockAgentsApi.hire).toHaveBeenCalledWith("company-new", expect.objectContaining({ runtimeConfig: expect.objectContaining({ aiConnection: { provider, method: "subscription", mode: "responsible_user" } }) }));
+        expect(mockAgentsApi.hire).toHaveBeenCalledWith(expect.objectContaining({ runtimeConfig: expect.objectContaining({ aiConnection: { provider, method: "subscription", mode: "responsible_user" } }) }));
         for (let i = 0; i < 4; i++) await flushReact();
         expect(document.body.textContent).toContain("Temporary hire failure");
         const retry = [...document.body.querySelectorAll("button")].find(button => button.textContent?.trim() === "Connect");
@@ -2343,7 +2350,6 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       });
       for (let i = 0; i < 4; i++) await flushReact();
       expect(mockAgentsApi.submitClaudeSetupTokenBrowserCode).toHaveBeenCalledWith(
-        "company-new",
         "claude-session-1",
         "Q2RJ-E1YIF-authorization-code",
       );
@@ -3056,7 +3062,6 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       const { root } = await openStep4({ adapterType: "claude_local" });
 
       expect(mockAgentsApi.getAdapterAuthSignal).toHaveBeenCalledWith(
-        "company-new",
         "claude_local",
         "env-sandbox-1",
       );
@@ -3083,7 +3088,6 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       await clickByText((t) => t.startsWith("OpenAI"));
 
       expect(mockAgentsApi.getAdapterAuthSignal).toHaveBeenCalledWith(
-        "company-new",
         "codex_local",
         "env-sandbox-1",
       );
@@ -3142,9 +3146,9 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           expectTesting();
           // The saved account can become visible while its hello test is pending.
           await act(async () => {
-            queryClient.setQueryData(["ai-connections", "company-new"], {
+            queryClient.setQueryData(["ai-connections"], {
               currentUserId: "user-1",
-              connections: [{ id: "local-connection", grantId: "local-grant", companyId: "company-new", provider, method: "subscription", name: "My subscription", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true }],
+              connections: [{ id: "local-connection", grantId: "local-grant", provider, method: "subscription", name: "My subscription", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true }],
             });
             window.dispatchEvent(new Event("focus"));
           });
@@ -3157,16 +3161,16 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           await settle();
           expect(document.body.textContent).toContain("is ready to work!");
           expect(mockAgentsApi.hire).toHaveBeenCalledTimes(1);
-          expect(mockAgentsApi.hire).toHaveBeenCalledWith("company-new", expect.objectContaining({ runtimeConfig: expect.objectContaining({ aiConnection: { provider, method: "subscription", mode: "responsible_user" } }) }));
+          expect(mockAgentsApi.hire).toHaveBeenCalledWith(expect.objectContaining({ runtimeConfig: expect.objectContaining({ aiConnection: { provider, method: "subscription", mode: "responsible_user" } }) }));
         } finally { await act(async () => root.unmount()); }
       });
 
       it.each(providers)("automatically verifies a saved %s subscription only after selecting its provider", async (adapterType, provider, label) => {
         const { root, queryClient } = await openStep4({ adapterType });
         try {
-          await act(async () => queryClient.setQueryData(["ai-connections", "company-new"], {
+          await act(async () => queryClient.setQueryData(["ai-connections"], {
             currentUserId: "user-1",
-            connections: [{ id: "saved", grantId: "grant", companyId: "company-new", provider, method: "subscription", name: "My subscription", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true }],
+            connections: [{ id: "saved", grantId: "grant", provider, method: "subscription", name: "My subscription", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true }],
           }));
           await settle();
           expect(mockAgentsApi.testEnvironment).not.toHaveBeenCalled();
@@ -3181,16 +3185,16 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       it.each(providers)("prefers the personal default %s subscription over an earlier shared account", async (adapterType, provider, label) => {
         const { root, queryClient } = await openStep4({ adapterType });
         try {
-          await act(async () => queryClient.setQueryData(["ai-connections", "company-new"], {
+          await act(async () => queryClient.setQueryData(["ai-connections"], {
             currentUserId: "user-1",
             connections: [
-              { id: "shared", grantId: "shared-grant", companyId: "company-new", provider, method: "subscription", name: "Shared", ownership: "shared", status: "connected" },
-              { id: "personal", grantId: "personal-grant", companyId: "company-new", provider, method: "subscription", name: "Personal", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true },
+              { id: "shared", grantId: "shared-grant", provider, method: "subscription", name: "Shared", ownership: "shared", status: "connected" },
+              { id: "personal", grantId: "personal-grant", provider, method: "subscription", name: "Personal", ownership: "personal", ownerUserId: "user-1", status: "connected", isDefault: true },
             ],
           }));
           await pickSource(label);
           await settle();
-          expect(mockAgentsApi.hire).toHaveBeenCalledWith("company-new", expect.objectContaining({
+          expect(mockAgentsApi.hire).toHaveBeenCalledWith(expect.objectContaining({
             runtimeConfig: expect.objectContaining({ aiConnection: { provider, method: "subscription", mode: "responsible_user" } }),
           }));
           expect(managedApi.connectLocal).not.toHaveBeenCalled();
@@ -3200,9 +3204,9 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       it.each(providers)("does not choose an arbitrary %s account when several shared subscriptions exist", async (adapterType, provider, label) => {
         const { root, queryClient } = await openStep4({ adapterType });
         try {
-          await act(async () => queryClient.setQueryData(["ai-connections", "company-new"], {
+          await act(async () => queryClient.setQueryData(["ai-connections"], {
             currentUserId: "user-1",
-            connections: ["first", "second"].map(id => ({ id, grantId: `${id}-grant`, companyId: "company-new", provider, method: "subscription", name: id, ownership: "shared", status: "connected" })),
+            connections: ["first", "second"].map(id => ({ id, grantId: `${id}-grant`, provider, method: "subscription", name: id, ownership: "shared", status: "connected" })),
           }));
           await pickSource(label);
           await settle();
@@ -3221,7 +3225,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           await pickSource(label);
           await detected();
           expectTesting();
-          await act(async () => queryClient.setQueryData(queryKeys.environments.list("company-new"), [
+          await act(async () => queryClient.setQueryData(queryKeys.environments.list(), [
             { ...LOCAL_ENVIRONMENT, id: "new-local-default" },
           ]));
           await settle();
@@ -3302,22 +3306,16 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
         } finally { await act(async () => root.unmount()); }
       });
 
-      it.each(["back", "provider", "company", "unmount"] as const)("ignores verification completion after %s navigation", async navigation => {
+      it.each(["back", "provider", "unmount"] as const)("ignores verification completion after %s navigation", async navigation => {
         let finish!: (result: typeof passed) => void;
         mockAgentsApi.testEnvironment.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
-        const { root, queryClient } = await openStep4({ adapterType: "codex_local" });
+        const { root } = await openStep4({ adapterType: "codex_local" });
         let mounted = true;
         try {
           await pickSource(/OpenAI/);
           await detected();
           expectTesting();
-          if (navigation === "company") {
-            mockCompany.companies.push({ id: "company-other", name: "Other", issuePrefix: "OTH" });
-            mockDialog.onboardingOptions = { initialStep: 4, companyId: "company-other" };
-            managedApi.checkLocalLogin.mockResolvedValue({ status: "sign_in_required" });
-            await act(async () => root.render(<QueryClientProvider client={queryClient}><OnboardingWizard /></QueryClientProvider>));
-            await settle();
-          } else if (navigation === "unmount") {
+          if (navigation === "unmount") {
             await act(async () => root.unmount());
             mounted = false;
           } else {
@@ -3350,9 +3348,9 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       expect(connect).toBeTruthy();
       await act(async () => connect!.click());
       for (let i = 0; i < 6; i++) await flushReact();
-      expect(managedApi.connectLocal).toHaveBeenCalledWith("company-new", expect.objectContaining({ provider: "anthropic", method: "subscription", ownership: "personal" }));
+      expect(managedApi.connectLocal).toHaveBeenCalledWith(expect.objectContaining({ provider: "anthropic", method: "subscription", ownership: "personal" }));
       expect(mockAgentsApi.hire).toHaveBeenCalled();
-      const hire = (mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[1] as { runtimeConfig: { aiConnection: unknown } };
+      const hire = (mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[0] as { runtimeConfig: { aiConnection: unknown } };
       expect(hire.runtimeConfig.aiConnection).toEqual({ provider: "anthropic", method: "subscription", mode: "responsible_user" });
       await act(async () => root.unmount());
     });

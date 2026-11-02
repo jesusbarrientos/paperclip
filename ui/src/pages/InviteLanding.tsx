@@ -4,11 +4,9 @@ import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
 import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { CompanyPatternIcon } from "@/components/CompanyPatternIcon";
-import { useCompany } from "@/context/CompanyContext";
 import { Link, useNavigate, useParams } from "@/lib/router";
-import { accessApi } from "../api/access";
+import { accessApi, type CurrentBoardAccess } from "../api/access";
 import { authApi } from "../api/auth";
-import { fetchCompanyListForCurrentAccount, useCompanyListQuery } from "../api/companies-query";
 import { healthApi } from "../api/health";
 import { getAdapterLabel } from "../adapters/adapter-display-registry";
 import { clearPendingInviteToken, rememberPendingInviteToken } from "../lib/invite-memory";
@@ -119,6 +117,13 @@ function isBootstrapAcceptancePayload(payload: unknown) {
   );
 }
 
+function hasActiveOrganizationAccess(boardAccess: CurrentBoardAccess | undefined) {
+  if (!boardAccess) return false;
+  return boardAccess.source === "local_implicit"
+    || boardAccess.isInstanceAdmin
+    || (boardAccess.memberships ?? []).some((membership) => membership.status === "active");
+}
+
 function isApprovedHumanJoinPayload(payload: unknown, showsAgentForm: boolean) {
   if (!payload || typeof payload !== "object" || showsAgentForm) return false;
   const status = (payload as { status?: unknown }).status;
@@ -209,7 +214,6 @@ function AwaitingJoinApprovalPanel({
 export function InviteLandingPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { setSelectedCompanyId } = useCompany();
   const params = useParams();
   const token = (params.token ?? "").trim();
   const [authMode, setAuthMode] = useState<AuthMode>("sign_up");
@@ -242,31 +246,26 @@ export function InviteLandingPage() {
     retry: false,
   });
 
-  // Whose list this is, is no longer this page's problem: the entry is keyed by
-  // account, so another account's list is unreachable rather than merely
-  // distrusted. What is left for the gate below is narrower and still real — do
-  // we have an answer *yet*. Without it, a pending query reads as an empty list,
-  // which reads as "not a member", which auto-accepts an invite the customer may
-  // already hold.
+  // Without a fresh answer, a pending query reads as "not a member", which
+  // auto-accepts an invite the customer may already hold. Hence `staleTime: 0`
+  // and a mount-scoped flag rather than `isSuccess`.
   //
-  // Hence `staleTime: 0` and a mount-scoped flag rather than `isSuccess`: a
-  // cached list is the right account's now, but it can be thirty seconds old, and
-  // acting on "not a member" is the direction that costs something.
-  //
-  // `local_trusted` has no accounts at all, so there is no identity to key on and
-  // nothing to check the list against; the gate stays open.
-  const companiesQuery = useCompanyListQuery({
-    enabled: !!sessionQuery.data && !!inviteQuery.data?.companyId,
+  // `local_trusted` has no accounts at all: every visitor already acts as the
+  // board, so the invite is always for an existing member.
+  const boardAccessQuery = useQuery({
+    queryKey: queryKeys.access.currentBoardAccess,
+    queryFn: () => accessApi.getCurrentBoardAccess(),
+    enabled: !!sessionQuery.data && !!inviteQuery.data,
     staleTime: 0,
+    retry: false,
   });
   const membershipIsAccountScoped = healthQuery.data?.deploymentMode !== "local_trusted";
-  // No `sessionQuery.data` term: the query only fetches while a session exists, so
-  // the flag cannot be true without one, and if the session lapses the observer
-  // re-keys to the anonymous entry and holds no data to leak.
   const membershipListIsCurrent = membershipIsAccountScoped
-    ? companiesQuery.isFetchedAfterMount
+    ? boardAccessQuery.isFetchedAfterMount
     : true;
-  const companyList = membershipListIsCurrent ? companiesQuery.data?.companies ?? [] : [];
+  const accountIsMember = membershipIsAccountScoped
+    ? membershipListIsCurrent && hasActiveOrganizationAccess(boardAccessQuery.data)
+    : true;
 
   useEffect(() => {
     if (token) rememberPendingInviteToken(token);
@@ -277,24 +276,17 @@ export function InviteLandingPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!membershipListIsCurrent) return;
-    const list = companiesQuery.data?.companies;
-    if (!list || !inviteQuery.data?.companyId) return;
-    if (list.some((c) => c.id === inviteQuery.data!.companyId)) {
-      clearPendingInviteToken(token);
-    }
-  }, [companiesQuery.data, inviteQuery.data, membershipListIsCurrent, token]);
+    if (inviteQuery.data && accountIsMember) clearPendingInviteToken(token);
+  }, [accountIsMember, inviteQuery.data, token]);
 
   const invite = inviteQuery.data;
   const isCheckingExistingMembership =
     Boolean(sessionQuery.data) &&
-    Boolean(invite?.companyId) &&
+    Boolean(invite) &&
     !membershipListIsCurrent;
-  const isCurrentMember =
-    Boolean(invite?.companyId) &&
-    companyList.some((company) => company.id === invite?.companyId);
+  const isCurrentMember = Boolean(invite) && accountIsMember;
   const companyName = invite?.companyName?.trim() || null;
-  const companyDisplayName = companyName || "this Paperclip company";
+  const companyDisplayName = companyName || "this Paperclip organization";
   const companyLogoUrl = invite?.companyLogoUrl?.trim() || null;
   const invitedByUserName = invite?.invitedByUserName?.trim() || null;
   const inviteMessage = invite?.inviteMessage?.trim() || null;
@@ -354,9 +346,8 @@ export function InviteLandingPage() {
       setResult({ kind: asBootstrap ? "bootstrap" : "join", payload });
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.access.currentBoardAccess });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-      if (invite?.companyId && isApprovedHumanJoinPayload(payload, showsAgentForm)) {
-        setSelectedCompanyId(invite.companyId, { source: "manual" });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.organization });
+      if (invite && isApprovedHumanJoinPayload(payload, showsAgentForm)) {
         navigate("/", { replace: true });
       }
     },
@@ -390,16 +381,16 @@ export function InviteLandingPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.health });
       await queryClient.invalidateQueries({ queryKey: queryKeys.access.currentBoardAccess });
-      // Keyed to the account that just signed in — the helper resolves the
-      // identity past the invalidation above rather than trusting the session
-      // entry still sitting in the cache — and forced past whatever is cached
-      // for it. This replaces the hand-rolled cancel-and-refetch this PR
-      // originally carried, which #11488 made both unnecessary and weaker.
-      const { companies: freshCompanies } = await fetchCompanyListForCurrentAccount(queryClient);
+      const freshBoardAccess = await queryClient
+        .fetchQuery({
+          queryKey: queryKeys.access.currentBoardAccess,
+          queryFn: () => accessApi.getCurrentBoardAccess(),
+          staleTime: 0,
+        })
+        .catch(() => undefined);
 
-      if (invite?.companyId && freshCompanies.some((company) => company.id === invite.companyId)) {
+      if (invite && hasActiveOrganizationAccess(freshBoardAccess)) {
         clearPendingInviteToken(token);
-        setSelectedCompanyId(invite.companyId, { source: "manual" });
         navigate("/", { replace: true });
         return;
       }
@@ -845,9 +836,8 @@ export function InviteLandingPage() {
                     className="w-full rounded-none"
                     disabled={acceptMutation.isPending}
                     onClick={() => {
-                      if (isCurrentMember && invite.companyId) {
+                      if (isCurrentMember) {
                         clearPendingInviteToken(token);
-                        setSelectedCompanyId(invite.companyId, { source: "manual" });
                         navigate("/", { replace: true });
                         return;
                       }

@@ -21,17 +21,13 @@ type WorkProductTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 async function validateExecutionWorkspace(
   tx: WorkProductTransaction,
-  companyId: string,
   executionWorkspaceId: string | null | undefined,
 ): Promise<void> {
   if (!executionWorkspaceId) return;
   const [workspace] = await tx
     .select({ id: executionWorkspaces.id })
     .from(executionWorkspaces)
-    .where(and(
-      eq(executionWorkspaces.id, executionWorkspaceId),
-      eq(executionWorkspaces.companyId, companyId),
-    ))
+    .where(eq(executionWorkspaces.id, executionWorkspaceId))
     // Keep a concurrent delete from invalidating the reference before the write.
     .for("key share");
   if (!workspace) {
@@ -101,7 +97,7 @@ export async function refreshPullRequestWorkProductMetadata(
     const reference = references[0];
     if (!reference) return product;
     try {
-      const details = await resolvePullRequestDetails(product.companyId, reference);
+      const details = await resolvePullRequestDetails(reference);
       if (!details.workProductState) return product;
       return {
         ...product,
@@ -127,7 +123,6 @@ export async function refreshPullRequestWorkProductMetadata(
 function toIssueWorkProduct(row: IssueWorkProductRow): IssueWorkProduct {
   return {
     id: row.id,
-    companyId: row.companyId,
     projectId: row.projectId ?? null,
     issueId: row.issueId,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
@@ -245,7 +240,6 @@ export function workProductService(
     },
 
     resolveCommitDiffSummary: async (
-      companyId: string,
       input: { provider: string; url?: string | null; metadata?: Record<string, unknown> | null },
     ): Promise<WorkProductDiffSummary | null> => {
       if (input.provider.toLowerCase() !== "github") return null;
@@ -256,7 +250,7 @@ export function workProductService(
         input.url,
         repo && sha ? `${repo}@${sha}` : null,
       ]);
-      return reference ? await resolveCommitDetails(companyId, reference) : null;
+      return reference ? await resolveCommitDetails(reference) : null;
     },
 
     getById: async (id: string) => {
@@ -268,16 +262,15 @@ export function workProductService(
       return row ? toIssueWorkProduct(row) : null;
     },
 
-    createForIssue: async (issueId: string, companyId: string, data: Omit<typeof issueWorkProducts.$inferInsert, "issueId" | "companyId">) => {
+    createForIssue: async (issueId: string, data: Omit<typeof issueWorkProducts.$inferInsert, "issueId">) => {
       const row = await db.transaction(async (tx) => {
-        await validateExecutionWorkspace(tx, companyId, data.executionWorkspaceId);
+        await validateExecutionWorkspace(tx, data.executionWorkspaceId);
         if (data.isPrimary) {
           await tx
             .update(issueWorkProducts)
             .set({ isPrimary: false, updatedAt: new Date() })
             .where(
               and(
-                eq(issueWorkProducts.companyId, companyId),
                 eq(issueWorkProducts.issueId, issueId),
                 eq(issueWorkProducts.type, data.type),
               ),
@@ -287,7 +280,6 @@ export function workProductService(
           .insert(issueWorkProducts)
           .values({
             ...data,
-            companyId,
             issueId,
           })
           .returning()
@@ -305,7 +297,7 @@ export function workProductService(
           .then((rows) => rows[0] ?? null);
         if (!existing) return null;
 
-        await validateExecutionWorkspace(tx, existing.companyId, patch.executionWorkspaceId);
+        await validateExecutionWorkspace(tx, patch.executionWorkspaceId);
 
         if (patch.isPrimary === true) {
           await tx
@@ -313,7 +305,6 @@ export function workProductService(
             .set({ isPrimary: false, updatedAt: new Date() })
             .where(
               and(
-                eq(issueWorkProducts.companyId, existing.companyId),
                 eq(issueWorkProducts.issueId, existing.issueId),
                 eq(issueWorkProducts.type, existing.type),
               ),
@@ -345,7 +336,6 @@ export function workProductService(
         if (row.isPrimary) lastPrimaryIndexByGroup.set(`${row.issueId}:${row.type}`, index);
       });
       const values = rows.map((row, index) => ({
-        companyId: row.companyId,
         issueId: row.issueId,
         projectId: row.projectId ?? null,
         type: row.type,

@@ -13,7 +13,6 @@ function event(
 ): HeartbeatRunEvent {
   return {
     id: seq,
-    companyId: "10000000-0000-4000-8000-000000000002",
     runId: RUN_ID,
     agentId: "10000000-0000-4000-8000-000000000003",
     seq,
@@ -282,7 +281,6 @@ describe("nativeRunEventsToTranscript", () => {
     )) as { events: Array<Record<string, unknown>> };
     const persistedEvents = fixture.events.map((prpEvent, index) => ({
       id: index + 1,
-      companyId: "company_replay",
       runId: String(prpEvent.runId),
       agentId: "agent_replay",
       seq: index + 1,

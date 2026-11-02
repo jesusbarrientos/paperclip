@@ -94,7 +94,6 @@ function createApp(input: {
             input.expectedExecutionWorkspaceId === undefined
               ? EXECUTION_WORKSPACE_ID
               : input.expectedExecutionWorkspaceId,
-          companyId: input.expectedCompanyId === undefined ? COMPANY_ID : input.expectedCompanyId,
           origin: input.expectedOrigin === undefined ? ORIGIN : input.expectedOrigin,
         }),
       }),
@@ -114,7 +113,6 @@ function mintTicket(overrides: Partial<Parameters<typeof issueWorkspaceHandoffTi
     userId: USER_ID,
     email: USER_EMAIL,
     executionWorkspaceId: EXECUTION_WORKSPACE_ID,
-    companyId: COMPANY_ID,
     instanceId: INSTANCE_ID,
     origin: ORIGIN,
     issuerInstanceId: "primary",
@@ -214,16 +212,13 @@ describe("GET /api/auth/workspace-handoff/exchange", () => {
     expect(store.session).toHaveLength(0);
   });
 
-  it("rejects a ticket bound to another workspace, instance, or company on this host", async () => {
+  it("rejects a ticket bound to another workspace or instance on this host", async () => {
     const { app } = createApp({});
     const otherWorkspace = await exchange(app, mintTicket({ executionWorkspaceId: "ews-sibling" }));
     expect(otherWorkspace.headers.location).toContain("workspaceHandoffError=workspace_mismatch");
 
     const otherInstance = await exchange(app, mintTicket({ instanceId: "another-instance" }));
     expect(otherInstance.headers.location).toContain("workspaceHandoffError=instance_mismatch");
-
-    const otherCompany = await exchange(app, mintTicket({ companyId: "company-sibling" }));
-    expect(otherCompany.headers.location).toContain("workspaceHandoffError=company_mismatch");
   });
 
   it("rejects a missing or garbage ticket", async () => {

@@ -45,9 +45,9 @@ export function ProjectConfigurationPrototype(props: PrototypeProps) {
   const client = useMemo(() => {
     const c = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnMount: false } } });
     c.setQueryData(queryKeys.instance.experimentalSettings, { enableManagedSandboxOnly: true, enableIsolatedWorkspaces: false, enableEnvironments: false });
-    c.setQueryData(queryKeys.goals.list("company-storybook"), []);
-    c.setQueryData(queryKeys.secrets.list("company-storybook"), []);
-    c.setQueryData(queryKeys.secrets.userDefinitions("company-storybook"), []);
+    c.setQueryData(queryKeys.goals.list(), []);
+    c.setQueryData(queryKeys.secrets.list(), []);
+    c.setQueryData(queryKeys.secrets.userDefinitions(), []);
     return c;
   }, []);
   const [project, setProject] = useState<Project>(() => ({

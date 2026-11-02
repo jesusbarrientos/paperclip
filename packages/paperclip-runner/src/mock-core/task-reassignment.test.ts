@@ -8,7 +8,7 @@ async function fixture(status: "todo" | "blocked" | "done" = "todo", claims = ["
     tasks: [...base.tasks, { ...base.tasks[0]!, id: "target", identifier: "MCK-2", title: "Existing work", status, statusVersion: 0 }],
   });
   await adapter.start();
-  await adapter.openFixtureRun({ identity: { runId: "run-1", sessionId: "session-1", companyId: base.company.id, issueId: base.tasks[0]!.id, agentId: base.actors[0]!.id }, backendKind: "mock", sourceInstanceId: "reassignment-test", capabilities: claims });
+  await adapter.openFixtureRun({ identity: { runId: "run-1", sessionId: "session-1", issueId: base.tasks[0]!.id, agentId: base.actors[0]!.id }, backendKind: "mock", sourceInstanceId: "reassignment-test", capabilities: claims });
   const call = { runId: "run-1", idempotencyKey: "handoff", command: { kind: "reassign_task" as const, targetTaskId: "target", assigneeActorId: "recipient", expectedAssigneeActorId: base.actors[0]!.id, expectedStatusVersion: 0, reason: "Recipient owns implementation" } };
   return { adapter, call, base };
 }

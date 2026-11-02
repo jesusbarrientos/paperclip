@@ -46,12 +46,12 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api/companies", companyRoutes({} as any));
+  app.use("/api/organization", companyRoutes({} as any));
   app.use(errorHandler);
   return app;
 }
 
-describe("POST /api/companies Cloud floor", () => {
+describe("POST /api/organization Cloud floor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN;
@@ -73,7 +73,7 @@ describe("POST /api/companies Cloud floor", () => {
       isInstanceAdmin: true,
     });
 
-    const res = await request(app).post("/api/companies").send({ name: "Second Company" });
+    const res = await request(app).post("/api/organization").send({ name: "Second Company" });
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ code: "cloud_managed" });
@@ -90,7 +90,7 @@ describe("POST /api/companies Cloud floor", () => {
       isInstanceAdmin: true,
     });
 
-    const res = await request(app).post("/api/companies").send({ name: "" });
+    const res = await request(app).post("/api/organization").send({ name: "" });
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ code: "cloud_managed" });
@@ -105,7 +105,7 @@ describe("POST /api/companies Cloud floor", () => {
       isInstanceAdmin: true,
     });
 
-    const res = await request(app).post("/api/companies").send({ name: "New Company" });
+    const res = await request(app).post("/api/organization").send({ name: "New Company" });
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual(createdCompany);
@@ -114,7 +114,6 @@ describe("POST /api/companies Cloud floor", () => {
       defaultResponsibleUserId: "local-user",
     }));
     expect(mockAccessService.ensureMembership).toHaveBeenCalledWith(
-      "company-new",
       "user",
       "local-user",
       "owner",

@@ -24,17 +24,20 @@ function extractResponse(query: CompanySearchExtractQuery): CompanySearchExtract
   };
 }
 
-function unusedSearch(_companyId: string, _query: CompanySearchQuery): Promise<CompanySearchResponse> {
+function unusedSearch(_query: CompanySearchQuery): Promise<CompanySearchResponse> {
   throw new Error("interactive search should not be called");
 }
 
-function createApp(companyIds: string[], extract: (companyId: string, query: CompanySearchExtractQuery) => Promise<CompanySearchExtractResponse>) {
+function createApp(
+  extract: (query: CompanySearchExtractQuery) => Promise<CompanySearchExtractResponse>,
+  memberships: Express.Request["actor"]["memberships"] = [{ membershipRole: "operator", status: "active" }],
+) {
   const app = express();
   app.use((req, _res, next) => {
     req.actor = {
       type: "board",
       userId: "user-1",
-      companyIds,
+      memberships,
       source: "session",
       isInstanceAdmin: true,
     };
@@ -53,11 +56,11 @@ function createApp(companyIds: string[], extract: (companyId: string, query: Com
 
 describe("company extract-search route", () => {
   it("parses the extraction query and invokes the service", async () => {
-    const extract = vi.fn(async (_companyId: string, query: CompanySearchExtractQuery) => extractResponse(query));
-    const app = createApp(["company-1"], extract);
+    const extract = vi.fn(async (query: CompanySearchExtractQuery) => extractResponse(query));
+    const app = createApp(extract);
 
     const response = await request(app)
-      .get("/api/companies/company-1/search/extract")
+      .get("/api/search/extract")
       .query({
         contains: "github.com/example/repo/pull",
         kind: "url",
@@ -67,7 +70,7 @@ describe("company extract-search route", () => {
       })
       .expect(200);
 
-    expect(extract).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(extract).toHaveBeenCalledWith(expect.objectContaining({
       contains: "github.com/example/repo/pull",
       kind: "url",
       scope: "comments",
@@ -77,24 +80,24 @@ describe("company extract-search route", () => {
     expect(response.body).toMatchObject({ kind: "url", scope: "comments", truncated: false });
   });
 
-  it("denies cross-company access before invoking the service", async () => {
-    const extract = vi.fn(async (_companyId: string, query: CompanySearchExtractQuery) => extractResponse(query));
-    const app = createApp(["company-1"], extract);
+  it("denies non-members before invoking the service", async () => {
+    const extract = vi.fn(async (query: CompanySearchExtractQuery) => extractResponse(query));
+    const app = createApp(extract, []);
 
     await request(app)
-      .get("/api/companies/company-2/search/extract?contains=needle")
+      .get("/api/search/extract?contains=needle")
       .expect(403);
 
     expect(extract).not.toHaveBeenCalled();
   });
 
   it("shares the company-search rate limiter", async () => {
-    const extract = vi.fn(async (_companyId: string, query: CompanySearchExtractQuery) => extractResponse(query));
-    const app = createApp(["company-1"], extract);
+    const extract = vi.fn(async (query: CompanySearchExtractQuery) => extractResponse(query));
+    const app = createApp(extract);
 
-    await request(app).get("/api/companies/company-1/search/extract?contains=needle").expect(200);
+    await request(app).get("/api/search/extract?contains=needle").expect(200);
     const limited = await request(app)
-      .get("/api/companies/company-1/search/extract?contains=needle")
+      .get("/api/search/extract?contains=needle")
       .expect(429);
 
     expect(extract).toHaveBeenCalledTimes(1);

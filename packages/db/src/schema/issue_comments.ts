@@ -6,7 +6,6 @@ import type {
   SourceTrustMetadata,
 } from "@paperclipai/shared";
 import { pgTable, uuid, text, timestamp, index, jsonb, unique, integer } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
@@ -16,7 +15,6 @@ export const issueComments = pgTable(
   "issue_comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     authorAgentId: uuid("author_agent_id").references(() => agents.id),
     authorUserId: text("author_user_id"),
@@ -46,16 +44,12 @@ export const issueComments = pgTable(
   },
   (table) => ({
     clientRequestUq: unique("issue_comments_client_request_uq").on(table.issueId, table.authorUserId, table.clientRequestId),
-    companyIdUq: unique("issue_comments_company_id_uq").on(table.companyId, table.id),
     issueIdx: index("issue_comments_issue_idx").on(table.issueId),
-    companyIdx: index("issue_comments_company_idx").on(table.companyId),
     companyIssueCreatedAtIdx: index("issue_comments_company_issue_created_at_idx").on(
-      table.companyId,
       table.issueId,
       table.createdAt,
     ),
     companyAuthorIssueCreatedAtIdx: index("issue_comments_company_author_issue_created_at_idx").on(
-      table.companyId,
       table.authorUserId,
       table.issueId,
       table.createdAt,

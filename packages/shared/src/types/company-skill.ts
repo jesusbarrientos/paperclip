@@ -35,7 +35,6 @@ export interface CompanySkillVersionFileInventoryEntry extends CompanySkillFileI
 
 export interface CompanySkill {
   id: string;
-  companyId: string;
   folderId?: string | null;
   folderPath?: string | null;
   key: string;
@@ -58,7 +57,6 @@ export interface CompanySkill {
   sharingScope: CompanySkillSharingScope;
   publicShareToken: string | null;
   forkedFromSkillId: string | null;
-  forkedFromCompanyId: string | null;
   starCount: number;
   installCount: number;
   forkCount: number;
@@ -70,7 +68,6 @@ export interface CompanySkill {
 
 export interface CompanySkillListItem {
   id: string;
-  companyId: string;
   folderId?: string | null;
   folderPath?: string | null;
   key: string;
@@ -92,7 +89,6 @@ export interface CompanySkillListItem {
   sharingScope: CompanySkillSharingScope;
   publicShareToken: string | null;
   forkedFromSkillId: string | null;
-  forkedFromCompanyId: string | null;
   starCount: number;
   installCount: number;
   forkCount: number;
@@ -157,7 +153,6 @@ export interface CompanySkillCategoryCount {
 
 export interface CompanySkillVersion {
   id: string;
-  companyId: string;
   companySkillId: string;
   revisionNumber: number;
   label: string | null;
@@ -182,7 +177,6 @@ export interface CompanySkillStarResult {
 
 export interface CompanySkillComment {
   id: string;
-  companyId: string;
   companySkillId: string;
   parentCommentId: string | null;
   authorAgentId: string | null;
@@ -221,7 +215,6 @@ export interface CompanySkillOriginalSummary {
 export interface CompanySkillForkSummary extends CompanySkillOriginalSummary {
   key: string;
   forkedFromSkillId: string | null;
-  forkedFromCompanyId: string | null;
   currentVersionId: string | null;
   createdByCurrentActor: boolean;
   diverged: boolean;
@@ -472,7 +465,6 @@ export type CompanySkillTestRunStatus = "queued" | "running" | "succeeded" | "fa
 
 export interface CompanySkillTestInput {
   id: string;
-  companyId: string;
   skillId: string;
   name: string;
   content: string;
@@ -494,7 +486,6 @@ export interface CompanySkillTestInputUpdateRequest {
 
 export interface CompanySkillTestRunTemplate {
   id: string;
-  companyId: string;
   name: string;
   description: string | null;
   body: string;
@@ -535,7 +526,6 @@ export interface CompanySkillTestRunCostSummary {
 
 export interface CompanySkillTestRun {
   id: string;
-  companyId: string;
   skillId: string;
   inputId: string | null;
   inputSnapshot: string;

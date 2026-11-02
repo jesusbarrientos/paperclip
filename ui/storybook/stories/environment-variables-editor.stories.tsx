@@ -12,7 +12,6 @@ function secret(
 ): CompanySecret {
   return {
     id,
-    companyId: "company-storybook",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,

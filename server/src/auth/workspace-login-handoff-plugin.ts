@@ -40,7 +40,6 @@ export type WorkspaceHandoffExpectedIdentity = {
   key: string | null;
   instanceId: string | null;
   executionWorkspaceId: string | null;
-  companyId: string | null;
   origin: string | null;
 };
 
@@ -110,11 +109,10 @@ export function workspaceLoginHandoffPlugin(deps: {
             expected: {
               instanceId: expected.instanceId,
               executionWorkspaceId: expected.executionWorkspaceId,
-              companyId: expected.companyId,
               origin: expected.origin,
             },
             deps: {
-              findClonedIdentity: async ({ userId, companyId }) => {
+              findClonedIdentity: async ({ userId }) => {
                 const user = await ctx.context.internalAdapter.findUserById(userId);
                 if (!user) return null;
                 // Membership lives in Paperclip's own schema, so it is read

@@ -5,7 +5,6 @@ import { resolveRuntimeProvisionStatus } from "./ExecutionWorkspaceDetail";
 function operation(overrides: Partial<WorkspaceOperation> = {}): WorkspaceOperation {
   return {
     id: overrides.id ?? "op-1",
-    companyId: "company-1",
     executionWorkspaceId: "ews-1",
     heartbeatRunId: null,
     issueId: null,

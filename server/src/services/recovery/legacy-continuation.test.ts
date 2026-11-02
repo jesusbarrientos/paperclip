@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { decideLegacyContinuation, legacyDispositionEpisode, type LegacyContinuationInput } from "./legacy-continuation.js";
 const input: LegacyContinuationInput = {
-  run: { id: "run", companyId: "company", agentId: "agent", status: "succeeded", runtimeMode: "legacy" },
-  issue: { id: "issue", companyId: "company", status: "in_progress", assigneeAgentId: "agent" },
-  agent: { id: "agent", companyId: "company", status: "idle" },
+  run: { id: "run", agentId: "agent", status: "succeeded", runtimeMode: "legacy" },
+  issue: { id: "issue", status: "in_progress", assigneeAgentId: "agent" },
+  agent: { id: "agent", status: "idle" },
   episode: { id: "run", attempt: 0, maxAttempts: 2 },
   gates: { stopped: false, paused: false, budgetBlocked: false, pendingWait: false, activeExecution: false, ownedLifecycle: false, conversation: false, agentInvokable: true },
 };

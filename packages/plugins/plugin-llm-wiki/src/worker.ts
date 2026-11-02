@@ -38,7 +38,6 @@ import {
   listOperations,
   listPages,
   listSources,
-  readCompanyIdFromParams,
   readTemplate,
   readWikiPage,
   recordPaperclipDistillationOutcome,
@@ -118,10 +117,10 @@ function normalizeRoutineTemplateText(value: unknown): string | null {
 function manualDistillScopeLabel(input: { projectId?: string | null; rootIssueId?: string | null }) {
   if (input.rootIssueId) return "selected root issue";
   if (input.projectId) return "selected project";
-  return "company-wide stale cursor scan";
+  return "organization-wide stale cursor scan";
 }
 
-function buildManualDistillPrompt(input: { companyId: string; projectId?: string | null; rootIssueId?: string | null }) {
+function buildManualDistillPrompt(input: { projectId?: string | null; rootIssueId?: string | null }) {
   const scopeLabel = manualDistillScopeLabel(input);
   return [
     "Manual LLM Wiki distillation requested outside recurring cadence.",
@@ -130,7 +129,6 @@ function buildManualDistillPrompt(input: { companyId: string; projectId?: string
     `Required skill: use the installed \`${PAPERCLIP_DISTILL_SKILL_KEY}\` skill before changing wiki files.`,
     "",
     "Scope:",
-    `- Company ID: ${input.companyId}`,
     `- Requested scope: ${scopeLabel}`,
     input.projectId ? `- Source project ID: ${input.projectId}` : null,
     input.rootIssueId ? `- Source root issue ID: ${input.rootIssueId}` : null,
@@ -194,7 +192,6 @@ const plugin = definePlugin({
         if (result.status === "recorded") {
           ctx.logger.info("LLM Wiki recorded Paperclip event for cursor discovery", {
             eventType: event.eventType,
-            companyId: event.companyId,
             sourceKind: result.sourceKind,
             sourceId: result.sourceId,
             cursorId: result.cursorId,
@@ -203,35 +200,28 @@ const plugin = definePlugin({
       });
     }
 
-    ctx.data.register("overview", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
-      return getOverview(ctx, companyId);
+    ctx.data.register("overview", async () => {
+      return getOverview(ctx);
     });
 
-    ctx.data.register("health", async (params) => {
-      const companyId = stringField(params.companyId);
-      return companyId
-        ? getOverview(ctx, companyId)
-        : { status: "ok", checkedAt: new Date().toISOString(), message: "LLM Wiki worker is running" };
+    ctx.data.register("health", async () => {
+      return { status: "ok", checkedAt: new Date().toISOString(), message: "LLM Wiki worker is running" };
     });
 
     ctx.actions.register("bootstrap-root", async (params) => {
       return bootstrapWikiRoot(ctx, {
-        companyId: readCompanyIdFromParams(params),
         path: stringField(params.path),
       });
     });
 
     ctx.data.register("spaces", async (params) => {
       return listSpaces(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
       });
     });
 
     ctx.data.register("space", async (params) => {
       return spaceFolderStatus(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
       });
@@ -239,7 +229,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("create-space", async (params) => {
       return createSpace(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         slug: stringField(params.slug),
         displayName: stringField(params.displayName),
@@ -251,7 +240,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("update-space", async (params) => {
       return updateSpace(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         displayName: stringField(params.displayName),
@@ -262,7 +250,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("bootstrap-space", async (params) => {
       return bootstrapSpace(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
       });
@@ -270,7 +257,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("archive-space", async (params) => {
       return archiveSpace(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
       });
@@ -290,7 +276,6 @@ const plugin = definePlugin({
         throw new Error("operationType must be ingest, query, lint, file-as-page, index, distill, or backfill");
       }
       return createOperationIssue(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         operationType,
@@ -301,7 +286,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("capture-source", async (params) => {
       return captureWikiSource(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         sourceType: stringField(params.sourceType),
@@ -315,7 +299,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("write-page", async (params) => {
       return writeWikiPage(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         path: stringField(params.path) ?? "",
@@ -329,7 +312,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("write-template", async (params) => {
       return writeTemplate(ctx, {
-        companyId: readCompanyIdFromParams(params),
         path: stringField(params.path) ?? "",
         contents: typeof params.contents === "string" ? params.contents : "",
       });
@@ -365,14 +347,12 @@ const plugin = definePlugin({
         settings.sources = sources;
       }
       return updateEventIngestionSettings(ctx, {
-        companyId: readCompanyIdFromParams(params),
         settings,
       });
     });
 
     ctx.data.register("paperclip-ingestion-profile", async (params) => {
       return getPaperclipIngestionProfile(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
       });
@@ -380,7 +360,6 @@ const plugin = definePlugin({
 
     ctx.data.register("paperclip-ingestion-candidates", async (params) => {
       return listPaperclipIngestionCandidates(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         query: stringField(params.query),
@@ -389,7 +368,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("update-paperclip-ingestion-profile", async (params) => {
       return updatePaperclipIngestionProfile(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         profile: params.profile,
@@ -397,7 +375,6 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("queue-paperclip-ingestion-backfill", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const sourceScope = typeof params.sourceScope === "object" && params.sourceScope != null && !Array.isArray(params.sourceScope)
         ? params.sourceScope as Record<string, unknown>
         : {};
@@ -427,7 +404,6 @@ const plugin = definePlugin({
       for (const scope of scopes) {
         const idempotencyScope = scope.rootIssueId ? `root:${scope.rootIssueId}` : `project:${scope.projectId}`;
         const workItem = await createPaperclipDistillationWorkItem(ctx, {
-          companyId,
           wikiId,
           spaceSlug,
           kind: "backfill",
@@ -441,7 +417,6 @@ const plugin = definePlugin({
           metadata: { backfillStartAt, backfillEndAt, requestedFrom: "queue-paperclip-ingestion-backfill" },
         });
         const operation = await createOperationIssue(ctx, {
-          companyId,
           wikiId,
           spaceSlug,
           operationType: "backfill",
@@ -475,7 +450,6 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("ingest-source", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const wikiId = stringField(params.wikiId);
       const spaceSlug = stringField(params.spaceSlug);
       const sourceType = stringField(params.sourceType) ?? "text";
@@ -483,7 +457,6 @@ const plugin = definePlugin({
       const contents = typeof params.contents === "string" ? params.contents : "";
       const url = stringField(params.url);
       const captured = await captureWikiSource(ctx, {
-        companyId,
         wikiId,
         spaceSlug,
         sourceType,
@@ -494,7 +467,6 @@ const plugin = definePlugin({
         metadata: typeof params.metadata === "object" && params.metadata != null ? params.metadata as Record<string, unknown> : null,
       });
       const op = await createOperationIssue(ctx, {
-        companyId,
         wikiId,
         spaceSlug,
         operationType: "ingest",
@@ -510,7 +482,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("assemble-paperclip-source-bundle", async (params) => {
       return assemblePaperclipSourceBundle(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         projectId: stringField(params.projectId),
@@ -527,7 +498,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("create-paperclip-distillation-run", async (params) => {
       return createPaperclipDistillationRun(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         projectId: stringField(params.projectId),
@@ -552,7 +522,6 @@ const plugin = definePlugin({
       const runId = stringField(params.runId);
       if (!runId) throw new Error("runId is required");
       return recordPaperclipDistillationOutcome(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         runId,
@@ -568,7 +537,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("distill-paperclip-project-page", async (params) => {
       return distillPaperclipProjectPage(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         projectId: stringField(params.projectId),
@@ -589,13 +557,11 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("distill-paperclip-now", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const spaceSlug = stringField(params.spaceSlug);
       const projectId = stringField(params.projectId);
       const rootIssueId = stringField(params.rootIssueId);
       const idempotencyScope = rootIssueId ? `root:${rootIssueId}` : projectId ? `project:${projectId}` : "company";
       const workItem = await createPaperclipDistillationWorkItem(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug,
         kind: "manual",
@@ -607,7 +573,6 @@ const plugin = definePlugin({
         metadata: { requestedFrom: "distill-paperclip-now" },
       });
       const operation = await createOperationIssue(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug,
         operationType: "distill",
@@ -616,14 +581,13 @@ const plugin = definePlugin({
           : projectId
             ? "Distill Paperclip project into wiki"
             : "Distill Paperclip changes into wiki",
-        prompt: buildManualDistillPrompt({ companyId, projectId, rootIssueId }),
+        prompt: buildManualDistillPrompt({ projectId, rootIssueId }),
       });
       return { status: "queued", workItem, operation };
     });
 
     ctx.actions.register("enable-paperclip-distillation-active-projects", async (params) => {
       return enableActiveProjectDistillation(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         limit: typeof params.limit === "number" ? params.limit : null,
@@ -631,7 +595,6 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("backfill-paperclip-distillation", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const spaceSlug = stringField(params.spaceSlug);
       const projectId = stringField(params.projectId);
       const rootIssueId = stringField(params.rootIssueId);
@@ -640,7 +603,6 @@ const plugin = definePlugin({
       const backfillEndAt = stringField(params.backfillEndAt);
       const idempotencyScope = rootIssueId ? `root:${rootIssueId}` : `project:${projectId}`;
       const workItem = await createPaperclipDistillationWorkItem(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug,
         kind: "backfill",
@@ -652,7 +614,6 @@ const plugin = definePlugin({
         metadata: { backfillStartAt, backfillEndAt, requestedFrom: "backfill-paperclip-distillation" },
       });
       const operation = await createOperationIssue(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug,
         operationType: "backfill",
@@ -663,11 +624,10 @@ const plugin = definePlugin({
           rootIssueId ? `Root issue ID: ${rootIssueId}` : null,
           backfillStartAt ? `Start: ${backfillStartAt}` : null,
           backfillEndAt ? `End: ${backfillEndAt}` : null,
-          "Do not process whole-company history; stay within the selected project/root issue and date window.",
+          "Do not process whole-organization history; stay within the selected project/root issue and date window.",
         ].filter(Boolean).join("\n"),
       });
       const result = await distillPaperclipProjectPage(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug,
         projectId,
@@ -704,7 +664,6 @@ const plugin = definePlugin({
         throw new Error("priority must be critical, high, medium, or low");
       }
       return createPaperclipDistillationWorkItem(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         kind,
@@ -719,7 +678,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("file-as-page", async (params) => {
       return fileQueryAnswerAsPage(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         querySessionId: stringField(params.querySessionId),
@@ -734,7 +692,6 @@ const plugin = definePlugin({
 
     ctx.actions.register("start-query", async (params) => {
       return startWikiQuerySession(ctx, {
-        companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         question: stringField(params.question) ?? "",
@@ -742,35 +699,34 @@ const plugin = definePlugin({
       });
     });
 
-    ctx.actions.register("reset-managed-agent", async (params) => {
-      return resetWikiAgentResource(ctx, readCompanyIdFromParams(params));
+    ctx.actions.register("reset-managed-agent", async () => {
+      return resetWikiAgentResource(ctx);
     });
 
-    ctx.actions.register("reset-managed-project", async (params) => {
-      return resetWikiProjectResource(ctx, readCompanyIdFromParams(params));
+    ctx.actions.register("reset-managed-project", async () => {
+      return resetWikiProjectResource(ctx);
     });
 
-    ctx.actions.register("reconcile-managed-agent", async (params) => {
-      return reconcileWikiAgentResource(ctx, readCompanyIdFromParams(params));
+    ctx.actions.register("reconcile-managed-agent", async () => {
+      return reconcileWikiAgentResource(ctx);
     });
 
-    ctx.actions.register("reconcile-managed-project", async (params) => {
-      return reconcileWikiProjectResource(ctx, readCompanyIdFromParams(params));
+    ctx.actions.register("reconcile-managed-project", async () => {
+      return reconcileWikiProjectResource(ctx);
     });
 
-    ctx.actions.register("reconcile-managed-skills", async (params) => {
-      return { managedSkills: await reconcileWikiSkillResources(ctx, readCompanyIdFromParams(params)) };
+    ctx.actions.register("reconcile-managed-skills", async () => {
+      return { managedSkills: await reconcileWikiSkillResources(ctx) };
     });
 
-    ctx.actions.register("reset-managed-skills", async (params) => {
-      return { managedSkills: await resetWikiSkillResources(ctx, readCompanyIdFromParams(params)) };
+    ctx.actions.register("reset-managed-skills", async () => {
+      return { managedSkills: await resetWikiSkillResources(ctx) };
     });
 
     ctx.actions.register("select-managed-agent", async (params) => {
       const agentId = stringField(params.agentId);
       if (!agentId) throw new Error("agentId is required");
       return selectWikiAgentResource(ctx, {
-        companyId: readCompanyIdFromParams(params),
         agentId,
       });
     });
@@ -779,7 +735,6 @@ const plugin = definePlugin({
       const projectId = stringField(params.projectId);
       if (!projectId) throw new Error("projectId is required");
       return selectWikiProjectResource(ctx, {
-        companyId: readCompanyIdFromParams(params),
         projectId,
       });
     });
@@ -787,7 +742,6 @@ const plugin = definePlugin({
     ctx.actions.register("reset-managed-routine", async (params) => {
       return ctx.routines.managed.reset(
         routineKeyField(params.routineKey),
-        readCompanyIdFromParams(params),
         routineOverridesFromParams(params),
       );
     });
@@ -795,19 +749,18 @@ const plugin = definePlugin({
     ctx.actions.register("reconcile-managed-routine", async (params) => {
       return ctx.routines.managed.reconcile(
         routineKeyField(params.routineKey),
-        readCompanyIdFromParams(params),
         routineOverridesFromParams(params),
       );
     });
 
-    ctx.actions.register("reconcile-managed-routines", async (params) => {
-      return reconcileWikiRoutineResources(ctx, readCompanyIdFromParams(params));
+    ctx.actions.register("reconcile-managed-routines", async () => {
+      return reconcileWikiRoutineResources(ctx);
     });
 
     ctx.actions.register("update-managed-routine-status", async (params) => {
       const status = stringField(params.status);
       if (!status) throw new Error("status is required");
-      return ctx.routines.managed.update(routineKeyField(params.routineKey), readCompanyIdFromParams(params), {
+      return ctx.routines.managed.update(routineKeyField(params.routineKey), {
         status,
       });
     });
@@ -815,15 +768,12 @@ const plugin = definePlugin({
     ctx.actions.register("run-managed-routine", async (params) => {
       return ctx.routines.managed.run(
         routineKeyField(params.routineKey),
-        readCompanyIdFromParams(params),
         routineOverridesFromParams(params),
       );
     });
 
     ctx.data.register("pages", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       return listPages(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         pageType: stringField(params.pageType),
@@ -833,27 +783,22 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("sources", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
-      return listSources(ctx, { companyId, wikiId: stringField(params.wikiId), spaceSlug: stringField(params.spaceSlug), limit: typeof params.limit === "number" ? params.limit : null });
+      return listSources(ctx, { wikiId: stringField(params.wikiId), spaceSlug: stringField(params.spaceSlug), limit: typeof params.limit === "number" ? params.limit : null });
     });
 
     ctx.data.register("page-content", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const path = stringField(params.path);
       if (!path) throw new Error("path is required");
-      return readWikiPage(ctx, { companyId, wikiId: stringField(params.wikiId), spaceSlug: stringField(params.spaceSlug), path });
+      return readWikiPage(ctx, { wikiId: stringField(params.wikiId), spaceSlug: stringField(params.spaceSlug), path });
     });
 
     ctx.data.register("template", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const path = stringField(params.path) ?? "AGENTS.md";
-      return readTemplate(ctx, { companyId, path });
+      return readTemplate(ctx, { path });
     });
 
     ctx.data.register("operations", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       return listOperations(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         operationType: stringField(params.operationType),
@@ -863,9 +808,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("distillation-overview", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       return getDistillationOverview(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         limit: typeof params.limit === "number" ? params.limit : null,
@@ -873,25 +816,22 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("distillation-page-provenance", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
       const pagePath = stringField(params.pagePath);
       if (!pagePath) {
         return { binding: null, runs: [], snapshot: null, cursor: null };
       }
       return getDistillationPageProvenance(ctx, {
-        companyId,
         wikiId: stringField(params.wikiId),
         spaceSlug: stringField(params.spaceSlug),
         pagePath,
       });
     });
 
-    ctx.data.register("settings", async (params) => {
-      const companyId = readCompanyIdFromParams(params);
-      const folder = await ctx.localFolders.status(companyId, WIKI_ROOT_FOLDER_KEY);
-      const overview = await getOverview(ctx, companyId);
+    ctx.data.register("settings", async () => {
+      const folder = await ctx.localFolders.status(WIKI_ROOT_FOLDER_KEY);
+      const overview = await getOverview(ctx);
       const managedRoutines = await Promise.all(
-        WIKI_MAINTENANCE_ROUTINE_KEYS.map((routineKey) => ctx.routines.managed.get(routineKey, companyId)),
+        WIKI_MAINTENANCE_ROUTINE_KEYS.map((routineKey) => ctx.routines.managed.get(routineKey)),
       );
       const managedRoutinesWithDefaultDrift = managedRoutines.map((routine) =>
         withManagedRoutineDefaultDrift(
@@ -901,16 +841,16 @@ const plugin = definePlugin({
       );
       return {
         folder,
-        spaces: await listSpaces(ctx, { companyId }),
+        spaces: await listSpaces(ctx, {}),
         managedAgent: overview.managedAgent,
         managedProject: overview.managedProject,
         managedSkills: overview.managedSkills,
         managedRoutine: managedRoutinesWithDefaultDrift[0],
         managedRoutines: managedRoutinesWithDefaultDrift,
         distillationPolicy: getDistillationAutoApplyRestriction(),
-        eventIngestion: await getEventIngestionSettings(ctx, companyId),
-        agentOptions: await listWikiAgentOptions(ctx, companyId),
-        projectOptions: await listWikiProjectOptions(ctx, companyId),
+        eventIngestion: await getEventIngestionSettings(ctx),
+        agentOptions: await listWikiAgentOptions(ctx),
+        projectOptions: await listWikiProjectOptions(ctx),
         capabilities: ctx.manifest.capabilities,
       };
     });
@@ -919,7 +859,7 @@ const plugin = definePlugin({
   async onApiRequest(input: PluginApiRequestInput) {
     const ctx = requireContext();
     if (input.routeKey === "overview") {
-      return { body: await getOverview(ctx, input.companyId) };
+      return { body: await getOverview(ctx) };
     }
 
     if (input.routeKey === "bootstrap") {
@@ -927,7 +867,6 @@ const plugin = definePlugin({
       return {
         status: 201,
         body: await bootstrapWikiRoot(ctx, {
-          companyId: input.companyId,
           path: stringField(body?.path),
         }),
       };
@@ -936,7 +875,6 @@ const plugin = definePlugin({
     if (input.routeKey === "spaces") {
       return {
         body: await listSpaces(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(input.query.wikiId),
         }),
       };
@@ -947,7 +885,6 @@ const plugin = definePlugin({
       return {
         status: 201,
         body: await createSpace(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           slug: stringField(body?.slug),
           displayName: stringField(body?.displayName),
@@ -962,7 +899,6 @@ const plugin = definePlugin({
       const body = input.body as Record<string, unknown> | null;
       return {
         body: await updateSpace(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           spaceSlug: input.params.spaceSlug,
           displayName: stringField(body?.displayName),
@@ -977,7 +913,6 @@ const plugin = definePlugin({
       return {
         status: 201,
         body: await bootstrapSpace(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           spaceSlug: input.params.spaceSlug,
         }),
@@ -988,7 +923,6 @@ const plugin = definePlugin({
       const body = input.body as Record<string, unknown> | null;
       return {
         body: await archiveSpace(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           spaceSlug: input.params.spaceSlug,
         }),
@@ -1000,7 +934,6 @@ const plugin = definePlugin({
       return {
         status: 201,
         body: await captureWikiSource(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           spaceSlug: stringField(body?.spaceSlug),
           sourceType: stringField(body?.sourceType),
@@ -1016,7 +949,6 @@ const plugin = definePlugin({
     if (input.routeKey === "operations") {
       return {
         body: await listOperations(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(input.query.wikiId),
           spaceSlug: stringField(input.query.spaceSlug),
           operationType: stringField(input.query.operationType),
@@ -1031,7 +963,6 @@ const plugin = definePlugin({
       return {
         status: 201,
         body: await startWikiQuerySession(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           spaceSlug: stringField(body?.spaceSlug),
           question: stringField(body?.question) ?? "",
@@ -1045,7 +976,6 @@ const plugin = definePlugin({
       return {
         status: 201,
         body: await fileQueryAnswerAsPage(ctx, {
-          companyId: input.companyId,
           wikiId: stringField(body?.wikiId),
           spaceSlug: stringField(body?.spaceSlug),
           querySessionId: stringField(body?.querySessionId),

@@ -26,7 +26,7 @@ function GitHubConnections({ saved = false, chatEnabled = true }) {
       defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnMount: false } },
     });
     const github = getAppStoreDefinition("github")!;
-    result.setQueryData(queryKeys.apps.gallery(companyId), {
+    result.setQueryData(queryKeys.apps.gallery(), {
       apps: [
         { ...github, branding: githubBranding, ownershipAvailability: { platform_shared: true, customer: true } },
         { ...getAppStoreDefinition("github-code-review-bot"), branding: githubBranding },
@@ -34,21 +34,21 @@ function GitHubConnections({ saved = false, chatEnabled = true }) {
       capabilities: { canSetCompanyInstall: true, canCreatePersonalConnection: true, canCreateOrganizationConnection: true },
     });
     result.setQueryData(queryKeys.instance.experimentalSettings, { enableChatConnectors: chatEnabled });
-    result.setQueryData(queryKeys.tools.applications(companyId), { applications: saved ? [
+    result.setQueryData(queryKeys.tools.applications(), { applications: saved ? [
       { id: "github-tools", companyId, name: "GitHub", status: "active", metadata: { sourceTemplateKey: "github" } },
       // Existing bots retain their provider/source identity after the catalog split.
       { id: "github-bot", companyId, name: "Review bot", status: "active", type: "chat", metadata: { sourceTemplateKey: "github", purpose: "channel" } },
     ] : [] });
-    result.setQueryData(queryKeys.tools.connections(companyId), { connections: saved ? [{
+    result.setQueryData(queryKeys.tools.connections(), { connections: saved ? [{
       id: "github-account", applicationId: "github-tools", companyId, name: "octocat",
       status: "active", enabled: true, healthStatus: "healthy", transport: "mcp_remote",
       authKind: "oauth", config: { sourceTemplateKey: "github" }, transportConfig: {},
     }] : [] });
-    result.setQueryData(queryKeys.chatEndpoints.list(companyId), saved ? [
+    result.setQueryData(queryKeys.chatEndpoints.list(), saved ? [
       { id: "github-review", companyId, provider: "github", status: "active", assignedAgentId: "reviewer", assignedAgentName: "Reviewer", botLabel: "Paperclip Review", allowUnlinkedPeople: false },
       { id: "github-draft", companyId, provider: "github", status: "draft", assignedAgentId: "backup", assignedAgentName: "Backup reviewer", allowUnlinkedPeople: false },
     ] : []);
-    result.setQueryData(queryKeys.access.companyUserDirectory(companyId), { users: [] });
+    result.setQueryData(queryKeys.access.companyUserDirectory(), { users: [] });
     result.setQueryData(["github-setup-agents", companyId], storybookAgents);
     return result;
   });
@@ -66,8 +66,8 @@ function GitHubConnections({ saved = false, chatEnabled = true }) {
               Connectors
             </Link>
             <Routes>
-              <Route path="/:companyPrefix/apps/connect" element={<AppsConnect />} />
-              <Route path="/:companyPrefix/apps/chat/connect" element={<ChatEndpointSetup />} />
+              <Route path="/apps/connect" element={<AppsConnect />} />
+              <Route path="/apps/chat/connect" element={<ChatEndpointSetup />} />
               <Route path="*" element={<Browse />} />
             </Routes>
           </main>

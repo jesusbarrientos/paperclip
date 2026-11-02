@@ -4,16 +4,15 @@ import { projectsApi } from "@/api/projects";
 import { RepositoryEditor } from "./RepositoryEditor";
 import { Button } from "./ui/button";
 
-export const repositoryOptionsKey = (companyId: string) => ["project-repositories", companyId] as const;
+export const repositoryOptionsKey = () => ["project-repositories"] as const;
 
-export function ProjectRepositoryInput({ companyId, selected, onChange, onConnect, disabled }: {
-  companyId: string;
+export function ProjectRepositoryInput({ selected, onChange, onConnect, disabled }: {
   selected: ProjectRepository[];
   onChange: (repos: ProjectRepository[]) => void;
   onConnect: () => void;
   disabled?: boolean;
 }) {
-  const query = useQuery({ queryKey: repositoryOptionsKey(companyId), queryFn: () => projectsApi.repositoryOptions(companyId), staleTime: 30_000 });
+  const query = useQuery({ queryKey: repositoryOptionsKey(), queryFn: () => projectsApi.repositoryOptions(), staleTime: 30_000 });
   const state = query.isPending ? "loading" : query.isError ? "error"
     : !query.data.connectionCount ? "disconnected"
     : query.data.failedConnectionCount && !query.data.repositories.length ? "error"

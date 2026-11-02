@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Db } from "@paperclipai/db";
 import type { DeploymentMode } from "@paperclipai/shared";
 import { instanceSettingsService, issueService } from "../services/index.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getActorInfo } from "./authz.js";
 
 /**
  * Strip structured action signals (`%%ACTIONS%%{...}%%/ACTIONS%%`) from a
@@ -120,20 +120,19 @@ export function boardChatRoutes(
       return;
     }
 
-    const { companyId, message, taskId } = req.body as {
-      companyId?: string;
+    const { message, taskId } = req.body as {
       message?: string;
       taskId?: string;
     };
 
-    if (!companyId || !message) {
-      res.status(400).json({ error: "companyId and message are required" });
+    if (!message) {
+      res.status(400).json({ error: "message is required" });
       return;
     }
 
     // The body-supplied companyId must belong to the authenticated actor —
     // it scopes issue reads/writes below and is exported to the subprocess.
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
 
     // Back-pressure: each request holds a subprocess + SSE stream for up to
     // 2 minutes; cap simultaneous spawns instead of forking without bound.
@@ -152,7 +151,7 @@ export function boardChatRoutes(
     // Find or create the standing "Board Operations" issue that anchors the
     // board conversation + decision log.
     if (!issueId) {
-      const companyIssues = await issueSvc.list(companyId, { q: "Board Operations" });
+      const companyIssues = await issueSvc.list({ q: "Board Operations" });
       const boardIssue = companyIssues.find(
         (i) =>
           i.title === "Board Operations" &&
@@ -162,7 +161,7 @@ export function boardChatRoutes(
       if (boardIssue) {
         issueId = boardIssue.id;
       } else {
-        const created = await issueSvc.create(companyId, {
+        const created = await issueSvc.create({
           title: "Board Operations",
           description:
             "Standing issue for board concierge conversations and decision log",
@@ -253,7 +252,6 @@ export function boardChatRoutes(
       env: {
         ...process.env,
         PAPERCLIP_API_URL: apiUrl,
-        PAPERCLIP_COMPANY_ID: companyId,
       },
     });
 

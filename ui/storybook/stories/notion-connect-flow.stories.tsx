@@ -44,7 +44,7 @@ function seededClient() {
       },
     },
   });
-  client.setQueryData(queryKeys.apps.gallery(COMPANY_ID), {
+  client.setQueryData(queryKeys.apps.gallery(), {
     apps: [NOTION, ZAPIER, GITHUB],
     credentialSources: {
       vercelConnect: {
@@ -56,7 +56,7 @@ function seededClient() {
       },
     },
   });
-  client.setQueryData(queryKeys.tools.applications(COMPANY_ID), {
+  client.setQueryData(queryKeys.tools.applications(), {
     applications: [
       {
         id: "application-notion",
@@ -68,10 +68,10 @@ function seededClient() {
       },
     ],
   });
-  client.setQueryData(queryKeys.tools.connections(COMPANY_ID), {
+  client.setQueryData(queryKeys.tools.connections(), {
     connections: [notionConnection()],
   });
-  client.setQueryData(queryKeys.access.companyUserDirectory(COMPANY_ID), {
+  client.setQueryData(queryKeys.access.companyUserDirectory(), {
     users: [
       {
         principalId: "board-user",
@@ -125,7 +125,6 @@ function notionConnection(
 ): ToolConnection {
   return {
     id: "connection-notion",
-    companyId: COMPANY_ID,
     applicationId: "application-notion",
     name: "Notion",
     uid: "notion-storybook",
@@ -161,7 +160,6 @@ function notionConnection(
 function personalGrant(): ConnectionGrant {
   return {
     id: "grant-notion-personal",
-    companyId: COMPANY_ID,
     connectionId: "connection-notion",
     kind: "user",
     subjectUserId: "board-user",
@@ -180,7 +178,6 @@ function personalGrant(): ConnectionGrant {
     delegations: [
       {
         id: "delegation-1",
-        companyId: COMPANY_ID,
         grantId: "grant-notion-personal",
         agentId: "agent-1",
         createdByUserId: "board-user",

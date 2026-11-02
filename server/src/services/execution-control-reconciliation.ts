@@ -21,8 +21,7 @@ export async function reconcileAbandonedExecutionControl(
   const nativeDue = await db
     .select({
       runId: nativeRunFinalizations.runId,
-      issueId: nativeRunFinalizations.issueId,
-      companyId: nativeRunFinalizations.companyId,
+      issueId: nativeRunFinalizations.issueId
     })
     .from(nativeRunFinalizations)
     .where(
@@ -35,7 +34,6 @@ export async function reconcileAbandonedExecutionControl(
   const controlDue = await db
     .select({
       runId: heartbeatRuns.id,
-      companyId: heartbeatRuns.companyId,
       context: heartbeatRuns.contextSnapshot,
     })
     .from(heartbeatRuns)
@@ -82,10 +80,7 @@ export async function reconcileAbandonedExecutionControl(
                   .select()
                   .from(issues)
                   .where(
-                    and(
-                      eq(issues.id, candidate.issueId),
-                      eq(issues.companyId, candidate.companyId),
-                    ),
+                    eq(issues.id, candidate.issueId),
                   )
                   .for("update")
               )[0]
@@ -94,20 +89,14 @@ export async function reconcileAbandonedExecutionControl(
             .select()
             .from(nativeRunFinalizations)
             .where(
-              and(
-                eq(nativeRunFinalizations.runId, candidate.runId),
-                eq(nativeRunFinalizations.companyId, candidate.companyId),
-              ),
+              eq(nativeRunFinalizations.runId, candidate.runId),
             )
             .for("update");
           const [run] = await tx
             .select()
             .from(heartbeatRuns)
             .where(
-              and(
-                eq(heartbeatRuns.id, candidate.runId),
-                eq(heartbeatRuns.companyId, candidate.companyId),
-              ),
+              eq(heartbeatRuns.id, candidate.runId),
             )
             .for("update");
           if (
@@ -198,7 +187,6 @@ export async function reconcileAbandonedExecutionControl(
             .where(
               and(
                 eq(agents.id, run.agentId),
-                eq(agents.companyId, run.companyId),
                 eq(agents.status, "running"),
                 sql`not exists (select 1 from ${heartbeatRuns} where ${heartbeatRuns.agentId} = ${run.agentId} and ${heartbeatRuns.status} = 'running')`,
               ),
@@ -206,7 +194,6 @@ export async function reconcileAbandonedExecutionControl(
           const nativeReviewContext = readNativeReviewAssignmentContext(run.contextSnapshot);
           const nativeReviewAssignment = nativeReviewContext && task
             ? await getNativeReviewAssignment(tx as unknown as Db, {
-                companyId: run.companyId,
                 issueId: task.id,
                 agentId: run.agentId,
                 contextSnapshot: nativeReviewContext,
@@ -231,7 +218,6 @@ export async function reconcileAbandonedExecutionControl(
           await issueRecoveryActionService(
             tx as unknown as Db,
           ).upsertSourceScoped({
-            companyId: run.companyId,
             sourceIssueId: task.id,
             kind: "active_run_watchdog",
             ownerType: "board",

@@ -75,7 +75,6 @@ function summary(partial: Partial<ToolProfileSummary>): ToolProfileSummary {
 function profile(partial: Partial<ToolProfileWithDetails> & { name: string }): ToolProfileWithDetails {
   return {
     id: partial.id ?? partial.name,
-    companyId: "c1",
     profileKey: "k",
     description: null,
     status: "active",
@@ -122,7 +121,7 @@ describe("ProfilesIndex", () => {
     flushSync(() => {
       root.render(
         <QueryClientProvider client={client}>
-          <ProfilesIndex companyId="c1" {...props} />
+          <ProfilesIndex {...props} />
         </QueryClientProvider>,
       );
     });

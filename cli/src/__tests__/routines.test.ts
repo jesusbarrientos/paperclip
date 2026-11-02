@@ -114,17 +114,13 @@ describeEmbeddedPostgres("disableAllRoutinesInConfig", () => {
     }
   });
 
-  it("pauses only non-archived routines for the selected company", async () => {
+  it("pauses only non-archived routines", async () => {
     const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
     const projectId = randomUUID();
-    const otherProjectId = randomUUID();
     const agentId = randomUUID();
-    const otherAgentId = randomUUID();
     const activeRoutineId = randomUUID();
     const pausedRoutineId = randomUUID();
     const archivedRoutineId = randomUUID();
-    const otherCompanyRoutineId = randomUUID();
 
     await db.insert(companies).values([
       {
@@ -133,28 +129,12 @@ describeEmbeddedPostgres("disableAllRoutinesInConfig", () => {
         issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
         requireBoardApprovalForNewAgents: false,
       },
-      {
-        id: otherCompanyId,
-        name: "Other company",
-        issuePrefix: `T${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-        requireBoardApprovalForNewAgents: false,
-      },
     ]);
 
     await db.insert(agents).values([
       {
         id: agentId,
-        companyId,
         name: "Coder",
-        adapterType: "process",
-        adapterConfig: {},
-        runtimeConfig: {},
-        permissions: {},
-      },
-      {
-        id: otherAgentId,
-        companyId: otherCompanyId,
-        name: "Other coder",
         adapterType: "process",
         adapterConfig: {},
         runtimeConfig: {},
@@ -165,14 +145,7 @@ describeEmbeddedPostgres("disableAllRoutinesInConfig", () => {
     await db.insert(projects).values([
       {
         id: projectId,
-        companyId,
         name: "Project",
-        status: "in_progress",
-      },
-      {
-        id: otherProjectId,
-        companyId: otherCompanyId,
-        name: "Other project",
         status: "in_progress",
       },
     ]);
@@ -180,7 +153,6 @@ describeEmbeddedPostgres("disableAllRoutinesInConfig", () => {
     await db.insert(routines).values([
       {
         id: activeRoutineId,
-        companyId,
         projectId,
         assigneeAgentId: agentId,
         title: "Active routine",
@@ -188,7 +160,6 @@ describeEmbeddedPostgres("disableAllRoutinesInConfig", () => {
       },
       {
         id: pausedRoutineId,
-        companyId,
         projectId,
         assigneeAgentId: agentId,
         title: "Paused routine",
@@ -196,54 +167,34 @@ describeEmbeddedPostgres("disableAllRoutinesInConfig", () => {
       },
       {
         id: archivedRoutineId,
-        companyId,
         projectId,
         assigneeAgentId: agentId,
         title: "Archived routine",
         status: "archived",
       },
-      {
-        id: otherCompanyRoutineId,
-        companyId: otherCompanyId,
-        projectId: otherProjectId,
-        assigneeAgentId: otherAgentId,
-        title: "Other company routine",
-        status: "active",
-      },
     ]);
 
     const result = await disableAllRoutinesInConfig({
-      config: configPath,
-      companyId,
+      config: configPath
     });
 
     expect(result).toMatchObject({
-      companyId,
       totalRoutines: 3,
       pausedCount: 1,
       alreadyPausedCount: 1,
       archivedCount: 1,
     });
 
-    const companyRoutines = await db
+    const storedRoutines = await db
       .select({
         id: routines.id,
         status: routines.status,
       })
-      .from(routines)
-      .where(eq(routines.companyId, companyId));
-    const statusById = new Map(companyRoutines.map((routine) => [routine.id, routine.status]));
+      .from(routines);
+    const statusById = new Map(storedRoutines.map((routine) => [routine.id, routine.status]));
 
     expect(statusById.get(activeRoutineId)).toBe("paused");
     expect(statusById.get(pausedRoutineId)).toBe("paused");
     expect(statusById.get(archivedRoutineId)).toBe("archived");
-
-    const otherCompanyRoutine = await db
-      .select({
-        status: routines.status,
-      })
-      .from(routines)
-      .where(eq(routines.id, otherCompanyRoutineId));
-    expect(otherCompanyRoutine[0]?.status).toBe("active");
   });
 });

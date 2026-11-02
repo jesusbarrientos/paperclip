@@ -154,8 +154,7 @@ async function runExecutor(
   const result = await execute({
     runId: "run-1",
     agent: {
-      id: "agent-1",
-      companyId: "company-1",
+      id: "agent-1"
     },
       runtime: {},
       config,
@@ -312,7 +311,7 @@ describe("ACPX engine startup characterization", () => {
   describe("session fingerprint and session key", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("forms the session key as paperclip:company:agent:taskKey:fingerprint and embeds the fingerprint", async () => {
+    it("forms the session key as paperclip:agent:taskKey:fingerprint and embeds the fingerprint", async () => {
       const root = await makeTempRoot();
       const { result } = await runExecutor({
         agent: "custom",
@@ -326,7 +325,7 @@ describe("ACPX engine startup characterization", () => {
       expect(fp).toBeTruthy();
       // No taskId/issueId/workspaceId in the default context, so taskKey is "default".
       const sessionKey = (result.sessionParams as { sessionKey?: string }).sessionKey;
-      expect(sessionKey).toBe(`paperclip:company-1:agent-1:default:${fp}`);
+      expect(sessionKey).toBe(`paperclip:agent-1:default:${fp}`);
     });
 
     it("keeps the fingerprint stable across two identical runs and a same-config new wake", async () => {
@@ -574,7 +573,7 @@ describe("ACPX engine startup characterization", () => {
 
       const result = await execute({
         runId: "run-create-fail-remote",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
         context: {},
@@ -613,7 +612,7 @@ describe("ACPX engine startup characterization", () => {
       await expect(
         execute({
           runId: "run-bridge-fail",
-          agent: { id: "agent-1", companyId: "company-1" },
+          agent: { id: "agent-1" },
           runtime: {},
           config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
           context: {},
@@ -645,7 +644,7 @@ describe("ACPX engine startup characterization", () => {
 
       const result = await execute({
         runId: "handshake-fail",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},
@@ -676,7 +675,7 @@ describe("ACPX engine startup characterization", () => {
 
       const result = await execute({
         runId: "missing-handle",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},
@@ -709,7 +708,7 @@ describe("ACPX engine startup characterization", () => {
 
       const result = await execute({
         runId: "configure-fail",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: {
           agent: "gemini",
@@ -761,7 +760,7 @@ describe("ACPX engine startup characterization", () => {
 
       const first = await execute({
         runId: "warm-1",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config,
         context: {},
@@ -779,7 +778,7 @@ describe("ACPX engine startup characterization", () => {
       // while persisting process identity during ensure_session.
       const second = await execute({
         runId: "warm-2",
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: { sessionParams: first.sessionParams },
         config,
         context: {},
@@ -842,7 +841,7 @@ describe("ACPX engine startup characterization", () => {
         warmHandleIdleMs: 60_000,
       };
       const base = {
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         config,
         context: {},
         onLog: async () => {},
@@ -881,7 +880,7 @@ describe("ACPX engine startup characterization", () => {
         },
       });
       const base = {
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         config: {
           agent: "custom",
           agentCommand: "node ./fake-acp.js",

@@ -17,7 +17,6 @@ export const agentInstructionRevisions = pgTable(
   "agent_instruction_revisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull(),
     agentId: uuid("agent_id").notNull(),
     entryFile: text("entry_file").notNull(),
     contentBase64: text("content_base64").notNull(),
@@ -37,17 +36,15 @@ export const agentInstructionRevisions = pgTable(
   },
   (t) => ({
     owner: foreignKey({
-      columns: [t.companyId, t.agentId],
-      foreignColumns: [agents.companyId, agents.id],
+      columns: [t.agentId],
+      foreignColumns: [agents.id],
     }).onDelete("cascade"),
     identity: unique("agent_instruction_revisions_identity_uq").on(
-      t.companyId,
       t.agentId,
       t.entryFile,
       t.id,
     ),
     history: index("agent_instruction_revisions_history_idx").on(
-      t.companyId,
       t.agentId,
       t.entryFile,
       t.createdAt,
@@ -59,7 +56,6 @@ export const agentInstructionRevisions = pgTable(
 export const agentInstructionHeads = pgTable(
   "agent_instruction_heads",
   {
-    companyId: uuid("company_id").notNull(),
     agentId: uuid("agent_id").notNull(),
     entryFile: text("entry_file").notNull(),
     revisionId: uuid("revision_id").notNull(),
@@ -69,14 +65,12 @@ export const agentInstructionHeads = pgTable(
   },
   (t) => ({
     identity: unique("agent_instruction_heads_identity_uq").on(
-      t.companyId,
       t.agentId,
       t.entryFile,
     ),
     revision: foreignKey({
-      columns: [t.companyId, t.agentId, t.entryFile, t.revisionId],
+      columns: [t.agentId, t.entryFile, t.revisionId],
       foreignColumns: [
-        agentInstructionRevisions.companyId,
         agentInstructionRevisions.agentId,
         agentInstructionRevisions.entryFile,
         agentInstructionRevisions.id,
@@ -90,7 +84,6 @@ export const agentInstructionWorkingCopies = pgTable(
   "agent_instruction_working_copies",
   {
     runId: uuid("run_id").primaryKey().references(() => heartbeatRuns.id, { onDelete: "cascade" }),
-    companyId: uuid("company_id").notNull(),
     agentId: uuid("agent_id").notNull(),
     responsibleUserId: text("responsible_user_id").notNull(),
     entryFile: text("entry_file").notNull(),
@@ -112,8 +105,8 @@ export const agentInstructionWorkingCopies = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    owner: foreignKey({ columns: [t.companyId, t.agentId], foreignColumns: [agents.companyId, agents.id] }).onDelete("cascade"),
+    owner: foreignKey({ columns: [t.agentId], foreignColumns: [agents.id] }).onDelete("cascade"),
     pending: index("agent_instruction_copies_pending_idx").on(t.state, t.nextAttemptAt),
-    history: index("agent_instruction_copies_agent_idx").on(t.companyId, t.agentId, t.createdAt),
+    history: index("agent_instruction_copies_agent_idx").on(t.agentId, t.createdAt),
   }),
 );

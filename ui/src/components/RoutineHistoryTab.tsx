@@ -145,9 +145,9 @@ export function RoutineHistoryTab({
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(routine.id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.runs(routine.id) }),
         queryClient.invalidateQueries({
-          queryKey: queryKeys.routines.activity(routine.companyId, routine.id),
+          queryKey: queryKeys.routines.activity(routine.id),
         }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(routine.companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.revisions(routine.id) }),
       ]);
     },

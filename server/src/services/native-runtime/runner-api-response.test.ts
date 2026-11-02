@@ -126,17 +126,15 @@ describe("large response concurrency", () => {
       expect(runnerApiCompanyCaptureMaxBytes()).toBe(2 * RUNNER_API_RESPONSE_MAX_BYTES);
     } finally { vi.unstubAllEnvs(); }
   });
-  it("limits each company and the server and releases slots idempotently", () => {
+  it("limits the server and releases slots idempotently", () => {
     const releases: Array<() => void> = [];
     try {
-      releases.push(acquireRunnerApiResponseSlot("a"), acquireRunnerApiResponseSlot("a"));
-      expect(() => acquireRunnerApiResponseSlot("a")).toThrow("busy");
-      releases.push(acquireRunnerApiResponseSlot("b"), acquireRunnerApiResponseSlot("b"));
-      expect(() => acquireRunnerApiResponseSlot("c")).toThrow("busy");
+      releases.push(acquireRunnerApiResponseSlot(), acquireRunnerApiResponseSlot());
+      expect(() => acquireRunnerApiResponseSlot()).toThrow("busy");
       releases[0](); releases[0]();
-      releases.push(acquireRunnerApiResponseSlot("c"));
-      expect(() => acquireRunnerApiResponseSlot("d")).toThrow("busy");
+      releases.push(acquireRunnerApiResponseSlot());
+      expect(() => acquireRunnerApiResponseSlot()).toThrow("busy");
     } finally { for (const release of releases) release(); }
-    acquireRunnerApiResponseSlot("a")();
+    acquireRunnerApiResponseSlot()();
   });
 });

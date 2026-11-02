@@ -53,12 +53,12 @@ describeEmbeddedPostgres("agent service clearError", () => {
     const runId = randomUUID();
     const config = { cwd: "/tmp/runner-conversion", instructionsFilePath: "/tmp/runner-conversion/AGENTS.md", env: { TEST_KEY: { type: "plain", value: "kept" } } };
     await db.insert(companies).values({ id: companyId, name: "Conversion", issuePrefix: `T${companyId.slice(0, 6).toUpperCase()}` });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Claude QA", role: "engineer", adapterType: "claude_local", adapterConfig: config });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, invocationSource: "on_demand", status: "succeeded", resultJson: { summary: "history stays" } });
-    await db.insert(agentTaskSessions).values({ companyId, agentId, adapterType: "claude_local", taskKey: "issue:test", sessionDisplayId: "old-session", lastRunId: runId });
-    await db.insert(agentRuntimeState).values({ companyId, agentId, adapterType: "claude_local", sessionId: "old-session", stateJson: { old: true }, lastRunId: runId });
+    await db.insert(agents).values({ id: agentId, name: "Claude QA", role: "engineer", adapterType: "claude_local", adapterConfig: config });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, invocationSource: "on_demand", status: "succeeded", resultJson: { summary: "history stays" } });
+    await db.insert(agentTaskSessions).values({ agentId, adapterType: "claude_local", taskKey: "issue:test", sessionDisplayId: "old-session", lastRunId: runId });
+    await db.insert(agentRuntimeState).values({ agentId, adapterType: "claude_local", sessionId: "old-session", stateJson: { old: true }, lastRunId: runId });
     const updated = await agentService(db).update(agentId, { adapterType: "paperclip_runner", adapterConfig: { ...config, provider: "acpx", acpxAgent: "claude", model: "custom-claude-model" } });
-    expect(updated).toMatchObject({ id: agentId, companyId, name: "Claude QA", role: "engineer", adapterConfig: config });
+    expect(updated).toMatchObject({ id: agentId, name: "Claude QA", role: "engineer", adapterConfig: config });
     expect(await db.select().from(agentTaskSessions).where(eq(agentTaskSessions.agentId, agentId))).toEqual([]);
     const [runtime] = await db.select().from(agentRuntimeState).where(eq(agentRuntimeState.agentId, agentId));
     expect(runtime).toMatchObject({ adapterType: "paperclip_runner", sessionId: null, stateJson: {}, lastRunId: runId });
@@ -81,7 +81,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "error",
@@ -96,7 +95,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "on_demand",
       status: "failed",
@@ -110,7 +108,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
     });
 
     await db.insert(heartbeatRunEvents).values({
-      companyId,
       runId,
       agentId,
       seq: 1,
@@ -122,7 +119,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(agentRuntimeState).values({
       agentId,
-      companyId,
       adapterType: "codex_local",
       sessionId: "codex-session-1",
       stateJson: { taskKey: "issue:test" },
@@ -193,7 +189,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -225,7 +220,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
     await db.insert(agents).values([
       {
         id: terminatedAgentId,
-        companyId,
         name: "Terminated",
         role: "engineer",
         status: "terminated",
@@ -236,7 +230,6 @@ describeEmbeddedPostgres("agent service clearError", () => {
       },
       {
         id: pendingAgentId,
-        companyId,
         name: "Pending",
         role: "engineer",
         status: "pending_approval",

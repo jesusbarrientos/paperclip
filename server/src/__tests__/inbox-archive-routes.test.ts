@@ -20,7 +20,7 @@ import {
 import { LOW_TRUST_REVIEW_PRESET } from "@paperclipai/shared";
 import { errorHandler } from "../middleware/index.js";
 import { issueRoutes } from "../routes/issues.js";
-import { subscribeCompanyLiveEvents } from "../services/live-events.js";
+import { subscribeLiveEvents } from "../services/live-events.js";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -116,7 +116,6 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "InboxAgent",
       role: "engineer",
       status: "active",
@@ -127,14 +126,13 @@ describeEmbeddedPostgres("inbox archive routes", () => {
         ? {
             trustPreset: LOW_TRUST_REVIEW_PRESET,
             authorizationPolicy: {
-              trustBoundary: { mode: LOW_TRUST_REVIEW_PRESET, companyId },
+              trustBoundary: { mode: LOW_TRUST_REVIEW_PRESET },
             },
           }
         : {},
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       invocationSource: "assignment",
@@ -143,13 +141,12 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Archive me",
       status: "todo",
       priority: "medium",
       createdByUserId: responsibleUserId,
     });
-    return { companyId, agentId, runId, issueId, responsibleUserId, targetUserId };
+    return { agentId, runId, issueId, responsibleUserId, targetUserId };
   }
 
   function agentActor(seed: Awaited<ReturnType<typeof seed>>): Express.Request["actor"] {
@@ -157,11 +154,9 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       type: "agent",
       source: "agent_jwt",
       agentId: seed.agentId,
-      companyId: seed.companyId,
       runId: seed.runId,
       onBehalfOfUserId: seed.responsibleUserId,
       onBehalfOfMemberships: [{
-        companyId: seed.companyId,
         membershipRole: "operator",
         status: "active",
       }],
@@ -175,7 +170,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       source: "session",
       userId: seeded.responsibleUserId,
       companyIds: [seeded.companyId],
-      memberships: [{ companyId: seeded.companyId, membershipRole: "operator", status: "active" }],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       isInstanceAdmin: false,
     });
 
@@ -200,7 +195,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       source: "session",
       userId: seeded.responsibleUserId,
       companyIds: [seeded.companyId],
-      memberships: [{ companyId: seeded.companyId, membershipRole: "operator", status: "active" }],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       isInstanceAdmin: false,
     });
 
@@ -238,7 +233,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     });
 
     await request(app)
-      .get(`/api/companies/${seeded.companyId}/issues`)
+      .get(`/api/issues`)
       .query({
         touchedByUserId: seeded.responsibleUserId,
         inboxArchivedByUserId: seeded.responsibleUserId,
@@ -251,13 +246,13 @@ describeEmbeddedPostgres("inbox archive routes", () => {
   it("rolls back completion when the inbox archive audit cannot be written", async () => {
     const seeded = await seed();
     const liveEvents: Array<{ type: string; payload: Record<string, unknown> }> = [];
-    const unsubscribe = subscribeCompanyLiveEvents(seeded.companyId, (event) => liveEvents.push(event));
+    const unsubscribe = subscribeLiveEvents((event) => liveEvents.push(event));
     const app = appFor({
       type: "board",
       source: "session",
       userId: seeded.responsibleUserId,
       companyIds: [seeded.companyId],
-      memberships: [{ companyId: seeded.companyId, membershipRole: "operator", status: "active" }],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       isInstanceAdmin: false,
     });
 
@@ -328,7 +323,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     });
 
     const archivedList = await request(app)
-      .get(`/api/companies/${seeded.companyId}/issues`)
+      .get(`/api/issues`)
       .query({ touchedByUserId: seeded.responsibleUserId })
       .expect(200);
     expect(archivedList.body[0]).toMatchObject({
@@ -343,7 +338,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       source: "session",
       userId: seeded.responsibleUserId,
       companyIds: [seeded.companyId],
-      memberships: [{ companyId: seeded.companyId, membershipRole: "operator", status: "active" }],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       isInstanceAdmin: false,
     });
     await request(boardApp)
@@ -358,7 +353,6 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       }));
 
     await db.insert(issueComments).values({
-      companyId: seeded.companyId,
       issueId: seeded.issueId,
       authorUserId: seeded.targetUserId,
       body: "New work arrived",
@@ -366,7 +360,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       updatedAt: new Date(Date.now() + 1000),
     });
     const resurfaced = await request(app)
-      .get(`/api/companies/${seeded.companyId}/issues`)
+      .get(`/api/issues`)
       .query({
         touchedByUserId: seeded.responsibleUserId,
         inboxArchivedByUserId: seeded.responsibleUserId,
@@ -393,7 +387,6 @@ describeEmbeddedPostgres("inbox archive routes", () => {
 
     const disabled = await seed();
     await db.insert(userInboxAgentPolicies).values({
-      companyId: disabled.companyId,
       userId: disabled.responsibleUserId,
       mode: "disabled",
     });
@@ -405,7 +398,6 @@ describeEmbeddedPostgres("inbox archive routes", () => {
 
     const allowlist = await seed();
     await db.insert(userInboxAgentPolicies).values({
-      companyId: allowlist.companyId,
       userId: allowlist.responsibleUserId,
       mode: "allowlist",
       allowedAgentIds: [],
@@ -417,8 +409,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       .expect(({ body }) => expect(body.code).toBe("inbox_agent_not_allowed"));
     await db
       .update(userInboxAgentPolicies)
-      .set({ allowedAgentIds: [allowlist.agentId] })
-      .where(eq(userInboxAgentPolicies.companyId, allowlist.companyId));
+      .set({ allowedAgentIds: [allowlist.agentId] });
     await request(appFor(agentActor(allowlist)))
       .post(`/api/issues/${allowlist.issueId}/inbox-archive`)
       .send({})
@@ -455,7 +446,6 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       scope: { userIds: [seeded.targetUserId] },
     });
     await db.insert(userInboxAgentPolicies).values({
-      companyId: seeded.companyId,
       userId: seeded.targetUserId,
       mode: "disabled",
     });
@@ -490,7 +480,6 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     const seeded = await seed();
     const app = appFor(agentActor(seeded));
     await db.insert(userInboxAgentPolicies).values({
-      companyId: seeded.companyId,
       userId: seeded.targetUserId,
       mode: "allowlist",
       allowedAgentIds: [seeded.agentId],

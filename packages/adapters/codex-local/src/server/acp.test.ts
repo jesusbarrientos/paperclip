@@ -254,7 +254,6 @@ function buildContext(root: string, overrides: Partial<AdapterExecutionContext> 
     runId: "run-1",
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "Codex ACP",
       adapterType: "codex_local",
       adapterConfig: {},
@@ -543,7 +542,6 @@ describe("codex_local ACP lane", () => {
 
     const result = await testCodexAcpEnvironment({
       adapterType: "codex_local",
-      companyId: "company-1",
       config: {
         engine: "acp",
         cwd: root,
@@ -582,8 +580,7 @@ describe("codex_local ACP lane", () => {
       "paperclip-home",
       "instances",
       "test",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-1",
       "codex-home",
@@ -598,7 +595,6 @@ describe("codex_local ACP lane", () => {
 
     const result = await testCodexAcpEnvironment({
       adapterType: "codex_local",
-      companyId: "company-1",
       config: {
         engine: "acp",
         cwd: root,
@@ -631,8 +627,7 @@ describe("codex_local ACP lane", () => {
       "paperclip-home",
       "instances",
       "test",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-1",
       "codex-home",
@@ -646,7 +641,6 @@ describe("codex_local ACP lane", () => {
 
     const result = await testCodexAcpEnvironment({
       adapterType: "codex_local",
-      companyId: "company-1",
       config: {
         engine: "acp",
         cwd: root,
@@ -674,8 +668,7 @@ describe("codex_local ACP lane", () => {
       "paperclip-home",
       "instances",
       "test",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-1",
       "codex-home",
@@ -687,7 +680,6 @@ describe("codex_local ACP lane", () => {
 
     const result = await testCodexAcpEnvironment({
       adapterType: "codex_local",
-      companyId: "company-1",
       config: {
         engine: "acp",
         cwd: root,

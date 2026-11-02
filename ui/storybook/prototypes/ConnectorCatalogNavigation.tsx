@@ -18,7 +18,7 @@ const PROFILES = new Map([["user-board", { label: "Board", image: null }]]);
 
 function connection(slug: string, name: string): ToolConnection {
   return {
-    id: `preview-${slug}`, companyId: "company-storybook", applicationId: `preview-app-${slug}`,
+    id: `preview-${slug}`, applicationId: `preview-app-${slug}`,
     uid: `preview-${slug}`, name, connectionKind: "managed", connectionPurpose: "tool", ownership: "customer",
     transport: "mcp_remote", authKind: "oauth", credentialSource: "paperclip_vault", credentialPolicy: "shared",
     status: "active", enabled: true, config: { sourceTemplateKey: slug }, transportConfig: {}, credentialSecretRefs: [],
@@ -39,7 +39,7 @@ function nativeRows(): Row[] {
     if (!entry) return [];
     const saved = slug === "notion" ? NOTION : slug === "composio" ? COMPOSIO : slug === "arcade" ? ARCADE : slug === "executor" ? EXECUTOR : null;
     const application: ToolApplication = {
-      id: `preview-app-${slug}`, companyId: "company-storybook", name: entry.name,
+      id: `preview-app-${slug}`, name: entry.name,
       description: entry.description, type: "mcp_http", status: "active", pluginId: null,
       ownerAgentId: null, ownerUserId: null, metadata: { sourceTemplateKey: slug },
       archivedAt: null, createdAt: new Date(), updatedAt: new Date(),

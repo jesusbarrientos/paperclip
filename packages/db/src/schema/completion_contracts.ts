@@ -9,14 +9,12 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
 export const completionContracts = pgTable(
   "completion_contracts",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     issueId: uuid("issue_id").notNull(),
     revision: integer("revision").notNull(),
     schemaVersion: text("schema_version").notNull(),
@@ -33,18 +31,17 @@ export const completionContracts = pgTable(
   },
   (table) => ({
     companyIssueIdUq: unique("completion_contracts_company_issue_id_uq").on(
-      table.companyId,
       table.issueId,
       table.id,
     ),
     issueCompanyFk: foreignKey({
-      columns: [table.companyId, table.issueId],
-      foreignColumns: [issues.companyId, issues.id],
+      columns: [table.issueId],
+      foreignColumns: [issues.id],
       name: "completion_contracts_issue_company_fk",
     }),
     supersedesOwnerFk: foreignKey({
-      columns: [table.companyId, table.issueId, table.supersedesContractId],
-      foreignColumns: [table.companyId, table.issueId, table.id],
+      columns: [table.issueId, table.supersedesContractId],
+      foreignColumns: [table.issueId, table.id],
       name: "completion_contracts_supersedes_owner_fk",
     }),
     issueRevisionUq: uniqueIndex("completion_contracts_issue_revision_uq").on(

@@ -64,7 +64,6 @@ function createComment(overrides: Partial<IssueChatComment>): IssueChatComment {
   const createdAt = overrides.createdAt ?? new Date("2026-04-20T14:00:00.000Z");
   return {
     id: "comment-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     authorType: overrides.authorAgentId ? "agent" : "user",
     authorAgentId: null,
@@ -83,7 +82,6 @@ function createSuggestTasksInteraction(
 ): SuggestTasksInteraction {
   return {
     id: "interaction-suggest-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     kind: "suggest_tasks",
     title: "Suggested issue tree for the first interaction pass",
@@ -154,7 +152,6 @@ function createAskUserQuestionsInteraction(
 ): AskUserQuestionsInteraction {
   return {
     id: "interaction-questions-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     kind: "ask_user_questions",
     title: "Resolve open UX decisions before Phase 1",
@@ -231,7 +228,6 @@ function createRequestConfirmationInteraction(
 ): RequestConfirmationInteraction {
   return {
     id: "interaction-confirmation-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     kind: "request_confirmation",
     title: "Approve the proposed plan",
@@ -275,7 +271,6 @@ function createRequestCheckboxConfirmationInteraction(
 ): RequestCheckboxConfirmationInteraction {
   return {
     id: "interaction-checkbox-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     kind: "request_checkbox_confirmation",
     title: "Choose the stale drafts to delete",
@@ -876,7 +871,6 @@ function createConnectionIntentInteraction(
 ): ConnectionIntentInteraction {
   return {
     id: "interaction-connection-intent-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     kind: "connection_intent",
     title: "Connect Notion",
@@ -1346,7 +1340,6 @@ function createRequestItemVerdictsInteraction(
 ): RequestItemVerdictsInteraction {
   return {
     id: "interaction-verdicts-default",
-    companyId: issueThreadInteractionFixtureMeta.companyId,
     issueId: issueThreadInteractionFixtureMeta.issueId,
     kind: "request_item_verdicts",
     title: "Review 5 blog posts",

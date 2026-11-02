@@ -32,7 +32,6 @@ const DAY_MS = 86_400_000;
 
 export type DecisionRetentionState = typeof decisionRetention.$inferSelect;
 export type ArchiveNotificationBatch = {
-  companyId: string;
   agentId: string;
   items: Array<{
     sourceKind: AttentionSourceKind;
@@ -48,11 +47,8 @@ function sourceKey(sourceKind: string, sourceId: string) {
 
 function canonicalManifest(manifest: readonly AttentionArchiveManifestEntry[]) {
   return [...manifest].sort((left, right) => {
-    const leftKey = `${left.companyId}:${left.sourceKind}:${left.sourceId}`;
-    const rightKey = `${right.companyId}:${right.sourceKind}:${right.sourceId}`;
-    return leftKey.localeCompare(rightKey);
+    return sourceKey(left.sourceKind, left.sourceId).localeCompare(sourceKey(right.sourceKind, right.sourceId));
   }).map((entry) => ({
-    companyId: entry.companyId,
     sourceKind: entry.sourceKind,
     sourceId: entry.sourceId,
     expectedVersion: entry.expectedVersion,
@@ -76,7 +72,6 @@ function archiveActorColumns(actor: DecisionMutationActor) {
 
 async function resolveOrigin(
   db: Db,
-  companyId: string,
   sourceKind: AttentionSourceKind,
   sourceId: string,
 ) {
@@ -85,27 +80,27 @@ async function resolveOrigin(
   if (sourceKind === "approval") {
     const row = await db.select({ agentId: approvals.requestedByAgentId, issueId: issueApprovals.issueId })
       .from(approvals)
-      .leftJoin(issueApprovals, and(eq(issueApprovals.companyId, companyId), eq(issueApprovals.approvalId, approvals.id)))
-      .where(and(eq(approvals.companyId, companyId), eq(approvals.id, sourceId)))
+      .leftJoin(issueApprovals, eq(issueApprovals.approvalId, approvals.id))
+      .where(eq(approvals.id, sourceId))
       .then((rows) => rows[0] ?? null);
     originAgentId = row?.agentId ?? null;
     originIssueId = row?.issueId ?? null;
   } else if (sourceKind === "decision") {
     const row = await db.select({ agentId: decisions.originAgentId, issueId: decisions.originIssueId })
-      .from(decisions).where(and(eq(decisions.companyId, companyId), eq(decisions.id, sourceId)))
+      .from(decisions).where(eq(decisions.id, sourceId))
       .then((rows) => rows[0] ?? null);
     originAgentId = row?.agentId ?? null;
     originIssueId = row?.issueId ?? null;
   } else if (sourceKind === "issue_thread_interaction") {
     const row = await db.select({ agentId: issueThreadInteractions.createdByAgentId, issueId: issueThreadInteractions.issueId })
       .from(issueThreadInteractions)
-      .where(and(eq(issueThreadInteractions.companyId, companyId), eq(issueThreadInteractions.id, sourceId)))
+      .where(eq(issueThreadInteractions.id, sourceId))
       .then((rows) => rows[0] ?? null);
     originAgentId = row?.agentId ?? null;
     originIssueId = row?.issueId ?? null;
   } else if (sourceKind === "failed_run") {
     const row = await db.select({ agentId: heartbeatRuns.agentId, context: heartbeatRuns.contextSnapshot })
-      .from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, sourceId)))
+      .from(heartbeatRuns).where(eq(heartbeatRuns.id, sourceId))
       .then((rows) => rows[0] ?? null);
     const context = row?.context && typeof row.context === "object" ? row.context as Record<string, unknown> : {};
     originAgentId = row?.agentId ?? null;
@@ -113,12 +108,12 @@ async function resolveOrigin(
   } else {
     const issueId = sourceKind === "recovery_action"
       ? await db.select({ issueId: issueRecoveryActions.sourceIssueId }).from(issueRecoveryActions)
-        .where(and(eq(issueRecoveryActions.companyId, companyId), eq(issueRecoveryActions.id, sourceId)))
+        .where(eq(issueRecoveryActions.id, sourceId))
         .then((rows) => rows[0]?.issueId ?? null)
       : (["productivity_review", "blocker_attention", "review"] as string[]).includes(sourceKind) ? sourceId : null;
     if (issueId) {
       const row = await db.select({ agentId: issues.createdByAgentId, issueId: issues.id }).from(issues)
-        .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+        .where(eq(issues.id, issueId))
         .then((rows) => rows[0] ?? null);
       originAgentId = row?.agentId ?? null;
       originIssueId = row?.issueId ?? null;
@@ -126,7 +121,7 @@ async function resolveOrigin(
   }
   if (!originAgentId || !originIssueId) return null;
   const activeAgent = await db.select({ id: agents.id }).from(agents)
-    .where(and(eq(agents.companyId, companyId), eq(agents.id, originAgentId), eq(agents.status, "active")))
+    .where(and(eq(agents.id, originAgentId), eq(agents.status, "active")))
     .then((rows) => rows[0] ?? null);
   return activeAgent ? { originAgentId, originIssueId } : null;
 }
@@ -135,21 +130,17 @@ export function decisionRetentionService(
   db: Db,
   options: { notifyOriginAgent?: (batch: ArchiveNotificationBatch) => Promise<unknown> } = {},
 ) {
-  async function syncItems(companyId: string, items: readonly AttentionItem[]) {
+  async function syncItems(items: readonly AttentionItem[]) {
     if (items.length === 0) return new Map<string, DecisionRetentionState>();
     const unique = [...new Map(items.map((item) => [itemSourceKey(item), item])).values()];
     await db.insert(decisionRetention).values(unique.map((item) => ({
-      companyId,
       sourceKind: item.sourceKind,
       sourceId: item.subject.id,
       sourceActivityAt: new Date(item.activityAt),
     }))).onConflictDoNothing({
-      target: [decisionRetention.companyId, decisionRetention.sourceKind, decisionRetention.sourceId],
+      target: [decisionRetention.sourceKind, decisionRetention.sourceId],
     });
-    let rows = await db.select().from(decisionRetention).where(and(
-      eq(decisionRetention.companyId, companyId),
-      inArray(decisionRetention.sourceId, unique.map((item) => item.subject.id)),
-    ));
+    let rows = await db.select().from(decisionRetention).where(inArray(decisionRetention.sourceId, unique.map((item) => item.subject.id)));
     const byKey = new Map(rows.map((row) => [sourceKey(row.sourceKind, row.sourceId), row]));
     for (const item of unique) {
       const key = itemSourceKey(item);
@@ -174,23 +165,21 @@ export function decisionRetentionService(
     return sourceKey(item.sourceKind, item.subject.id);
   }
 
-  async function getState(companyId: string, sourceKind: AttentionSourceKind, sourceId: string) {
+  async function getState(sourceKind: AttentionSourceKind, sourceId: string) {
     return db.select().from(decisionRetention).where(and(
-      eq(decisionRetention.companyId, companyId),
       eq(decisionRetention.sourceKind, sourceKind),
       eq(decisionRetention.sourceId, sourceId),
     )).then((rows) => rows[0] ?? null);
   }
 
   async function setKeep(input: {
-    companyId: string;
     sourceKind: AttentionSourceKind;
     sourceId: string;
     keep: boolean;
     authActor: AuthorizationActor;
     actor: DecisionMutationActor;
   }) {
-    if (!(await canReadDecisionSource(db, input.authActor, input.companyId, input.sourceKind, input.sourceId))) {
+    if (!(await canReadDecisionSource(db, input.authActor, input.sourceKind, input.sourceId))) {
       throw notFound("Attention source not found");
     }
     const updated = await db.update(decisionRetention).set({
@@ -198,13 +187,11 @@ export function decisionRetentionService(
       version: sql`${decisionRetention.version} + 1`,
       updatedAt: new Date(),
     }).where(and(
-      eq(decisionRetention.companyId, input.companyId),
       eq(decisionRetention.sourceKind, input.sourceKind),
       eq(decisionRetention.sourceId, input.sourceId),
     )).returning().then((rows) => rows[0] ?? null);
     if (!updated) throw notFound("Attention source not found");
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: input.actor.actorType,
       actorId: input.actor.actorId,
       agentId: input.actor.agentId,
@@ -220,14 +207,13 @@ export function decisionRetentionService(
   }
 
   async function changeArchived(input: {
-    companyId: string;
     sourceKind: AttentionSourceKind;
     sourceId: string;
     archived: boolean;
     authActor: AuthorizationActor;
     actor: DecisionMutationActor;
   }) {
-    if (!(await canReadDecisionSource(db, input.authActor, input.companyId, input.sourceKind, input.sourceId))) {
+    if (!(await canReadDecisionSource(db, input.authActor, input.sourceKind, input.sourceId))) {
       throw notFound("Attention source not found");
     }
     const now = new Date();
@@ -248,18 +234,16 @@ export function decisionRetentionService(
       version: sql`${decisionRetention.version} + 1`,
       updatedAt: now,
     }).where(and(
-      eq(decisionRetention.companyId, input.companyId),
       eq(decisionRetention.sourceKind, input.sourceKind),
       eq(decisionRetention.sourceId, input.sourceId),
       input.archived ? isNull(decisionRetention.archivedAt) : isNotNull(decisionRetention.archivedAt),
     )).returning().then((rows) => rows[0] ?? null);
     if (!updated) {
-      const current = await getState(input.companyId, input.sourceKind, input.sourceId);
+      const current = await getState(input.sourceKind, input.sourceId);
       if (!current) throw notFound("Attention source not found");
       return current;
     }
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: input.actor.actorType,
       actorId: input.actor.actorId,
       agentId: input.actor.agentId,
@@ -275,27 +259,25 @@ export function decisionRetentionService(
   }
 
   async function archiveReviewedManifest(input: {
-    companyId: string;
     manifest: AttentionArchiveManifestEntry[];
     originActor: AuthorizationActor;
     decidingActor: AuthorizationActor;
     decidedByUserId: string;
   }) {
     const keys = input.manifest.map((entry) => sourceKey(entry.sourceKind, entry.sourceId));
-    if (new Set(keys).size !== keys.length || input.manifest.some((entry) => entry.companyId !== input.companyId)) {
+    if (new Set(keys).size !== keys.length || input.manifest.some((entry) => false)) {
       throw unprocessable("Archive manifest must contain one exact company-scoped set");
     }
     return db.transaction(async (tx) => {
       const txDb = tx as unknown as Db;
       for (const entry of input.manifest) {
         const kind = entry.sourceKind as AttentionSourceKind;
-        if (!(await canReadDecisionSource(txDb, input.originActor, input.companyId, kind, entry.sourceId))
-          || !(await canReadDecisionSource(txDb, input.decidingActor, input.companyId, kind, entry.sourceId))) {
+        if (!(await canReadDecisionSource(txDb, input.originActor, kind, entry.sourceId))
+          || !(await canReadDecisionSource(txDb, input.decidingActor, kind, entry.sourceId))) {
           throw conflict("archive_proposal_authority_changed", { code: "archive_proposal_authority_changed" });
         }
-        await txDb.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`decision-retention:${input.companyId}:${entry.sourceKind}:${entry.sourceId}`}, 0))`);
+        await txDb.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`decision-retention:${entry.sourceKind}:${entry.sourceId}`}, 0))`);
         const state = await txDb.select().from(decisionRetention).where(and(
-          eq(decisionRetention.companyId, input.companyId),
           eq(decisionRetention.sourceKind, entry.sourceKind),
           eq(decisionRetention.sourceId, entry.sourceId),
         )).then((rows) => rows[0] ?? null);
@@ -316,7 +298,6 @@ export function decisionRetentionService(
           version: sql`${decisionRetention.version} + 1`,
           updatedAt: now,
         }).where(and(
-          eq(decisionRetention.companyId, input.companyId),
           eq(decisionRetention.sourceKind, entry.sourceKind),
           eq(decisionRetention.sourceId, entry.sourceId),
           eq(decisionRetention.version, entry.expectedVersion),
@@ -326,7 +307,6 @@ export function decisionRetentionService(
           throw conflict("archive_proposal_stale", { code: "archive_proposal_stale" });
         }
         await logActivity(txDb, {
-          companyId: input.companyId,
           actorType: "system",
           actorId: "decision-archive-proposal",
           responsibleUserIdOverride: input.decidedByUserId,
@@ -340,7 +320,7 @@ export function decisionRetentionService(
     });
   }
 
-  async function autoArchive(input: { companyId: string; items: AttentionItem[]; now?: Date }) {
+  async function autoArchive(input: { items: AttentionItem[]; now?: Date }) {
     const now = input.now ?? new Date();
     const cutoff = new Date(now.getTime() - DEFAULT_DECISION_ARCHIVE_DAYS * DAY_MS);
     const candidates = input.items.filter((item) => new Date(item.activityAt) <= cutoff && !item.keep && !item.archivedAt);
@@ -359,7 +339,6 @@ export function decisionRetentionService(
           version: sql`${decisionRetention.version} + 1`,
           updatedAt: now,
         }).where(and(
-          eq(decisionRetention.companyId, input.companyId),
           eq(decisionRetention.sourceKind, item.sourceKind),
           eq(decisionRetention.sourceId, item.subject.id),
           eq(decisionRetention.version, item.retentionVersion),
@@ -369,10 +348,9 @@ export function decisionRetentionService(
         )).returning().then((rows) => rows[0] ?? null);
         if (!updated) continue;
         archived += 1;
-        const origin = await resolveOrigin(txDb, input.companyId, item.sourceKind, item.subject.id);
+        const origin = await resolveOrigin(txDb, item.sourceKind, item.subject.id);
         if (origin) {
           await txDb.insert(decisionArchiveNotificationOutbox).values({
-            companyId: input.companyId,
             sourceKind: item.sourceKind,
             sourceId: item.subject.id,
             archiveVersion: updated.archiveVersion,
@@ -381,7 +359,6 @@ export function decisionRetentionService(
           }).onConflictDoNothing();
         }
         await logActivity(txDb, {
-          companyId: input.companyId,
           actorType: "system",
           actorId: "decision-retention-sweeper",
           action: "decision_retention.auto_archived",
@@ -423,7 +400,7 @@ export function decisionRetentionService(
     });
     const groups = new Map<string, typeof rows>();
     for (const row of rows) {
-      const key = `${row.companyId}:${row.originAgentId}`;
+      const key = row.originAgentId;
       const grouped = groups.get(key) ?? [];
       grouped.push(row);
       groups.set(key, grouped);
@@ -434,7 +411,6 @@ export function decisionRetentionService(
       const first = grouped[0]!;
       try {
         await options.notifyOriginAgent({
-          companyId: first.companyId,
           agentId: first.originAgentId,
           items: grouped.map((row) => ({
             sourceKind: row.sourceKind as AttentionSourceKind,

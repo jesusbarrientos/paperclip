@@ -2,7 +2,7 @@
  * Work Timeline page (PAP-12424 / Phase C of PAP-12405).
  *
  * A Gantt-style view of company actor activity built on the Phase B endpoint
- * (`GET /companies/:companyId/timeline`). Rendering is the board-locked
+ * (`GET /api/organization/timeline`). Rendering is the board-locked
  * Direction C (PAP-12422): dense rows, mini-map brush, custom inline SVG.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +11,6 @@ import { Bot, Clock3, Coins, GanttChartSquare, Minus, Plus, RotateCcw, type Luci
 import type { WorkTimelineResult } from "@paperclipai/shared";
 import { workTimelineApi, type WorkTimelineParams } from "@/api/workTimeline";
 import { queryKeys } from "@/lib/queryKeys";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -50,7 +49,6 @@ function timelineEdgeKey(edge: WorkTimelineResult["edges"][number]) {
 }
 
 export async function loadTimelineWindow(
-  companyId: string,
   params: WorkTimelineParams,
   signal?: AbortSignal,
 ): Promise<WorkTimelineResult> {
@@ -64,7 +62,7 @@ export async function loadTimelineWindow(
   let capped = false;
 
   while (true) {
-    const page = await workTimelineApi.get(companyId, {
+    const page = await workTimelineApi.get({
       ...params,
       limit: TIMELINE_PAGE_LIMIT,
       offset,
@@ -305,7 +303,6 @@ function TimelineSummaryStats({
 }
 
 export function Timeline({ embedded = false }: { embedded?: boolean } = {}) {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
   const { enabled: streamlinedUiEnabled } = useStreamlinedUiEnabled();
@@ -334,9 +331,9 @@ export function Timeline({ embedded = false }: { embedded?: boolean } = {}) {
   }, [dateRange, scopedProjectId]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: [...queryKeys.workTimeline(selectedCompanyId ?? ""), dateRange.fromDate, dateRange.toDate, scopedProjectId ?? null],
-    queryFn: ({ signal }) => loadTimelineWindow(selectedCompanyId!, params!, signal),
-    enabled: !!selectedCompanyId && !!params,
+    queryKey: [...queryKeys.workTimeline(), dateRange.fromDate, dateRange.toDate, scopedProjectId ?? null],
+    queryFn: ({ signal }) => loadTimelineWindow(params!, signal),
+    enabled: !!params,
   });
 
   useEffect(() => {
@@ -358,14 +355,6 @@ export function Timeline({ embedded = false }: { embedded?: boolean } = {}) {
     ));
   }, []);
 
-  if (!selectedCompanyId) {
-    return (
-      <>
-        {!embedded && <RequestCollapsedSidebar />}
-        <EmptyState icon={GanttChartSquare} message="Select an organization to view its work timeline." />
-      </>
-    );
-  }
 
   const header = (
     <div className="flex items-center gap-2">

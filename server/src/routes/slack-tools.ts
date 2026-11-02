@@ -9,14 +9,14 @@ import { eq } from "drizzle-orm";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { slackToolCallSchema, isUuidLike } from "@paperclipai/shared";
 import { badRequest, forbidden } from "../errors.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertOrgAccess } from "./authz.js";
 import { executeConnectorTool } from "../services/connector-runtime.js";
 
 export function slackToolRoutes(db: Db, publicBaseUrl?: string) {
   const router = Router();
   const oauth = slackSearchOAuthService(db, publicBaseUrl);
   router.use(
-    ["/slack/search", "/companies/:companyId/slack"],
+    ["/slack/search", "/slack"],
     async (req, _res, next) => {
       if (
         !(await instanceSettingsService(db).getExperimental())
@@ -36,10 +36,6 @@ export function slackToolRoutes(db: Db, publicBaseUrl?: string) {
     if (!isUuidLike(id)) throw badRequest("Invalid Slack endpoint");
     next();
   });
-  router.param("companyId", (_req, _res, next, id) => {
-    if (!isUuidLike(id)) throw badRequest("Invalid company");
-    next();
-  });
   router.get("/slack/search/callback", async (req, res) => {
     const userId = user(req);
     if (
@@ -54,55 +50,49 @@ export function slackToolRoutes(db: Db, publicBaseUrl?: string) {
     );
     const [company] = await db
       .select({ prefix: companies.issuePrefix })
-      .from(companies)
-      .where(eq(companies.id, result.companyId));
+      .from(companies);
     res.redirect(
       `/${encodeURIComponent(company.prefix)}/apps/chat/${result.endpointId}/access`,
     );
   });
   router.get(
-    "/companies/:companyId/slack/endpoints/:endpointId/capabilities",
+    "/slack/endpoints/:endpointId/capabilities",
     async (req, res) => {
       assertBoard(req);
-      const companyId = String(req.params.companyId);
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       res
         .set("Cache-Control", "no-store")
         .json(
-          await slackCapabilities(db, companyId, String(req.params.endpointId)),
+          await slackCapabilities(db, String(req.params.endpointId)),
         );
     },
   );
-  async function canConfigure(req: Request, companyId: string, userId: string) {
+  async function canConfigure(req: Request, userId: string) {
     return (
       req.actor.source === "local_implicit" ||
       req.actor.isInstanceAdmin === true ||
       (await accessService(db).hasPermission(
-        companyId,
         "user",
         userId,
         "tools:manage_connections",
       ))
     );
   }
-  router.get("/companies/:companyId/slack/endpoints/:endpointId/search", async (req, res) => {
+  router.get("/slack/endpoints/:endpointId/search", async (req, res) => {
     const userId = user(req);
-    const companyId = String(req.params.companyId);
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     res.set("Cache-Control", "no-store").json({
-      ...(await oauth.status(companyId, String(req.params.endpointId), userId)),
-      canConfigure: await canConfigure(req, companyId, userId),
+      ...(await oauth.status(String(req.params.endpointId), userId)),
+      canConfigure: await canConfigure(req, userId),
     });
   });
-  router.put("/companies/:companyId/slack/endpoints/:endpointId/search", async (req, res) => {
+  router.put("/slack/endpoints/:endpointId/search", async (req, res) => {
     const userId = user(req);
-    const companyId = String(req.params.companyId);
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     if (
       req.actor.source !== "local_implicit" &&
       !req.actor.isInstanceAdmin &&
       !(await accessService(db).hasPermission(
-        companyId,
         "user",
         userId,
         "tools:manage_connections",
@@ -111,38 +101,34 @@ export function slackToolRoutes(db: Db, publicBaseUrl?: string) {
       throw forbidden("Missing permission: tools:manage_connections");
     res.json(
       await oauth.configure(
-        companyId,
         String(req.params.endpointId),
         userId,
         req.body,
       ),
     );
   });
-  router.post("/companies/:companyId/slack/endpoints/:endpointId/search/connect", async (req, res) => {
+  router.post("/slack/endpoints/:endpointId/search/connect", async (req, res) => {
     const userId = user(req);
-    const companyId = String(req.params.companyId);
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     res
       .set("Cache-Control", "no-store")
       .json(
-        await oauth.start(companyId, String(req.params.endpointId), userId),
+        await oauth.start(String(req.params.endpointId), userId),
       );
   });
-  router.delete("/companies/:companyId/slack/endpoints/:endpointId/search", async (req, res) => {
+  router.delete("/slack/endpoints/:endpointId/search", async (req, res) => {
     const userId = user(req);
-    const companyId = String(req.params.companyId);
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     res.json(
-      await oauth.disconnect(companyId, String(req.params.endpointId), userId),
+      await oauth.disconnect(String(req.params.endpointId), userId),
     );
   });
   router.post(
-    "/companies/:companyId/slack/tasks/:issueId/tools",
+    "/slack/tasks/:issueId/tools",
     async (req, res) => {
-      const companyId = String(req.params.companyId);
       const issueId = String(req.params.issueId);
-      assertCompanyAccess(req, companyId);
-      if (!isUuidLike(companyId) || !isUuidLike(issueId))
+      assertOrgAccess(req);
+      if (!isUuidLike(issueId))
         throw badRequest("Invalid task binding");
       if (req.actor.type !== "agent" || !req.actor.agentId || !req.actor.runId)
         throw forbidden("Slack tools require an authenticated agent run");
@@ -153,7 +139,6 @@ export function slackToolRoutes(db: Db, publicBaseUrl?: string) {
         await executeConnectorTool(
           db,
           {
-            companyId,
             issueId,
             runId: req.actor.runId,
             agentId: req.actor.agentId,

@@ -226,11 +226,10 @@ function subjectHash(parts: string[]): string {
   return createHash("sha256").update(parts.join("\0")).digest("base64url").slice(0, 43);
 }
 
-/** Subjects are deterministic, company-bound and never accepted from clients. */
+/** Subjects are deterministic, connection-bound and never accepted from clients. */
 export function deriveVercelConnectSubject(input: {
   credential: VercelConnectCredentialReference;
   connectionId: string;
-  companyId: string;
   grantKind: ConnectionGrantKind;
   subjectUserId?: string | null;
 }): { subject: ConnectTokenSubject; subjectId?: string } {
@@ -240,7 +239,6 @@ export function deriveVercelConnectSubject(input: {
     ?? "paperclip-instance";
   const subjectId = `pc_${subjectHash([
     instanceId,
-    input.companyId,
     input.connectionId,
     input.grantKind,
     input.grantKind === "user" ? input.subjectUserId ?? "missing-user" : "organization",
@@ -252,13 +250,11 @@ export function vercelTokenRequest(input: {
   credential: VercelConnectCredentialReference;
   grant: { kind: ConnectionGrantKind; subjectUserId: string | null; externalCredential?: VercelConnectGrantReference | null };
   connectionId: string;
-  companyId: string;
   resources?: string[];
 }): VercelConnectTokenRequest {
   const derived = deriveVercelConnectSubject({
     credential: input.credential,
     connectionId: input.connectionId,
-    companyId: input.companyId,
     grantKind: input.grant.kind,
     subjectUserId: input.grant.subjectUserId,
   });

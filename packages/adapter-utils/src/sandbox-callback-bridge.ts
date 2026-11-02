@@ -138,25 +138,25 @@ export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCa
   { method: "GET", path: /^\/api\/openapi\.json$/ },
 
   // Company-level reads used to discover work and context
-  { method: "GET", path: /^\/api\/companies\/[^/]+$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/dashboard$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/agents$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/issues$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/projects$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/goals$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/org$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/approvals$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/routines$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/skills$/ },
+  { method: "GET", path: /^\/api\/organization$/ },
+  { method: "GET", path: /^\/api\/dashboard$/ },
+  { method: "GET", path: /^\/api\/agents$/ },
+  { method: "GET", path: /^\/api\/issues$/ },
+  { method: "GET", path: /^\/api\/projects$/ },
+  { method: "GET", path: /^\/api\/goals$/ },
+  { method: "GET", path: /^\/api\/org$/ },
+  { method: "GET", path: /^\/api\/approvals$/ },
+  { method: "GET", path: /^\/api\/routines$/ },
+  { method: "GET", path: /^\/api\/skills$/ },
   { method: "GET", path: /^\/api\/projects\/[^/]+$/ },
   { method: "GET", path: /^\/api\/goals\/[^/]+$/ },
 
   // Task-bound email actions. Company, inbox ownership, task/run authority,
   // and action policies are enforced by the controller; mailbox setup stays denied.
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/email\/inboxes$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/email\/tasks\/[^/]+$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/email\/deliveries\/[^/]+$/ },
-  { method: "POST", path: /^\/api\/companies\/[^/]+\/email\/send$/ },
+  { method: "GET", path: /^\/api\/email\/inboxes$/ },
+  { method: "GET", path: /^\/api\/email\/tasks\/[^/]+$/ },
+  { method: "GET", path: /^\/api\/email\/deliveries\/[^/]+$/ },
+  { method: "POST", path: /^\/api\/email\/send$/ },
 
   // Issue lifecycle: read context, checkout, update, comment, document, release
   { method: "GET", path: /^\/api\/issues\/[^/]+$/ },
@@ -173,7 +173,7 @@ export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCa
 
   // Files: the queue encodes binary bodies; HTTP/2 carries the same bytes directly.
   { method: "GET", path: /^\/api\/issues\/[^/]+\/attachments$/ },
-  { method: "POST", path: /^\/api\/companies\/[^/]+\/issues\/[^/]+\/attachments$/ },
+  { method: "POST", path: /^\/api\/issues\/[^/]+\/attachments$/ },
   { method: "GET", path: /^\/api\/attachments\/[^/]+\/content$/ },
 
   // Work products: publish branch/commit/artifact metadata for completed work.
@@ -187,18 +187,18 @@ export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCa
   { method: "POST", path: /^\/api\/issues\/[^/]+\/interactions\/[^/]+\/(?:accept|reject|respond|verdicts|withdraw)$/ },
 
   // Subtasks / delegation
-  { method: "POST", path: /^\/api\/companies\/[^/]+\/issues$/ },
+  { method: "POST", path: /^\/api\/issues$/ },
 
   // Hiring (paperclip-create-agent skill): adapter/icon discovery, comparing
   // existing agent configs, submitting the hire request, and linking the
   // resulting approval to its source issue. Direct agent creation
-  // (POST /api/companies/:id/agents) stays denied — hires must go through the
+  // (POST /api/agents) stays denied — hires must go through the
   // approval-gated agent-hires endpoint, which the server still permission-checks.
   { method: "GET", path: /^\/llms\/agent-configuration\.txt$/ },
   { method: "GET", path: /^\/llms\/agent-configuration\/[^/]+\.txt$/ },
   { method: "GET", path: /^\/llms\/agent-icons\.txt$/ },
-  { method: "GET", path: /^\/api\/companies\/[^/]+\/agent-configurations$/ },
-  { method: "POST", path: /^\/api\/companies\/[^/]+\/agent-hires$/ },
+  { method: "GET", path: /^\/api\/agent-configurations$/ },
+  { method: "POST", path: /^\/api\/agent-hires$/ },
   { method: "POST", path: /^\/api\/issues\/[^/]+\/approvals$/ },
 
   // Approvals (request, read, comment)
@@ -206,7 +206,7 @@ export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCa
   { method: "GET", path: /^\/api\/approvals\/[^/]+\/issues$/ },
   { method: "GET", path: /^\/api\/approvals\/[^/]+\/comments$/ },
   { method: "POST", path: /^\/api\/approvals\/[^/]+\/comments$/ },
-  { method: "POST", path: /^\/api\/companies\/[^/]+\/approvals$/ },
+  { method: "POST", path: /^\/api\/approvals$/ },
 
   // Execution workspaces and runtime services (start/stop/restart dev servers)
   { method: "GET", path: /^\/api\/execution-workspaces\/[^/]+$/ },
@@ -215,7 +215,7 @@ export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCa
   // Routines (agents manage their own routines and triggers)
   { method: "GET", path: /^\/api\/routines\/[^/]+$/ },
   { method: "GET", path: /^\/api\/routines\/[^/]+\/runs$/ },
-  { method: "POST", path: /^\/api\/companies\/[^/]+\/routines$/ },
+  { method: "POST", path: /^\/api\/routines$/ },
   { method: "PATCH", path: /^\/api\/routines\/[^/]+$/ },
   { method: "POST", path: /^\/api\/routines\/[^/]+\/run$/ },
   { method: "POST", path: /^\/api\/routines\/[^/]+\/triggers$/ },
@@ -2501,7 +2501,7 @@ async function runFileGateway() {
       const url = new URL(req.url || "/", "http://127.0.0.1");
       const contentType = typeof req.headers["content-type"] === "string" ? req.headers["content-type"] : "";
       const multipartAttachment = req.method === "POST"
-        && /^\\/api\\/companies\\/[^/]+\\/issues\\/[^/]+\\/attachments$/.test(url.pathname)
+        && /^\\/api\\/issues\\/[^/]+\\/attachments$/.test(url.pathname)
         && /^multipart\\/form-data(?:;|$)/i.test(contentType);
       if (req.method && req.method !== "GET" && req.method !== "HEAD" && !/json/i.test(contentType) && !multipartAttachment) {
         writeJsonResponse(res, 415, { error: "Bridge only accepts JSON request bodies." });

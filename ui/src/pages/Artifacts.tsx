@@ -7,7 +7,6 @@ import {
   type ArtifactGroupBy,
   type ArtifactKindFilter,
 } from "../api/artifacts";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { EmptyState } from "../components/EmptyState";
@@ -62,7 +61,6 @@ export function artifactGroupByLabel(value: ArtifactGroupBy): string {
 }
 
 export function Artifacts() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -177,9 +175,9 @@ export function Artifacts() {
     fetchNextPage,
     error,
   } = useInfiniteQuery({
-    queryKey: queryKeys.artifacts.list(selectedCompanyId!, kind, query, groupBy, groupIssueId),
+    queryKey: queryKeys.artifacts.list(kind, query, groupBy, groupIssueId),
     queryFn: ({ pageParam }) =>
-      artifactsApi.list(selectedCompanyId!, {
+      artifactsApi.list({
         kind,
         q: query || undefined,
         groupBy,
@@ -187,7 +185,6 @@ export function Artifacts() {
         limit: ARTIFACTS_PAGE_SIZE,
         cursor: pageParam,
       }),
-    enabled: !!selectedCompanyId,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
@@ -226,9 +223,6 @@ export function Artifacts() {
     }
   }, [setBreadcrumbs, viewingSelectedStack, selectedGroup]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Package} message="Select an organization to view artifacts." />;
-  }
 
   const showGroupCards = viewingStackList;
   const items = showGroupCards ? groups : artifacts;

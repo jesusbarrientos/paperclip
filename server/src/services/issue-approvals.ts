@@ -32,11 +32,6 @@ export function issueApprovalService(db: Db) {
 
     const approval = await getApproval(approvalId);
     if (!approval) throw notFound("Approval not found");
-
-    if (issue.companyId !== approval.companyId) {
-      throw unprocessable("Issue and approval must belong to the same company");
-    }
-
     return { issue, approval };
   }
 
@@ -48,7 +43,6 @@ export function issueApprovalService(db: Db) {
       const result = await db
         .select({
           id: approvals.id,
-          companyId: approvals.companyId,
           type: approvals.type,
           requestedByAgentId: approvals.requestedByAgentId,
           requestedByUserId: approvals.requestedByUserId,
@@ -77,7 +71,6 @@ export function issueApprovalService(db: Db) {
       return db
         .select({
           id: issues.id,
-          companyId: issues.companyId,
           projectId: issues.projectId,
           goalId: issues.goalId,
           parentId: issues.parentId,
@@ -110,7 +103,6 @@ export function issueApprovalService(db: Db) {
       await db
         .insert(issueApprovals)
         .values({
-          companyId: issue.companyId,
           issueId,
           approvalId,
           linkedByAgentId: actor?.agentId ?? null,
@@ -141,8 +133,7 @@ export function issueApprovalService(db: Db) {
       const uniqueIssueIds = Array.from(new Set(issueIds));
       const rows = await db
         .select({
-          id: issues.id,
-          companyId: issues.companyId,
+          id: issues.id
         })
         .from(issues)
         .where(inArray(issues.id, uniqueIssueIds));
@@ -152,16 +143,12 @@ export function issueApprovalService(db: Db) {
       }
 
       for (const row of rows) {
-        if (row.companyId !== approval.companyId) {
-          throw unprocessable("Issue and approval must belong to the same company");
-        }
       }
 
       await db
         .insert(issueApprovals)
         .values(
           uniqueIssueIds.map((issueId) => ({
-            companyId: approval.companyId,
             issueId,
             approvalId,
             linkedByAgentId: actor?.agentId ?? null,

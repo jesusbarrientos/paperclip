@@ -24,13 +24,13 @@ export interface StatusCardDryRun {
  * manual refresh/recompile, and live dry-run matching.
  */
 export const statusCardsApi = {
-  list: (companyId: string, archived = false) =>
+  list: (archived = false) =>
     api.get<StatusCard[]>(
-      `/companies/${companyId}/status-cards?archived=${archived ? "true" : "false"}`,
+      `/status-cards?archived=${archived ? "true" : "false"}`,
     ),
   get: (id: string) => api.get<StatusCard>(`/status-cards/${id}`),
-  create: (companyId: string, body: CreateStatusCard) =>
-    api.post<StatusCard>(`/companies/${companyId}/status-cards`, body),
+  create: (body: CreateStatusCard) =>
+    api.post<StatusCard>(`/status-cards`, body),
   patch: (id: string, body: PatchStatusCard) =>
     api.patch<StatusCard>(`/status-cards/${id}`, body),
   remove: (id: string) => api.delete<void>(`/status-cards/${id}`),

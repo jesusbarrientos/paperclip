@@ -10,7 +10,6 @@ import {
 } from "./chat-discord-command-registration.js";
 
 const scope = {
-  companyId: "11111111-1111-4111-8111-111111111111",
   endpointId: "22222222-2222-4222-8222-222222222222",
   applicationId: "123456789012345678",
   guildId: "234567890123456789",
@@ -473,7 +472,7 @@ describe("Discord owned native-command registration", () => {
           providerAccountId: scope.applicationId,
         },
       },
-      { scope: { ...scope, endpointId: scope.companyId } },
+      { scope: { ...scope, endpointId: "11111111-1111-4111-8111-111111111111" } },
       { state: { ...f.stored, ownerId: "guessed" } },
       { state: { ...f.stored, botToken: secret } },
       { runtimeFence: { ...runtimeFence, generation: -1 } },

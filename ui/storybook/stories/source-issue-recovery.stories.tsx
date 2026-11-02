@@ -38,7 +38,6 @@ function StoryFrame({ title, description, children }: { title: string; descripti
 function buildAction(overrides: Partial<IssueRecoveryAction> = {}): IssueRecoveryAction {
   return {
     id: "00000000-0000-0000-0000-0000000000aa",
-    companyId: "company-storybook",
     sourceIssueId: "00000000-0000-0000-0000-0000000000ff",
     recoveryIssueId: null,
     kind: "missing_disposition",

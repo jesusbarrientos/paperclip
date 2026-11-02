@@ -211,7 +211,6 @@ function makeQueryClient() {
 function makeDoc(overrides: Partial<IssueDocument> = {}): IssueDocument {
   return {
     id: "doc-1",
-    companyId: "co-1",
     issueId: "issue-1",
     key: "plan",
     title: "Plan",
@@ -238,7 +237,6 @@ function makeThread(
   const id = overrides.id ?? "thread-1";
   return {
     id,
-    companyId: "co-1",
     issueId: "issue-1",
     documentId: "doc-1",
     documentKey: "plan",
@@ -270,7 +268,6 @@ function makeThread(
     comments: [
       {
         id: "comment-1",
-        companyId: "co-1",
         threadId: id,
         issueId: "issue-1",
         documentId: "doc-1",
@@ -570,7 +567,6 @@ describe("IssueDocumentAnnotations", () => {
         comments: [
           {
             id: "comment-board",
-            companyId: "co-1",
             threadId: "open-1",
             issueId: "issue-1",
             documentId: "doc-1",
@@ -584,7 +580,6 @@ describe("IssueDocumentAnnotations", () => {
           },
           {
             id: "comment-agent",
-            companyId: "co-1",
             threadId: "open-1",
             issueId: "issue-1",
             documentId: "doc-1",

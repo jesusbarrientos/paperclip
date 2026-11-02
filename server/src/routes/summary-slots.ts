@@ -6,7 +6,7 @@ import { forbidden, notFound } from "../errors.js";
 import { accessService, heartbeatService, instanceSettingsService, logActivity } from "../services/index.js";
 import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
 import { summarySlotService } from "../services/summary-slots.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getActorInfo } from "./authz.js";
 
 function readScopeId(req: Request): string | null {
   const raw = req.query.scopeId;
@@ -15,12 +15,11 @@ function readScopeId(req: Request): string | null {
 }
 
 export function summarySlotSessionTaskKey(input: {
-  companyId: string;
   scopeKind: string;
   slotKey: string;
   scopeId: string | null;
 }) {
-  return `summary-slot:${input.companyId}:${input.scopeKind}:${input.scopeId ?? "company"}:${input.slotKey}`;
+  return `summary-slot:${input.scopeKind}:${input.scopeId ?? "organization"}:${input.slotKey}`;
 }
 
 export function summarySlotRoutes(db: Db) {
@@ -38,13 +37,13 @@ export function summarySlotRoutes(db: Db) {
   }
 
   /** Manual generate is a board/user action; agents cannot trigger it. */
-  async function assertCanGenerateSummary(req: Request, companyId: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertCanGenerateSummary(req: Request) {
+    assertOrgAccess(req);
     if (req.actor.type !== "board") {
       throw forbidden("Only board operators can generate summaries.");
     }
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
-    const allowed = await access.canUser(companyId, req.actor.userId, "tasks:assign");
+    const allowed = await access.canUser(req.actor.userId, "tasks:assign");
     if (!allowed) {
       throw forbidden("Missing permission: tasks:assign");
     }
@@ -53,7 +52,6 @@ export function summarySlotRoutes(db: Db) {
   async function logSummaryMutation(
     req: Request,
     input: {
-      companyId: string;
       action: "summary_slot.generate_requested" | "summary_slot.write";
       slotId: string;
       details: Record<string, unknown>;
@@ -61,7 +59,6 @@ export function summarySlotRoutes(db: Db) {
   ) {
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       action: input.action,
@@ -73,12 +70,10 @@ export function summarySlotRoutes(db: Db) {
     });
   }
 
-  router.get("/companies/:companyId/summary-slots/:scopeKind/:slotKey", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/summary-slots/:scopeKind/:slotKey", async (req, res) => {
+    assertOrgAccess(req);
     await assertSummariesEnabled();
     const result = await svc.getSlot({
-      companyId,
       scopeKind: req.params.scopeKind as string,
       slotKey: req.params.slotKey as string,
       scopeId: readScopeId(req),
@@ -86,12 +81,10 @@ export function summarySlotRoutes(db: Db) {
     res.json(result);
   });
 
-  router.get("/companies/:companyId/summary-slots/:scopeKind/:slotKey/revisions", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/summary-slots/:scopeKind/:slotKey/revisions", async (req, res) => {
+    assertOrgAccess(req);
     await assertSummariesEnabled();
     const result = await svc.listRevisions({
-      companyId,
       scopeKind: req.params.scopeKind as string,
       slotKey: req.params.slotKey as string,
       scopeId: readScopeId(req),
@@ -100,16 +93,14 @@ export function summarySlotRoutes(db: Db) {
   });
 
   router.post(
-    "/companies/:companyId/summary-slots/:scopeKind/:slotKey/generate",
+    "/summary-slots/:scopeKind/:slotKey/generate",
     validate(generateSummarySlotSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
       await assertSummariesEnabled();
-      await assertCanGenerateSummary(req, companyId);
+      await assertCanGenerateSummary(req);
       const actor = getActorInfo(req);
       const result = await svc.generate(
         {
-          companyId,
           scopeKind: req.params.scopeKind as string,
           slotKey: req.params.slotKey as string,
           scopeId: (req.body?.scopeId as string | null | undefined) ?? readScopeId(req),
@@ -121,7 +112,6 @@ export function summarySlotRoutes(db: Db) {
         },
       );
       await logSummaryMutation(req, {
-        companyId,
         action: "summary_slot.generate_requested",
         slotId: result.slot.id,
         details: {
@@ -146,7 +136,6 @@ export function summarySlotRoutes(db: Db) {
           requestedByActorType: actor.actorType === "agent" ? "agent" : "user",
           requestedByActorId: actor.actorId,
           taskKey: summarySlotSessionTaskKey({
-            companyId,
             scopeKind: result.slot.scopeKind,
             slotKey: result.slot.slotKey,
             scopeId: result.slot.scopeId,
@@ -159,11 +148,10 @@ export function summarySlotRoutes(db: Db) {
   );
 
   router.put(
-    "/companies/:companyId/summary-slots/:scopeKind/:slotKey",
+    "/summary-slots/:scopeKind/:slotKey",
     validate(writeSummarySlotSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       await assertSummariesEnabled();
       if (req.actor.type !== "agent") {
         throw forbidden("Only the Summarizer built-in agent may write summaries");
@@ -171,7 +159,6 @@ export function summarySlotRoutes(db: Db) {
       const actor = getActorInfo(req);
       const result = await svc.write(
         {
-          companyId,
           scopeKind: req.params.scopeKind as string,
           slotKey: req.params.slotKey as string,
           scopeId: (req.body?.scopeId as string | null | undefined) ?? readScopeId(req),
@@ -188,7 +175,6 @@ export function summarySlotRoutes(db: Db) {
         },
       );
       await logSummaryMutation(req, {
-        companyId,
         action: "summary_slot.write",
         slotId: result.slot.id,
         details: {

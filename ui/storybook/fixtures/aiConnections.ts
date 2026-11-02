@@ -5,7 +5,6 @@ import type {
 } from "@/components/ai-connections/model";
 
 export const AI_REVIEW_REQUIREMENT = {
-  companyId: "ai-review-company",
   provider: "anthropic",
   method: "subscription",
 } satisfies AiConnectionRequirement;
@@ -18,7 +17,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "claude-dotta",
     grantId: "grant-dotta",
-    companyId: "ai-review-company",
     provider: "anthropic",
     method: "subscription",
     name: "My Claude subscription",
@@ -32,7 +30,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "claude-second",
     grantId: "grant-second",
-    companyId: "ai-review-company",
     provider: "anthropic",
     method: "subscription",
     name: "My research account",
@@ -45,7 +42,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "claude-shared",
     grantId: "grant-shared",
-    companyId: "ai-review-company",
     provider: "anthropic",
     method: "subscription",
     name: "Engineering Claude",
@@ -56,7 +52,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "claude-sam",
     grantId: "grant-sam",
-    companyId: "ai-review-company",
     provider: "anthropic",
     method: "subscription",
     name: "Sam’s Claude subscription",
@@ -69,7 +64,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "openai-personal",
     grantId: "grant-openai",
-    companyId: "ai-review-company",
     provider: "openai",
     method: "subscription",
     name: "My ChatGPT subscription",
@@ -83,7 +77,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "openai-api",
     grantId: "grant-openai-api",
-    companyId: "ai-review-company",
     provider: "openai",
     method: "api_key",
     name: "Engineering OpenAI API",
@@ -93,7 +86,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "claude-api",
     grantId: "grant-claude-api",
-    companyId: "ai-review-company",
     provider: "anthropic",
     method: "api_key",
     name: "Claude API — staging",
@@ -103,7 +95,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "openrouter-api",
     grantId: "grant-openrouter",
-    companyId: "ai-review-company",
     provider: "openrouter",
     method: "api_key",
     name: "OpenRouter research",
@@ -116,7 +107,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "grok-personal",
     grantId: "grant-grok",
-    companyId: "ai-review-company",
     provider: "xai",
     method: "subscription",
     name: "My Grok subscription",
@@ -129,7 +119,6 @@ export const AI_REVIEW_CONNECTIONS: AiConnectionSummary[] = [
   {
     id: "grok-api",
     grantId: "grant-grok-api",
-    companyId: "ai-review-company",
     provider: "xai",
     method: "api_key",
     name: "Grok API",

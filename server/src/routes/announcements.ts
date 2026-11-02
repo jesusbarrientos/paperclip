@@ -4,7 +4,7 @@ import { companies, type Db } from "@paperclipai/db";
 import { ANNOUNCEMENT_ANIMATION_CSP, announcementIdSchema, dismissAnnouncementSchema } from "@paperclipai/shared";
 import { badRequest, forbidden, notFound } from "../errors.js";
 import { validate } from "../middleware/validate.js";
-import { assertAuthenticated, assertBoard, hasCompanyAccess } from "./authz.js";
+import { assertAuthenticated, assertBoard, hasOrgAccess } from "./authz.js";
 import { announcementService } from "../services/announcements.js";
 import { announcementFeedService, type AnnouncementFeedOptions } from "../services/announcement-feed.js";
 
@@ -47,14 +47,11 @@ export function announcementRoutes(db: Db, options: AnnouncementFeedOptions) {
   router.post("/announcements/:id/dismiss", validate(dismissAnnouncementSchema), async (req, res) => {
     const id = announcementIdSchema.safeParse(req.params.id);
     if (!id.success) throw badRequest("Invalid announcement ID");
-    const { companyId } = req.body;
+    const {} = req.body;
     // This writes the caller's personal preference. Viewers may dismiss it;
-    // company read membership supplies audit context, not write authority.
-    if (!hasCompanyAccess(req, companyId)) throw notFound("Company not found");
-    if (!await db.query.companies.findFirst({ where: eq(companies.id, companyId), columns: { id: true } })) {
-      throw notFound("Company not found");
-    }
-    if (!await service.dismiss(req.actor.userId!, id.data, companyId)) throw notFound("Announcement not found");
+    // organization read membership supplies audit context, not write authority.
+    if (!hasOrgAccess(req)) throw notFound("Organization not found");
+    if (!await service.dismiss(req.actor.userId!, id.data)) throw notFound("Announcement not found");
     res.status(204).end();
   });
   return router;

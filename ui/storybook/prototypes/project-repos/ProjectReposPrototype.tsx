@@ -19,7 +19,7 @@ import { availableRepositories, type Repository, type RepositoryState } from "./
 function GitHubConnectionPreview({ onComplete, onCancel }: { onComplete: () => void; onCancel: () => void }) {
   const client = useMemo(() => {
     const c = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnMount: false } } });
-    c.setQueryData(queryKeys.apps.gallery("company-storybook"), {
+    c.setQueryData(queryKeys.apps.gallery(), {
       // Mirror an enrolled instance's gallery response; raw catalog defaults
       // hide platform_shared OAuth and would otherwise show the PAT fallback.
       apps: CONNECTABLE_APP_DEFINITIONS.filter((app) => app.slug === "github").map((app) => ({
@@ -28,8 +28,8 @@ function GitHubConnectionPreview({ onComplete, onCancel }: { onComplete: () => v
       })),
       capabilities: { canSetCompanyInstall: true, canCreateOrganizationGrant: true, canConnectAsCurrentUser: true },
     });
-    c.setQueryData(queryKeys.tools.applications("company-storybook"), { applications: [] });
-    c.setQueryData(queryKeys.tools.connections("company-storybook"), { connections: [] });
+    c.setQueryData(queryKeys.tools.applications(), { applications: [] });
+    c.setQueryData(queryKeys.tools.connections(), { connections: [] });
     return c;
   }, []);
   return (

@@ -19,22 +19,22 @@ describe("runner task reassignment", () => {
     const companyId = randomUUID(), agentId = randomUUID(), nextId = randomUUID(), issueId = randomUUID(), targetId = randomUUID(), runId = randomUUID();
     await db.insert(companies).values({ id: companyId, name: "Reassignment", issuePrefix: `R${companyId.slice(0, 6)}` });
     await db.insert(agents).values([
-      { id: agentId, companyId, name: "Manager", role: "ceo", status: "active", adapterType: "paperclip_runner" },
-      { id: nextId, companyId, name: "Engineer", role: "engineer", status: "active", adapterType: "paperclip_runner" },
+      { id: agentId, name: "Manager", role: "ceo", status: "active", adapterType: "paperclip_runner" },
+      { id: nextId, name: "Engineer", role: "engineer", status: "active", adapterType: "paperclip_runner" },
     ]);
     await db.insert(issues).values([
-      { id: issueId, companyId, title: "Coordinate", status: "in_progress", assigneeAgentId: agentId },
-      { id: targetId, companyId, title: "Existing work", status, assigneeAgentId: agentId, description: "Keep the existing plan and context" },
+      { id: issueId, title: "Coordinate", status: "in_progress", assigneeAgentId: agentId },
+      { id: targetId, title: "Existing work", status, assigneeAgentId: agentId, description: "Keep the existing plan and context" },
     ]);
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", runtimeMode: "native", nativeIssueId: issueId, invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId } });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running", runtimeMode: "native", nativeIssueId: issueId, invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId } });
     await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
     const enqueueWakeup = vi.fn().mockResolvedValue({ id: randomUUID() });
     const stopTaskForReassignment = vi.fn().mockResolvedValue(undefined);
-    const binding = { companyId, agentId, issueId, runId, enqueueWakeup, stopTaskForReassignment };
+    const binding = { agentId, issueId, runId, enqueueWakeup, stopTaskForReassignment };
     const authority = new PaperclipRunnerToolAuthority(db, binding);
     const call = { tool: "reassign_task", callId: "handoff", arguments: { taskId: targetId, assigneeActorId: nextId, expectedAssigneeActorId: agentId, expectedStatusVersion: 0, reason: "Engineer owns implementation; retain the existing plan.", idempotencyKey: "handoff" } };
     const target = async () => (await db.select().from(issues).where(eq(issues.id, targetId)))[0]!;
-    return { companyId, agentId, nextId, issueId, targetId, runId, authority, binding, call, target, enqueueWakeup, stopTaskForReassignment };
+    return { agentId, nextId, issueId, targetId, runId, authority, binding, call, target, enqueueWakeup, stopTaskForReassignment };
   }
 
   it("moves existing work once, persists context and audit, and dispatches a guarded wake", async () => {
@@ -45,7 +45,7 @@ describe("runner task reassignment", () => {
     expect(f.stopTaskForReassignment).toHaveBeenCalledTimes(1);
     expect(f.enqueueWakeup).toHaveBeenCalledWith(f.nextId, expect.objectContaining({ issueStateGuard: { statuses: ["todo"], assigneeAgentId: f.nextId, statusVersion: 1 } }));
     expect(f.enqueueWakeup.mock.calls[0]![1].idempotencyKey).toEqual(f.enqueueWakeup.mock.calls[1]![1].idempotencyKey);
-    expect(await db.select().from(activityLog).where(and(eq(activityLog.companyId, f.companyId), eq(activityLog.action, "issue.reassigned")))).toHaveLength(1);
+    expect(await db.select().from(activityLog).where(eq(activityLog.action, "issue.reassigned"))).toHaveLength(1);
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, f.targetId))).toHaveLength(1);
   });
 
@@ -60,7 +60,7 @@ describe("runner task reassignment", () => {
     const f = await fixture();
     const receipt = await f.authority.execute(f.call);
     const replacement = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: replacement, companyId: f.companyId, agentId: f.agentId, nativeIssueId: f.issueId, runtimeMode: "native", status: "running", invocationSource: "assignment", triggerDetail: "system" });
+    await db.insert(heartbeatRuns).values({ id: replacement, agentId: f.agentId, nativeIssueId: f.issueId, runtimeMode: "native", status: "running", invocationSource: "assignment", triggerDetail: "system" });
     await db.update(issues).set({ executionRunId: replacement }).where(eq(issues.id, f.issueId));
     await expect(new PaperclipRunnerToolAuthority(db, { ...f.binding, runId: replacement }).execute(f.call)).resolves.toEqual(receipt);
     expect((await f.target()).statusVersion).toBe(1);
@@ -86,7 +86,7 @@ describe("runner task reassignment", () => {
   it("stops active execution before transferring ownership", async () => {
     const f = await fixture("in_progress");
     const oldRun = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: oldRun, companyId: f.companyId, agentId: f.agentId, nativeIssueId: f.targetId, runtimeMode: "native", status: "running", invocationSource: "assignment", triggerDetail: "system" });
+    await db.insert(heartbeatRuns).values({ id: oldRun, agentId: f.agentId, nativeIssueId: f.targetId, runtimeMode: "native", status: "running", invocationSource: "assignment", triggerDetail: "system" });
     await db.update(issues).set({ executionRunId: oldRun, checkoutRunId: oldRun }).where(eq(issues.id, f.targetId));
     f.stopTaskForReassignment.mockImplementationOnce(async () => {
       expect((await f.target()).assigneeAgentId).toBe(f.agentId);
@@ -103,7 +103,7 @@ describe("runner task reassignment", () => {
     expect((await f.target()).assigneeAgentId).toBe(f.agentId);
     f.stopTaskForReassignment.mockImplementationOnce(async () => {
       const runId = randomUUID();
-      await db.insert(heartbeatRuns).values({ id: runId, companyId: f.companyId, agentId: f.agentId, status: "running", invocationSource: "assignment", triggerDetail: "system" });
+      await db.insert(heartbeatRuns).values({ id: runId, agentId: f.agentId, status: "running", invocationSource: "assignment", triggerDetail: "system" });
       await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, f.targetId));
     });
     await expect(f.authority.execute(f.call)).rejects.toThrow("reassignment_conflict");
@@ -113,7 +113,7 @@ describe("runner task reassignment", () => {
   it.each(["version", "caller", "stop-error"])("restores the prior owner after a cancelled handoff loses %s", async conflict => {
     const f = await fixture("in_progress");
     const oldRun = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: oldRun, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(heartbeatRuns).values({ id: oldRun, agentId: f.agentId,
       nativeIssueId: f.targetId, status: "running", runtimeMode: "native", invocationSource: "assignment", triggerDetail: "system" });
     await db.update(issues).set({ executionRunId: oldRun }).where(eq(issues.id, f.targetId));
     f.stopTaskForReassignment.mockImplementationOnce(async () => {
@@ -133,13 +133,13 @@ describe("runner task reassignment", () => {
   it.each(["owner", "closed", "new-run"])("does not compensate over a newer %s decision", async conflict => {
     const f = await fixture("in_progress");
     const oldRun = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: oldRun, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(heartbeatRuns).values({ id: oldRun, agentId: f.agentId,
       nativeIssueId: f.targetId, status: "running", runtimeMode: "native", invocationSource: "assignment", triggerDetail: "system" });
     await db.update(issues).set({ executionRunId: oldRun }).where(eq(issues.id, f.targetId));
     f.stopTaskForReassignment.mockImplementationOnce(async () => {
       await db.update(heartbeatRuns).set({ status: "cancelled", errorCode: "issue_reassigned" }).where(eq(heartbeatRuns.id, oldRun));
       const newRun = randomUUID();
-      if (conflict === "new-run") await db.insert(heartbeatRuns).values({ id: newRun, companyId: f.companyId,
+      if (conflict === "new-run") await db.insert(heartbeatRuns).values({ id: newRun,
         agentId: f.agentId, status: "running", invocationSource: "assignment", triggerDetail: "system" });
       await db.update(issues).set(conflict === "owner" ? { assigneeAgentId: f.nextId, statusVersion: 1 }
         : conflict === "closed" ? { status: "done" } : { executionRunId: newRun }).where(eq(issues.id, f.targetId));
@@ -168,10 +168,8 @@ describe("runner task reassignment", () => {
     await expect(f.authority.execute(f.call)).rejects.toThrow("mode_denied");
   });
 
-  it("denies foreign targets and unavailable assignees", async () => {
-    const f = await fixture(), foreign = await fixture();
-    await expect(f.authority.execute({ ...f.call, arguments: { ...f.call.arguments, taskId: foreign.targetId } })).rejects.toThrow("task_not_found");
-    await expect(f.authority.execute({ ...f.call, arguments: { ...f.call.arguments, assigneeActorId: foreign.agentId } })).rejects.toThrow();
+  it("denies unavailable assignees", async () => {
+    const f = await fixture();
     await db.update(agents).set({ status: "pending_approval" }).where(eq(agents.id, f.nextId));
     await expect(f.authority.execute(f.call)).rejects.toThrow();
     expect(f.stopTaskForReassignment).not.toHaveBeenCalled();

@@ -151,7 +151,7 @@ function extractMatches(sources: ExtractSource[], query: CompanySearchExtractQue
 
 export function companySearchExtractService(db: Db) {
   return {
-    extract: async (companyId: string, query: CompanySearchExtractQuery): Promise<CompanySearchExtractResponse> => {
+    extract: async (query: CompanySearchExtractQuery): Promise<CompanySearchExtractResponse> => {
       const containsPattern = `%${escapeLikePattern(query.contains)}%`;
       const urlPattern = urlContainsPattern(query.contains);
       const scopeConditions: SQL[] = [];
@@ -165,8 +165,7 @@ export function companySearchExtractService(db: Db) {
         scopeConditions.push(sql`EXISTS (
           SELECT 1
           FROM issue_comments extract_comments
-          WHERE extract_comments.company_id = ${companyId}
-            AND extract_comments.issue_id = ${issues.id}
+          WHERE extract_comments.issue_id = ${issues.id}
             AND extract_comments.deleted_at IS NULL
             AND ${query.kind === "url"
               ? sql`extract_comments.body ~* ${urlPattern}`
@@ -179,9 +178,7 @@ export function companySearchExtractService(db: Db) {
           FROM issue_documents extract_issue_documents
           INNER JOIN documents extract_documents
             ON extract_documents.id = extract_issue_documents.document_id
-            AND extract_documents.company_id = extract_issue_documents.company_id
-          WHERE extract_issue_documents.company_id = ${companyId}
-            AND extract_issue_documents.issue_id = ${issues.id}
+          WHERE extract_issue_documents.issue_id = ${issues.id}
             AND (
               ${query.kind === "url"
                 ? sql`extract_documents.title ~* ${urlPattern}`
@@ -194,7 +191,6 @@ export function companySearchExtractService(db: Db) {
       }
 
       const conditions: SQL[] = [
-        eq(issues.companyId, companyId),
         visibleIssueCondition(),
         or(...scopeConditions)!,
       ];
@@ -257,7 +253,6 @@ export function companySearchExtractService(db: Db) {
           .select({ id: issueComments.id, issueId: issueComments.issueId, body: issueComments.body })
           .from(issueComments)
           .where(and(
-            eq(issueComments.companyId, companyId),
             inArray(issueComments.issueId, issueIds),
             isNull(issueComments.deletedAt),
             contentMatch(issueComments.body, query, containsPattern, urlPattern),
@@ -284,12 +279,8 @@ export function companySearchExtractService(db: Db) {
             body: documents.latestBody,
           })
           .from(issueDocuments)
-          .innerJoin(documents, and(
-            eq(documents.id, issueDocuments.documentId),
-            eq(documents.companyId, issueDocuments.companyId),
-          ))
+          .innerJoin(documents, eq(documents.id, issueDocuments.documentId))
           .where(and(
-            eq(issueDocuments.companyId, companyId),
             inArray(issueDocuments.issueId, issueIds),
             or(
               contentMatch(documents.title, query, containsPattern, urlPattern),

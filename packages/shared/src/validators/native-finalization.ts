@@ -6,7 +6,6 @@ export const nativeFinalizationResultV1Schema = z.object({
   runtimeMode: z.literal("native"),
   runId: z.string().uuid(),
   issueId: z.string().uuid(),
-  companyId: z.string().uuid(),
   result: z.record(z.string(), z.unknown()),
   terminal: z.object({
     schema: z.literal("paperclip.prp.terminal.v1"),

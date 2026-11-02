@@ -36,7 +36,6 @@ import {
 
 type IssueRunLedgerProps = {
   issueId: string;
-  companyId: string;
   issueStatus: Issue["status"];
   childIssues: Issue[];
   agentMap: ReadonlyMap<string, Agent>;
@@ -401,7 +400,6 @@ function formatSilenceAge(ms: number | null | undefined) {
 }
 
 function canBoardRecordWatchdogDecision(
-  companyId: string,
   boardAccess: CurrentBoardAccess | undefined,
 ) {
   if (!boardAccess) return false;
@@ -409,12 +407,9 @@ function canBoardRecordWatchdogDecision(
     return true;
 
   const membership = boardAccess.memberships?.find(
-    (item) => item.companyId === companyId && item.status === "active",
+    (item) => item.status === "active",
   );
-  if (!membership)
-    return (
-      boardAccess.companyIds.includes(companyId) && !boardAccess.memberships
-    );
+  if (!membership) return false;
   return (
     membership.membershipRole !== "viewer" && membership.membershipRole !== null
   );
@@ -431,7 +426,6 @@ function watchdogDecisionErrorMessage(error: unknown) {
 
 export function IssueRunLedger({
   issueId,
-  companyId,
   issueStatus,
   childIssues,
   agentMap,
@@ -481,8 +475,8 @@ export function IssueRunLedger({
   const canInspectProviderTrace =
     boardAccess?.source === "local_implicit" || boardAccess?.isInstanceAdmin === true;
   const { data: providerTraceRows } = useQuery({
-    queryKey: queryKeys.providerTraceMetadata(companyId, traceRunIds),
-    queryFn: () => heartbeatsApi.providerTraceMetadata(companyId, traceRunIds),
+    queryKey: queryKeys.providerTraceMetadata(traceRunIds),
+    queryFn: () => heartbeatsApi.providerTraceMetadata(traceRunIds),
     enabled: canInspectProviderTrace && traceRunIds.length > 0,
     retry: false,
   });
@@ -535,7 +529,6 @@ export function IssueRunLedger({
           payload,
           debug: { providerTrace: "raw" },
         },
-        companyId,
       );
       if (!("id" in result))
         throw new Error(result.message ?? "Trace re-run was skipped.");
@@ -574,7 +567,6 @@ export function IssueRunLedger({
       resolveUserLabel={resolveUserLabel}
       pendingWatchdogDecision={watchdogDecision.variables?.decision ?? null}
       canRecordWatchdogDecisions={canBoardRecordWatchdogDecision(
-        companyId,
         boardAccess,
       )}
       watchdogDecisionError={watchdogDecisionError}

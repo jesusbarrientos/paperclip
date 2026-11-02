@@ -21,7 +21,6 @@ import {
 const ROOT_SECRET = "root-secret-for-tests";
 const INSTANCE_ID = "pap-17572-workspace-abc123def456";
 const EXECUTION_WORKSPACE_ID = "ews-1111-2222";
-const COMPANY_ID = "company-1111";
 const ORIGIN = "https://workspace.example.ts.net:42013";
 const USER_ID = "user-1";
 const USER_EMAIL = "Operator@Example.com";
@@ -35,7 +34,6 @@ const KEY = deriveWorkspaceHandoffKey({
 const EXPECTED = {
   instanceId: INSTANCE_ID,
   executionWorkspaceId: EXECUTION_WORKSPACE_ID,
-  companyId: COMPANY_ID,
   origin: ORIGIN,
 };
 
@@ -45,7 +43,6 @@ function mintTicket(overrides: Partial<Parameters<typeof issueWorkspaceHandoffTi
     userId: USER_ID,
     email: USER_EMAIL,
     executionWorkspaceId: EXECUTION_WORKSPACE_ID,
-    companyId: COMPANY_ID,
     instanceId: INSTANCE_ID,
     origin: ORIGIN,
     issuerInstanceId: "primary",
@@ -56,7 +53,7 @@ function mintTicket(overrides: Partial<Parameters<typeof issueWorkspaceHandoffTi
 function exchangeDeps(overrides: Partial<WorkspaceHandoffExchangeDeps> = {}) {
   const reserved = new Set<string>();
   return {
-    findClonedIdentity: vi.fn(async ({ userId }: { userId: string; companyId: string }) =>
+    findClonedIdentity: vi.fn(async ({ userId }: { userId: string; }) =>
       userId === USER_ID
         ? { userId, email: USER_EMAIL, hasActiveMembership: true }
         : null,
@@ -145,7 +142,6 @@ describe("verifyWorkspaceHandoffTicket", () => {
       userId: USER_ID,
       email: USER_EMAIL,
       executionWorkspaceId: "ews-sibling",
-      companyId: COMPANY_ID,
       instanceId: INSTANCE_ID,
       origin: ORIGIN,
       issuerInstanceId: "primary",
@@ -160,7 +156,6 @@ describe("verifyWorkspaceHandoffTicket", () => {
       userId: USER_ID,
       email: USER_EMAIL,
       executionWorkspaceId: EXECUTION_WORKSPACE_ID,
-      companyId: COMPANY_ID,
       instanceId: "some-other-instance",
       origin: ORIGIN,
       issuerInstanceId: "primary",
@@ -168,16 +163,6 @@ describe("verifyWorkspaceHandoffTicket", () => {
     expect(verifyWorkspaceHandoffTicket({ ticket: wrongInstance.ticket, key: KEY, expected: EXPECTED })).toEqual({
       ok: false,
       reason: "instance_mismatch",
-    });
-  });
-
-  it("rejects a ticket minted for another company on the same workspace", () => {
-    // The signing key is per workspace, so a same-host sibling company shares it —
-    // which is exactly why the company has to be bound and compared.
-    const { ticket } = mintTicket({ companyId: "company-other" });
-    expect(verifyWorkspaceHandoffTicket({ ticket, key: KEY, expected: EXPECTED })).toEqual({
-      ok: false,
-      reason: "company_mismatch",
     });
   });
 
@@ -214,9 +199,6 @@ describe("verifyWorkspaceHandoffTicket", () => {
     expect(
       verifyWorkspaceHandoffTicket({ ticket, key: KEY, expected: { ...EXPECTED, executionWorkspaceId: null } }),
     ).toEqual({ ok: false, reason: "workspace_mismatch" });
-    expect(
-      verifyWorkspaceHandoffTicket({ ticket, key: KEY, expected: { ...EXPECTED, companyId: null } }),
-    ).toEqual({ ok: false, reason: "company_mismatch" });
     expect(verifyWorkspaceHandoffTicket({ ticket, key: "", expected: EXPECTED })).toEqual({
       ok: false,
       reason: "not_configured",
@@ -275,7 +257,7 @@ describe("exchangeWorkspaceHandoffTicket", () => {
     const { ticket } = mintTicket();
     const deps = exchangeDeps();
     expect((await exchangeWorkspaceHandoffTicket({ ticket, key: KEY, expected: EXPECTED, deps })).ok).toBe(true);
-    expect(deps.findClonedIdentity).toHaveBeenCalledWith({ userId: USER_ID, companyId: COMPANY_ID });
+    expect(deps.findClonedIdentity).toHaveBeenCalledWith({ userId: USER_ID });
   });
 
   it("reports a missing cloned user and a missing membership distinctly", async () => {

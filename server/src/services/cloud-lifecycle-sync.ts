@@ -1,9 +1,5 @@
 import { logger } from "../middleware/logger.js";
-import {
-  cloudTenantPrimaryCompanyId,
-  getCloudStackContext,
-  type CloudInstanceEnv,
-} from "./cloud-instance.js";
+import { getCloudStackContext, type CloudInstanceEnv } from "./cloud-instance.js";
 
 /**
  * Cloud lifecycle doorbell: when the Cloud-pinned primary company is
@@ -32,28 +28,25 @@ export type CloudLifecycleSyncOptions = {
 };
 
 /**
- * True when this company is the Cloud-pinned primary company of a managed
- * instance — the only company whose archive state the harness mirrors.
+ * True on a managed instance, where the single organization is the
+ * Cloud-pinned one whose archive state the harness mirrors.
  */
 export function isCloudPinnedPrimaryCompany(
-  companyId: string,
   env: CloudInstanceEnv = process.env,
 ): boolean {
-  const stackId = getCloudStackContext(env)?.stackId;
-  return Boolean(stackId) && cloudTenantPrimaryCompanyId(stackId!) === companyId;
+  return Boolean(getCloudStackContext(env)?.stackId);
 }
 
 /**
  * Ring the harness about a lifecycle change of the pinned primary company.
- * No-op (resolved promise) on self-hosted instances, non-primary companies,
- * or incomplete Cloud metadata. Never throws.
+ * No-op (resolved promise) on self-hosted instances or incomplete Cloud
+ * metadata. Never throws.
  */
 export async function notifyCloudOfPrimaryCompanyLifecycleChange(
-  companyId: string,
   options: CloudLifecycleSyncOptions = {},
 ): Promise<void> {
   const env = options.env ?? process.env;
-  if (!isCloudPinnedPrimaryCompany(companyId, env)) return;
+  if (!isCloudPinnedPrimaryCompany(env)) return;
   const context = getCloudStackContext(env);
   const token = env.PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN?.trim();
   if (!context?.stackId || !context.cloudOrigin || !token) return;

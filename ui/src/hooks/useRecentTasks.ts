@@ -23,29 +23,21 @@ type RecentTasksUpdatedDetail = {
 const RECENT_TASK_ORDER_DEBOUNCE_MS = 1_000;
 
 export function useRecentTasks({
-  companyId,
   userId,
 }: {
-  companyId: string | null | undefined;
   userId: string | null | undefined;
 }) {
-  const storageKey = useMemo(
-    () => companyId ? getRecentTasksStorageKey(companyId, userId) : null,
-    [companyId, userId],
-  );
-  const [entries, setEntries] = useState<RecentTaskEntry[]>(() => (
-    storageKey && companyId ? readRecentTasks(storageKey, companyId) : []
-  ));
+  const storageKey = useMemo(() => getRecentTasksStorageKey(userId), [userId]);
+  const [entries, setEntries] = useState<RecentTaskEntry[]>(() => readRecentTasks(storageKey));
 
   useEffect(() => {
-    if (storageKey && companyId) migrateRecentTasks(storageKey, companyId);
-    setEntries(storageKey && companyId ? readRecentTasks(storageKey, companyId) : []);
-  }, [companyId, storageKey]);
+    migrateRecentTasks(storageKey);
+    setEntries(readRecentTasks(storageKey));
+  }, [storageKey]);
 
   useEffect(() => {
-    if (!storageKey || !companyId) return;
 
-    const sync = () => setEntries(readRecentTasks(storageKey, companyId));
+    const sync = () => setEntries(readRecentTasks(storageKey));
     const onStorage = (event: StorageEvent) => {
       if (event.key === storageKey) sync();
     };
@@ -60,7 +52,7 @@ export function useRecentTasks({
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(RECENT_TASKS_UPDATED_EVENT, onRecentTasksUpdated);
     };
-  }, [companyId, storageKey]);
+  }, [storageKey]);
 
   // Keep query observers in a fixed order when activity changes the display order.
   const queryEntries = [...entries].sort((left, right) => left.id.localeCompare(right.id));
@@ -77,7 +69,7 @@ export function useRecentTasks({
   const issueById = new Map(detailQueries.flatMap((query) => query.data ? [[query.data.id, query.data] as const] : []));
   const refreshedEntries = entries.map((entry) => {
     const issue = issueById.get(entry.id);
-    if (!issue || issue.companyId !== companyId || issue.hiddenAt) return entry;
+    if (!issue || issue.hiddenAt) return entry;
     return mergeRecentTaskSnapshot(entry, issue);
   });
   const queryRevision = detailQueries
@@ -85,7 +77,7 @@ export function useRecentTasks({
     .join("|");
 
   useEffect(() => {
-    if (!storageKey || !companyId || detailQueries.length === 0) return;
+    if (detailQueries.length === 0) return;
 
     const resolvedIssues: Issue[] = [];
     const removeIds = new Set<string>();
@@ -93,7 +85,7 @@ export function useRecentTasks({
       const entry = queryEntries[index];
       if (!entry) return;
       if (query.data) {
-        if (query.data.companyId !== companyId || query.data.hiddenAt) {
+        if (query.data.hiddenAt) {
           removeIds.add(entry.id);
         } else {
           resolvedIssues.push(query.data);
@@ -103,12 +95,12 @@ export function useRecentTasks({
       }
     });
 
-    updateRecentTaskSnapshots(storageKey, companyId, resolvedIssues);
-    pruneRecentTasks(storageKey, companyId, removeIds);
+    updateRecentTaskSnapshots(storageKey, resolvedIssues);
+    pruneRecentTasks(storageKey, removeIds);
     // Publish only when queries or membership change. A storage notification must
     // not feed the same cached query results back into storage in every tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId, membership, queryRevision, storageKey]);
+  }, [membership, queryRevision, storageKey]);
 
   const [settledOrder, setSettledOrder] = useState(() => entries.map((entry) => entry.id));
   const activityRevision = JSON.stringify(entries.map((entry) => [entry.id, entry.recordedAt]));

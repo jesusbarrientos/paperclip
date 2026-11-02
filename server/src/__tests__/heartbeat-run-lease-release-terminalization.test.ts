@@ -65,7 +65,6 @@ describeEmbeddedPostgres("heartbeat terminalizeRunOnLeaseRelease", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Coder",
       role: "engineer",
       status: "active",
@@ -76,7 +75,6 @@ describeEmbeddedPostgres("heartbeat terminalizeRunOnLeaseRelease", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Terminalize on lease release",
       status: input.issueStatus,
       priority: "high",
@@ -84,7 +82,6 @@ describeEmbeddedPostgres("heartbeat terminalizeRunOnLeaseRelease", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: input.runStatus,
       invocationSource: "manual",
@@ -98,7 +95,7 @@ describeEmbeddedPostgres("heartbeat terminalizeRunOnLeaseRelease", () => {
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0]!);
 
-    return { companyId, agentId, issueId, runId, run };
+    return { agentId, issueId, runId, run };
   }
 
   it("forces a still-running run to succeeded when the issue already reached done", async () => {
@@ -152,11 +149,11 @@ describeEmbeddedPostgres("heartbeat terminalizeRunOnLeaseRelease", () => {
   });
 
   it.each(["in_progress", "done"])("preserves acknowledged Stop when teardown wins the finalizer race (%s)", async (issueStatus) => {
-    const { companyId, issueId, runId } = await seed({ issueStatus, runStatus: "running" });
+    const { issueId, runId } = await seed({ issueStatus, runStatus: "running" });
     const [run] = await db.update(heartbeatRuns).set({
       nativeIssueId: issueId,
       resultJson: { cancelledByActorType: "user", cancelledByUserId: "board", nativeCancellation: {
-        schema: "paperclip.native-cancellation.v1", runId, companyId, issueId, scope: "run",
+        schema: "paperclip.native-cancellation.v1", runId, issueId, scope: "run",
         reasonCode: "cancellation_run_only", dispatched: true, dispatchState: "acknowledged",
         intentAuditId: randomUUID(), acknowledgementAuditId: randomUUID(),
       } },

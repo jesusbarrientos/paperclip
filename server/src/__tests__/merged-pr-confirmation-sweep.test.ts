@@ -169,14 +169,12 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
     });
     await db.insert(goals).values({
       id: goalId,
-      companyId,
       title: "Ship safely",
       level: "task",
       status: "active",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Coder",
       role: "engineer",
       status: "active",
@@ -187,7 +185,6 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       goalId,
       title: "Land the changes",
       status: "in_review",
@@ -204,7 +201,6 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
       extraAction: randomUUID(),
     };
     const common = {
-      companyId,
       issueId,
       kind: "request_confirmation",
       status: "pending",
@@ -262,7 +258,7 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
     ]);
 
     const wakeup = vi.fn(async () => ({ id: "wake-1" }));
-    const resolvePullRequestState = vi.fn(async (_resolvedCompanyId: string, reference: { number: number }) =>
+    const resolvePullRequestState = vi.fn(async (reference: { number: number }) =>
       reference.number === 41 ? "open" as const : "merged" as const
     );
     const service = issueThreadInteractionService(db, {
@@ -271,7 +267,6 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
     });
 
     await expect(service.sweepMergedPullRequestConfirmations([{
-      companyId,
       owner: "paperclipai",
       repo: "paperclip",
       number: 39,

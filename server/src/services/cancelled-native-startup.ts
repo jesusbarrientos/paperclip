@@ -16,9 +16,7 @@ export async function canRetryStoppedRun(db: Db, run: Run): Promise<boolean> {
   if (["failed", "timed_out"].includes(run.status) || canContinueCancelledRun(run)) return true;
   if (run.status !== "cancelled" || !run.finishedAt || run.processPid || run.processGroupId ||
       run.processStartedAt || run.sessionIdAfter) return false;
-  const [coordinator] = await db.select().from(nativeRunFinalizations).where(and(
-    eq(nativeRunFinalizations.companyId, run.companyId), eq(nativeRunFinalizations.runId, run.id),
-  ));
+  const [coordinator] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, run.id));
   return isCancelledNativeStartup(db, run, coordinator);
 }
 
@@ -52,9 +50,7 @@ export async function isCancelledNativeStartup(db: Db, run: Run, coordinator: Co
   const settled = beforeReviewDispatch || typeof run.resultJson?.startupPreparationSettledAt === "string";
   // The old preparer can still be unwinding even though the run is terminal.
   if (!settled && run.controllerLeaseExpiresAt && run.controllerLeaseExpiresAt > new Date()) return false;
-  const leases = await db.select().from(environmentLeases).where(and(
-    eq(environmentLeases.companyId, run.companyId), eq(environmentLeases.heartbeatRunId, run.id),
-  ));
+  const leases = await db.select().from(environmentLeases).where(eq(environmentLeases.heartbeatRunId, run.id));
   if ((!settled && leases.length === 0 && !historicalBeforeSelection) || leases.some(lease =>
     lease.provider === "local"
       ? !lease.releasedAt || lease.status === "pending_cleanup" || lease.cleanupStatus === "failed"
@@ -62,7 +58,7 @@ export async function isCancelledNativeStartup(db: Db, run: Run, coordinator: Co
   // Reject contradictory retained evidence, including a crash after a launch
   // request but before the PID callback. Provider events never certify a stop.
   const [execution] = await db.select({ id: heartbeatRunEvents.id }).from(heartbeatRunEvents).where(and(
-    eq(heartbeatRunEvents.companyId, run.companyId), eq(heartbeatRunEvents.runId, run.id),
+    eq(heartbeatRunEvents.runId, run.id),
     or(isNotNull(heartbeatRunEvents.sourceEventId),
       inArray(heartbeatRunEvents.eventType, ["adapter.invoke", PROCESS_START_REQUESTED, PROCESS_IDENTITY_RECORDED,
         "harness.ready", "session.started", "session.resumed", "session.updated", "turn.started",

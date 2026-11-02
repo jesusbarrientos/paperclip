@@ -21,14 +21,13 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-function boardActor(companyId: string): Express.Request["actor"] {
+function boardActor(): Express.Request["actor"] {
   return {
     type: "board",
     userId: "user-1",
     source: "session",
     isInstanceAdmin: true,
-    companyIds: [companyId],
-    memberships: [{ companyId, membershipRole: "admin", status: "active" }],
+    memberships: [{ membershipRole: "admin", status: "active" }],
   };
 }
 
@@ -74,24 +73,23 @@ describeEmbeddedPostgres("project list archived route defaults", () => {
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values([
-      { id: activeProjectId, companyId, name: "Active Project", status: "in_progress" },
+      { id: activeProjectId, name: "Active Project", status: "in_progress" },
       {
         id: archivedProjectId,
-        companyId,
         name: "Archived Project",
         status: "completed",
         archivedAt: new Date(),
       },
     ]);
 
-    return { activeProjectId, archivedProjectId, companyId };
+    return { activeProjectId, archivedProjectId };
   }
 
   it("omits archived projects by default", async () => {
-    const { activeProjectId, archivedProjectId, companyId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { activeProjectId, archivedProjectId } = await seed();
+    const app = createApp(db, boardActor());
 
-    const res = await request(app).get(`/api/companies/${companyId}/projects`);
+    const res = await request(app).get(`/api/projects`);
 
     expect(res.status).toBe(200);
     expect(res.body.map((project: { id: string }) => project.id)).toEqual([activeProjectId]);
@@ -99,10 +97,10 @@ describeEmbeddedPostgres("project list archived route defaults", () => {
   });
 
   it("includes archived projects when includeArchived is true", async () => {
-    const { activeProjectId, archivedProjectId, companyId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { activeProjectId, archivedProjectId } = await seed();
+    const app = createApp(db, boardActor());
 
-    const res = await request(app).get(`/api/companies/${companyId}/projects?includeArchived=true`);
+    const res = await request(app).get(`/api/projects?includeArchived=true`);
 
     expect(res.status).toBe(200);
     expect(res.body.map((project: { id: string }) => project.id)).toEqual([activeProjectId, archivedProjectId]);

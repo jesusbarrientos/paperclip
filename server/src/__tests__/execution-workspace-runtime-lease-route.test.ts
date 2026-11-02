@@ -83,7 +83,6 @@ if (!embeddedPostgresSupport.supported) {
 describeEmbeddedPostgres("execution workspace runtime control lease enforcement", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId = "";
   let projectId = "";
   let executionWorkspaceId = "";
   let agentId = "";
@@ -117,7 +116,7 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
       return { id: randomUUID(), status: "succeeded" };
     });
 
-    companyId = randomUUID();
+    const companyId = randomUUID();
     projectId = randomUUID();
     executionWorkspaceId = randomUUID();
     agentId = randomUUID();
@@ -130,10 +129,9 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 7).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(projects).values({ id: projectId, companyId, name: "Lane", status: "in_progress" });
+    await db.insert(projects).values({ id: projectId, name: "Lane", status: "in_progress" });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       mode: "shared_workspace",
       strategyType: "git_worktree",
@@ -141,11 +139,10 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
       status: "active",
       cwd: "/tmp/lease-route-workspace",
     });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Engineer", role: "engineer" });
+    await db.insert(agents).values({ id: agentId, name: "Engineer", role: "engineer" });
     await db.insert(issues).values([
       {
         id: canaryIssueId,
-        companyId,
         projectId,
         executionWorkspaceId,
         title: "HTTPS canary",
@@ -155,7 +152,6 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
       },
       {
         id: competingIssueId,
-        companyId,
         projectId,
         executionWorkspaceId,
         title: "Unrelated shared-workspace work",
@@ -167,7 +163,6 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
 
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: executionWorkspaceId,
-      companyId,
       projectId: null,
       projectWorkspaceId: null,
       sourceIssueId: null,
@@ -208,7 +203,6 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
       (req as any).actor = {
         type: "agent",
         agentId,
-        companyId,
         source: "agent_key",
         runId: null,
       };
@@ -332,8 +326,8 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
       (req as any).actor = {
         type: "board",
         userId: "board-1",
-        companyIds: [companyId],
         source: "session",
+        memberships: [{ membershipRole: "owner", status: "active" }],
         isInstanceAdmin: false,
       };
       next();

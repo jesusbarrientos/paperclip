@@ -14,7 +14,7 @@ When enabled, `search_api` and `call_api` also expose the same email API.
 Do not look for provider credentials.
 
 Discover your assigned inboxes with `paperclipai email inboxes`, or
-`GET /api/companies/$PAPERCLIP_COMPANY_ID/email/inboxes`. Use the matching inbox
+`GET /api/email/inboxes`. Use the matching inbox
 record’s `id` as `endpointId`; do not use its address or connection ID.
 
 When an assigned task has email context, read it with
@@ -36,11 +36,11 @@ Preserve that key and the identical payload across retries. The CLI supplies
 Inspect the returned publication with `paperclipai email delivery <publicationId>`.
 If the installed CLI does not include `email`, use the authenticated HTTP API
 instead; do not install or upgrade tools just to send mail. Read
-`GET /api/companies/$PAPERCLIP_COMPANY_ID/email/tasks/$PAPERCLIP_TASK_ID` and send
-`POST /api/companies/$PAPERCLIP_COMPANY_ID/email/send` with the same JSON fields
+`GET /api/email/tasks/$PAPERCLIP_TASK_ID` and send
+`POST /api/email/send` with the same JSON fields
 listed above. Use the injected API URL, bearer key, and `X-Paperclip-Run-Id`.
 Never use the provider key. Delivery is
-`GET /api/companies/$PAPERCLIP_COMPANY_ID/email/deliveries/<publicationId>`.
+`GET /api/email/deliveries/<publicationId>`.
 
 Queued means persisted, not sent. Do not create a second send merely because the
 first timed out. Uncertain sends beyond the provider deduplication window need
@@ -57,10 +57,10 @@ writes. Provider keys stay in the control plane.
 
 | Action | Endpoint |
 | --- | --- |
-| Discover assigned inboxes | `GET /api/companies/{companyId}/email/inboxes` |
-| Read task email context | `GET /api/companies/{companyId}/email/tasks/{taskId}` |
-| Queue new email or reply | `POST /api/companies/{companyId}/email/send` |
-| Read delivery outcome | `GET /api/companies/{companyId}/email/deliveries/{publicationId}` |
+| Discover assigned inboxes | `GET /api/email/inboxes` |
+| Read task email context | `GET /api/email/tasks/{taskId}` |
+| Queue new email or reply | `POST /api/email/send` |
+| Read delivery outcome | `GET /api/email/deliveries/{publicationId}` |
 
 A new conversation requires `endpointId` (the assigned inbox record's `id`),
 `parentIssueId` (current task), `to`, `subject`, `text`, and UUID `idempotencyKey`.

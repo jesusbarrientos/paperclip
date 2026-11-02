@@ -12,7 +12,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { documents } from "./documents.js";
 import { issues } from "./issues.js";
 import { pipelineStages, pipelines } from "./pipelines.js";
@@ -37,7 +36,6 @@ export const pipelineCases = pgTable(
   "pipeline_cases",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     pipelineId: uuid("pipeline_id").notNull().references(() => pipelines.id, { onDelete: "cascade" }),
     stageId: uuid("stage_id").notNull().references(() => pipelineStages.id),
     caseKey: text("case_key").notNull(),
@@ -75,11 +73,10 @@ export const pipelineCases = pgTable(
     parentRequestKeyUq: uniqueIndex("pipeline_cases_parent_request_key_uq")
       .on(table.parentCaseId, table.requestKey)
       .where(sql`${table.requestKey} is not null and ${table.retiredAt} is null`),
-    companyIdx: index("pipeline_cases_company_idx").on(table.companyId),
     pipelineStageIdx: index("pipeline_cases_pipeline_stage_idx").on(table.pipelineId, table.stageId),
     parentIdx: index("pipeline_cases_parent_idx").on(table.parentCaseId),
     automationAttemptIdx: index("pipeline_cases_automation_attempt_idx").on(table.automationAttemptId),
-    retiredIdx: index("pipeline_cases_retired_idx").on(table.companyId, table.retiredAt),
+    retiredIdx: index("pipeline_cases_retired_idx").on(table.retiredAt),
     leaseExpiresIdx: index("pipeline_cases_lease_expires_idx").on(table.leaseExpiresAt).where(sql`${table.leaseExpiresAt} is not null`),
     terminalKindCheck: check("pipeline_cases_terminal_kind_check", sql`${table.terminalKind} is null or ${table.terminalKind} in ('done', 'cancelled')`),
     leaseOwnerTypeCheck: check("pipeline_cases_lease_owner_type_check", sql`${table.leaseOwnerType} is null or ${table.leaseOwnerType} in ('user', 'agent')`),
@@ -90,7 +87,6 @@ export const pipelineCaseIssueLinks = pgTable(
   "pipeline_case_issue_links",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => pipelineCases.id, { onDelete: "cascade" }),
     issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
@@ -105,7 +101,6 @@ export const pipelineCaseIssueLinks = pgTable(
   (table) => ({
     caseIssueUq: uniqueIndex("pipeline_case_issue_links_case_issue_uq").on(table.caseId, table.issueId),
     issueIdx: index("pipeline_case_issue_links_issue_idx").on(table.issueId),
-    companyCaseIdx: index("pipeline_case_issue_links_company_case_idx").on(table.companyId, table.caseId),
     automationAttemptIdx: index("pipeline_case_issue_links_automation_attempt_idx").on(table.automationAttemptId),
     roleCheck: check("pipeline_case_issue_links_role_check", sql`${table.role} in ('origin', 'conversation', 'work', 'automation')`),
   }),
@@ -115,7 +110,6 @@ export const pipelineCaseBlockers = pgTable(
   "pipeline_case_blockers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => pipelineCases.id, { onDelete: "cascade" }),
     blockedByCaseId: uuid("blocked_by_case_id").notNull().references(() => pipelineCases.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -124,7 +118,6 @@ export const pipelineCaseBlockers = pgTable(
   (table) => ({
     caseBlockedByUq: uniqueIndex("pipeline_case_blockers_case_blocked_by_uq").on(table.caseId, table.blockedByCaseId),
     blockedByIdx: index("pipeline_case_blockers_blocked_by_idx").on(table.blockedByCaseId),
-    companyCaseIdx: index("pipeline_case_blockers_company_case_idx").on(table.companyId, table.caseId),
     noSelfBlockCheck: check("pipeline_case_blockers_no_self_block_check", sql`${table.caseId} <> ${table.blockedByCaseId}`),
   }),
 );
@@ -133,7 +126,6 @@ export const pipelineDocuments = pgTable(
   "pipeline_documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     pipelineId: uuid("pipeline_id").notNull().references(() => pipelines.id, { onDelete: "cascade" }),
     documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
@@ -142,13 +134,11 @@ export const pipelineDocuments = pgTable(
   },
   (table) => ({
     companyPipelineKeyUq: uniqueIndex("pipeline_documents_company_pipeline_key_uq").on(
-      table.companyId,
       table.pipelineId,
       table.key,
     ),
     documentUq: uniqueIndex("pipeline_documents_document_uq").on(table.documentId),
     companyPipelineUpdatedIdx: index("pipeline_documents_company_pipeline_updated_idx").on(
-      table.companyId,
       table.pipelineId,
       table.updatedAt,
     ),
@@ -159,7 +149,6 @@ export const pipelineCaseDocuments = pgTable(
   "pipeline_case_documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => pipelineCases.id, { onDelete: "cascade" }),
     documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
@@ -168,13 +157,11 @@ export const pipelineCaseDocuments = pgTable(
   },
   (table) => ({
     companyCaseKeyUq: uniqueIndex("pipeline_case_documents_company_case_key_uq").on(
-      table.companyId,
       table.caseId,
       table.key,
     ),
     documentUq: uniqueIndex("pipeline_case_documents_document_uq").on(table.documentId),
     companyCaseUpdatedIdx: index("pipeline_case_documents_company_case_updated_idx").on(
-      table.companyId,
       table.caseId,
       table.updatedAt,
     ),
@@ -185,7 +172,6 @@ export const pipelineAutomationExecutions = pgTable(
   "pipeline_automation_executions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     caseId: uuid("case_id").notNull().references(() => pipelineCases.id, { onDelete: "cascade" }),
     automationId: text("automation_id").notNull(),
     triggeringEventId: uuid("triggering_event_id").notNull(),
@@ -204,7 +190,6 @@ export const pipelineAutomationExecutions = pgTable(
       table.automationId,
       table.triggeringEventId,
     ),
-    companyCaseIdx: index("pipeline_automation_executions_company_case_idx").on(table.companyId, table.caseId),
     routineIdx: index("pipeline_automation_executions_routine_idx").on(table.routineId),
     executionIssueIdx: index("pipeline_automation_executions_execution_issue_idx").on(table.executionIssueId),
     retryOfExecutionIdx: index("pipeline_automation_executions_retry_of_execution_idx").on(table.retryOfExecutionId),

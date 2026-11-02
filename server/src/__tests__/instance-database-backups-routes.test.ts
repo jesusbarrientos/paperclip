@@ -116,7 +116,6 @@ describe("instance database backup routes", () => {
       {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
         source: "agent_key",
       },
       service,

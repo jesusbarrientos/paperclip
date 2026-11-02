@@ -70,7 +70,6 @@ export function evaluateCrossIssueInfluenceLimit(input: {
 export async function observeCrossIssueInfluence(
   db: Db,
   input: {
-    companyId: string;
     runId: string;
     agentId: string;
     responsibleUserId?: string | null;
@@ -88,7 +87,6 @@ export async function observeCrossIssueInfluence(
     const run = await tx
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
         agentId: heartbeatRuns.agentId,
         responsibleUserId: heartbeatRuns.responsibleUserId,
         contextSnapshot: heartbeatRuns.contextSnapshot,
@@ -96,14 +94,12 @@ export async function observeCrossIssueInfluence(
       .from(heartbeatRuns)
       .where(and(
         eq(heartbeatRuns.id, input.runId),
-        eq(heartbeatRuns.companyId, input.companyId),
         eq(heartbeatRuns.agentId, input.agentId),
       ))
       .for("update")
       .then((rows) => rows[0] ?? null);
     if (
       !run ||
-      run.companyId !== input.companyId ||
       run.agentId !== input.agentId
     ) {
       throw crossIssueInfluenceRunContextError();
@@ -122,7 +118,6 @@ export async function observeCrossIssueInfluence(
       .select({ count: count() })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, input.companyId),
         eq(activityLog.runId, input.runId),
         eq(activityLog.action, CROSS_ISSUE_INFLUENCE_ACTIVITY),
       ))
@@ -130,7 +125,6 @@ export async function observeCrossIssueInfluence(
     const decision = evaluateCrossIssueInfluenceLimit({ priorCount, now: input.now });
 
     await tx.insert(activityLog).values({
-      companyId: input.companyId,
       actorType: "agent",
       actorId: input.agentId,
       agentId: input.agentId,
@@ -156,7 +150,6 @@ export async function observeCrossIssueInfluence(
 
     const logContext = {
       event: "cross_issue_influence_cap",
-      companyId: input.companyId,
       runId: input.runId,
       agentId: input.agentId,
       sourceIssueId,

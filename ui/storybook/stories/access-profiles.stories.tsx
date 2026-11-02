@@ -126,7 +126,6 @@ function profile(
 ): ToolProfileWithDetails {
   return {
     id,
-    companyId: COMPANY,
     profileKey: id,
     name,
     description: null,
@@ -156,7 +155,6 @@ const DETAIL_PROFILE: ToolProfileWithDetails = {
   entries: [
     {
       id: "entry-gmail",
-      companyId: COMPANY,
       profileId: "detail",
       selectorType: "application",
       effect: "include",
@@ -173,7 +171,6 @@ const DETAIL_PROFILE: ToolProfileWithDetails = {
   bindings: [
     {
       id: "bind-sage",
-      companyId: COMPANY,
       profileId: "detail",
       targetType: "agent",
       targetId: "a-sage",
@@ -186,7 +183,6 @@ const DETAIL_PROFILE: ToolProfileWithDetails = {
     },
     {
       id: "bind-atlas",
-      companyId: COMPANY,
       profileId: "detail",
       targetType: "agent",
       targetId: "a-atlas",
@@ -292,7 +288,6 @@ const CONNECTIONS: ToolConnection[] = [
     installs: [
       {
         id: "install-gmail-sage",
-        companyId: COMPANY,
         connectionId: "conn-gmail",
         targetType: "agent",
         targetId: "a-sage",
@@ -350,11 +345,11 @@ function SeededIndex({
     const c = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } },
     });
-    c.setQueryData(queryKeys.tools.profiles(COMPANY), { profiles });
-    c.setQueryData(queryKeys.tools.applications(COMPANY), { applications: [] });
-    c.setQueryData(queryKeys.tools.connections(COMPANY), { connections: [] });
-    c.setQueryData(queryKeys.agents.list(COMPANY), AGENTS);
-    c.setQueryData(queryKeys.tools.effectiveProfilesForAgent(COMPANY, "a-sage"), {
+    c.setQueryData(queryKeys.tools.profiles(), { profiles });
+    c.setQueryData(queryKeys.tools.applications(), { applications: [] });
+    c.setQueryData(queryKeys.tools.connections(), { connections: [] });
+    c.setQueryData(queryKeys.agents.list(), AGENTS);
+    c.setQueryData(queryKeys.tools.effectiveProfilesForAgent("a-sage"), {
       agentId: "a-sage",
       profiles: [DETAIL_PROFILE],
       entries: DETAIL_PROFILE.entries,
@@ -363,15 +358,14 @@ function SeededIndex({
       allowedToolNames: GMAIL_TOOLS.slice(0, 4).map((tool) => tool.toolName),
       installedConnections: [],
     } satisfies ToolProfileEffectiveSummary);
-    c.setQueryData(queryKeys.projects.list(COMPANY), []);
-    c.setQueryData(queryKeys.routines.list(COMPANY), []);
+    c.setQueryData(queryKeys.projects.list(), []);
+    c.setQueryData(queryKeys.routines.list(), []);
     return c;
   }, [profiles]);
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-6xl p-6">
         <ProfilesIndex
-          companyId={COMPANY}
           initialStatusFilter={initialStatusFilter}
           initialResolverOpen={initialResolverOpen}
         />
@@ -397,27 +391,26 @@ function SeededDetail({
     const c = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } },
     });
-    c.setQueryData(queryKeys.tools.profiles(COMPANY), { profiles: [profile, ...PROFILES] });
-    c.setQueryData(queryKeys.tools.applications(COMPANY), {
+    c.setQueryData(queryKeys.tools.profiles(), { profiles: [profile, ...PROFILES] });
+    c.setQueryData(queryKeys.tools.applications(), {
       applications: [
         { id: "app-gmail", name: "Gmail" },
         { id: "app-slack", name: "Slack" },
       ],
     });
-    c.setQueryData(queryKeys.tools.connections(COMPANY), { connections });
+    c.setQueryData(queryKeys.tools.connections(), { connections });
     c.setQueryData(queryKeys.tools.catalog("conn-gmail"), { catalog: catalog.filter((tool) => tool.connectionId === "conn-gmail") });
     c.setQueryData(queryKeys.tools.catalog("conn-slack"), { catalog: catalog.filter((tool) => tool.connectionId === "conn-slack") });
     c.setQueryData(queryKeys.tools.profileNewTools(profile.id), profile.newToolsPendingCount ? NEW_TOOLS_REVIEW : { profileId: profile.id, reviewedAt: null, pendingCount: 0, tools: [] });
-    c.setQueryData(queryKeys.agents.list(COMPANY), AGENTS);
-    c.setQueryData(queryKeys.projects.list(COMPANY), []);
-    c.setQueryData(queryKeys.routines.list(COMPANY), []);
+    c.setQueryData(queryKeys.agents.list(), AGENTS);
+    c.setQueryData(queryKeys.projects.list(), []);
+    c.setQueryData(queryKeys.routines.list(), []);
     return c;
   }, [profile, catalog, connections]);
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-6xl p-6">
         <ProfileDetail
-          companyId={COMPANY}
           profileId={profile.id}
           initialCreated={initialCreated}
           initialReviewOpen={initialReviewOpen}
@@ -431,7 +424,6 @@ function SeededAgentTools() {
   const allowed = [...GMAIL_TOOLS.slice(0, 6), SLACK_TOOLS[0]];
   const policy: ToolPolicy = {
     id: "policy-write",
-    companyId: COMPANY,
     name: "Ask first for sending mail",
     description: "Write tools need a quick human OK.",
     policyType: "require_approval",
@@ -449,7 +441,7 @@ function SeededAgentTools() {
     const c = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } },
     });
-    c.setQueryData(queryKeys.tools.effectiveProfilesForAgent(COMPANY, "a-sage"), {
+    c.setQueryData(queryKeys.tools.effectiveProfilesForAgent("a-sage"), {
       agentId: "a-sage",
       profiles: [{ ...DETAIL_PROFILE, summary: summary({ allowedToolCount: allowed.length, allowedApplicationCount: 1, assignmentCount: 1, appliesToAgentCount: 1, isCompanyDefault: true }) }],
       entries: DETAIL_PROFILE.entries,
@@ -458,16 +450,16 @@ function SeededAgentTools() {
       allowedToolNames: allowed.map((tool) => tool.toolName),
       installedConnections: CONNECTIONS.filter((connection) => connection.id === "conn-gmail"),
     } satisfies ToolProfileEffectiveSummary);
-    c.setQueryData(queryKeys.tools.connections(COMPANY), { connections: CONNECTIONS });
+    c.setQueryData(queryKeys.tools.connections(), { connections: CONNECTIONS });
     c.setQueryData(queryKeys.tools.catalog("conn-gmail"), { catalog: GMAIL_TOOLS });
     c.setQueryData(queryKeys.tools.catalog("conn-slack"), { catalog: SLACK_TOOLS });
-    c.setQueryData(queryKeys.tools.policies(COMPANY), { policies: [policy] });
+    c.setQueryData(queryKeys.tools.policies(), { policies: [policy] });
     return c;
   }, [allowed, policy]);
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-6xl p-6">
-        <AgentToolsTab agent={{ id: "a-sage", name: "Sage" } as never} companyId={COMPANY} />
+        <AgentToolsTab agent={{ id: "a-sage", name: "Sage" } as never} />
       </div>
     </QueryClientProvider>
   );

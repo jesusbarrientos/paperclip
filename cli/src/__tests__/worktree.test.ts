@@ -112,7 +112,6 @@ function mockVerifiedSeedResult() {
       activeMembershipCount: 1,
       companyCount: 1,
       issueCount: 1,
-      representativeCompanyId: "00000000-0000-4000-8000-000000000001",
       representativeIssueId: "00000000-0000-4000-8000-000000000002",
       migrationRevision: "0142_test.sql",
     },
@@ -170,12 +169,23 @@ async function seedValidWorktreeSource(
   });
   // This helper also seeds an intentionally older schema. Current Drizzle
   // insert builders include defaults for newly added columns absent there.
-  await db.$client`
-    insert into issues (id, company_id, title, status, priority, issue_number, identifier)
-    values (${issueId}, ${companyId}, 'Representative seed issue', 'backlog', 'medium', 1, 'SEED-1')
+  const [issueCompanyColumn] = await db.$client`
+    select 1 from information_schema.columns
+    where table_schema = current_schema() and table_name = 'issues' and column_name = 'company_id'
   `;
+  if (issueCompanyColumn) {
+    await db.$client`
+      insert into issues (id, company_id, title, status, priority, issue_number, identifier)
+      values (${issueId}, ${companyId}, 'Representative seed issue', 'backlog', 'medium', 1, 'SEED-1')
+    `;
+  } else {
+    await db.$client`
+      insert into issues (id, title, status, priority, issue_number, identifier)
+      values (${issueId}, 'Representative seed issue', 'backlog', 'medium', 1, 'SEED-1')
+    `;
+  }
   await db.$client.end({ timeout: 5 });
-  return { companyId, issueId };
+  return { issueId };
 }
 
 if (!embeddedPostgresSupport.supported) {
@@ -472,7 +482,6 @@ describe("worktree helpers", () => {
             getObject: vi.fn().mockResolvedValue(expected),
           },
         ],
-        "company-1",
         "company-1/issues/issue-1/missing.png",
       ),
     ).resolves.toEqual(expected);
@@ -490,7 +499,6 @@ describe("worktree helpers", () => {
             getObject: vi.fn().mockRejectedValue(Object.assign(new Error("missing"), { status: 404 })),
           },
         ],
-        "company-1",
         "company-1/issues/issue-1/missing.png",
       ),
     ).resolves.toBeNull();
@@ -890,12 +898,10 @@ describe("worktree helpers", () => {
         config: targetConfigPath,
         registeredBaseWorkspaceCwd: baseRoot,
         registeredProjectWorkspaceId: "project-workspace-1",
-        expectedCompanyId: "company-1",
       }, { seedDatabase })).resolves.toMatchObject({ seeded: true, reason: "seeded" });
 
       expect(seedDatabase).toHaveBeenCalledWith(expect.objectContaining({
         sourceConfigPath,
-        expectedCompanyId: "company-1",
       }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -952,12 +958,10 @@ describe("worktree helpers", () => {
           config: targetConfigPath,
           registeredBaseWorkspaceCwd: baseRoot,
           registeredProjectWorkspaceId: "project-workspace-1",
-          expectedCompanyId: "company-1",
         }, { seedDatabase })).resolves.toMatchObject({ seeded: true, reason: "seeded" });
 
         expect(seedDatabase).toHaveBeenCalledWith(expect.objectContaining({
           sourceConfigPath: canonicalSource,
-          expectedCompanyId: "company-1",
         }));
         expect(readWorktreeSeedManifest(targetConfigPath)).toMatchObject({
           source: {
@@ -1198,7 +1202,6 @@ describe("worktree helpers", () => {
       await db.insert(agents).values([
         {
           id: agentId,
-          companyId,
           name: "CodexCoder",
           role: "engineer",
           status: "running",
@@ -1212,7 +1215,6 @@ describe("worktree helpers", () => {
         },
         {
           id: idleAgentId,
-          companyId,
           name: "Reviewer",
           role: "reviewer",
           status: "idle",
@@ -1224,13 +1226,11 @@ describe("worktree helpers", () => {
       ]);
       await db.insert(projects).values({
         id: projectId,
-        companyId,
         name: "Runtime quarantine",
         status: "in_progress",
       });
       await db.insert(projectWorkspaces).values({
         id: projectWorkspaceId,
-        companyId,
         projectId,
         name: "Primary workspace",
         cwd: "/source/project",
@@ -1245,7 +1245,6 @@ describe("worktree helpers", () => {
       });
       await db.insert(executionWorkspaces).values({
         id: executionWorkspaceId,
-        companyId,
         projectId,
         projectWorkspaceId,
         mode: "isolated_workspace",
@@ -1264,7 +1263,6 @@ describe("worktree helpers", () => {
       });
       await db.insert(workspaceRuntimeServices).values({
         id: runtimeServiceId,
-        companyId,
         projectId,
         projectWorkspaceId,
         executionWorkspaceId,
@@ -1283,7 +1281,6 @@ describe("worktree helpers", () => {
       await db.insert(issues).values([
         {
           id: inProgressIssueId,
-          companyId,
           title: "Copied in-flight issue",
           status: "in_progress",
           priority: "medium",
@@ -1295,7 +1292,6 @@ describe("worktree helpers", () => {
         },
         {
           id: todoIssueId,
-          companyId,
           title: "Copied assigned todo issue",
           status: "todo",
           priority: "medium",
@@ -1305,7 +1301,6 @@ describe("worktree helpers", () => {
         },
         {
           id: reviewIssueId,
-          companyId,
           title: "Copied assigned review issue",
           status: "in_review",
           priority: "medium",
@@ -1315,7 +1310,6 @@ describe("worktree helpers", () => {
         },
         {
           id: userIssueId,
-          companyId,
           title: "Copied user issue",
           status: "todo",
           priority: "medium",
@@ -2476,7 +2470,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Coder",
         adapterType: "process",
         adapterConfig: {},
@@ -2485,14 +2478,12 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
       });
       await db.insert(projects).values({
         id: projectId,
-        companyId,
         name: "Project",
         status: "in_progress",
       });
       await db.insert(routines).values([
         {
           id: activeScheduledRoutineId,
-          companyId,
           projectId,
           assigneeAgentId: agentId,
           title: "Active scheduled",
@@ -2500,7 +2491,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
         },
         {
           id: activeApiRoutineId,
-          companyId,
           projectId,
           assigneeAgentId: agentId,
           title: "Active API",
@@ -2508,7 +2498,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
         },
         {
           id: pausedScheduledRoutineId,
-          companyId,
           projectId,
           assigneeAgentId: agentId,
           title: "Paused scheduled",
@@ -2516,7 +2505,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
         },
         {
           id: archivedScheduledRoutineId,
-          companyId,
           projectId,
           assigneeAgentId: agentId,
           title: "Archived scheduled",
@@ -2524,7 +2512,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
         },
         {
           id: disabledScheduleRoutineId,
-          companyId,
           projectId,
           assigneeAgentId: agentId,
           title: "Disabled schedule",
@@ -2533,7 +2520,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
       ]);
       await db.insert(routineTriggers).values([
         {
-          companyId,
           routineId: activeScheduledRoutineId,
           kind: "schedule",
           enabled: true,
@@ -2541,13 +2527,11 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
           timezone: "UTC",
         },
         {
-          companyId,
           routineId: activeApiRoutineId,
           kind: "api",
           enabled: true,
         },
         {
-          companyId,
           routineId: pausedScheduledRoutineId,
           kind: "schedule",
           enabled: true,
@@ -2555,7 +2539,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
           timezone: "UTC",
         },
         {
-          companyId,
           routineId: archivedScheduledRoutineId,
           kind: "schedule",
           enabled: true,
@@ -2563,7 +2546,6 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
           timezone: "UTC",
         },
         {
-          companyId,
           routineId: disabledScheduleRoutineId,
           kind: "schedule",
           enabled: false,

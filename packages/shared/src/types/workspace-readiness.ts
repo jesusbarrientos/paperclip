@@ -56,8 +56,6 @@ export interface WorkspaceReadiness {
   instanceId: string | null;
   /** Execution workspace this instance was provisioned for, when known. */
   executionWorkspaceId: string | null;
-  /** Company whose cloned board this workspace serves, when known. */
-  companyId: string | null;
   /** Phase that failed, so operators do not need host-shell archaeology. */
   failurePhase: string | null;
 }

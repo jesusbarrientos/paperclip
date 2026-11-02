@@ -30,7 +30,6 @@ export async function findAutomaticCompletionReviews(db: Db, issueId?: string) {
     .innerJoin(
       statusDecisionEffects,
       and(
-        eq(statusDecisionEffects.companyId, issueThreadInteractions.companyId),
         eq(statusDecisionEffects.issueId, issueThreadInteractions.issueId),
         sql`${statusDecisionEffects.targetId} = ${issueThreadInteractions.id}::text`,
         eq(statusDecisionEffects.targetType, "issue_thread_interaction"),
@@ -41,7 +40,6 @@ export async function findAutomaticCompletionReviews(db: Db, issueId?: string) {
       statusDecisions,
       and(
         eq(statusDecisions.id, statusDecisionEffects.decisionId),
-        eq(statusDecisions.companyId, issueThreadInteractions.companyId),
         eq(statusDecisions.issueId, issueThreadInteractions.issueId),
         eq(statusDecisions.runId, issueThreadInteractions.sourceRunId),
       ),
@@ -50,7 +48,6 @@ export async function findAutomaticCompletionReviews(db: Db, issueId?: string) {
       workAssessments,
       and(
         eq(workAssessments.id, statusDecisions.assessmentId),
-        eq(workAssessments.companyId, statusDecisions.companyId),
         eq(workAssessments.issueId, statusDecisions.issueId),
       ),
     )
@@ -58,7 +55,6 @@ export async function findAutomaticCompletionReviews(db: Db, issueId?: string) {
       completionContracts,
       and(
         eq(completionContracts.id, workAssessments.contractId),
-        eq(completionContracts.companyId, workAssessments.companyId),
         eq(completionContracts.issueId, workAssessments.issueId),
       ),
     )
@@ -109,20 +105,14 @@ export async function dismissAutomaticCompletionReviews(
           .select()
           .from(nativeRunFinalizations)
           .where(
-            and(
-              eq(nativeRunFinalizations.runId, decision.runId),
-              eq(nativeRunFinalizations.companyId, decision.companyId),
-            ),
+            eq(nativeRunFinalizations.runId, decision.runId),
           )
           .for("update");
         const [issue] = await tx
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.id, decision.issueId),
-              eq(issues.companyId, decision.companyId),
-            ),
+            eq(issues.id, decision.issueId),
           )
           .for("update");
         if (!issue) return;
@@ -142,7 +132,6 @@ export async function dismissAutomaticCompletionReviews(
           .where(
             and(
               eq(issueThreadInteractions.id, interaction.id),
-              eq(issueThreadInteractions.companyId, issue.companyId),
               eq(issueThreadInteractions.status, "pending"),
               eq(issueThreadInteractions.payload, interaction.payload),
             ),
@@ -158,7 +147,6 @@ export async function dismissAutomaticCompletionReviews(
             projected,
           );
         const { publication } = await persistActivity(tx as unknown as Db, {
-          companyId: issue.companyId,
           actorType: "system",
           actorId: "native-completion-review-cleanup",
           action: "issue.interaction_cancelled",
@@ -200,7 +188,6 @@ export async function decisionHasRetiredAutomaticReview(
     .from(issueThreadInteractions)
     .where(
       and(
-        eq(issueThreadInteractions.companyId, decision.companyId),
         eq(issueThreadInteractions.issueId, decision.issueId),
         eq(issueThreadInteractions.status, "cancelled"),
         sql`${issueThreadInteractions.result}->>'reason' = ${withdrawalReason}`,

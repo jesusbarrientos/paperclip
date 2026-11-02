@@ -227,7 +227,6 @@ const agentManagementAgents: Agent[] = [
 
 const runtimeState: AgentRuntimeState = {
   agentId: "agent-codex",
-  companyId: COMPANY_ID,
   adapterType: "codex_local",
   sessionId: "session-codex-storybook-management-20260420",
   sessionDisplayId: "codex-storybook-20260420",
@@ -253,7 +252,6 @@ const runtimeState: AgentRuntimeState = {
 const storybookSecrets: CompanySecret[] = [
 	  {
 	    id: "secret-openai",
-	    companyId: COMPANY_ID,
 	    scope: "company",
 	    ownerUserId: null,
 	    userSecretDefinitionId: null,
@@ -277,7 +275,6 @@ const storybookSecrets: CompanySecret[] = [
   },
 	  {
 	    id: "secret-ops-webhook",
-	    companyId: COMPANY_ID,
 	    scope: "company",
 	    ownerUserId: null,
 	    userSecretDefinitionId: null,
@@ -301,7 +298,6 @@ const storybookSecrets: CompanySecret[] = [
 	  },
 	  {
 	    id: "secret-prod-database",
-	    companyId: COMPANY_ID,
 	    scope: "company",
 	    ownerUserId: null,
 	    userSecretDefinitionId: null,
@@ -451,28 +447,28 @@ const liveRuns: LiveRunForIssue[] = [
 function StorybookQueryFixtures({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
-  queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), agentManagementAgents);
-  queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), storybookSecrets);
+  queryClient.setQueryData(queryKeys.agents.list(), agentManagementAgents);
+  queryClient.setQueryData(queryKeys.secrets.list(), storybookSecrets);
   queryClient.setQueryData(queryKeys.adapters.all, adapterFixtures);
-  queryClient.setQueryData(queryKeys.issues.list(COMPANY_ID), storybookIssues);
-  queryClient.setQueryData([...queryKeys.issues.list(COMPANY_ID), "with-routine-executions"], storybookIssues);
-  queryClient.setQueryData([...queryKeys.liveRuns(COMPANY_ID), "dashboard", { minRunCount: 4, fetchLimit: undefined }], liveRuns);
+  queryClient.setQueryData(queryKeys.issues.list(), storybookIssues);
+  queryClient.setQueryData([...queryKeys.issues.list(), "with-routine-executions"], storybookIssues);
+  queryClient.setQueryData([...queryKeys.liveRuns(), "dashboard", { minRunCount: 4, fetchLimit: undefined }], liveRuns);
   for (const issue of storybookIssues) {
     queryClient.setQueryData(queryKeys.issues.detail(issue.id), issue);
   }
   queryClient.setQueryData(queryKeys.instance.generalSettings, { censorUsernameInLogs: false });
-  queryClient.setQueryData(queryKeys.agents.adapterModels(COMPANY_ID, "codex_local"), [
+  queryClient.setQueryData(queryKeys.agents.adapterModels("codex_local"), [
     { id: "gpt-5.4", label: "GPT-5.4" },
     { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
     { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
   ]);
-  queryClient.setQueryData(queryKeys.agents.detectModel(COMPANY_ID, "codex_local"), {
+  queryClient.setQueryData(queryKeys.agents.detectModel("codex_local"), {
     model: "gpt-5.4",
     provider: "openai",
     source: "config",
     candidates: ["gpt-5.4", "gpt-5.4-mini"],
   });
-  queryClient.setQueryData(queryKeys.agents.adapterModels(COMPANY_ID, "claude_local"), [
+  queryClient.setQueryData(queryKeys.agents.adapterModels("claude_local"), [
     { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5" },
     { id: "claude-opus-4.1", label: "Claude Opus 4.1" },
   ]);
@@ -804,7 +800,7 @@ function AgentManagementStories() {
           </Section>
 
           <Section eyebrow="ActiveAgentsPanel" title="Mixed live, queued, succeeded, and failed agent runs">
-            <ActiveAgentsPanel companyId={COMPANY_ID} />
+            <ActiveAgentsPanel />
           </Section>
 
           <Section eyebrow="agent-config-primitives" title="Individual text, select, toggle, and JSON field types">
@@ -867,8 +863,8 @@ function ForcedKubernetesFixtures({
 }) {
   const queryClient = useQueryClient();
 
-  queryClient.setQueryData(queryKeys.agents.list(COMPANY_ID), agentManagementAgents);
-  queryClient.setQueryData(queryKeys.secrets.list(COMPANY_ID), storybookSecrets);
+  queryClient.setQueryData(queryKeys.agents.list(), agentManagementAgents);
+  queryClient.setQueryData(queryKeys.secrets.list(), storybookSecrets);
   queryClient.setQueryData(queryKeys.adapters.all, adapterFixtures);
   // The instance-level execution policy that forces all agent execution onto
   // the managed Kubernetes sandbox (PAPERCLIP_EXECUTION_MODE=kubernetes).
@@ -876,8 +872,8 @@ function ForcedKubernetesFixtures({
     censorUsernameInLogs: false,
     executionMode: "kubernetes",
   });
-  queryClient.setQueryData(queryKeys.environments.list(COMPANY_ID), environmentFixtures);
-  queryClient.setQueryData(queryKeys.agents.adapterModels(COMPANY_ID, "codex_local"), [
+  queryClient.setQueryData(queryKeys.environments.list(), environmentFixtures);
+  queryClient.setQueryData(queryKeys.agents.adapterModels("codex_local"), [
     { id: "gpt-5.4", label: "GPT-5.4" },
     { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
   ]);

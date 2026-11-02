@@ -309,16 +309,13 @@ describe("CloudAccessGate", () => {
 });
 
 describe("Skill Studio routes", () => {
-  it("registers create mode before the skillId route in prefixed and unprefixed routing", () => {
-    const createRoute = 'path="skills/studio/new"';
-    const detailRoute = 'path="skills/studio/:skillId"';
-    const createIndexes = [...appSource.matchAll(new RegExp(createRoute, "g"))].map((match) => match.index ?? -1);
-    const detailIndexes = [...appSource.matchAll(new RegExp(detailRoute, "g"))].map((match) => match.index ?? -1);
+  it("registers create mode before the skillId route", () => {
+    const createIndex = appSource.indexOf('path="skills/studio/new"');
+    const detailIndex = appSource.indexOf('path="skills/studio/:skillId"');
 
-    expect(createIndexes).toHaveLength(2);
-    expect(detailIndexes).toHaveLength(2);
-    expect(createIndexes[0]).toBeLessThan(detailIndexes[0]!);
-    expect(createIndexes[1]).toBeLessThan(detailIndexes[1]!);
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(detailIndex).toBeGreaterThan(-1);
+    expect(createIndex).toBeLessThan(detailIndex);
   });
 });
 
@@ -348,7 +345,7 @@ describe("Apps routes", () => {
 describe("Retired settings routes", () => {
   it("redirects the removed heartbeats page to the settings root instead of dropping the route", () => {
     expect(appSource).toContain(
-      '<Route path="company/settings/instance/heartbeats" element={<Navigate to="/company/settings" replace />} />',
+      '<Route path="organization/settings/instance/heartbeats" element={<Navigate to="/organization/settings" replace />} />',
     );
     expect(appSource).not.toContain("<InstanceSettings");
     expect(appSource).not.toContain('"./pages/InstanceSettings"');

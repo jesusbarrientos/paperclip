@@ -90,7 +90,7 @@ const KINDS: CardKind[] = [
     type: "document",
     provider: "paperclip",
     title: "Implementation plan",
-    url: "/PAP/issues/PAP-18213#document-plan",
+    url: "/issues/PAP-18213#document-plan",
     metadata: { revisionNumber: 4 },
   },
   {
@@ -137,7 +137,6 @@ const RUNTIME_STATES: CardState[] = [
 function product(kind: CardKind, state: CardState, withStats = false): IssueWorkProduct {
   return {
     id: `${kind.id}-${state.id}-${withStats ? "stats" : "plain"}`,
-    companyId: "company-storybook",
     projectId: null,
     issueId: "issue-storybook",
     executionWorkspaceId: null,
@@ -255,7 +254,6 @@ export const Mobile375: Story = {
 function attachment(id: string, name: string, contentType: string, byteSize: number): IssueAttachment {
   return {
     id,
-    companyId: "company-storybook",
     issueId: "issue-storybook",
     issueCommentId: "message-storybook",
     assetId: `asset-${id}`,

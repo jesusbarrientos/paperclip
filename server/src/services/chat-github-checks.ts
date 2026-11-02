@@ -44,7 +44,6 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
     await db
       .insert(chatActions)
       .values({
-        companyId: endpoint.companyId,
         endpointId: endpoint.id,
         kind: "github_review_check",
         providerActionId: `github-check:${event.deliveryId}`,
@@ -77,7 +76,6 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
     await withGitHubPublicationLease(
       db,
       {
-        companyId: action.companyId,
         endpointId: action.endpointId,
         repositoryId: event.repositoryId,
         number: event.pullNumber,
@@ -96,10 +94,9 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
               endpoint: chatEndpoints,
               resource: chatEndpointResources,
               configuration: chatGitHubConfigurations.configuration,
-              companyPrefix: companies.issuePrefix,
+              companyPrefix: sql<string>`(select ${companies.issuePrefix} from ${companies} limit 1)`,
             })
             .from(chatEndpoints)
-            .innerJoin(companies, eq(companies.id, chatEndpoints.companyId))
             .innerJoin(
               chatGitHubConfigurations,
               eq(chatGitHubConfigurations.endpointId, chatEndpoints.id),
@@ -111,7 +108,6 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
             .where(
               and(
                 eq(chatEndpoints.id, action.endpointId),
-                eq(chatEndpoints.companyId, action.companyId),
                 eq(chatEndpointResources.providerResourceId, event.repository),
               ),
             );
@@ -187,7 +183,6 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
               .innerJoin(
                 heartbeatRuns,
                 and(
-                  eq(heartbeatRuns.companyId, action.companyId),
                   eq(heartbeatRuns.agentId, source.endpoint.assignedAgentId),
                   sql`${heartbeatRuns.contextSnapshot}->>'wakeCommentId' = ${chatMessageLinks.commentId}::text`,
                 ),
@@ -252,7 +247,6 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
                     : "Waiting for the assigned agent";
           const token = await githubBotRepositoryToken(
             db,
-            action.companyId,
             action.endpointId,
             event.repositoryId,
             lease.fetch,
@@ -426,8 +420,7 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
         select 1 from ${chatActions} action
         join ${chatDeliveries} delivery
           on delivery.id::text = ${chatGitHubReviews.deliveryId}
-        where action.company_id = ${chatGitHubReviews.companyId}
-          and action.endpoint_id = ${chatGitHubReviews.endpointId}
+        where action.endpoint_id = ${chatGitHubReviews.endpointId}
           and delivery.endpoint_id = action.endpoint_id
           and action.kind = 'github_review_check'
           and action.status = 'cancelled'

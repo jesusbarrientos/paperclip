@@ -49,7 +49,7 @@ describe("legacy environment tool access on resumed conversations", () => {
     const getFreshSessionHandoff = vi.fn(async () => "FRESH_HANDOFF_ONLY");
     const ctx: AdapterExecutionContext = {
       getFreshSessionHandoff,
-      runId: "refresh", agent: { id: "agent", companyId: "company", name: "Agent", adapterType: type, adapterConfig: {} },
+      runId: "refresh", agent: { id: "agent", name: "Agent", adapterType: type, adapterConfig: {} },
       runtime: { sessionId, sessionParams: { sessionId, cwd: root }, sessionDisplayId: sessionId, taskKey: null },
       config: { command, cwd: root, model: "openai/gpt-5", engine: "cli", env: { HOME: root, XDG_CONFIG_HOME: root, OPENCODE_ALLOW_ALL_MODELS: "1" } },
       context: { refreshTools: true, paperclipFreshSessionHandoffMarkdown: "FRESH_HANDOFF_ONLY" }, onLog: async () => {},

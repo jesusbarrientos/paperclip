@@ -5,7 +5,7 @@
   "name": "Semantic governance target and continuation chain",
   "description": "A semantic result binds immutable interaction and approval targets while carrying only safe wake and monitor causal references.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_semantic_governance", "issueId": "issue_semantic_governance",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_semantic_governance",
     "runId": "run_semantic_governance", "environmentLeaseId": "lease_semantic_governance", "runnerInstanceId": "runner_semantic_governance",
     "normalizedSessionId": "session_semantic_governance", "driverSessionId": "driver_semantic_governance"
   },

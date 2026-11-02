@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { agents, agentWakeupRequests, chatCompletionDeliveries as deliveries, chatTaskHandoffs as handoffs,
   companies, createDb, documents, environmentLeases, heartbeatRuns, issueComments, issueRecoveryActions, issues } from "@paperclipai/db";
@@ -21,24 +21,26 @@ const support = await getEmbeddedPostgresTestSupport();
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("chat-completion-"); db = createDb(temporary.connectionString);
     await instanceSettingsService(db).updateExperimental({ enableAgentChat: true });
+    const companyId = randomUUID();
+    await db.insert(companies).values({ id: companyId, name: "Completion", issuePrefix: companyId.slice(0, 8) });
   }, 30_000);
   afterAll(async () => { await temporary?.cleanup(); });
   beforeEach(async () => { await db.update(deliveries).set({ status: "exhausted" }); });
   async function seed() {
-    const companyId = randomUUID(), agentId = randomUUID(), sourceId = randomUUID(), runId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Completion", issuePrefix: companyId.slice(0, 8) });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Lead", status: "idle", adapterType: "process" });
-    await db.insert(issues).values({ id: sourceId, companyId, title: "Chat", status: "in_progress", conversationAgentId: agentId,
+    const agentId = randomUUID(), sourceId = randomUUID(), runId = randomUUID();
+    await db.insert(agents).values({ id: agentId, name: "Lead", status: "idle", adapterType: "process" });
+    await db.insert(issues).values({ id: sourceId, title: "Chat", status: "in_progress", conversationAgentId: agentId,
       conversationUserId: "operator", conversationState: "waiting", assigneeAgentId: agentId });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "succeeded", contextSnapshot: { issueId: sourceId, conversationSessionGeneration: 0 } });
-    const create = () => issueService(db).create(companyId, { title: `Write note ${randomUUID()}`, status: "todo", createdByAgentId: agentId, actorRunId: runId });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "succeeded", contextSnapshot: { issueId: sourceId, conversationSessionGeneration: 0 } });
+    const create = () => issueService(db).create({ title: `Write note ${randomUUID()}`, status: "todo", createdByAgentId: agentId, actorRunId: runId });
     const task = await create();
     const finish = (taskId = task.id) => issueService(db).update(taskId, { status: "done" });
-    const rows = () => db.select().from(deliveries).where(eq(deliveries.companyId, companyId)).orderBy(asc(deliveries.createdAt), asc(deliveries.id));
-    const due = () => db.update(deliveries).set({ nextAttemptAt: new Date(0) }).where(eq(deliveries.companyId, companyId));
+    const ownTasks = () => inArray(deliveries.taskId, db.select({ taskId: handoffs.taskId }).from(handoffs).where(eq(handoffs.agentId, agentId)));
+    const rows = () => db.select().from(deliveries).where(ownTasks()).orderBy(asc(deliveries.createdAt), asc(deliveries.id));
+    const due = () => db.update(deliveries).set({ nextAttemptAt: new Date(0) }).where(ownTasks());
     const wakeup = vi.fn(async (_agentId: string, options: any) => {
-      const [run] = await db.insert(heartbeatRuns).values({ companyId, agentId, status: "queued", contextSnapshot: options.contextSnapshot }).returning();
-      await db.insert(agentWakeupRequests).values({ companyId, agentId, source: "automation", status: "queued", idempotencyKey: options.idempotencyKey, runId: run.id });
+      const [run] = await db.insert(heartbeatRuns).values({ agentId, status: "queued", contextSnapshot: options.contextSnapshot }).returning();
+      await db.insert(agentWakeupRequests).values({ agentId, source: "automation", status: "queued", idempotencyKey: options.idempotencyKey, runId: run.id });
       return run;
     });
     const service = chatCompletionDeliveryService(db, { wakeup } as any);
@@ -49,7 +51,7 @@ const support = await getEmbeddedPostgresTestSupport();
       const [r] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, current.targetRunId!));
       return prepareChatCompletionTurn(db, r);
     };
-    return { companyId, agentId, sourceId, runId, task, create, finish, rows, due, wakeup, service, run };
+    return { agentId, sourceId, runId, task, create, finish, rows, due, wakeup, service, run };
   }
   it("records authenticated origins and atomically creates one event per Done transition", async () => {
     const f = await seed();
@@ -63,14 +65,15 @@ const support = await getEmbeddedPostgresTestSupport();
     await expect(db.transaction(async tx => { await issueService(tx as any).update(f.task.id, { status: "todo" }, tx); throw new Error("rollback"); })).rejects.toThrow("rollback");
     expect((await f.rows()).filter(d => d.status === "pending")).toHaveLength(1);
   });
-  it.each(["current", "ordinary-parent", "cancelled-parent", "other-owner", "other-company", "other-child", "child-open", "sibling-open"])("validates the completed onboarding reporting exception: %s", async kind => {
+  it.each(["current", "ordinary-parent", "cancelled-parent", "other-owner", "other-child", "child-open", "sibling-open"])("validates the completed onboarding reporting exception: %s", async kind => {
     const f = await seed();
+    await db.update(issues).set({ originKind: "manual" }).where(eq(issues.originKind, "onboarding_first_task"));
     await db.update(issues).set({ conversationAgentId: null, conversationUserId: null, conversationState: null,
       originKind: kind === "ordinary-parent" ? "manual" : "onboarding_first_task", status: kind === "cancelled-parent" ? "cancelled" : "done",
     }).where(eq(issues.id, f.sourceId));
     await db.update(issues).set({ parentId: f.sourceId, status: kind === "child-open" ? "in_progress" : "done" }).where(eq(issues.id, f.task.id));
-    if (kind === "sibling-open") await db.insert(issues).values({ companyId: f.companyId, parentId: f.sourceId, title: "Pending child", status: "todo" });
-    const input = { companyId: kind === "other-company" ? randomUUID() : f.companyId, issueId: f.sourceId,
+    if (kind === "sibling-open") await db.insert(issues).values({ parentId: f.sourceId, title: "Pending child", status: "todo" });
+    const input = { issueId: f.sourceId,
       agentId: kind === "other-owner" ? randomUUID() : f.agentId, reason: "issue_children_completed",
       contextSnapshot: { completedChildIssueId: kind === "other-child" ? randomUUID() : f.task.id } };
     expect(await isCompletedOnboardingHandoffWake(db, input)).toBe(kind === "current");
@@ -80,11 +83,11 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(await isCompletedOnboardingHandoffWake(db, { ...input, contextSnapshot: {} })).toBe(false);
     }
   });
-  it.each(["other-company", "other-agent", "old-session", "forged-origin"])("does not enroll %s origins", async kind => {
+  it.each(["other-agent", "old-session", "forged-origin"])("does not enroll %s origins", async kind => {
     const f = await seed();
-    const [task] = await db.insert(issues).values({ companyId: f.companyId, title: "Unlinked", createdByAgentId: f.agentId }).returning();
+    const [task] = await db.insert(issues).values({ title: "Unlinked", createdByAgentId: f.agentId }).returning();
     if (kind === "old-session") await db.update(issues).set({ conversationSessionGeneration: 1 }).where(eq(issues.id, f.sourceId));
-    await recordChatHandoff(db, { ...task, ...(kind === "other-company" ? { companyId: randomUUID() } : {}), ...(kind === "other-agent" ? { createdByAgentId: randomUUID() } : {}) }, kind === "forged-origin" ? null : f.runId);
+    await recordChatHandoff(db, { ...task, ...(kind === "other-agent" ? { createdByAgentId: randomUUID() } : {}) }, kind === "forged-origin" ? null : f.runId);
     expect(await db.select().from(handoffs).where(eq(handoffs.taskId, task.id))).toEqual([]);
   });
   it("batches pending tasks at turn start and acknowledges only a final persisted reply", async () => {
@@ -133,8 +136,8 @@ const support = await getEmbeddedPostgresTestSupport();
   });
   it("recovers the wake receipt if the dispatcher crashes before saving the run pointer", async () => {
     const f = await seed(); await f.finish(); const [delivery] = await f.rows();
-    const [run] = await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" }).returning();
-    await db.insert(agentWakeupRequests).values({ companyId: f.companyId, agentId: f.agentId, source: "automation", status: "claimed", runId: run.id, idempotencyKey: `chat-completion:${delivery.id}:0` });
+    const [run] = await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" }).returning();
+    await db.insert(agentWakeupRequests).values({ agentId: f.agentId, source: "automation", status: "claimed", runId: run.id, idempotencyKey: `chat-completion:${delivery.id}:0` });
     await f.service.deliver(delivery.id); expect(f.wakeup).not.toHaveBeenCalled();
   });
   it("serializes concurrent dispatch and retries a failed response without retrying delivered output", async () => {
@@ -153,7 +156,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const interrupted = await terminalizeLegacyExecution({ db, run, status: "interrupted", patch: {
       errorCode: "server_shutdown_interrupted", runnerProfileJson: { adapterDispatch: { adapterType: "paperclip_runner" } },
     } });
-    expect(await getExecutionBlocker(db, f.companyId, f.sourceId)).toMatchObject({ runId: run.id });
+    expect(await getExecutionBlocker(db, f.sourceId)).toMatchObject({ runId: run.id });
     return { f, run: interrupted! };
   }
   it.each(["chat_task_completed", "transient_failure_retry"])("does not create a competing generic retry for completion context %s", async wakeReason => {
@@ -174,7 +177,7 @@ const support = await getEmbeddedPostgresTestSupport();
     }
     const settled = await settleInterruptedNativeBootstrap(db, { run, providerDispatchStarted: false });
     expect(settled?.resultJson?.executionRecovery).toMatchObject({ kind: "bootstrap", providerWorkStarted: false });
-    expect(await getExecutionBlocker(db, f.companyId, f.sourceId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.sourceId)).toBeNull();
     expect(await issueService(db).getById(f.sourceId)).toMatchObject({ status: "in_progress" });
     await f.due(); await f.service.deliver((await f.rows())[0].id);
     expect(f.wakeup).toHaveBeenCalledTimes(2);
@@ -205,11 +208,11 @@ const support = await getEmbeddedPostgresTestSupport();
     if (kind === "other-adapter") await db.update(heartbeatRuns).set({ runnerProfileJson: { adapterDispatch: { adapterType: "process" } } }).where(eq(heartbeatRuns.id, run.id));
     if (kind === "restore-unsafe") await db.update(heartbeatRuns).set({ resultJson: { workspaceRestoreFailure: "restore_unsafe_archive" } }).where(eq(heartbeatRuns.id, run.id));
     if (kind === "retry-exhausted") await db.update(heartbeatRuns).set({ scheduledRetryAttempt: 2 }).where(eq(heartbeatRuns.id, run.id));
-    if (kind === "active-lease" || kind === "cleanup-failed") await db.insert(environmentLeases).values({ companyId: f.companyId, heartbeatRunId: run.id,
+    if (kind === "active-lease" || kind === "cleanup-failed") await db.insert(environmentLeases).values({ heartbeatRunId: run.id,
       ...(kind === "cleanup-failed" ? { status: "released", releasedAt: new Date(), cleanupStatus: "failed" } : {}),
     });
     expect(await settleInterruptedNativeBootstrap(db, { run, providerDispatchStarted: kind === "provider-entered" })).toBeNull();
-    expect(await getExecutionBlocker(db, f.companyId, f.sourceId)).not.toBeNull();
+    expect(await getExecutionBlocker(db, f.sourceId)).not.toBeNull();
   });
   it("delivers Done tasks after an ownership-only status version change", async () => {
     const f = await seed(); await f.finish();
@@ -219,7 +222,7 @@ const support = await getEmbeddedPostgresTestSupport();
   });
   it("advances a skipped daily-cap receipt and resumes with a fresh key", async () => {
     const f = await seed(); await f.finish(); const [delivery] = await f.rows();
-    await db.insert(agentWakeupRequests).values({ companyId: f.companyId, agentId: f.agentId, source: "automation", status: "skipped", reason: "heartbeat.daily_run_limit", idempotencyKey: `chat-completion:${delivery.id}:0` });
+    await db.insert(agentWakeupRequests).values({ agentId: f.agentId, source: "automation", status: "skipped", reason: "heartbeat.daily_run_limit", idempotencyKey: `chat-completion:${delivery.id}:0` });
     await f.service.deliver(delivery.id);
     expect(await f.rows()).toMatchObject([{ status: "pending", attempts: 1 }]);
     expect(f.wakeup).not.toHaveBeenCalled();
@@ -233,11 +236,9 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(f.wakeup).toHaveBeenCalledTimes(5);
     expect(await f.rows()).toMatchObject([{ status: "exhausted", attempts: 5 }]);
   });
-  it("scopes the post-commit fast path to its task and company", async () => {
+  it("scopes the post-commit fast path to its task", async () => {
     const a = await seed(), b = await seed(); await a.finish(); await b.finish();
-    await a.service.sweepPending({ companyId: a.companyId, taskId: b.task.id });
-    expect(a.wakeup).not.toHaveBeenCalled();
-    await a.service.sweepPending({ companyId: a.companyId, taskId: a.task.id });
+    await a.service.sweepPending({ taskId: a.task.id });
     expect(a.wakeup).toHaveBeenCalledOnce();
     expect((await b.rows())[0].targetRunId).toBeNull();
   });

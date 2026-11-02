@@ -1,9 +1,9 @@
 ---
 title: Importing & Exporting Companies
-summary: Export companies to portable packages and import them from local paths or GitHub
+summary: Export the organization to a portable package and import packages from local paths or GitHub
 ---
 
-Paperclip companies can be exported to portable markdown packages and imported from local directories or GitHub repositories. This lets you share company configurations, duplicate setups, and version-control your agent teams.
+A Paperclip instance serves exactly one organization (its company). That organization can be exported to a portable markdown package, and packages can be imported into it from local directories or GitHub repositories. This lets you share company configurations, seed a fresh instance from a template, and version-control your agent teams.
 
 ## Package Format
 
@@ -31,50 +31,42 @@ my-company/
 
 ## Export & Import in the App
 
-Both flows are also available in the web UI as company settings pages: **Export** and **Import** appear in the company settings navigation.
+Both flows are available in the web UI as organization settings pages: **Export** and **Import** appear in the settings navigation.
 
-> **Cloud-managed instances:** when a hosting platform manages the instance, the company is provisioned by the platform and importing is disabled — the Import page and buttons are hidden, and every import API route answers `403` with `code: "cloud_managed"`. Export stays available, so you can always take your company's data with you. Self-hosted instances keep the full import surface.
+> **Cloud-managed instances:** when a hosting platform manages the instance, the organization is provisioned by the platform and importing is disabled — the Import page and buttons are hidden, and every import API route answers `403` with `code: "cloud_managed"`. Export stays available, so you can always take your company's data with you. Self-hosted instances keep the full import surface.
 
 The **Export** page lets you pick exactly which files go into the bundle before downloading it. Above the file tree it shows a **"Not included in this export"** panel — the export fidelity report — listing data the bundle will not carry (for example attachments, approvals, cost history, or activity log entries), with blocking issues highlighted.
 
 The **Import** page previews the package, lets you resolve name collisions and adapter assignments, and applies the import. A **"Start imported agents and routines paused"** checkbox (on by default) makes imported agents and routines land paused instead of live. After the import finishes, an **"Activate imported agents and routines"** panel lists everything that was imported paused so you can resume the agents and activate the routines you select — nothing starts running until you say so.
 
-## Exporting a Company
+## Exporting the Organization
 
-Export a company into a portable folder:
+The `paperclipai company export` command was removed together with the rest of the `company` command group. Export through the app or the API:
 
 ```sh
-paperclipai company export <company-id> --out ./my-export
+curl -X POST "$PAPERCLIP_API_URL/api/organization/exports" \
+  -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"include":{"company":true,"agents":true,"projects":true}}'
 ```
 
-### Options
+### Request fields
 
-| Option | Description | Default |
+| Field | Description | Default |
 |--------|-------------|---------|
-| `--out <path>` | Output directory (required) | — |
-| `--include <values>` | Comma-separated set: `company`, `agents`, `projects`, `issues`, `tasks`, `skills` | `company,agents` |
-| `--skills <values>` | Export only specific skill slugs | all |
-| `--projects <values>` | Export only specific project shortnames or IDs | all |
-| `--issues <values>` | Export specific issue identifiers or IDs | none |
-| `--project-issues <values>` | Export issues belonging to specific projects | none |
-| `--expand-referenced-skills` | Vendor skill file contents instead of keeping upstream references | `false` |
+| `include` | Object with `company`, `agents`, `projects`, `issues`, `skills` booleans | company and agents |
+| `skills` | Export only specific skill slugs | all |
+| `projects` | Export only specific project shortnames or IDs | all |
+| `issues` | Export specific issue identifiers or IDs | none |
+| `projectIssues` | Export issues belonging to specific projects | none |
+| `selectedFiles` | Restrict the bundle to these package paths | all |
+| `expandReferencedSkills` | Vendor skill file contents instead of keeping upstream references | `false` |
 
-### Examples
-
-```sh
-# Export company with agents and projects
-paperclipai company export abc123 --out ./backup --include company,agents,projects
-
-# Export everything including tasks and skills
-paperclipai company export abc123 --out ./full-export --include company,agents,projects,tasks,skills
-
-# Export only specific skills
-paperclipai company export abc123 --out ./skills-only --include skills --skills review,deploy
-```
+Use `POST /api/organization/exports/preview` with the same body to see the file tree before exporting.
 
 ### What Gets Exported
 
-- Company name, description, and metadata
+- Organization name, description, and metadata (as `COMPANY.md`)
 - Agent names, roles, reporting structure, and instructions
 - Project definitions and workspace config
 - Task/issue descriptions (when included)
@@ -83,68 +75,48 @@ paperclipai company export abc123 --out ./skills-only --include skills --skills 
 
 Secret values, machine-local paths, and database IDs are **never** exported.
 
-## Importing a Company
+## Importing a Package
 
-Import from a local directory, GitHub URL, or GitHub shorthand:
+Every import targets the instance's single organization. The request `target` is always `{ "mode": "existing_company" }`; a `new_company` target is rejected with `409` and `code: "organization_exists"`. To start a separate company from a package, import it into a fresh instance.
+
+Sources can be an inline file bundle (what the app's Import page uploads) or a GitHub URL:
 
 ```sh
-# From a local folder
-paperclipai company import ./my-export
-
-# From a GitHub URL
-paperclipai company import https://github.com/org/repo
-
-# From a GitHub subfolder
-paperclipai company import https://github.com/org/repo/tree/main/companies/acme
-
-# From GitHub shorthand
-paperclipai company import org/repo
-paperclipai company import org/repo/companies/acme
+curl -X POST "$PAPERCLIP_API_URL/api/organization/imports/preview" \
+  -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": { "type": "github", "url": "https://github.com/org/repo/tree/main/companies/acme" },
+    "target": { "mode": "existing_company" },
+    "include": { "agents": true },
+    "collisionStrategy": "rename"
+  }'
 ```
 
-### Options
+### Request fields
 
-| Option | Description | Default |
+| Field | Description | Default |
 |--------|-------------|---------|
-| `--target <mode>` | `new` (create a new company) or `existing` (merge into existing) | inferred from context |
-| `--company-id <id>` | Target company ID for `--target existing` | current context |
-| `--new-company-name <name>` | Override company name for `--target new` | from package |
-| `--include <values>` | Comma-separated set: `company`, `agents`, `projects`, `issues`, `tasks`, `skills` | auto-detected |
-| `--agents <list>` | Comma-separated agent slugs to import, or `all` | `all` |
-| `--collision <mode>` | How to handle name conflicts: `rename`, `skip`, or `replace` | `rename` |
-| `--ref <value>` | Git ref for GitHub imports (branch, tag, or commit) | default branch |
-| `--dry-run` | Preview what would be imported without applying | `false` |
-| `--yes` | Skip the interactive confirmation prompt | `false` |
-| `--json` | Output result as JSON | `false` |
-
-### Target Modes
-
-- **`new`** — Creates a fresh company from the package. Good for duplicating a company template.
-- **`existing`** — Merges the package into an existing company. Use `--company-id` to specify the target.
-
-If `--target` is not specified, Paperclip infers it: if a `--company-id` is provided (or one exists in context), it defaults to `existing`; otherwise `new`.
+| `source` | `{ "type": "github", "url": ... }` or `{ "type": "inline", "files": {...} }` | — |
+| `target` | `{ "mode": "existing_company" }` | — |
+| `include` | Object with `company`, `agents`, `projects`, `issues`, `skills` booleans | auto-detected |
+| `agents` | Agent slugs to import, or `"all"` | `"all"` |
+| `collisionStrategy` | `rename`, `skip`, or `replace` | `rename` |
+| `nameOverrides` | Map of package names to names to use on import | none |
+| `selectedFiles` | Restrict the import to these package paths | all |
+| `pauseAutomations` | Apply only: land imported agents and routines paused | `false` |
 
 ### Collision Strategies
 
-When importing into an existing company, agent or project names may conflict with existing ones:
+Agent or project names in the package may conflict with existing ones in the organization:
 
 - **`rename`** (default) — Appends a suffix to avoid conflicts (e.g., `ceo` becomes `ceo-2`).
 - **`skip`** — Skips entities that already exist.
-- **`replace`** — Overwrites existing entities. Only available for non-safe imports (not available through the CEO API).
-
-### Interactive Selection
-
-When running interactively (no `--yes` or `--json` flags), the import command shows a selection picker before applying. You can choose exactly which agents, projects, skills, and tasks to import using a checkbox interface.
+- **`replace`** — Overwrites existing entities. Only available on the board-only `/api/organization/import` route (not on the safe `/imports/*` routes the CEO can use).
 
 ### Preview Before Applying
 
-Always preview first with `--dry-run`:
-
-```sh
-paperclipai company import org/repo --target existing --company-id abc123 --dry-run
-```
-
-The preview shows:
+Always preview first. The preview shows:
 - **Package contents** — How many agents, projects, tasks, and skills are in the source
 - **Import plan** — What will be created, renamed, skipped, or replaced
 - **Env inputs** — Environment variables that may need values after import
@@ -154,53 +126,19 @@ Imported agents always land with timer heartbeats disabled. Assignment/on-demand
 
 Imports can additionally request `pauseAutomations` (the default in the app's Import page) so imported agents and routines land fully paused. Use the post-import activation panel — or resume the agents and activate the routines individually — when you are ready for them to run.
 
-### Common Workflows
-
-**Clone a company template from GitHub:**
-
-```sh
-paperclipai company import org/company-templates/engineering-team \
-  --target new \
-  --new-company-name "My Engineering Team"
-```
-
-**Add agents from a package into your existing company:**
-
-```sh
-paperclipai company import ./shared-agents \
-  --target existing \
-  --company-id abc123 \
-  --include agents \
-  --collision rename
-```
-
-**Import a specific branch or tag:**
-
-```sh
-paperclipai company import org/repo --ref v2.0.0 --dry-run
-```
-
-**Non-interactive import (CI/scripts):**
-
-```sh
-paperclipai company import ./package \
-  --target new \
-  --yes \
-  --json
-```
-
 ## API Endpoints
-
-The CLI commands use these API endpoints under the hood:
 
 | Action | Endpoint |
 |--------|----------|
-| Export company | `POST /api/companies/{companyId}/export` |
-| Export fidelity report | `GET /api/companies/{companyId}/export/fidelity` |
-| Preview import (existing company) | `POST /api/companies/{companyId}/imports/preview` |
-| Apply import (existing company) | `POST /api/companies/{companyId}/imports/apply` |
-| Preview import (new company) | `POST /api/companies/import/preview` |
-| Apply import (new company) | `POST /api/companies/import` |
+| Export package | `POST /api/organization/exports` |
+| Export preview | `POST /api/organization/exports/preview` |
+| Legacy export bundle | `POST /api/organization/export` |
+| Export fidelity report | `GET /api/organization/export/fidelity` |
+| Preview import (safe, board or CEO) | `POST /api/organization/imports/preview` |
+| Apply import (safe, board or CEO) | `POST /api/organization/imports/apply` |
+| Preview import (board) | `POST /api/organization/import/preview` |
+| Apply import (board, async job) | `POST /api/organization/import` |
+| Poll an import job | `GET /api/organization/import/jobs/:jobId` |
 
 Import apply requests accept `pauseAutomations: true` to create imported agents and routines in a paused state.
 
@@ -208,11 +146,11 @@ CEO agents can also use the safe import routes (`/imports/preview` and `/imports
 
 ## GitHub Sources
 
-Paperclip supports several GitHub URL formats:
+The `github` source takes a full URL:
 
-- Full URL: `https://github.com/org/repo`
+- Repository URL: `https://github.com/org/repo`
 - Subfolder URL: `https://github.com/org/repo/tree/main/path/to/company`
-- Shorthand: `org/repo`
-- Shorthand with path: `org/repo/path/to/company`
 
-Use `--ref` to pin to a specific branch, tag, or commit hash when importing from GitHub.
+The `org/repo` shorthand was a feature of the removed `company import` CLI command; the API requires a URL.
+
+Pin a specific branch, tag, or commit by using a `tree/<ref>/...` URL when importing from GitHub.

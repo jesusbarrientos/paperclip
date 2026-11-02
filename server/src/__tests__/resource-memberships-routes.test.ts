@@ -31,14 +31,13 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-function boardActor(companyId: string, role: "admin" | "operator" | "viewer" = "viewer") {
+function boardActor(role: "admin" | "operator" | "viewer" = "viewer") {
   return {
     type: "board" as const,
     userId: "user-1",
     source: "session" as const,
     isInstanceAdmin: false,
-    companyIds: [companyId],
-    memberships: [{ companyId, membershipRole: role, status: "active" }],
+    memberships: [{ membershipRole: role, status: "active" }],
   };
 }
 
@@ -79,43 +78,26 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   async function seed() {
-    const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
     const projectId = randomUUID();
-    const otherProjectId = randomUUID();
     const archivedProjectId = randomUUID();
     const agentId = randomUUID();
-    const otherAgentId = randomUUID();
     const terminatedAgentId = randomUUID();
     const documentId = randomUUID();
-    const otherDocumentId = randomUUID();
-    await db.insert(companies).values([
-      {
-        id: companyId,
-        name: "Paperclip",
-        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-        requireBoardApprovalForNewAgents: false,
-      },
-      {
-        id: otherCompanyId,
-        name: "Other",
-        issuePrefix: `T${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-        requireBoardApprovalForNewAgents: false,
-      },
-    ]);
+    await db.insert(companies).values({
+      name: "Paperclip",
+      issuePrefix: "TST",
+      requireBoardApprovalForNewAgents: false,
+    });
     await db.insert(documents).values([
-      { id: documentId, companyId, title: "Plan", latestBody: "Plan body", createdByUserId: "user-1" },
-      { id: otherDocumentId, companyId: otherCompanyId, title: "Other", latestBody: "Other body" },
+      { id: documentId, title: "Plan", latestBody: "Plan body", createdByUserId: "user-1" },
     ]);
     await db.insert(projects).values([
-      { id: projectId, companyId, name: "Growth", status: "in_progress" },
-      { id: archivedProjectId, companyId, name: "Archived", status: "completed", archivedAt: new Date() },
-      { id: otherProjectId, companyId: otherCompanyId, name: "Other", status: "in_progress" },
+      { id: projectId, name: "Growth", status: "in_progress" },
+      { id: archivedProjectId, name: "Archived", status: "completed", archivedAt: new Date() },
     ]);
     await db.insert(agents).values([
       {
         id: agentId,
-        companyId,
         name: "CodexCoder",
         role: "engineer",
         status: "active",
@@ -125,19 +107,7 @@ describeEmbeddedPostgres("resource membership routes", () => {
         permissions: {},
       },
       {
-        id: otherAgentId,
-        companyId: otherCompanyId,
-        name: "OtherAgent",
-        role: "engineer",
-        status: "active",
-        adapterType: "codex_local",
-        adapterConfig: {},
-        runtimeConfig: {},
-        permissions: {},
-      },
-      {
         id: terminatedAgentId,
-        companyId,
         name: "Terminated",
         role: "engineer",
         status: "terminated",
@@ -149,11 +119,7 @@ describeEmbeddedPostgres("resource membership routes", () => {
     ]);
     return {
       archivedProjectId,
-      companyId,
       documentId,
-      otherAgentId,
-      otherDocumentId,
-      otherProjectId,
       projectId,
       agentId,
       terminatedAgentId,
@@ -161,10 +127,10 @@ describeEmbeddedPostgres("resource membership routes", () => {
   }
 
   it("defaults missing membership rows to joined", async () => {
-    const { companyId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const {} = await seed();
+    const app = createApp(db, boardActor());
 
-    const res = await request(app).get(`/api/companies/${companyId}/resource-memberships/me`);
+    const res = await request(app).get(`/api/resource-memberships/me`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -181,14 +147,14 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("allows viewer self-service mutations, logs changes, and keeps repeats idempotent", async () => {
-    const { companyId, projectId } = await seed();
-    const app = createApp(db, boardActor(companyId, "viewer"));
+    const { projectId } = await seed();
+    const app = createApp(db, boardActor("viewer"));
 
     const first = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${projectId}`)
+      .put(`/api/resource-memberships/me/projects/${projectId}`)
       .send({ state: "left" });
     const second = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${projectId}`)
+      .put(`/api/resource-memberships/me/projects/${projectId}`)
       .send({ state: "left" });
 
     expect(first.status).toBe(200);
@@ -197,12 +163,11 @@ describeEmbeddedPostgres("resource membership routes", () => {
 
     const rows = await db.select().from(projectMemberships);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ companyId, projectId, userId: "user-1", state: "left" });
+    expect(rows[0]).toMatchObject({ projectId, userId: "user-1", state: "left" });
 
     const activity = await db.select().from(activityLog);
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({
-      companyId,
       actorType: "user",
       actorId: "user-1",
       action: "resource_membership.left",
@@ -212,16 +177,16 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("stars projects idempotently and exposes starred project contract data", async () => {
-    const { companyId, projectId } = await seed();
-    const app = createApp(db, boardActor(companyId, "viewer"));
+    const { projectId } = await seed();
+    const app = createApp(db, boardActor("viewer"));
 
     const first = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${projectId}`)
+      .put(`/api/resource-memberships/me/projects/${projectId}`)
       .send({ starred: true });
     const second = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${projectId}`)
+      .put(`/api/resource-memberships/me/projects/${projectId}`)
       .send({ starred: true });
-    const list = await request(app).get(`/api/companies/${companyId}/resource-memberships/me`);
+    const list = await request(app).get(`/api/resource-memberships/me`);
 
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ resourceType: "project", resourceId: projectId, state: "joined" });
@@ -233,7 +198,7 @@ describeEmbeddedPostgres("resource membership routes", () => {
 
     const rows = await db.select().from(projectMemberships);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ companyId, projectId, userId: "user-1", state: "joined" });
+    expect(rows[0]).toMatchObject({ projectId, userId: "user-1", state: "joined" });
     expect(rows[0]?.starredAt).toBeInstanceOf(Date);
 
     const activity = await db.select().from(activityLog);
@@ -253,15 +218,15 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("clears starred_at when leaving a starred resource", async () => {
-    const { companyId, projectId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { projectId } = await seed();
+    const app = createApp(db, boardActor());
 
     await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${projectId}`)
+      .put(`/api/resource-memberships/me/projects/${projectId}`)
       .send({ starred: true })
       .expect(200);
     const leave = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${projectId}`)
+      .put(`/api/resource-memberships/me/projects/${projectId}`)
       .send({ state: "left" });
 
     expect(leave.status).toBe(200);
@@ -278,15 +243,15 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("starring a left resource rejoins it", async () => {
-    const { companyId, agentId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { agentId } = await seed();
+    const app = createApp(db, boardActor());
 
     await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${agentId}`)
+      .put(`/api/resource-memberships/me/agents/${agentId}`)
       .send({ state: "left" })
       .expect(200);
     const star = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${agentId}`)
+      .put(`/api/resource-memberships/me/agents/${agentId}`)
       .send({ starred: true });
 
     expect(star.status).toBe(200);
@@ -305,18 +270,18 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("unstars agents idempotently without requiring a state change", async () => {
-    const { companyId, agentId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { agentId } = await seed();
+    const app = createApp(db, boardActor());
 
     await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${agentId}`)
+      .put(`/api/resource-memberships/me/agents/${agentId}`)
       .send({ starred: true })
       .expect(200);
     const first = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${agentId}`)
+      .put(`/api/resource-memberships/me/agents/${agentId}`)
       .send({ starred: false });
     const second = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${agentId}`)
+      .put(`/api/resource-memberships/me/agents/${agentId}`)
       .send({ starred: false });
 
     expect(first.status).toBe(200);
@@ -335,25 +300,23 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("omits archived projects and terminated agents from starred sidebar data", async () => {
-    const { archivedProjectId, companyId, terminatedAgentId } = await seed();
+    const { archivedProjectId, terminatedAgentId } = await seed();
     const starredAt = new Date();
     await db.insert(projectMemberships).values({
-      companyId,
       projectId: archivedProjectId,
       userId: "user-1",
       state: "joined",
       starredAt,
     });
     await db.insert(agentMemberships).values({
-      companyId,
       agentId: terminatedAgentId,
       userId: "user-1",
       state: "joined",
       starredAt,
     });
-    const app = createApp(db, boardActor(companyId));
+    const app = createApp(db, boardActor());
 
-    const res = await request(app).get(`/api/companies/${companyId}/resource-memberships/me`);
+    const res = await request(app).get(`/api/resource-memberships/me`);
 
     expect(res.status).toBe(200);
     expect(res.body.projectMemberships[archivedProjectId]).toBe("joined");
@@ -365,14 +328,14 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("rejects starring archived projects and terminated agents", async () => {
-    const { archivedProjectId, companyId, terminatedAgentId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { archivedProjectId, terminatedAgentId } = await seed();
+    const app = createApp(db, boardActor());
 
     const projectRes = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${archivedProjectId}`)
+      .put(`/api/resource-memberships/me/projects/${archivedProjectId}`)
       .send({ starred: true });
     const agentRes = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${terminatedAgentId}`)
+      .put(`/api/resource-memberships/me/agents/${terminatedAgentId}`)
       .send({ starred: true });
 
     expect(projectRes.status).toBe(404);
@@ -380,64 +343,45 @@ describeEmbeddedPostgres("resource membership routes", () => {
   });
 
   it("rejects agent API key actors", async () => {
-    const { companyId, agentId } = await seed();
+    const { agentId } = await seed();
     const app = createApp(db, {
       type: "agent",
       agentId,
-      companyId,
       source: "agent_key",
     });
 
-    const res = await request(app).get(`/api/companies/${companyId}/resource-memberships/me`);
+    const res = await request(app).get(`/api/resource-memberships/me`);
 
     expect(res.status).toBe(403);
   });
 
-  it("rejects cross-company target resources", async () => {
-    const { companyId, otherAgentId, otherProjectId } = await seed();
-    const app = createApp(db, boardActor(companyId));
-
-    const projectRes = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/projects/${otherProjectId}`)
-      .send({ state: "left" });
-    const agentRes = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/agents/${otherAgentId}`)
-      .send({ state: "left" });
-
-    expect(projectRes.status).toBe(404);
-    expect(agentRes.status).toBe(404);
-    await expect(db.select().from(projectMemberships)).resolves.toHaveLength(0);
-    await expect(db.select().from(agentMemberships)).resolves.toHaveLength(0);
-  });
-
   it("denies direct service calls that try to mutate another user's membership", async () => {
-    const { companyId, projectId } = await seed();
+    const { projectId } = await seed();
     const svc = resourceMembershipService(db);
 
     await expect(
       svc.updateProject({
-        companyId,
         projectId,
         userId: "other-user",
         state: "left",
-        actor: boardActor(companyId),
+        actor: boardActor(),
       }),
     ).rejects.toMatchObject({ status: 403 });
   });
 
   it("stars and unstars documents idempotently and cascades on document deletion", async () => {
-    const { companyId, documentId } = await seed();
-    const app = createApp(db, boardActor(companyId));
+    const { documentId } = await seed();
+    const app = createApp(db, boardActor());
 
     const [first, second] = await Promise.all([
       request(app)
-        .put(`/api/companies/${companyId}/resource-memberships/me/documents/${documentId}`)
+        .put(`/api/resource-memberships/me/documents/${documentId}`)
         .send({ starred: true }),
       request(app)
-        .put(`/api/companies/${companyId}/resource-memberships/me/documents/${documentId}`)
+        .put(`/api/resource-memberships/me/documents/${documentId}`)
         .send({ starred: true }),
     ]);
-    const list = await request(app).get(`/api/companies/${companyId}/resource-memberships/me`);
+    const list = await request(app).get(`/api/resource-memberships/me`);
 
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ resourceType: "document", resourceId: documentId, starredAt: expect.any(String) });
@@ -449,17 +393,17 @@ describeEmbeddedPostgres("resource membership routes", () => {
 
     const unstars = await Promise.all([
       request(app)
-        .put(`/api/companies/${companyId}/resource-memberships/me/documents/${documentId}`)
+        .put(`/api/resource-memberships/me/documents/${documentId}`)
         .send({ starred: false }),
       request(app)
-        .put(`/api/companies/${companyId}/resource-memberships/me/documents/${documentId}`)
+        .put(`/api/resource-memberships/me/documents/${documentId}`)
         .send({ starred: false }),
     ]);
     expect(unstars.map((response) => response.status)).toEqual([200, 200]);
     await expect(db.select().from(documentMemberships)).resolves.toHaveLength(0);
 
     await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/documents/${documentId}`)
+      .put(`/api/resource-memberships/me/documents/${documentId}`)
       .send({ starred: true })
       .expect(200);
     await db.delete(documents).where(eq(documents.id, documentId));
@@ -472,18 +416,5 @@ describeEmbeddedPostgres("resource membership routes", () => {
       "resource_membership.starred",
     ]);
     expect(activity[0]).toMatchObject({ entityType: "document", entityId: documentId });
-  });
-
-  it("returns identical 404s for cross-company documents", async () => {
-    const { companyId, otherDocumentId } = await seed();
-    const app = createApp(db, boardActor(companyId));
-
-    const response = await request(app)
-      .put(`/api/companies/${companyId}/resource-memberships/me/documents/${otherDocumentId}`)
-      .send({ starred: true });
-
-    expect(response.status).toBe(404);
-    expect(response.body.error).toBe("Document not found");
-    await expect(db.select().from(documentMemberships)).resolves.toHaveLength(0);
   });
 });

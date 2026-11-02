@@ -7,12 +7,9 @@ import {
   type AgentEligibilityAgent,
 } from "./agent-eligibility.js";
 
-const companyId = "company-1";
-
 function agent(overrides: Partial<AgentEligibilityAgent> = {}): AgentEligibilityAgent {
   return {
     id: "agent-1",
-    companyId,
     name: "Coder",
     status: "active",
     reportsTo: "manager-1",

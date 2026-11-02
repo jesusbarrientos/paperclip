@@ -13,8 +13,8 @@ const mockWorkTimelineApi = vi.hoisted(() => ({
 }));
 const mockLocation = vi.hoisted(() => ({ search: "" }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("@/context/BreadcrumbContext", () => ({
@@ -173,7 +173,6 @@ describe("Timeline", () => {
 
     expect(container.textContent).toContain("Project Timeline");
     expect(mockWorkTimelineApi.get).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ projectId: "11111111-1111-4111-8111-111111111111" }),
       expect.anything(),
     );
@@ -252,16 +251,16 @@ describe("Timeline", () => {
       });
 
     const controller = new AbortController();
-    const result = await loadTimelineWindow("company-1", {
+    const result = await loadTimelineWindow({
       from: populatedTimeline.window.from,
       to: populatedTimeline.window.to,
     }, controller.signal);
 
-    expect(mockWorkTimelineApi.get).toHaveBeenNthCalledWith(1, "company-1", expect.objectContaining({
+    expect(mockWorkTimelineApi.get).toHaveBeenNthCalledWith(1, expect.objectContaining({
       limit: 500,
       offset: 0,
     }), { signal: controller.signal });
-    expect(mockWorkTimelineApi.get).toHaveBeenNthCalledWith(2, "company-1", expect.objectContaining({
+    expect(mockWorkTimelineApi.get).toHaveBeenNthCalledWith(2, expect.objectContaining({
       limit: 500,
       offset: 500,
     }), { signal: controller.signal });
@@ -371,7 +370,6 @@ describe("Timeline", () => {
     await flushReact();
 
     expect(mockWorkTimelineApi.get).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         from: expect.any(String),
         to: expect.any(String),

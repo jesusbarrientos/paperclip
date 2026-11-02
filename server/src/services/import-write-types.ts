@@ -52,7 +52,6 @@ export interface ImportIssueRow {
 /** A resolved comment row with a pre-generated id, ready for batch insert. */
 export interface ImportIssueCommentRow {
   id: string;
-  companyId: string;
   issueId: string;
   body: string;
   authorType: IssueCommentAuthorType;
@@ -65,7 +64,6 @@ export interface ImportIssueCommentRow {
 
 /** A resolved attachment (asset + link) row, ready for batch insert. */
 export interface ImportIssueAttachmentRow {
-  companyId: string;
   issueId: string;
   issueCommentId: string | null;
   provider: string;
@@ -80,7 +78,6 @@ export interface ImportIssueAttachmentRow {
 
 /** A resolved issue-document row, ready for batch insert. */
 export interface ImportIssueDocumentRow {
-  companyId: string;
   issueId: string;
   key: string;
   title: string | null;
@@ -94,7 +91,6 @@ export interface ImportIssueDocumentRow {
 
 /** A resolved work-product row, ready for batch insert. */
 export interface ImportIssueWorkProductRow {
-  companyId: string;
   issueId: string;
   projectId: string | null;
   type: string;

@@ -3,7 +3,6 @@ import { ShieldAlert } from "lucide-react";
 import { Link } from "@/lib/router";
 import { accessApi } from "@/api/access";
 import { queryKeys } from "@/lib/queryKeys";
-import { useCompany } from "@/context/CompanyContext";
 import { ToolsAccess } from "./ToolsAccess";
 
 /**
@@ -14,7 +13,6 @@ import { ToolsAccess } from "./ToolsAccess";
  * owners/admins pass. Non-admins get a friendly explanation rather than a 403.
  */
 export function AdvancedToolsRoute() {
-  const { selectedCompanyId } = useCompany();
   const boardAccess = useQuery({
     queryKey: queryKeys.access.currentBoardAccess,
     queryFn: () => accessApi.getCurrentBoardAccess(),
@@ -26,7 +24,7 @@ export function AdvancedToolsRoute() {
   }
 
   const data = boardAccess.data;
-  const membership = data?.memberships?.find((m) => m.companyId === selectedCompanyId);
+  const membership = data?.memberships?.find((m) => m.status === "active");
   const isAdmin =
     Boolean(data?.isInstanceAdmin) ||
     membership?.membershipRole === "owner" ||

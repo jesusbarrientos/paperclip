@@ -55,7 +55,7 @@ import {
   isGoogleWorkspaceConnectorProfileId,
 } from "@paperclipai/shared";
 import { useNavigate, useParams, useSearchParams } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useToast } from "@/context/ToastContext";
 import { useChatConnectorsEnabled } from "@/hooks/useChatConnectorsEnabled";
@@ -112,7 +112,6 @@ type Step = "gallery" | "key" | "success";
 export type OAuthConnectPhase = "entry" | "starting" | "redirecting" | "error";
 
 type EnrollmentAccessState = {
-  companyId: string;
   grantKind: ConnectionGrantKind;
   installChoice: "specific" | "all";
   agentIds: string[];
@@ -125,7 +124,6 @@ function enrollmentAccessStorageKey(appKey: string): string {
 function validEnrollmentAccessState(value: unknown): value is EnrollmentAccessState {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  if (typeof candidate.companyId !== "string" || !candidate.companyId.trim()) return false;
   if (!(candidate.grantKind === "user" || candidate.grantKind === "agent" || candidate.grantKind === "organization")) {
     return false;
   }
@@ -142,12 +140,11 @@ function validEnrollmentAccessState(value: unknown): value is EnrollmentAccessSt
 }
 
 function saveEnrollmentAccessState(
-  companyId: string,
   appKey: string,
-  state: Omit<EnrollmentAccessState, "companyId">,
+  state: EnrollmentAccessState,
 ): void {
   try {
-    window.sessionStorage.setItem(enrollmentAccessStorageKey(appKey), JSON.stringify({ ...state, companyId }));
+    window.sessionStorage.setItem(enrollmentAccessStorageKey(appKey), JSON.stringify(state));
   } catch {
     // Browser storage can be unavailable under restrictive privacy settings.
     // The callback will safely use the provider's defaults in that case.
@@ -541,16 +538,15 @@ export interface ConnectionSetupFlowProps {
 export function ConnectionSetupFlow(props: ConnectionSetupFlowProps = {}) {
   const [searchParams] = useSearchParams();
   const params = useParams<{ appKey?: string }>();
-  const { selectedCompanyId } = useCompany();
   const memory = useMemoryConnectorsEnabled();
   const interactionId = props.interactionId || searchParams.get("intent") || undefined;
   const source = props.serviceSlug || searchParams.get("source") || params.appKey || searchParams.get("appKey");
   const draftId = useMemo(() => {
     if (interactionId && isRemoteMcpConnectorId(source)) {
-      try { return sessionStorage.getItem(`paperclip:mcp-intent-draft:${selectedCompanyId}:${interactionId}`); } catch { /* Storage may be disabled. */ }
+      try { return sessionStorage.getItem(`paperclip:mcp-intent-draft:${interactionId}`); } catch { /* Storage may be disabled. */ }
     }
     return null;
-  }, [interactionId, selectedCompanyId, source]);
+  }, [interactionId, source]);
   const existingId = props.configuredConnection?.id || searchParams.get("resume") || searchParams.get("reconnect") || draftId;
   const lookup = Boolean(existingId && (!source || isRemoteMcpConnectorId(source) || isMemoryConnectorId(source)));
   const existing = useQuery({ queryKey: ["tools", "connection", existingId], queryFn: () => toolsApi.getConnection(existingId!), enabled: lookup });
@@ -599,7 +595,7 @@ function StandardConnectionSetupFlow({
     else routeNavigate(to);
   }, [host, routeNavigate]);
   const routeParams = useParams<{ appKey?: string }>();
-  const { selectedCompany, selectedCompanyId } = useCompany();
+  const { organization } = useOrganization();
   const { enabled: chatConnectorsEnabled } = useChatConnectorsEnabled();
   const { enabled: memoryConnectorsEnabled } = useMemoryConnectorsEnabled();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -973,13 +969,12 @@ function StandardConnectionSetupFlow({
   }, [byoOnly, host, setBreadcrumbs, vercelConnectMode]);
 
   const galleryQuery = useQuery({
-    queryKey: queryKeys.apps.gallery(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listGallery(selectedCompanyId!),
+    queryKey: queryKeys.apps.gallery(),
+    queryFn: () => toolsApi.listGallery(),
     select: useCallback((data: Awaited<ReturnType<typeof toolsApi.listGallery>>) => connectionIntentId ? {
       ...data,
       apps: data.apps.map(app => ({ ...app, methods: app.methods.filter(method => aiConnection ? method.ai?.provider === aiConnection.provider && (aiConnection.mode === "responsible_user" || method.ai.method === aiConnection.method) : method.transport !== "runtime_auth") })).filter(app => app.methods.length > 0),
     } : data, [connectionIntentId, aiConnection?.provider, aiConnection?.method, aiConnection?.mode]),
-    enabled: !!selectedCompanyId,
   });
   // Use the same visible catalog for cards and every branded URL shortcut.
   // Generic custom URLs remain usable without selecting a hidden provider.
@@ -1026,11 +1021,7 @@ function StandardConnectionSetupFlow({
     queryKey: ["cloud-connector", "enrollment"],
     queryFn: () => toolsApi.getCloudConnectorEnrollment(),
     refetchInterval: enrollmentAuthorizationUrl ? 2_000 : false,
-    enabled: Boolean(
-      selectedCompanyId
-      && requestedDefinitionUsesManagedConnector
-      && !entryAdvertisesManagedConnector
-    ),
+    enabled: requestedDefinitionUsesManagedConnector && !entryAdvertisesManagedConnector,
   });
   const [connectorEnrollmentError, setConnectorEnrollmentError] = useState<string | null>(null);
   const closeEnrollmentPopup = useCallback(() => {
@@ -1039,13 +1030,13 @@ function StandardConnectionSetupFlow({
     setEnrollmentAuthorizationUrl(null);
   }, []);
   const preserveEnrollmentAccess = useCallback(() => {
-    if (!selectedCompanyId || !requestedAppKey) return;
-    saveEnrollmentAccessState(selectedCompanyId, requestedAppKey, {
+    if (!requestedAppKey) return;
+    saveEnrollmentAccessState(requestedAppKey, {
       grantKind,
       installChoice,
       agentIds: installChoice === "specific" ? [...installAgentIds] : [],
     });
-  }, [grantKind, installAgentIds, installChoice, requestedAppKey, selectedCompanyId]);
+  }, [grantKind, installAgentIds, installChoice, requestedAppKey]);
   const openConnectorEnrollment = useCallback((verificationUrl: string) => {
     const target = resolveAuthorizationTarget(verificationUrl);
     if (!target.ok) {
@@ -1076,8 +1067,7 @@ function StandardConnectionSetupFlow({
   }, [enrollmentAuthorizationUrl, connectorEnrollmentQuery.data?.status, galleryQuery.refetch, closeEnrollmentPopup]);
   const startConnectorEnrollment = useMutation({
     mutationFn: () => toolsApi.startCloudConnectorEnrollment(
-      selectedCompanyId!,
-      selectedCompany?.name,
+      organization?.name,
       requestedAppKey
         ? appConnectHref(requestedAppKey, "key", credentialSource, {
             resumeConnectionId,
@@ -1102,15 +1092,15 @@ function StandardConnectionSetupFlow({
     },
   });
   const applicationsQuery = useQuery({
-    queryKey: queryKeys.tools.applications(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listApplications(selectedCompanyId!),
-    enabled: !!selectedCompanyId && (!!directOAuthSource || !!resumeConnectionId || !!reconnectConnectionId),
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
+    enabled: (!!directOAuthSource || !!resumeConnectionId || !!reconnectConnectionId),
     refetchOnMount: "always",
   });
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(selectedCompanyId ?? "__none__"),
-    queryFn: () => toolsApi.listConnections(selectedCompanyId!),
-    enabled: !!selectedCompanyId && (!!directOAuthSource || !!resumeConnectionId || !!reconnectConnectionId),
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
+    enabled: (!!directOAuthSource || !!resumeConnectionId || !!reconnectConnectionId),
     refetchOnMount: "always",
   });
   const existingOAuthConnection = useMemo(
@@ -1284,7 +1274,7 @@ function StandardConnectionSetupFlow({
     const installState = !dedicatedIdentity && installChoice === "all"
       ? { onAll: true, agentIds: new Set<string>() }
       : { onAll: false, agentIds: installAgentIds };
-    const desired = installPayload(selectedCompanyId!, installState);
+    const desired = installPayload(installState, organization!.id);
     await toolsApi.putConnectionInstalls(connectionId, desired);
   };
 
@@ -1307,7 +1297,7 @@ function StandardConnectionSetupFlow({
           trimmedGalleryName || connectEntry.name,
           requestedGrantKind,
         );
-        result = await toolsApi.connectApp(selectedCompanyId!, {
+        result = await toolsApi.connectApp({
           galleryKey: connectEntry.slug,
           ...(instructionValue ? { agentInstructions: instructionValue } : {}),
           ...(connectionMethodKey ? { connectionMethodKey } : {}),
@@ -1353,7 +1343,7 @@ function StandardConnectionSetupFlow({
           genericPayload.name ?? defaultGenericMcpName(linkUrl) ?? "Custom app",
           effectiveGrantKind,
         );
-        result = await toolsApi.connectApp(selectedCompanyId!, {
+        result = await toolsApi.connectApp({
           ...genericPayload,
           ...(reconnectConnectionId ? { reconnectConnectionId } : {}),
           // Zapier issues a credential-bearing URL, so its branded setup keeps
@@ -1573,14 +1563,11 @@ function StandardConnectionSetupFlow({
       setGoogleSheetsLinks("");
       setGoogleSheetsError(null);
       setConnectResult(null);
-      const matchingEnrollmentAccess = restoredEnrollmentAccess?.companyId === selectedCompanyId
-        ? restoredEnrollmentAccess
-        : null;
-      setGrantKind(reconnectGrantKind ?? matchingEnrollmentAccess?.grantKind ?? defaultGrantKindFor(initialMethod, Boolean(requestedAgentId)));
+      setGrantKind(reconnectGrantKind ?? restoredEnrollmentAccess?.grantKind ?? defaultGrantKindFor(initialMethod, Boolean(requestedAgentId)));
       setInstallAgentIds(new Set(
-        matchingEnrollmentAccess?.agentIds ?? (requestedAgentId ? [requestedAgentId] : []),
+        restoredEnrollmentAccess?.agentIds ?? (requestedAgentId ? [requestedAgentId] : []),
       ));
-      setInstallChoice(matchingEnrollmentAccess?.installChoice ?? (requestedAgentId ? "specific" : "all"));
+      setInstallChoice(restoredEnrollmentAccess?.installChoice ?? (requestedAgentId ? "specific" : "all"));
       // Route/service selection initializes the wizard once. Later renders must
       // preserve the user's current step in both hosts instead of snapping back
       // to Access after they continue.
@@ -1738,7 +1725,7 @@ function StandardConnectionSetupFlow({
       const selection: AppAccessSelection = installChoice === "all"
         ? "all_agents"
         : { agentIds: Array.from(installAgentIds) };
-      const finished = await toolsApi.finishApp(selectedCompanyId!, connected.connectionId, {
+      const finished = await toolsApi.finishApp(connected.connectionId, {
         enabledCatalogEntryIds: enabledIds,
         askFirstCatalogEntryIds: askFirstIds,
         ...(instructionValue ? { agentInstructions: instructionValue } : {}),
@@ -1750,7 +1737,7 @@ function StandardConnectionSetupFlow({
     },
     onSuccess: async (_finished, input) => {
       await queryClient.invalidateQueries({ queryKey: ["tools"] });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.apps.attention() });
       setAppStep("success");
       onComplete?.({ connectionId: input.result.connectionId });
     },
@@ -1767,8 +1754,8 @@ function StandardConnectionSetupFlow({
     },
   });
 
-  if (!selectedCompanyId) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an organization to connect apps.</div>;
+  if (!organization) {
+    return <div className="p-6 text-sm text-muted-foreground">Create an organization to connect apps.</div>;
   }
 
   if (
@@ -1969,7 +1956,6 @@ function StandardConnectionSetupFlow({
       key="connection-defaults"
       extra={extra}
       forceOpen={forceOpen}
-      companyId={selectedCompanyId}
       sentence={connectionDefaultSummarySentence({
         grantKind: effectiveGrantKind,
         authKind: accessStepAuthKind,
@@ -2239,8 +2225,8 @@ function StandardConnectionSetupFlow({
     : undefined;
   const aiMethod = reconnectAiMethod ?? entry?.methods.find(method => method.key === connectionMethodKey)?.ai
     ?? (!connectionMethodKey && entry?.methods.every(method => method.ai) ? entry.methods[0]?.ai : undefined);
-  const credentialStep = entry ? renderCredentialStep?.({ app: entry, name: galleryName || entry.name, grantKind: effectiveGrantKind, agentIds: [...installAgentIds], allAgents: installChoice === "all", onBack: () => backToGallery() }) ?? (aiMethod && selectedCompanyId ? <><AiConnectionCredentialStep
-    companyId={selectedCompanyId} provider={aiMethod.provider} fixedMethod={Boolean(aiConnection && aiConnection.mode !== "responsible_user")} initialMethod={reconnectConnection?.connectionPurpose === "ai" ? (reconnectConnection.config?.ai as { method: "subscription" | "api_key" }).method : aiMethod.method}
+  const credentialStep = entry ? renderCredentialStep?.({ app: entry, name: galleryName || entry.name, grantKind: effectiveGrantKind, agentIds: [...installAgentIds], allAgents: installChoice === "all", onBack: () => backToGallery() }) ?? (aiMethod ? <><AiConnectionCredentialStep
+    provider={aiMethod.provider} fixedMethod={Boolean(aiConnection && aiConnection.mode !== "responsible_user")} initialMethod={reconnectConnection?.connectionPurpose === "ai" ? (reconnectConnection.config?.ai as { method: "subscription" | "api_key" }).method : aiMethod.method}
     connectionId={reconnectConnection?.connectionPurpose === "ai" ? reconnectConnection.id : undefined}
     name={reconnectConnection?.connectionPurpose === "ai" ? reconnectConnection.name : galleryName || `My ${entry.name} ${aiMethod.method === "subscription" ? "subscription" : "API"}`}
     ownership={(reconnectConnection?.connectionPurpose === "ai" ? reconnectConnection.credentialPolicy === "shared" : effectiveGrantKind === "organization") ? "shared" : "personal"}
@@ -3777,7 +3763,6 @@ function KeyStep({
           />
         ))}
 
-
         {!usingVercel && method?.auth === "oauth" && customerOAuthClientRequired ? (
           <div id={customOAuthFieldsId} role="region" aria-label="Your OAuth app">
             <OAuthClientFields
@@ -4027,10 +4012,10 @@ function MethodConfigField({
  * so the reader understands the identity and the reach the secret is about to
  * get. Hick's Law: two choices, not a matrix. Both use full-row radio targets.
  */
-export function AccessStep({ companyId, ...props }: Omit<Parameters<typeof AccessStepContent>[0], "agents" | "agentsLoading"> & { companyId: string }) {
+export function AccessStep(props: Omit<Parameters<typeof AccessStepContent>[0], "agents" | "agentsLoading">) {
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   return <AccessStepContent {...props} agents={(agentsQuery.data ?? []).filter((agent) => agent.status !== "terminated")} agentsLoading={agentsQuery.isLoading} />;
 }
@@ -4369,7 +4354,6 @@ export function connectionDefaultSummarySentence(input: {
  * also be changed on the Permissions tab after connecting.
  */
 export function ConnectionAccessDefaults({
-  companyId,
   agents,
   sentence,
   notice,
@@ -4378,7 +4362,6 @@ export function ConnectionAccessDefaults({
   disabled = false,
   ...accessProps
 }: Omit<Parameters<typeof AccessStepContent>[0], "agents" | "agentsLoading" | "submitLabel" | "onBack" | "onContinue" | "pending" | "continuesToProvider" | "hideFooter" | "bare"> & {
-  companyId: string;
   /**
    * Supplied by callers that already hold the agent list — design specimens and
    * review stories, which must not reach the network. Omitted in the product,
@@ -4421,7 +4404,7 @@ export function ConnectionAccessDefaults({
           {extra}
           {agents
             ? <AccessStepContent {...accessProps} agents={agents} bare hideFooter submitLabel="" onBack={() => {}} onContinue={() => {}} />
-            : <AccessStep {...accessProps} companyId={companyId} bare hideFooter submitLabel="" onBack={() => {}} onContinue={() => {}} />}
+            : <AccessStep {...accessProps} bare hideFooter submitLabel="" onBack={() => {}} onContinue={() => {}} />}
         </div>
       </CollapsibleContent>
     </Collapsible>

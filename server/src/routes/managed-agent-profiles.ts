@@ -7,7 +7,7 @@ import {
   managedAgentProfileService,
   type ManagedAgentProfileInput,
 } from "../services/managed-agent-profiles.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertOrgAccess, getActorInfo } from "./authz.js";
 
 function profileInput(value: unknown): ManagedAgentProfileInput {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -38,21 +38,18 @@ export function managedAgentProfileRoutes(db: Db) {
   const router = Router();
   const profiles = managedAgentProfileService(db);
 
-  router.get("/companies/:companyId/managed-agent-profiles", async (req, res) => {
+  router.get("/managed-agent-profiles", async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    res.json(await profiles.list(companyId));
+    assertOrgAccess(req);
+    res.json(await profiles.list());
   });
 
-  router.post("/companies/:companyId/managed-agent-profiles", async (req, res) => {
+  router.post("/managed-agent-profiles", async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    const profile = await profiles.upsert(companyId, profileInput(req.body));
+    assertOrgAccess(req);
+    const profile = await profiles.upsert(profileInput(req.body));
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,

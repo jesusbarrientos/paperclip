@@ -151,7 +151,6 @@ describe("Paperclip Cloud self-host enrollment", () => {
     });
     const values = {
       origin: "https://private.example.test",
-      companyId: "company-test",
       initiatedBy: "user:admin-test",
       env: {
         PAPERCLIP_CLOUD_CONNECTOR_BASE_URL: "https://my.example.test",
@@ -171,17 +170,12 @@ describe("Paperclip Cloud self-host enrollment", () => {
     expect(secondStatus).toEqual(firstStatus);
     expect(loadPaperclipCloudConnectorIdentity()?.pending).toMatchObject({
       enrollmentId: "enroll-shared",
-      companyId: "company-test",
       initiatedBy: "user:admin-test",
     });
     await expect(startPaperclipCloudConnectorEnrollment({
       ...values,
       initiatedBy: "user:another-admin",
     })).rejects.toThrow(/another administrator/);
-    await expect(startPaperclipCloudConnectorEnrollment({
-      ...values,
-      companyId: "another-company",
-    })).rejects.toThrow(/another company/);
     expect(request).toHaveBeenCalledOnce();
   });
 

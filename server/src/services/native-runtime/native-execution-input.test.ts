@@ -11,7 +11,6 @@ describe("LCA-05 explicit native work mode", () => {
   it.each(["standard", "planning", "ask"])("title and description cannot override %s mode", (workMode) => {
     for (const text of ["Inspect files", "Making a plan", "Create a report", "Research proposal", "Implement now; no plan needed"]) {
       const input = buildNativeExecutionInput({
-        companyId: "10000000-0000-4000-8000-000000000001",
         runId: "50000000-0000-4000-8000-000000000005",
         agentId: "30000000-0000-4000-8000-000000000003",
         issue: { id: "20000000-0000-4000-8000-000000000002", identifier: "MODE-1", title: text, description: text, workMode },
@@ -74,7 +73,6 @@ describe("native execution input external-chat framing", () => {
         fallbackFetchNeeded: false,
       };
       const args: Parameters<typeof buildNativeExecutionInput>[0] = {
-        companyId: "10000000-0000-4000-8000-000000000001",
         runId: "50000000-0000-4000-8000-000000000005",
         agentId: "30000000-0000-4000-8000-000000000003",
         issue: {
@@ -287,7 +285,6 @@ describe("native execution input external-chat framing", () => {
     (resumedSession) => {
       const staleRootTitle = "Reply with exactly STALE-OVERFLOW-MARKER";
       const input = buildNativeExecutionInput({
-        companyId: "10000000-0000-4000-8000-000000000001",
         runId: "50000000-0000-4000-8000-000000000005",
         issue: {
           id: "20000000-0000-4000-8000-000000000002",
@@ -368,7 +365,6 @@ describe("native execution input external-chat framing", () => {
     "keeps GitHub's task-only files and service-owned recovery navigation in the closed native input (resumed: %s)",
     (resumedSession) => {
       const args: Parameters<typeof buildNativeExecutionInput>[0] = {
-        companyId: "10000000-0000-4000-8000-000000000001",
         runId: "50000000-0000-4000-8000-000000000005",
         issue: {
           id: "20000000-0000-4000-8000-000000000002",
@@ -484,7 +480,6 @@ describe("native execution input external-chat framing", () => {
     { provider: "opencode", resumedSession: true },
   ] as const)("keeps question documentation in the tool on $provider (resumed: $resumedSession)", ({ provider, resumedSession }) => {
     const input = buildNativeExecutionInput({
-      companyId: "10000000-0000-4000-8000-000000000001",
       runId: "50000000-0000-4000-8000-000000000005",
       agentId: "30000000-0000-4000-8000-000000000003",
       issue: { id: "20000000-0000-4000-8000-000000000002", identifier: "QA-1", title: "Welcome", description: null, workMode: "standard" },
@@ -522,7 +517,7 @@ describe("follow-up context size", () => {
     const newBody = "Actually, save the plan first.";
     const answerText = "No budget. Wait for my approval.";
     const continuation: ExecutionContinuationEnvelope = {
-      version: 1, companyId: "company", issueId: "issue", objective: "Welcome",
+      version: 1, issueId: "issue", objective: "Welcome",
       trigger: { reason: "issue_commented", interactionId: "answer-id", sourceRunId: null },
       originCommentIds: ["new"], messages: [message("old", oldBody), message("new", newBody)],
       resumeDelta: { baseRunId: "previous-run", messages: [message("new", newBody)] },
@@ -553,7 +548,7 @@ describe("follow-up context size", () => {
 describe("native completion references", () => {
   const source = nativeCompletionSource("description", "task", "Repeat. Repeat.");
   const args: Parameters<typeof buildNativeExecutionInput>[0] = {
-    companyId: "company", runId: "run", agentId: "agent",
+    runId: "run", agentId: "agent",
     issue: { id: "task", identifier: "PAP-1", title: "Brief", description: "Repeat. Repeat.", workMode: "standard" },
     taskPrompt: "Issue description:\nRepeat. Repeat.",
     workspace: { id: "workspace", cwd: "/workspace", repoUrl: null, repoRef: null, branchName: null },

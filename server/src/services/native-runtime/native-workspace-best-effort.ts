@@ -22,7 +22,7 @@ export async function restoreNativeWorkspaceBestEffort<T>(input: {
     // intentionally allow lost remote files: unsafe persistence must not fail
     // an accepted task result. This diagnostic stays in run logs, never the task.
     try {
-      const [run] = await input.db.select({ companyId: heartbeatRuns.companyId, agentId: heartbeatRuns.agentId })
+      const [run] = await input.db.select({ agentId: heartbeatRuns.agentId })
         .from(heartbeatRuns).where(eq(heartbeatRuns.id, input.runId)).limit(1);
       if (run) await appendHeartbeatRunEvent(input.db, {
         ...run,

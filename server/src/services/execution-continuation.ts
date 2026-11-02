@@ -101,7 +101,6 @@ export function projectHumanInteractionResponse(row: {
 /** Also retain user direction delivered after the source run's initial wake. */
 export async function currentContinuationOrigins(
   db: Db,
-  companyId: string,
   issueId: string,
   context: unknown,
 ): Promise<string[]> {
@@ -111,7 +110,6 @@ export async function currentContinuationOrigins(
   // reject, rather than silently claiming complete context.
   const foreignComments = candidates.length
     ? await db.select({ id: issueComments.id }).from(issueComments).where(and(
-        eq(issueComments.companyId, companyId),
         sql`${issueComments.issueId} != ${issueId}`,
         inArray(sql<string>`${issueComments.id}::text`, candidates),
       ))
@@ -122,7 +120,6 @@ export async function currentContinuationOrigins(
     .from(issueComments)
     .where(
       and(
-        eq(issueComments.companyId, companyId),
         eq(issueComments.issueId, issueId),
         isNotNull(issueComments.authorUserId),
         isNull(issueComments.createdByRunId),
@@ -143,7 +140,6 @@ export async function currentContinuationOrigins(
 /** Re-read task scope at dispatch, including messages already delivered to an earlier provider session. */
 export async function buildExecutionContinuation(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   agentId: string;
   context: Record<string, unknown>;
@@ -153,17 +149,17 @@ export async function buildExecutionContinuation(input: {
   summary: string | null;
   exposeLowTrustRaw: boolean;
 }): Promise<ExecutionContinuationEnvelope> {
-  const { db, companyId, issueId } = input;
+  const { db, issueId } = input;
   const [issue] = await db
     .select()
     .from(issues)
-    .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)));
+    .where(eq(issues.id, issueId));
   if (
     !issue ||
     issue.assigneeAgentId !== input.agentId ||
     issue.status === "cancelled" ||
     (issue.status === "done" && !await isCompletedOnboardingHandoffWake(db, {
-      companyId, issueId, agentId: input.agentId,
+      issueId, agentId: input.agentId,
       reason: string(input.context.wakeReason), contextSnapshot: input.context,
     }))
   )
@@ -172,20 +168,14 @@ export async function buildExecutionContinuation(input: {
     .select()
     .from(issueComments)
     .where(
-      and(
-        eq(issueComments.companyId, companyId),
-        eq(issueComments.issueId, issueId),
-      ),
+      eq(issueComments.issueId, issueId),
     )
     .orderBy(asc(issueComments.createdAt), asc(issueComments.id));
   const interactions = await db
     .select()
     .from(issueThreadInteractions)
     .where(
-      and(
-        eq(issueThreadInteractions.companyId, companyId),
-        eq(issueThreadInteractions.issueId, issueId),
-      ),
+      eq(issueThreadInteractions.issueId, issueId),
     )
     .orderBy(
       asc(issueThreadInteractions.createdAt),
@@ -206,7 +196,7 @@ export async function buildExecutionContinuation(input: {
   const loadRun = async (id: string) => (await db
     .select({ context: heartbeatRuns.contextSnapshot, result: heartbeatRuns.resultJson })
     .from(heartbeatRuns)
-    .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, id)))
+    .where(eq(heartbeatRuns.id, id))
   )[0];
   const candidate = sourceRunId ? await loadRun(sourceRunId) : null;
   // An interaction producer is provenance. Explicit resume history must still
@@ -227,7 +217,6 @@ export async function buildExecutionContinuation(input: {
   // the existing fail-closed check below.
   const inheritedForeignComments = producerIssueId && producerIssueId !== issueId && inheritedOrigins.length
     ? await db.select({ id: issueComments.id }).from(issueComments).where(and(
-        eq(issueComments.companyId, companyId),
         sql`${issueComments.issueId}::text = ${producerIssueId}`,
         inArray(sql<string>`${issueComments.id}::text`, inheritedOrigins),
       ))
@@ -271,7 +260,6 @@ export async function buildExecutionContinuation(input: {
           .from(heartbeatRuns)
           .where(
             and(
-              eq(heartbeatRuns.companyId, companyId),
               eq(heartbeatRuns.agentId, input.agentId),
               eq(heartbeatRuns.id, input.previousContextRunId),
               sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
@@ -319,7 +307,6 @@ export async function buildExecutionContinuation(input: {
     .from(heartbeatRuns)
     .where(
       and(
-        eq(heartbeatRuns.companyId, companyId),
         or(eq(heartbeatRuns.agentId, input.agentId),
           sourceRunId ? eq(heartbeatRuns.id, sourceRunId) : undefined),
         sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
@@ -352,7 +339,6 @@ export async function buildExecutionContinuation(input: {
     .from(issueRecoveryActions)
     .where(
       and(
-        eq(issueRecoveryActions.companyId, companyId),
         eq(issueRecoveryActions.sourceIssueId, issueId),
         eq(issueRecoveryActions.status, "resolved"),
       ),
@@ -366,7 +352,7 @@ export async function buildExecutionContinuation(input: {
       ["failed", "timed_out", "interrupted", "cancelled"].includes(run.status));
     const failedRunId = string(explicitContinuation.failedRunId);
     const retryWakes = failedRunId ? await db.select().from(agentWakeupRequests).where(and(
-      eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.agentId, input.agentId),
+      eq(agentWakeupRequests.agentId, input.agentId),
       eq(agentWakeupRequests.reason, "retry_failed_run"), eq(agentWakeupRequests.requestedByActorType, "user"),
       sql`${agentWakeupRequests.payload}->>'issueId' = ${issueId}`,
     )) : [];
@@ -384,8 +370,7 @@ export async function buildExecutionContinuation(input: {
     }))];
     const interruptQueues = interruptQueueIds.length
       ? await db.select().from(agentWakeupRequests).where(and(
-        inArray(agentWakeupRequests.id, interruptQueueIds),
-        eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.agentId, input.agentId),
+        inArray(agentWakeupRequests.id, interruptQueueIds), eq(agentWakeupRequests.agentId, input.agentId),
         eq(agentWakeupRequests.status, "coalesced"),
         sql`${agentWakeupRequests.payload}->>'issueId' = ${issueId}`,
         sql`${agentWakeupRequests.payload}->'queuedCommentInterrupt' is not null`,
@@ -430,7 +415,6 @@ export async function buildExecutionContinuation(input: {
         decision: row.evidence.executionReconciliation,
       })),
     version: 1,
-    companyId,
     issueId,
     trigger: {
       reason: string(input.context.wakeReason) ?? "task_execution",
@@ -452,7 +436,7 @@ export async function buildExecutionContinuation(input: {
         kind: row.kind,
         status: row.status,
         result: row.result,
-      })), ...await childReviewOutcomes(db, companyId, issueId)],
+      })), ...await childReviewOutcomes(db, issueId)],
     // Low-trust evidence only: renderPaperclipWakePrompt removes completedWork
     // from requestContext and encodes it in the fenced, non-authoritative
     // continuation-evidence section. It cannot supply objective or authority.

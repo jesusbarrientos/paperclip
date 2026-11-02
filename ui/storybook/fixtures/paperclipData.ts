@@ -119,7 +119,6 @@ export const storybookAuthSession: AuthSession = {
 export const storybookAgents: Agent[] = [
   {
     id: "agent-codex",
-    companyId: "company-storybook",
     name: "CodexCoder",
     urlKey: "codexcoder",
     role: "engineer",
@@ -143,7 +142,6 @@ export const storybookAgents: Agent[] = [
   },
   {
     id: "agent-qa",
-    companyId: "company-storybook",
     name: "QAChecker",
     urlKey: "qachecker",
     role: "qa",
@@ -167,7 +165,6 @@ export const storybookAgents: Agent[] = [
   },
   {
     id: "agent-cto",
-    companyId: "company-storybook",
     name: "CTO",
     urlKey: "cto",
     role: "cto",
@@ -203,7 +200,6 @@ export const storybookAgentMap = new Map(storybookAgents.map((agent) => [agent.i
  */
 export const storybookHiredAgent: Agent = {
   id: "agent-storybook",
-  companyId: "company-storybook",
   name: "Darnold",
   urlKey: "darnold",
   role: "general",
@@ -229,7 +225,6 @@ export const storybookHiredAgent: Agent = {
 export const storybookIssueLabels: IssueLabel[] = [
   {
     id: "label-ui",
-    companyId: "company-storybook",
     name: "UI",
     color: "#0f766e",
     createdAt: recent(20_000),
@@ -237,7 +232,6 @@ export const storybookIssueLabels: IssueLabel[] = [
   },
   {
     id: "label-docs",
-    companyId: "company-storybook",
     name: "Design system",
     color: "#f59e0b",
     createdAt: recent(20_000),
@@ -245,7 +239,6 @@ export const storybookIssueLabels: IssueLabel[] = [
   },
   {
     id: "label-backend",
-    companyId: "company-storybook",
     name: "API",
     color: "#2563eb",
     createdAt: recent(18_000),
@@ -253,7 +246,6 @@ export const storybookIssueLabels: IssueLabel[] = [
   },
   {
     id: "label-risk",
-    companyId: "company-storybook",
     name: "Risk",
     color: "#dc2626",
     createdAt: recent(16_000),
@@ -270,7 +262,6 @@ function labelsFor(ids: string[]) {
 export const storybookGoals: Goal[] = [
   {
     id: "goal-company",
-    companyId: "company-storybook",
     title: "Build Paperclip",
     description: "Make Paperclip the control plane operators trust for autonomous AI companies.",
     level: "company",
@@ -282,7 +273,6 @@ export const storybookGoals: Goal[] = [
   },
   {
     id: "goal-board-ux",
-    companyId: "company-storybook",
     title: "Tighten board operator visibility",
     description: "Every project, goal, and workspace surface should reveal ownership, progress, and runtime state at a glance.",
     level: "team",
@@ -294,7 +284,6 @@ export const storybookGoals: Goal[] = [
   },
   {
     id: "goal-agent-runtime",
-    companyId: "company-storybook",
     title: "Stabilize agent runtime loops",
     description: "Keep local and isolated workspaces predictable while preserving operator control.",
     level: "team",
@@ -306,7 +295,6 @@ export const storybookGoals: Goal[] = [
   },
   {
     id: "goal-storybook",
-    companyId: "company-storybook",
     title: "Complete Storybook review coverage",
     description: "Capture dense board UI states in fixture-backed stories before release review.",
     level: "task",
@@ -318,7 +306,6 @@ export const storybookGoals: Goal[] = [
   },
   {
     id: "goal-budget-safety",
-    companyId: "company-storybook",
     title: "Enforce spend guardrails",
     description: "Budget hard stops should be visible before they surprise operators.",
     level: "agent",
@@ -330,7 +317,6 @@ export const storybookGoals: Goal[] = [
   },
   {
     id: "goal-archived-import",
-    companyId: "company-storybook",
     title: "Retire old import wizard",
     description: "Legacy import wizard work is preserved for audit only.",
     level: "task",
@@ -347,7 +333,6 @@ function createRuntimeService(
 ): WorkspaceRuntimeService {
   return {
     id: overrides.id ?? "service-storybook",
-    companyId: overrides.companyId ?? "company-storybook",
     projectId: overrides.projectId ?? "project-board-ui",
     projectWorkspaceId: overrides.projectWorkspaceId ?? "workspace-board-ui",
     executionWorkspaceId: overrides.executionWorkspaceId ?? "execution-workspace-storybook",
@@ -400,7 +385,6 @@ const storybookWorkspaceRuntime = {
 export const storybookProjectWorkspaces: Project["workspaces"] = [
   {
     id: "workspace-board-ui",
-    companyId: "company-storybook",
     projectId: "project-board-ui",
     name: "Board UI",
     sourceType: "local_path" as const,
@@ -427,7 +411,6 @@ export const storybookProjectWorkspaces: Project["workspaces"] = [
   },
   {
     id: "workspace-docs-remote",
-    companyId: "company-storybook",
     projectId: "project-board-ui",
     name: "Docs preview sandbox",
     sourceType: "remote_managed",
@@ -488,7 +471,6 @@ export const storybookProjectWorkspaces: Project["workspaces"] = [
   },
   {
     id: "workspace-release-local",
-    companyId: "company-storybook",
     projectId: "project-board-ui",
     name: "Release smoke local checkout",
     sourceType: "local_path",
@@ -528,7 +510,6 @@ export const storybookProjectWorkspaces: Project["workspaces"] = [
 export const storybookExecutionWorkspaces: ExecutionWorkspace[] = [
   {
     id: "execution-workspace-storybook",
-    companyId: "company-storybook",
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-board-ui",
     sourceIssueId: "issue-storybook-1",
@@ -557,7 +538,6 @@ export const storybookExecutionWorkspaces: ExecutionWorkspace[] = [
   },
   {
     id: "execution-workspace-cleanup",
-    companyId: "company-storybook",
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-release-local",
     sourceIssueId: "issue-storybook-8",
@@ -613,7 +593,6 @@ function createProject(overrides: Partial<Project> = {}): Project {
   const id = overrides.id ?? "project-board-ui";
   return {
     id,
-    companyId: "company-storybook",
     urlKey: "board-ui",
     goalId: "goal-company",
     goalIds: ["goal-company", "goal-board-ux"],
@@ -738,7 +717,6 @@ export const storybookProjects: Project[] = [
 export function createIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-storybook-1",
-    companyId: "company-storybook",
     projectId: "project-board-ui",
     projectWorkspaceId: "workspace-board-ui",
     goalId: "goal-company",
@@ -946,7 +924,6 @@ export const storybookIssues: Issue[] = [
 export const storybookIssueDocuments: IssueDocument[] = [
   {
     id: "document-plan-storybook",
-    companyId: "company-storybook",
     issueId: "issue-storybook-1",
     key: "plan",
     title: "Plan",
@@ -972,7 +949,6 @@ export const storybookIssueDocuments: IssueDocument[] = [
   },
   {
     id: "document-notes-storybook",
-    companyId: "company-storybook",
     issueId: "issue-storybook-1",
     key: "notes",
     title: "Review Notes",
@@ -1000,7 +976,6 @@ export const storybookIssueDocuments: IssueDocument[] = [
 
 export const storybookContinuationHandoff: IssueDocument = {
   id: "document-continuation-storybook",
-  companyId: "company-storybook",
   issueId: "issue-storybook-1",
   key: "continuation_summary",
   title: "Continuation handoff",
@@ -1085,7 +1060,6 @@ export const storybookIssueRuns: RunForIssue[] = [
 export const storybookApprovals: Approval[] = [
   {
     id: "approval-hire-designer",
-    companyId: "company-storybook",
     type: "hire_agent",
     requestedByAgentId: "agent-cto",
     requestedByUserId: null,
@@ -1107,7 +1081,6 @@ export const storybookApprovals: Approval[] = [
   },
   {
     id: "approval-budget",
-    companyId: "company-storybook",
     type: "budget_override_required",
     requestedByAgentId: "agent-codex",
     requestedByUserId: null,
@@ -1129,7 +1102,6 @@ export const storybookApprovals: Approval[] = [
   },
   {
     id: "approval-board",
-    companyId: "company-storybook",
     type: "request_board_approval",
     requestedByAgentId: "agent-cto",
     requestedByUserId: null,
@@ -1155,7 +1127,6 @@ export const storybookApprovals: Approval[] = [
 export const storybookBudgetSummaries: BudgetPolicySummary[] = [
   {
     policyId: "budget-company-ok",
-    companyId: "company-storybook",
     scopeType: "company",
     scopeId: "company-storybook",
     scopeName: "Paperclip Storybook",
@@ -1177,7 +1148,6 @@ export const storybookBudgetSummaries: BudgetPolicySummary[] = [
   },
   {
     policyId: "budget-project-warning",
-    companyId: "company-storybook",
     scopeType: "project",
     scopeId: "project-board-ui",
     scopeName: "Paperclip App",
@@ -1199,7 +1169,6 @@ export const storybookBudgetSummaries: BudgetPolicySummary[] = [
   },
   {
     policyId: "budget-agent-hard-stop",
-    companyId: "company-storybook",
     scopeType: "agent",
     scopeId: "agent-codex",
     scopeName: "CodexCoder",
@@ -1224,7 +1193,6 @@ export const storybookBudgetSummaries: BudgetPolicySummary[] = [
 export const storybookActivityEvents: ActivityEvent[] = [
   {
     id: "activity-1",
-    companyId: "company-storybook",
     actorType: "agent",
     actorId: "agent-codex",
     action: "issue.status_changed",
@@ -1237,7 +1205,6 @@ export const storybookActivityEvents: ActivityEvent[] = [
   },
   {
     id: "activity-2",
-    companyId: "company-storybook",
     actorType: "user",
     actorId: "user-board",
     action: "approval.revision_requested",
@@ -1250,7 +1217,6 @@ export const storybookActivityEvents: ActivityEvent[] = [
   },
   {
     id: "activity-3",
-    companyId: "company-storybook",
     actorType: "system",
     actorId: "system",
     action: "budget.hard_stop",
@@ -1295,7 +1261,6 @@ export const storybookSidebarBadges: SidebarBadges = {
 };
 
 export const storybookDashboardSummary: DashboardSummary = {
-  companyId: "company-storybook",
   agents: {
     active: 3,
     running: 1,
@@ -1370,7 +1335,6 @@ export const storybookSecretProviders: SecretProviderDescriptor[] = [
 export const storybookSecretProviderConfigs: CompanySecretProviderConfig[] = [
   {
     id: "provider-config-local",
-    companyId: "company-storybook",
     provider: "local_encrypted",
     displayName: "Local encrypted default",
     status: "ready",
@@ -1388,7 +1352,6 @@ export const storybookSecretProviderConfigs: CompanySecretProviderConfig[] = [
   },
   {
     id: "provider-config-aws-prod",
-    companyId: "company-storybook",
     provider: "aws_secrets_manager",
     displayName: "AWS production",
     status: "warning",
@@ -1417,7 +1380,6 @@ export const storybookSecretProviderConfigs: CompanySecretProviderConfig[] = [
   },
   {
     id: "provider-config-aws-blocked",
-    companyId: "company-storybook",
     provider: "aws_secrets_manager",
     displayName: "AWS staging blocked",
     status: "ready",
@@ -1491,7 +1453,6 @@ export const storybookSecretProviderDiscoveryPreview: SecretProviderConfigDiscov
 export const storybookSecrets: CompanySecret[] = [
   {
     id: "secret-openai",
-    companyId: "company-storybook",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -1515,7 +1476,6 @@ export const storybookSecrets: CompanySecret[] = [
   },
   {
     id: "secret-aws-prod",
-    companyId: "company-storybook",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -1539,7 +1499,6 @@ export const storybookSecrets: CompanySecret[] = [
   },
   {
     id: "secret-github",
-    companyId: "company-storybook",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -1563,7 +1522,6 @@ export const storybookSecrets: CompanySecret[] = [
   },
   {
     id: "secret-stripe-archived",
-    companyId: "company-storybook",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -1590,7 +1548,6 @@ export const storybookSecrets: CompanySecret[] = [
 export const storybookSecretBindings: CompanySecretBinding[] = [
   {
     id: "binding-openai-agent",
-    companyId: "company-storybook",
     secretId: "secret-openai",
     targetType: "agent",
     targetId: "agent-codex",
@@ -1605,7 +1562,6 @@ export const storybookSecretBindings: CompanySecretBinding[] = [
   },
   {
     id: "binding-openai-project",
-    companyId: "company-storybook",
     secretId: "secret-openai",
     targetType: "project",
     targetId: "project-app",
@@ -1620,7 +1576,6 @@ export const storybookSecretBindings: CompanySecretBinding[] = [
   },
   {
     id: "binding-aws-environment",
-    companyId: "company-storybook",
     secretId: "secret-aws-prod",
     targetType: "environment",
     targetId: "env-prod",
@@ -1638,7 +1593,6 @@ export const storybookSecretBindings: CompanySecretBinding[] = [
 export const storybookSecretAccessEvents: SecretAccessEvent[] = [
   {
     id: "evt-1",
-    companyId: "company-storybook",
     secretId: "secret-openai",
     userSecretDefinitionId: null,
     secretScope: "company",
@@ -1662,7 +1616,6 @@ export const storybookSecretAccessEvents: SecretAccessEvent[] = [
   },
   {
     id: "evt-2",
-    companyId: "company-storybook",
     secretId: "secret-openai",
     userSecretDefinitionId: null,
     secretScope: "company",
@@ -1686,7 +1639,6 @@ export const storybookSecretAccessEvents: SecretAccessEvent[] = [
   },
   {
     id: "evt-3",
-    companyId: "company-storybook",
     secretId: "secret-openai",
     userSecretDefinitionId: null,
     secretScope: "company",

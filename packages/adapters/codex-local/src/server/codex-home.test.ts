@@ -46,8 +46,7 @@ describe("codex managed home", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "codex-home",
     );
     const sharedAuth = path.join(sharedCodexHome, "auth.json");
@@ -73,7 +72,6 @@ describe("codex managed home", () => {
             PAPERCLIP_INSTANCE_ID: "default",
           },
           async () => {},
-          "company-1",
         ),
       ).resolves.toBe(managedCodexHome);
 
@@ -92,8 +90,7 @@ describe("codex managed home", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "codex-home",
     );
     const sharedAuth = path.join(sharedCodexHome, "auth.json");
@@ -121,7 +118,6 @@ describe("codex managed home", () => {
             PAPERCLIP_INSTANCE_ID: "default",
           },
           async () => {},
-          "company-1",
         ),
       ).rejects.toMatchObject({ code: "EEXIST" });
 
@@ -147,8 +143,7 @@ describe("codex managed home", () => {
         paperclipHome,
         "instances",
         "default",
-        "companies",
-        "company-1",
+        "organization",
         "codex-home",
       );
       const sharedAuth = path.join(sharedCodexHome, "auth.json");
@@ -169,7 +164,6 @@ describe("codex managed home", () => {
           PAPERCLIP_INSTANCE_ID: "default",
         },
         async () => {},
-        "company-1",
       );
 
       expect((await fs.lstat(managedAuth)).isSymbolicLink()).toBe(true);
@@ -229,41 +223,33 @@ describe("isManagedCodexHomePath", () => {
     PAPERCLIP_HOME: "/srv/paperclip",
     PAPERCLIP_INSTANCE_ID: "default",
   } satisfies NodeJS.ProcessEnv;
-  const companyRoot = path.resolve(
-    "/srv/paperclip/instances/default/companies/company-1",
+  const organizationRoot = path.resolve(
+    "/srv/paperclip/instances/default/organization",
   );
 
   it("treats the per-agent managed home as managed", () => {
     expect(
       isManagedCodexHomePath(
         env,
-        "company-1",
-        path.join(companyRoot, "agents", "agent-7", "codex-home"),
+        path.join(organizationRoot, "agents", "agent-7", "codex-home"),
       ),
     ).toBe(true);
   });
 
-  it("treats the shared company home as managed", () => {
+  it("treats the shared managed home as managed", () => {
     expect(
-      isManagedCodexHomePath(env, "company-1", path.join(companyRoot, "codex-home")),
+      isManagedCodexHomePath(env, path.join(organizationRoot, "codex-home")),
     ).toBe(true);
   });
 
-  it("treats a path outside the company tree as an external override", () => {
-    expect(isManagedCodexHomePath(env, "company-1", "/home/dev/.codex")).toBe(false);
+  it("treats a path outside the organization tree as an external override", () => {
+    expect(isManagedCodexHomePath(env, "/home/dev/.codex")).toBe(false);
     expect(
       isManagedCodexHomePath(
         env,
-        "company-1",
-        path.resolve("/srv/paperclip/instances/default/companies/company-2/codex-home"),
+        path.resolve("/srv/paperclip/instances/default/organization-other/codex-home"),
       ),
     ).toBe(false);
-  });
-
-  it("returns false without a companyId", () => {
-    expect(isManagedCodexHomePath(env, undefined, path.join(companyRoot, "codex-home"))).toBe(
-      false,
-    );
   });
 });
 
@@ -363,8 +349,7 @@ describe("seedManagedCodexHome", () => {
         root,
         "instances",
         "default",
-        "companies",
-        "company-1",
+        "organization",
         "agents",
         "agent-7",
         "codex-home",
@@ -401,9 +386,9 @@ describe("seedManagedCodexHome", () => {
     }
   });
 
-  // A device-login promotion writes the company credential as a regular-file
+  // A device-login promotion writes the managed credential as a regular-file
   // subscription auth.json. Re-seeding must keep it, or the first Test probe or
-  // run after a successful login silently signs the company out. The cases
+  // run after a successful login silently signs the agents out. The cases
   // below pin the identity- and freshness-anchored rule: keep a subscription
   // identity the shared source does not hold; keep a same-identity file the
   // shared source is not strictly fresher than (ties and unparseable freshness
@@ -499,7 +484,7 @@ describe("seedManagedCodexHome", () => {
   it("keeps a same-identity promoted auth.json that is strictly newer than the shared source", async () => {
     // The device-login promotion mints a credential whose last_refresh is newer
     // than the host copy the user was failing with. Swapping it for the shared
-    // symlink here would sign the company back in with that failing credential
+    // symlink here would sign the agents back in with that failing credential
     // right after the login that replaced it.
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-seed-newer-"));
     try {
@@ -598,7 +583,7 @@ describe("seedManagedCodexHome", () => {
     try {
       const sharedCodexHome = path.join(root, "shared-codex-home");
       const entryHome = path.join(
-        root, "paperclip-home", "instances", "default", "companies", "company-1", "codex-auth-cache", "acct-bound",
+        root, "paperclip-home", "instances", "default", "organization", "codex-auth-cache", "acct-bound",
       );
       const env = {
         CODEX_HOME: sharedCodexHome,
@@ -634,7 +619,7 @@ describe("seedManagedCodexHome", () => {
     try {
       const sharedCodexHome = path.join(root, "shared-codex-home");
       const entryHome = path.join(
-        root, "paperclip-home", "instances", "default", "companies", "company-1", "codex-auth-cache", "acct-bound",
+        root, "paperclip-home", "instances", "default", "organization", "codex-auth-cache", "acct-bound",
       );
       const env = {
         CODEX_HOME: sharedCodexHome,
@@ -694,8 +679,7 @@ describe("reconcileManagedCodexHome", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-7",
       "codex-home",
@@ -719,7 +703,6 @@ describe("reconcileManagedCodexHome", () => {
       expect(await codexHomeHasUsableAuth(fx.agentHome)).toBe(false);
 
       const first = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         env: fx.env,
       });
@@ -729,7 +712,6 @@ describe("reconcileManagedCodexHome", () => {
       expect(await fs.realpath(fx.agentAuth)).toBe(await fs.realpath(fx.sharedAuth));
 
       const second = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         env: fx.env,
       });
@@ -747,7 +729,6 @@ describe("reconcileManagedCodexHome", () => {
       await fs.rm(fx.sharedAuth, { force: true });
 
       const result = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         env: fx.env,
       });
@@ -766,7 +747,6 @@ describe("reconcileManagedCodexHome", () => {
       await fs.mkdir(external, { recursive: true });
 
       const result = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: external,
         env: fx.env,
       });
@@ -781,7 +761,6 @@ describe("reconcileManagedCodexHome", () => {
     const fx = await makeFixture();
     try {
       const result = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: null,
         env: fx.env,
       });
@@ -804,7 +783,6 @@ describe("reconcileManagedCodexHome", () => {
       );
 
       const result = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         apiKeySecretBound: true,
         env: fx.env,
@@ -824,7 +802,6 @@ describe("reconcileManagedCodexHome", () => {
     const fx = await makeFixture();
     try {
       const result = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         apiKeySecretBound: true,
         env: fx.env,
@@ -842,7 +819,6 @@ describe("reconcileManagedCodexHome", () => {
     const fx = await makeFixture();
     try {
       const result = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         apiKey: "sk-reconcile-1",
         env: fx.env,
@@ -852,7 +828,6 @@ describe("reconcileManagedCodexHome", () => {
       expect(written).toEqual({ OPENAI_API_KEY: "sk-reconcile-1" });
 
       const second = await reconcileManagedCodexHome({
-        companyId: "company-1",
         configuredCodexHome: fx.agentHome,
         apiKey: "sk-reconcile-1",
         env: fx.env,
@@ -872,22 +847,21 @@ describe("evaluateCodexCredentialReadiness", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-readiness-"));
     const sharedCodexHome = path.join(root, "shared-codex-home");
     const paperclipHome = path.join(root, "paperclip-home");
-    const companyRoot = path.join(
+    const organizationRoot = path.join(
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
     );
-    const managedCompanyHome = path.join(companyRoot, "codex-home");
-    const managedAgentHome = path.join(companyRoot, "agents", "agent-1", "codex-home");
+    const managedSharedHome = path.join(organizationRoot, "codex-home");
+    const managedAgentHome = path.join(organizationRoot, "agents", "agent-1", "codex-home");
     const env: NodeJS.ProcessEnv = {
       CODEX_HOME: sharedCodexHome,
       PAPERCLIP_HOME: paperclipHome,
       PAPERCLIP_INSTANCE_ID: "default",
     };
     await fs.mkdir(sharedCodexHome, { recursive: true });
-    return { root, sharedCodexHome, managedCompanyHome, managedAgentHome, env };
+    return { root, sharedCodexHome, managedSharedHome, managedAgentHome, env };
   }
 
   async function writeUsableAuth(home: string) {
@@ -900,7 +874,6 @@ describe("evaluateCodexCredentialReadiness", () => {
     try {
       const result = await evaluateCodexCredentialReadiness({
         env: fx.env,
-        companyId: "company-1",
         configuredCodexHome: fx.managedAgentHome,
         configuredApiKey: "",
       });
@@ -916,7 +889,6 @@ describe("evaluateCodexCredentialReadiness", () => {
     try {
       const result = await evaluateCodexCredentialReadiness({
         env: fx.env,
-        companyId: "company-1",
         configuredCodexHome: fx.managedAgentHome,
         configuredApiKey: "sk-agent-key",
       });
@@ -932,7 +904,6 @@ describe("evaluateCodexCredentialReadiness", () => {
       await writeUsableAuth(fx.sharedCodexHome);
       const result = await evaluateCodexCredentialReadiness({
         env: fx.env,
-        companyId: "company-1",
         configuredCodexHome: fx.managedAgentHome,
         configuredApiKey: "",
       });
@@ -948,7 +919,6 @@ describe("evaluateCodexCredentialReadiness", () => {
       await writeUsableAuth(fx.managedAgentHome);
       const result = await evaluateCodexCredentialReadiness({
         env: fx.env,
-        companyId: "company-1",
         configuredCodexHome: fx.managedAgentHome,
         configuredApiKey: "",
       });
@@ -958,17 +928,16 @@ describe("evaluateCodexCredentialReadiness", () => {
     }
   });
 
-  it("defaults to the managed company home when no CODEX_HOME is configured", async () => {
+  it("defaults to the shared managed home when no CODEX_HOME is configured", async () => {
     const fx = await makeFixture();
     try {
       const result = await evaluateCodexCredentialReadiness({
         env: fx.env,
-        companyId: "company-1",
         configuredCodexHome: null,
         configuredApiKey: "",
       });
       expect(result).toMatchObject({ managed: true, authMode: "subscription", ready: false });
-      expect(result.effectiveHome).toBe(path.resolve(fx.managedCompanyHome));
+      expect(result.effectiveHome).toBe(path.resolve(fx.managedSharedHome));
     } finally {
       await fs.rm(fx.root, { recursive: true, force: true });
     }
@@ -981,7 +950,6 @@ describe("evaluateCodexCredentialReadiness", () => {
       await fs.mkdir(externalHome, { recursive: true });
       const result = await evaluateCodexCredentialReadiness({
         env: fx.env,
-        companyId: "company-1",
         configuredCodexHome: externalHome,
         configuredApiKey: "",
       });

@@ -74,7 +74,6 @@ const PART_UPLOAD_STATUSES: CompanyTransferRunStatus[] = ["pending", "running"];
 
 export interface CompanyTransferRunRow {
   id: string;
-  companyId: string | null;
   direction: CompanyTransferDirection;
   status: CompanyTransferRunStatus;
   actorKey: string;
@@ -98,7 +97,6 @@ export interface ResumeOrCreateTransferRunInput {
   idempotencyKey: string;
   /** Credential-free container location descriptor. Never put secrets here. */
   containerRef: unknown;
-  companyId?: string | null;
 }
 
 export interface ResumeOrCreateTransferRunResult {
@@ -177,8 +175,7 @@ export const companyTransferRunService = {
           direction: input.direction,
           actorKey: input.actorKey,
           idempotencyKey: input.idempotencyKey,
-          containerRef: input.containerRef,
-          companyId: input.companyId ?? null,
+          containerRef: input.containerRef
         })
         .returning();
       return { run: rowFromRecord(created!), resumed: false, alreadyCompleted: false };
@@ -241,10 +238,10 @@ export const companyTransferRunService = {
       );
   },
 
-  async attachCompany(db: Db, runId: string, companyId: string): Promise<void> {
+  async attachCompany(db: Db, runId: string): Promise<void> {
     await db
       .update(companyTransferRuns)
-      .set({ companyId, updatedAt: new Date() })
+      .set({ updatedAt: new Date() })
       .where(eq(companyTransferRuns.id, runId));
   },
 

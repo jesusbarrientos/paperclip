@@ -65,7 +65,7 @@ afterEach(async () => {
   await fs.rm(baseDir, { recursive: true, force: true });
 });
 
-const begin = { companyId: "co1", agentId: "ag1", runId: "run1" };
+const begin = { agentId: "ag1", runId: "run1" };
 
 describe("createDurableRunLogStore", () => {
   it("keeps store id 'local_file' so downstream coupling (feedback, casts) is unchanged", async () => {

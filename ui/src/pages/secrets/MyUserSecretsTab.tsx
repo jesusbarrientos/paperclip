@@ -23,21 +23,21 @@ import {
  * clear their value. This is the owner-facing counterpart to the admin
  * "User secret definitions" tab.
  */
-export function MyUserSecretsTab({ companyId }: { companyId: string }) {
+export function MyUserSecretsTab() {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const [dialogFor, setDialogFor] = useState<MyUserSecretEntry | null>(null);
 
   const mySecretsQuery = useQuery({
-    queryKey: queryKeys.secrets.myUserSecrets(companyId),
-    queryFn: () => secretsApi.listMyUserSecrets(companyId),
+    queryKey: queryKeys.secrets.myUserSecrets(),
+    queryFn: () => secretsApi.listMyUserSecrets(),
   });
   const entries = mySecretsQuery.data ?? [];
 
   const clear = useMutation({
-    mutationFn: (secret: CompanySecret) => secretsApi.removeMyUserSecret(companyId, secret.id),
+    mutationFn: (secret: CompanySecret) => secretsApi.removeMyUserSecret(secret.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.myUserSecrets(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.myUserSecrets() });
       pushToast({ title: "Value cleared", tone: "info" });
     },
     onError: (err) =>
@@ -99,7 +99,6 @@ export function MyUserSecretsTab({ companyId }: { companyId: string }) {
       </div>
 
       <SetMyUserSecretDialog
-        companyId={companyId}
         definition={dialogFor?.definition ?? null}
         existingSecret={dialogFor?.secret ?? null}
         open={dialogFor !== null}

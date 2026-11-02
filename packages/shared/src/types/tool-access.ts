@@ -149,7 +149,6 @@ export interface VercelConnectGrantReference extends VercelConnectGrantSummary {
 
 export interface ToolApplication {
   id: string;
-  companyId: string;
   applicationKey?: string;
   name: string;
   description: string | null;
@@ -167,7 +166,6 @@ export interface ToolApplication {
 export interface ToolConnection {
   agentInstructions?: import("../connection-instructions.js").ConnectionAgentInstructions | null;
   id: string;
-  companyId: string;
   applicationId: string;
   name: string;
   uid: string;
@@ -207,7 +205,6 @@ export interface ToolConnection {
 
 export interface ConnectionGrant {
   id: string;
-  companyId: string;
   connectionId: string;
   kind: ConnectionGrantKind;
   subjectUserId: string | null;
@@ -325,7 +322,6 @@ export interface ConnectionAudienceMember {
 
 export interface ConnectionGrantDelegation {
   id: string;
-  companyId: string;
   grantId: string;
   agentId: string;
   createdByUserId: string;
@@ -334,7 +330,6 @@ export interface ConnectionGrantDelegation {
 
 export interface ConnectionGrantMember {
   id: string;
-  companyId: string;
   grantId: string;
   subjectType: ConnectionGrantMemberSubjectType;
   subjectId: string;
@@ -343,7 +338,6 @@ export interface ConnectionGrantMember {
 
 export interface ToolConnectionInstall {
   id: string;
-  companyId: string;
   connectionId: string;
   targetType: ToolConnectionInstallTargetType;
   targetId: string;
@@ -513,7 +507,6 @@ export interface ConnectionUsageResponse {
 
 export interface ConnectionTokenIssuance {
   id: string;
-  companyId: string;
   applicationId: string | null;
   connectionId: string;
   agentId: string;
@@ -535,7 +528,6 @@ export interface ConnectionTokenIssuance {
 
 export interface ToolCatalogEntry {
   id: string;
-  companyId: string;
   applicationId: string | null;
   connectionId: string;
   entryKind: ToolCatalogEntryKind;
@@ -568,7 +560,6 @@ export interface ToolCatalogEntry {
 
 export interface ToolProfile {
   id: string;
-  companyId: string;
   profileKey: string;
   name: string;
   description: string | null;
@@ -583,7 +574,6 @@ export interface ToolProfile {
 
 export interface ToolProfileEntry {
   id: string;
-  companyId: string;
   profileId: string;
   selectorType: ToolProfileEntrySelectorType;
   effect: ToolProfileEntryEffect;
@@ -599,7 +589,6 @@ export interface ToolProfileEntry {
 
 export interface ToolProfileBinding {
   id: string;
-  companyId: string;
   profileId: string;
   targetType: ToolProfileBindingTargetType;
   targetId: string;
@@ -681,7 +670,6 @@ export interface ToolMcpGatewayOnDemandToolsConfig {
 
 export interface ToolMcpGateway {
   id: string;
-  companyId: string;
   gatewayPublicId: string;
   name: string;
   displaySlug: string;
@@ -712,7 +700,6 @@ export interface ToolMcpGateway {
 
 export interface ToolMcpGatewayToken {
   id: string;
-  companyId: string;
   gatewayId: string;
   name: string;
   tokenPrefix: string;
@@ -812,7 +799,6 @@ export interface ToolProfileEffectiveSummary {
 
 export interface ToolPolicy {
   id: string;
-  companyId: string;
   name: string;
   description: string | null;
   policyType: ToolPolicyType;
@@ -829,7 +815,6 @@ export interface ToolPolicy {
 
 export interface ToolRuntimeSlot {
   id: string;
-  companyId: string;
   applicationId: string | null;
   connectionId: string | null;
   projectWorkspaceId: string | null;
@@ -872,7 +857,6 @@ export interface ToolStdioTemplateToolSummary {
 
 export interface ToolStdioCommandTemplate {
   id?: string;
-  companyId?: string;
   templateId: string;
   name: string;
   title?: string | null;
@@ -1263,7 +1247,6 @@ export interface McpJsonImportPreview {
 
 export interface ToolInvocation {
   id: string;
-  companyId: string;
   idempotencyKey: string | null;
   actorType: ToolActorType;
   actorId: string | null;
@@ -1295,7 +1278,6 @@ export interface ToolInvocation {
 
 export interface ToolActionRequest {
   id: string;
-  companyId: string;
   invocationId: string;
   issueId: string | null;
   interactionId: string | null;
@@ -1320,7 +1302,6 @@ export interface ToolActionRequest {
 
 export interface ToolCallEvent {
   id: string;
-  companyId: string;
   eventType: ToolAuditEventType;
   actorType: ToolActorType;
   actorId: string | null;
@@ -1379,7 +1360,6 @@ export interface ToolRunDecisionLookup {
 
 export interface ToolRateLimitCounter {
   id: string;
-  companyId: string;
   policyId: string;
   counterKey: string;
   scopeType: string;
@@ -1550,7 +1530,6 @@ export interface RevokeToolTrustRule {
 }
 
 export interface ToolAccessDecisionInput {
-  companyId: string;
   actor: {
     actorType: ToolActorType;
     actorId: string;

@@ -2,7 +2,6 @@ import type { IssueCommentAuthorType, SourceTrustMetadata } from "@paperclipai/s
 import { sql } from "drizzle-orm";
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { documentAnnotationThreads } from "./document_annotation_threads.js";
 import { documents } from "./documents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
@@ -15,7 +14,6 @@ export const documentAnnotationComments = pgTable(
   "document_annotation_comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     threadId: uuid("thread_id").notNull().references(() => documentAnnotationThreads.id, { onDelete: "cascade" }),
     issueId: uuid("issue_id").references(() => issues.id, { onDelete: "cascade" }),
     routineId: uuid("routine_id").references(() => routines.id, { onDelete: "cascade" }),
@@ -33,27 +31,22 @@ export const documentAnnotationComments = pgTable(
   },
   (table) => ({
     companyThreadCreatedAtIdx: index("document_annotation_comments_company_thread_created_at_idx").on(
-      table.companyId,
       table.threadId,
       table.createdAt,
     ),
     companyIssueCreatedAtIdx: index("document_annotation_comments_company_issue_created_at_idx").on(
-      table.companyId,
       table.issueId,
       table.createdAt,
     ),
     companyRoutineCreatedAtIdx: index("document_annotation_comments_company_routine_created_at_idx").on(
-      table.companyId,
       table.routineId,
       table.createdAt,
     ),
     companyCaseCreatedAtIdx: index("document_annotation_comments_company_case_created_at_idx").on(
-      table.companyId,
       table.caseId,
       table.createdAt,
     ),
     companyDocumentCreatedAtIdx: index("document_annotation_comments_company_document_created_at_idx").on(
-      table.companyId,
       table.documentId,
       table.createdAt,
     ),

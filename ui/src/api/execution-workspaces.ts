@@ -39,7 +39,7 @@ function normalizeWorkspaceOverview(response: WorkspaceOverviewResponse): Worksp
 }
 
 export const executionWorkspacesApi = {
-  listOverview: async (companyId: string, filters?: WorkspaceOverviewFilters) => {
+  listOverview: async (filters?: WorkspaceOverviewFilters) => {
     const params = new URLSearchParams();
     if (filters?.projectId) params.set("projectId", filters.projectId);
     if (filters?.status?.length) params.set("status", filters.status.join(","));
@@ -47,12 +47,11 @@ export const executionWorkspacesApi = {
     if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
     const qs = params.toString();
     const response = await api.get<WorkspaceOverviewResponse>(
-      `/companies/${companyId}/workspace-overview${qs ? `?${qs}` : ""}`,
+      `/workspace-overview${qs ? `?${qs}` : ""}`,
     );
     return normalizeWorkspaceOverview(response);
   },
   listSummaries: (
-    companyId: string,
     filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
@@ -70,11 +69,10 @@ export const executionWorkspacesApi = {
     params.set("summary", "true");
     const qs = params.toString();
     return api.get<ExecutionWorkspaceSummary[]>(
-      `/companies/${companyId}/execution-workspaces${qs ? `?${qs}` : ""}`,
+      `/execution-workspaces${qs ? `?${qs}` : ""}`,
     );
   },
   list: (
-    companyId: string,
     filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
@@ -90,7 +88,7 @@ export const executionWorkspacesApi = {
     if (filters?.status) params.set("status", filters.status);
     if (filters?.reuseEligible) params.set("reuseEligible", "true");
     const qs = params.toString();
-    return api.get<ExecutionWorkspace[]>(`/companies/${companyId}/execution-workspaces${qs ? `?${qs}` : ""}`);
+    return api.get<ExecutionWorkspace[]>(`/execution-workspaces${qs ? `?${qs}` : ""}`);
   },
   get: (id: string) => api.get<ExecutionWorkspace>(`/execution-workspaces/${id}`),
   getCloseReadiness: (id: string) =>

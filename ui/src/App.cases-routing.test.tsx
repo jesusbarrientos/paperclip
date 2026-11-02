@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 
-// Regression guard for PAP-13002: the experimental Cases UI emits *unprefixed*
-// links (`/cases`, `/cases/:id`) — the same global-unprefixed pattern Pipelines
-// uses. Those only resolve if `cases` and `cases/:caseIdentifier` are registered
-// as reserved unprefixed redirect routes in <App>; otherwise the first path
-// segment is parsed as a company prefix ("CASES") and the page 404s with
-// "No company matches prefix". This drives the real <App> route table so a
-// future removal of those redirect routes fails loudly.
+// Regression guard for PAP-13002: the experimental Cases UI links to `/cases`
+// and `/cases/:id`. This drives the real <App> route table so removing either
+// registration fails loudly instead of falling through to the plugin route.
 
 import type { ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -42,9 +38,8 @@ vi.hoisted(() => {
   }
 });
 
-// Real Layout renders the full authenticated shell (sidebar, data queries) and
-// owns the "No company matches prefix" NotFound. For routing we only need it to
-// resolve the :companyPrefix segment and render its nested routes.
+// Real Layout renders the full authenticated shell (sidebar, data queries).
+// For routing we only need it to render its nested routes.
 vi.mock("./components/Layout", async () => {
   const { Outlet } = await import("react-router-dom");
   return { Layout: () => <Outlet /> };
@@ -71,21 +66,14 @@ vi.mock("./components/CloudAccessGate", async () => {
   return { CloudAccessGate: () => <Outlet /> };
 });
 
-// The prefix resolver + redirect logic both read the active company.
-const PAP_COMPANY = {
-  id: "company-1",
-  name: "Paperclip",
-  issuePrefix: "PAP",
-  status: "active",
-};
-vi.mock("./context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: [PAP_COMPANY],
-    selectedCompanyId: PAP_COMPANY.id,
-    selectedCompany: PAP_COMPANY,
+vi.mock("./context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "org-1", name: "Paperclip", issuePrefix: "PAP" },
     loading: false,
+    error: null,
+    reload: async () => undefined,
   }),
-  CompanyProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  OrganizationProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 async function renderAppAt(container: HTMLElement, path: string) {
@@ -129,17 +117,15 @@ describe("App Cases routing (PAP-13002)", () => {
     vi.clearAllMocks();
   });
 
-  it("redirects unprefixed /cases to the company-prefixed list page", async () => {
+  it("serves /cases as the list page", async () => {
     const root = await renderAppAt(container, "/cases");
     await waitForRoute(container, "CASES_LIST_PAGE");
-    expect(container.textContent).not.toContain("No organization matches prefix");
     flushSync(() => root.unmount());
   });
 
-  it("redirects unprefixed /cases/:id to the company-prefixed detail page", async () => {
+  it("serves /cases/:id as the detail page", async () => {
     const root = await renderAppAt(container, "/cases/PAP-C5");
     await waitForRoute(container, "CASE_DETAIL_PAGE");
-    expect(container.textContent).not.toContain("No organization matches prefix");
     flushSync(() => root.unmount());
   });
 });

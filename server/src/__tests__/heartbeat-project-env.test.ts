@@ -29,18 +29,18 @@ describe("resolveExecutionRunAdapterConfig", () => {
     };
     const missing = { type: "user_secret_ref", key: "old-github-token", required: true };
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1", agentId: "agent-1", environmentId: "environment-1",
+      agentId: "agent-1", environmentId: "environment-1",
       projectId: "project-1", routineId: "routine-1", managedGitHubCredentials: true,
       executionRunConfig: { env: { GH_TOKEN: missing, AGENT_VALUE: "ok" } },
       environmentEnv: { GITHUB_TOKEN: missing, ENVIRONMENT_VALUE: "ok" },
       projectEnv: { GH_ENTERPRISE_TOKEN: missing, PROJECT_VALUE: "ok" },
       routineEnv: { GITHUB_ENTERPRISE_TOKEN: missing, PAPERCLIP_GIT_TOKEN: missing, ROUTINE_VALUE: "ok" },
       secretsSvc: {
-        collectMissingRuntimeBindings: vi.fn(async (_companyId, env) => { assertNoGitHubBinding(env); return []; }),
-        resolveAdapterConfigForRuntime: vi.fn(async (_companyId, config) => {
+        collectMissingRuntimeBindings: vi.fn(async (env) => { assertNoGitHubBinding(env); return []; }),
+        resolveAdapterConfigForRuntime: vi.fn(async (config) => {
           assertNoGitHubBinding(config.env); return { config, secretKeys: new Set(), manifest: [] };
         }),
-        resolveEnvBindings: vi.fn(async (_companyId, env) => {
+        resolveEnvBindings: vi.fn(async (env) => {
           assertNoGitHubBinding(env); return { env, secretKeys: new Set(), manifest: [] };
         }),
       } as any,
@@ -127,7 +127,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
       });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       executionRunConfig: { env: { SHARED_KEY: "agent" } },
       environmentId: "environment-1",
       environmentEnv: { SHARED_KEY: "environment" },
@@ -161,18 +160,18 @@ describe("resolveExecutionRunAdapterConfig", () => {
     expect(JSON.stringify(result.secretManifest)).not.toContain("environment-only");
     expect(JSON.stringify(result.secretManifest)).not.toContain("project-only");
     expect(JSON.stringify(result.secretManifest)).not.toContain("routine-only");
-    expect(resolveEnvBindings.mock.calls[0]?.[2]).toMatchObject({
+    expect(resolveEnvBindings.mock.calls[0]?.[1]).toMatchObject({
       consumerType: "environment",
       consumerId: "environment-1",
     });
-    expect(resolveEnvBindings.mock.calls[2]?.[2]).toMatchObject({
+    expect(resolveEnvBindings.mock.calls[2]?.[1]).toMatchObject({
       consumerType: "routine",
       consumerId: "routine-1",
     });
   });
 
   it("drops PAPERCLIP_API_KEY bindings but forwards other PAPERCLIP_-named env to resolution", async () => {
-    const resolveAdapterConfigForRuntime = vi.fn(async (_companyId, config: Record<string, unknown>) => ({
+    const resolveAdapterConfigForRuntime = vi.fn(async (config: Record<string, unknown>) => ({
       config: {
         ...config,
         env: { ...(config.env as Record<string, unknown>) },
@@ -180,7 +179,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
       secretKeys: new Set<string>(),
       manifest: [],
     }));
-    const resolveEnvBindings = vi.fn(async (_companyId, env: Record<string, unknown>) => ({
+    const resolveEnvBindings = vi.fn(async (env: Record<string, unknown>) => ({
       env: Object.fromEntries(
         Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
       ),
@@ -189,7 +188,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
     }));
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       environmentId: "environment-1",
       environmentEnv: {
@@ -222,21 +220,21 @@ describe("resolveExecutionRunAdapterConfig", () => {
       } as any,
     });
 
-    expect(resolveEnvBindings.mock.calls[0]?.[1]).toEqual({
+    expect(resolveEnvBindings.mock.calls[0]?.[0]).toEqual({
       PAPERCLIP_CLOUD_PROVIDER_TOKEN_ENV: "environment-cloud",
       ENV_ONLY: "environment-only",
     });
-    expect(resolveAdapterConfigForRuntime.mock.calls[0]?.[1]).toEqual({
+    expect(resolveAdapterConfigForRuntime.mock.calls[0]?.[0]).toEqual({
       env: {
         PAPERCLIP_CLOUD_PROVIDER_TOKEN_AGENT: "agent-cloud",
         AGENT_ONLY: "agent-only",
       },
     });
-    expect(resolveEnvBindings.mock.calls[1]?.[1]).toEqual({
+    expect(resolveEnvBindings.mock.calls[1]?.[0]).toEqual({
       PAPERCLIP_CLOUD_PROVIDER_TOKEN_PROJECT: "project-cloud",
       PROJECT_ONLY: "project-only",
     });
-    expect(resolveEnvBindings.mock.calls[2]?.[1]).toEqual({
+    expect(resolveEnvBindings.mock.calls[2]?.[0]).toEqual({
       PAPERCLIP_CLOUD_PROVIDER_TOKEN_ROUTINE: "routine-cloud",
       ROUTINE_ONLY: "routine-only",
     });
@@ -263,7 +261,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
     const resolveEnvBindings = vi.fn();
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       executionRunConfig: { env: { AGENT_ONLY: "agent-only" } },
       projectEnv: null,
       secretsSvc: {
@@ -290,7 +287,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
     });
 
     await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       heartbeatRunId: "run-1",
@@ -306,7 +302,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
         preset: LOW_TRUST_REVIEW_PRESET,
         boundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: "company-1",
           issueIds: ["issue-1"],
           allowedSecretBindingIds: ["binding-1"],
         },
@@ -318,23 +313,22 @@ describe("resolveExecutionRunAdapterConfig", () => {
       } as any,
     });
 
-    expect(resolveAdapterConfigForRuntime.mock.calls[0]?.[2]).toMatchObject({
+    expect(resolveAdapterConfigForRuntime.mock.calls[0]?.[1]).toMatchObject({
       allowedBindingIds: ["binding-1"],
     });
-    expect(resolveEnvBindings.mock.calls[0]?.[2]).toMatchObject({
+    expect(resolveEnvBindings.mock.calls[0]?.[1]).toMatchObject({
       allowedBindingIds: ["binding-1"],
     });
-    expect(resolveEnvBindings.mock.calls[1]?.[2]).toMatchObject({
+    expect(resolveEnvBindings.mock.calls[1]?.[1]).toMatchObject({
       allowedBindingIds: ["binding-1"],
     });
-    expect(resolveEnvBindings.mock.calls[2]?.[2]).toMatchObject({
+    expect(resolveEnvBindings.mock.calls[2]?.[1]).toMatchObject({
       allowedBindingIds: ["binding-1"],
     });
   });
 
   it("does not project brokered GitHub credentials across a low-trust boundary", async () => {
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       executionRunConfig: { env: {} },
@@ -344,7 +338,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
         preset: LOW_TRUST_REVIEW_PRESET,
         boundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: "company-1",
           issueIds: ["issue-1"],
           allowedSecretBindingIds: [],
         },
@@ -371,7 +364,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
 
   it("does not let a brokered projection satisfy low-trust push preflight", async () => {
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       executionRunConfig: { env: {} },
@@ -381,7 +373,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
         preset: LOW_TRUST_REVIEW_PRESET,
         boundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: "company-1",
           issueIds: ["issue-1"],
           allowedSecretBindingIds: [],
         },
@@ -410,7 +401,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
   it("blocks required missing user secrets before runtime env resolution", async () => {
     const resolveAdapterConfigForRuntime = vi.fn();
     const resolveEnvBindings = vi.fn();
-    const collectMissingRuntimeBindings = vi.fn(async (_companyId, _env, context) =>
+    const collectMissingRuntimeBindings = vi.fn(async (_env, context) =>
       context.consumerType === "agent"
         ? [
             {
@@ -432,7 +423,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
     );
 
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       heartbeatRunId: "run-1",
@@ -453,7 +443,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
       resultJson: {
         configurationIncomplete: {
           reason: "secret_binding_missing",
-          companyId: "company-1",
           agentId: "agent-1",
           issueId: "issue-1",
           missingBindings: [
@@ -466,7 +455,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
         },
       },
     });
-    expect(collectMissingRuntimeBindings.mock.calls[0]?.[2]).toMatchObject({
+    expect(collectMissingRuntimeBindings.mock.calls[0]?.[1]).toMatchObject({
       responsibleUserId: "user-1",
     });
     expect(resolveAdapterConfigForRuntime).not.toHaveBeenCalled();
@@ -475,7 +464,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
 
   it("rejects inline sensitive env values for low-trust runs", async () => {
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       executionRunConfig: {
@@ -489,7 +477,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
         preset: LOW_TRUST_REVIEW_PRESET,
         boundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: "company-1",
           issueIds: ["issue-1"],
         },
         sourcePresets: {},
@@ -506,7 +493,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
 
   it("fails push-capability preflight when no GitHub write credential is bound at agent or project scope", async () => {
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       executionRunConfig: { env: { AGENT_ONLY: "agent-only" } },
@@ -549,7 +535,6 @@ describe("resolveExecutionRunAdapterConfig", () => {
     const collectMissingRuntimeBindings = vi.fn().mockResolvedValue([]);
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       issueId: "issue-1",
       projectId: "project-1",
@@ -574,7 +559,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
     });
     expect(resolveEnvBindings).toHaveBeenCalledOnce();
     expect(collectMissingRuntimeBindings).toHaveBeenCalledTimes(2);
-    expect(collectMissingRuntimeBindings.mock.calls[1]?.[2]).toMatchObject({
+    expect(collectMissingRuntimeBindings.mock.calls[1]?.[1]).toMatchObject({
       consumerType: "project",
       consumerId: "project-1",
     });
@@ -613,8 +598,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-1",
       "codex-home",
@@ -632,7 +616,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
 
     await expect(
       resolveExecutionRunAdapterConfig({
-        companyId: "company-1",
         agentId: "agent-1",
         adapterType: "codex_local",
         issueId: "issue-1",
@@ -661,7 +644,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
 
     await expect(
       resolveExecutionRunAdapterConfig({
-        companyId: "company-1",
         agentId: "agent-1",
         adapterType: "codex_local",
         issueId: "issue-1",
@@ -681,7 +663,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
         configurationIncomplete: {
           reason: "codex_credentials_missing",
           adapterType: "codex_local",
-          companyId: "company-1",
           agentId: "agent-1",
           issueId: "issue-1",
           responsibleUserId: "user-1",
@@ -692,7 +673,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     // The blocker message must not leak any secret value.
     await expect(
       resolveExecutionRunAdapterConfig({
-        companyId: "company-1",
         agentId: "agent-1",
         adapterType: "codex_local",
         executionRunConfig: { command: "codex", env: { CODEX_HOME: managedAgentHome, OPENAI_API_KEY: "" } },
@@ -715,7 +695,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       adapterType: "codex_local",
       executionRunConfig: { command: "codex", env: { CODEX_HOME: managedAgentHome, OPENAI_API_KEY: { type: "secret_ref" } } },
@@ -738,7 +717,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       adapterType: "codex_local",
       executionRunConfig: { command: "codex", env: { CODEX_HOME: managedAgentHome, OPENAI_API_KEY: "" } },
@@ -761,7 +739,6 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
       agentId: "agent-1",
       adapterType: "claude_local",
       executionRunConfig: { command: "claude", env: { OPENAI_API_KEY: "" } },
@@ -864,7 +841,6 @@ describe("applyRunScopedMentionedSkillKeys", () => {
 });
 
 describe("resolveAdditionalRunWorkspaces", () => {
-  const companyId = "company-1";
   const issueId = "issue-1";
 
   const allowDecision: AuthorizationDecision = {
@@ -882,14 +858,13 @@ describe("resolveAdditionalRunWorkspaces", () => {
     const actor: AuthorizationActor = {
       type: "agent",
       agentId: "agent-1",
-      companyId,
       source: "agent_key",
     };
     const issues: ResolveAdditionalRunWorkspacesOptions["issues"] = {
       findMentionedProjectIds: async () => mentionedIds,
     };
     const projects: ResolveAdditionalRunWorkspacesOptions["projects"] = {
-      listByIds: async (_companyId, ids) =>
+      listByIds: async (ids) =>
         ids.map((id) => ({ id })) as unknown as Awaited<
           ReturnType<ResolveAdditionalRunWorkspacesOptions["projects"]["listByIds"]>
         >,
@@ -908,7 +883,6 @@ describe("resolveAdditionalRunWorkspaces", () => {
     });
     return {
       enabled: true,
-      companyId,
       actor,
       issues,
       projects,
@@ -1191,8 +1165,6 @@ describe("buildRunWorkspaceHints", () => {
 });
 
 describe("resolveAdditionalProjectWorkspace", () => {
-  const companyId = "company-1";
-
   function referencedProject(projectId: string): RunReferencedProject {
     return { projectId, project: { id: projectId } as RunReferencedProject["project"] };
   }
@@ -1230,7 +1202,7 @@ describe("resolveAdditionalProjectWorkspace", () => {
     });
 
     await expect(
-      resolveAdditionalProjectWorkspace({ companyId, project: referencedProject("project-b") }, deps),
+      resolveAdditionalProjectWorkspace({ project: referencedProject("project-b") }, deps),
     ).rejects.toThrow(/project-b/);
     // The fallback must not fabricate an empty managed directory for a project with no real source.
     expect(ensureCalls).toBe(0);
@@ -1250,7 +1222,7 @@ describe("resolveAdditionalProjectWorkspace", () => {
     });
 
     await expect(
-      resolveAdditionalProjectWorkspace({ companyId, project: referencedProject("project-c") }, deps),
+      resolveAdditionalProjectWorkspace({ project: referencedProject("project-c") }, deps),
     ).rejects.toThrow(/project-c/);
     // The row without a real source neither resolves a checkout nor triggers a managed fallback.
     expect(ensureCalls).toBe(0);
@@ -1272,7 +1244,7 @@ describe("resolveAdditionalProjectWorkspace", () => {
     });
 
     await expect(
-      resolveAdditionalProjectWorkspace({ companyId, project: referencedProject("project-d") }, deps),
+      resolveAdditionalProjectWorkspace({ project: referencedProject("project-d") }, deps),
     ).rejects.toThrow(/project-d/);
     // An empty configured directory must not mask a missing workspace, and the row has no
     // repository URL, so the managed fallback never runs.
@@ -1288,7 +1260,7 @@ describe("resolveAdditionalProjectWorkspace", () => {
       directoryHasContents: async (cwd) => cwd === "/checkout/a",
     });
 
-    const result = await resolveAdditionalProjectWorkspace({ companyId, project: referencedProject("project-a") }, deps);
+    const result = await resolveAdditionalProjectWorkspace({ project: referencedProject("project-a") }, deps);
 
     expect(result).toEqual({
       cwd: "/checkout/a",
@@ -1313,7 +1285,7 @@ describe("resolveAdditionalProjectWorkspace", () => {
       },
     });
 
-    const result = await resolveAdditionalProjectWorkspace({ companyId, project: referencedProject("project-a") }, deps);
+    const result = await resolveAdditionalProjectWorkspace({ project: referencedProject("project-a") }, deps);
 
     expect(result).toEqual({
       cwd: "/managed/project-a",
@@ -1329,9 +1301,8 @@ describe("resolveAdditionalProjectWorkspace", () => {
 
 describe("resolveManagedProjectWorkspaceDir isolation", () => {
   it("resolves distinct, non-nested managed dirs for two projects", () => {
-    const companyId = "company-1";
-    const dirA = resolveManagedProjectWorkspaceDir({ companyId, projectId: "project-a", repoName: null });
-    const dirB = resolveManagedProjectWorkspaceDir({ companyId, projectId: "project-b", repoName: null });
+    const dirA = resolveManagedProjectWorkspaceDir({ projectId: "project-a", repoName: null });
+    const dirB = resolveManagedProjectWorkspaceDir({ projectId: "project-b", repoName: null });
 
     expect(dirA).not.toBe(dirB);
     // Neither directory is a path prefix of the other: append a separator so a shared leading
@@ -1341,9 +1312,8 @@ describe("resolveManagedProjectWorkspaceDir isolation", () => {
   });
 
   it("keeps a project id that prefixes another project id in a sibling, non-nested dir", () => {
-    const companyId = "company-1";
-    const dir = resolveManagedProjectWorkspaceDir({ companyId, projectId: "project", repoName: null });
-    const dirLonger = resolveManagedProjectWorkspaceDir({ companyId, projectId: "project-extra", repoName: null });
+    const dir = resolveManagedProjectWorkspaceDir({ projectId: "project", repoName: null });
+    const dirLonger = resolveManagedProjectWorkspaceDir({ projectId: "project-extra", repoName: null });
 
     expect(`${dirLonger}${path.sep}`.startsWith(`${dir}${path.sep}`)).toBe(false);
     expect(`${dir}${path.sep}`.startsWith(`${dirLonger}${path.sep}`)).toBe(false);

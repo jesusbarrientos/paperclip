@@ -86,7 +86,7 @@ describe("errorHandler", () => {
     const req = {
       ...makeReq(),
       method: "POST",
-      originalUrl: "/api/companies/import",
+      originalUrl: "/api/organization/import",
       actor: {
         type: "board",
         userId: "cloud-user",
@@ -263,7 +263,6 @@ describe("errorHandler", () => {
       actor: {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
         runId: "run-1",
         source: "agent_jwt",
       },
@@ -287,7 +286,6 @@ describe("errorHandler", () => {
       {
         runId: "run-1",
         agentId: "agent-1",
-        companyId: "company-1",
         code: "RESPONSIBLE_USER_UNAUTHORIZED",
       },
     );

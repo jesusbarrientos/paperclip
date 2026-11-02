@@ -10,8 +10,8 @@ const setSearchParamsMock = vi.hoisted(() => vi.fn());
 const setBreadcrumbsMock = vi.hoisted(() => vi.fn());
 let currentSearch = "";
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("@/context/BreadcrumbContext", () => ({
@@ -41,14 +41,14 @@ vi.mock("./AuditFeed", () => ({
 }));
 
 vi.mock("./AuditRuns", () => ({
-  AuditRuns: ({ companyId, routineId }: { companyId: string; routineId?: string }) => (
-    <div data-testid="audit-runs" data-company={companyId} data-routine={routineId} />
+  AuditRuns: ({ routineId }: { routineId?: string }) => (
+    <div data-testid="audit-runs" data-routine={routineId} />
   ),
 }));
 
 vi.mock("./RoutineAuditActivity", () => ({
-  RoutineAuditActivity: ({ companyId, routineId }: { companyId: string; routineId: string }) => (
-    <div data-testid="routine-audit-activity" data-company={companyId} data-routine={routineId} />
+  RoutineAuditActivity: ({ routineId }: { routineId: string }) => (
+    <div data-testid="routine-audit-activity" data-routine={routineId} />
   ),
 }));
 
@@ -118,7 +118,6 @@ describe("AuditHub", () => {
 
     expect(container.querySelector('[data-testid="audit-feed"]')).toBeNull();
     const activity = container.querySelector<HTMLElement>('[data-testid="routine-audit-activity"]');
-    expect(activity?.dataset.company).toBe("company-1");
     expect(activity?.dataset.routine).toBe("routine-1");
   });
 
@@ -127,7 +126,6 @@ describe("AuditHub", () => {
     render("runs");
 
     const runs = container.querySelector<HTMLElement>('[data-testid="audit-runs"]');
-    expect(runs?.dataset.company).toBe("company-1");
     expect(runs?.dataset.routine).toBe("routine-1");
   });
 

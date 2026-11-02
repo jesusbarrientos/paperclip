@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toolsApi } from "@/api/tools";
-import { useAccountIdentity } from "@/api/companies-query";
+import { useAccountIdentity } from "@/api/account-identity";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

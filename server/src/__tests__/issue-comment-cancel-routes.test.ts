@@ -167,7 +167,6 @@ function describeResponse(res: request.Response) {
 function makeIssue() {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
     status: "in_progress",
     assigneeAgentId: "22222222-2222-4222-8222-222222222222",
     assigneeUserId: null,
@@ -180,7 +179,6 @@ function makeIssue() {
 function makeComment(overrides: Record<string, unknown> = {}) {
   return {
     id: "comment-1",
-    companyId: "company-1",
     issueId: "11111111-1111-4111-8111-111111111111",
     authorAgentId: null,
     authorUserId: "local-board",
@@ -266,7 +264,6 @@ describe("issue comment cancel routes", () => {
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-1",
-      companyId: "company-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "running",
       startedAt: new Date("2026-04-11T15:00:00.000Z"),
@@ -418,7 +415,6 @@ describe("issue comment cancel routes", () => {
     expect(mockIssueReferenceService.deleteCommentSource).toHaveBeenCalledWith("annotation-comment-1", "tx");
     expect(mockExternalObjectService.syncCommentSafely).toHaveBeenCalledWith("annotation-comment-1", "tx");
     expect(mockDecisionTrainingService.scrubDeletedComments).toHaveBeenCalledWith({
-      companyId: "company-1",
       issueId: "11111111-1111-4111-8111-111111111111",
       commentIds: ["comment-1", "annotation-comment-1"],
       deletedAt: new Date("2026-04-11T15:05:00.000Z"),
@@ -442,7 +438,6 @@ describe("issue comment cancel routes", () => {
     mockHeartbeatService.getRun.mockResolvedValue(null);
     mockAuthoritativeQueueWakes.push({
       id: "wake-1",
-      companyId: "company-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       runId: "run-1",
       status: "succeeded",

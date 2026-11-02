@@ -24,7 +24,7 @@ import {
   type ActivityPublication,
 } from "../services/index.js";
 import { environmentService } from "../services/environments.js";
-import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
+import { assertEnvironmentSelection } from "./environment-selection.js";
 import { assertBoardOrgAccess, getActorInfo } from "./authz.js";
 
 function sameJsonValue(a: unknown, b: unknown): boolean {
@@ -77,7 +77,7 @@ function publishActivitiesBestEffort(publications: ActivityPublication[], action
     try {
       publishActivity(publication);
     } catch (err) {
-      logger.error({ err, action, companyId: publication.companyId }, "failed to publish activity event");
+      logger.error({ err, action }, "failed to publish activity event");
     }
   }
 }
@@ -134,7 +134,7 @@ export function instanceSettingsRoutes(db: Db) {
     async (req, res) => {
       assertCanManageInstanceSettings(req);
       if (Object.prototype.hasOwnProperty.call(req.body, "defaultEnvironmentId")) {
-        await assertEnvironmentSelectionForCompany(
+        await assertEnvironmentSelection(
           environments,
           "instance",
           typeof req.body.defaultEnvironmentId === "string" ? req.body.defaultEnvironmentId : null,
@@ -161,26 +161,20 @@ export function instanceSettingsRoutes(db: Db) {
         return svc.update(req.body, { db: tx });
       });
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
-      await Promise.all(
-        companyIds.map((companyId) =>
-          logActivity(db, {
-            companyId,
-            actorType: actor.actorType,
-            actorId: actor.actorId,
-            agentId: actor.agentId,
-            runId: actor.runId,
-            agentApiKeyId: actor.agentApiKeyId,
-            action: "instance.settings.updated",
-            entityType: "instance_settings",
-            entityId: updated.id,
-            details: {
-              defaultEnvironmentId: updated.defaultEnvironmentId,
-              changedKeys: Object.keys(req.body).sort(),
-            },
-          }),
-        ),
-      );
+      await logActivity(db, {
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
+        action: "instance.settings.updated",
+        entityType: "instance_settings",
+        entityId: updated.id,
+        details: {
+          defaultEnvironmentId: updated.defaultEnvironmentId,
+          changedKeys: Object.keys(req.body).sort(),
+        },
+      });
       res.json(updated);
     },
   );
@@ -223,26 +217,20 @@ export function instanceSettingsRoutes(db: Db) {
       );
       const updated = await svc.updateGeneral(req.body);
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
-      await Promise.all(
-        companyIds.map((companyId) =>
-          logActivity(db, {
-            companyId,
-            actorType: actor.actorType,
-            actorId: actor.actorId,
-            agentId: actor.agentId,
-            runId: actor.runId,
-            agentApiKeyId: actor.agentApiKeyId,
-            action: "instance.settings.general_updated",
-            entityType: "instance_settings",
-            entityId: updated.id,
-            details: {
-              general: updated.general,
-              changedKeys: Object.keys(req.body).sort(),
-            },
-          }),
-        ),
-      );
+      await logActivity(db, {
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
+        action: "instance.settings.general_updated",
+        entityType: "instance_settings",
+        entityId: updated.id,
+        details: {
+          general: updated.general,
+          changedKeys: Object.keys(req.body).sort(),
+        },
+      });
       res.json(updated.general);
     },
   );
@@ -271,26 +259,20 @@ export function instanceSettingsRoutes(db: Db) {
       );
       const updated = await svc.updateExperimental(req.body);
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
-      await Promise.all(
-        companyIds.map((companyId) =>
-          logActivity(db, {
-            companyId,
-            actorType: actor.actorType,
-            actorId: actor.actorId,
-            agentId: actor.agentId,
-            runId: actor.runId,
-            agentApiKeyId: actor.agentApiKeyId,
-            action: "instance.settings.experimental_updated",
-            entityType: "instance_settings",
-            entityId: updated.id,
-            details: {
-              experimental: updated.experimental,
-              changedKeys: Object.keys(req.body).sort(),
-            },
-          }),
-        ),
-      );
+      await logActivity(db, {
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
+        action: "instance.settings.experimental_updated",
+        entityType: "instance_settings",
+        entityId: updated.id,
+        details: {
+          experimental: updated.experimental,
+          changedKeys: Object.keys(req.body).sort(),
+        },
+      });
       res.json(updated.experimental);
     },
   );
@@ -306,7 +288,6 @@ export function instanceSettingsRoutes(db: Db) {
     async (req, res) => {
       assertCanManageInstanceSettings(req);
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
       const ttlMs = req.body.ttlMs ?? null;
       // The whole read-audit-apply sequence runs as one queued transition
       // (see withTaskDrainTransition above), so an overlapping start or
@@ -316,18 +297,12 @@ export function instanceSettingsRoutes(db: Db) {
       // not the moment it arrived and was queued behind another transition.
       const drain = await withTaskDrainTransition(async () => {
         const computed = heartbeat.computeTaskDrain({ ttlMs });
-        // One transaction for every company's audit row, so a write that
-        // succeeds for one company and fails for another never leaves a
-        // partial activity history behind — either every company gets the
-        // record, or none does. The drain mutation below runs only after
-        // this transaction commits, so a failed write leaves the live
-        // drain untouched and there is no partial state to roll back.
+        // The drain mutation below runs only after the audit row commits, so
+        // a failed write leaves the live drain untouched and there is no
+        // partial state to roll back.
         const postCommitActivityPublications: ActivityPublication[] = [];
         await db.transaction((tx) =>
-          Promise.all(
-            companyIds.map((companyId) =>
-              logActivity(tx as unknown as Db, {
-                companyId,
+logActivity(tx as unknown as Db, {
                 actorType: actor.actorType,
                 actorId: actor.actorId,
                 agentId: actor.agentId,
@@ -341,9 +316,7 @@ export function instanceSettingsRoutes(db: Db) {
                   expiresAt: computed.expiresAt,
                 },
               }, postCommitActivityPublications),
-            ),
-          ),
-        );
+);
         heartbeat.applyTaskDrain(computed);
         // The audit record already committed, so a failure to publish it
         // here is not a reason to undo the drain: reverting the in-memory
@@ -360,7 +333,6 @@ export function instanceSettingsRoutes(db: Db) {
   router.delete("/instance/task-drain", async (req, res) => {
     assertCanManageInstanceSettings(req);
     const actor = getActorInfo(req);
-    const companyIds = await svc.listCompanyIds();
     // See the POST handler above for why the whole read-audit-apply
     // sequence runs inside withTaskDrainTransition: it queues this stop
     // behind any transition already in flight, so it cannot read a status
@@ -377,10 +349,7 @@ export function instanceSettingsRoutes(db: Db) {
       // the drain mutation runs only after it commits.
       const postCommitActivityPublications: ActivityPublication[] = [];
       await db.transaction((tx) =>
-        Promise.all(
-          companyIds.map((companyId) =>
-            logActivity(tx as unknown as Db, {
-              companyId,
+logActivity(tx as unknown as Db, {
               actorType: actor.actorType,
               actorId: actor.actorId,
               agentId: actor.agentId,
@@ -393,9 +362,7 @@ export function instanceSettingsRoutes(db: Db) {
                 wasActive,
               },
             }, postCommitActivityPublications),
-          ),
-        ),
-      );
+);
       heartbeat.stopTaskDrain();
       // See the POST handler above for why a publish failure here is
       // swallowed instead of failing the route: the audit record already
@@ -443,7 +410,7 @@ export function instanceSettingsRoutes(db: Db) {
   // stack the customer just resumed. Idempotent: a primary company that is
   // not archived reports changed:false. Reached by the harness with a
   // `lifecycle:unarchive-primary` control assertion; instance admins hold
-  // the same power through PATCH /api/companies/:id already.
+  // the same power through PATCH /api/organization already.
   router.post("/instance/lifecycle/unarchive-primary", async (req, res) => {
     assertCanManageInstanceSettings(req);
     const stackId = getCloudStackContext()?.stackId;

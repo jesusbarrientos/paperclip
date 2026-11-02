@@ -233,7 +233,7 @@ complete first-wave matrix must cover:
 | Direct regression | Flag-off `codex_local` invocation count, byte-stable result/finalization, and zero native rows. |
 | Configuration | Enabled and disabled create, import, edit, read, export, and adapter switch. |
 | Recovery | Persisted native run after flag disable, reconnect, duplicate event, duplicate command, cancellation, and server restart. |
-| Protocol security | Cross-company binding, ticket replay, ticket expiry, malformed frame, unsupported version, and revoked lease. |
+| Protocol security | Binding mismatch, ticket replay, ticket expiry, malformed frame, unsupported version, and revoked lease. |
 | Semantic actions | Discovery denial, unbound action, duplicate call, conflicting retry, redaction, and governed action. |
 | Task page | Active, settled, empty transcript, interaction, and classic direct-adapter states. |
 | Structured input | Valid response, malformed response, stale response, duplicate response, provider loss, and cancellation. |

@@ -661,11 +661,6 @@ export const pluginApiRouteDeclarationSchema = z.object({
   auth: z.enum(PLUGIN_API_ROUTE_AUTH_MODES),
   capability: z.literal("api.routes.register"),
   checkoutPolicy: z.enum(PLUGIN_API_ROUTE_CHECKOUT_POLICIES).optional(),
-  companyResolution: z.discriminatedUnion("from", [
-    z.object({ from: z.literal("body"), key: z.string().min(1) }),
-    z.object({ from: z.literal("query"), key: z.string().min(1) }),
-    z.object({ from: z.literal("issue"), param: z.string().min(1) }),
-  ]).optional(),
 });
 
 export type PluginApiRouteDeclarationInput = z.infer<typeof pluginApiRouteDeclarationSchema>;
@@ -1207,7 +1202,6 @@ export type InstallPlugin = z.infer<typeof installPluginSchema>;
  * the plugin's instanceConfigSchema is done at the service layer.
  */
 export const upsertPluginConfigSchema = z.object({
-  companyId: z.string().guid(),
   configJson: z.record(z.string(), z.unknown()),
 });
 
@@ -1218,7 +1212,6 @@ export type UpsertPluginConfig = z.infer<typeof upsertPluginConfigSchema>;
  * Allows a partial merge of config values.
  */
 export const patchPluginConfigSchema = z.object({
-  companyId: z.string().guid(),
   configJson: z.record(z.string(), z.unknown()),
 });
 

@@ -31,29 +31,21 @@ const DEFAULT_EXPIRY_SWEEP_LIMIT = 100;
 export type SecretProposalTerminalStatus = "approved" | "rejected" | "withdrawn" | "expired";
 
 export type ProposalRunContext = {
-  companyId: string;
   heartbeatRunId: string;
   registerForRedaction: (value: string) => void | Promise<void>;
 };
 
 type Proposal = typeof companySecretProposals.$inferSelect;
 
-async function loadRunContext(db: Db, context: Pick<ProposalRunContext, "companyId" | "heartbeatRunId">) {
-  const run = await db.select().from(heartbeatRuns).where(and(
-    eq(heartbeatRuns.id, context.heartbeatRunId),
-    eq(heartbeatRuns.companyId, context.companyId),
-  )).then((rows) => rows[0] ?? null);
+async function loadRunContext(db: Db, context: Pick<ProposalRunContext, "heartbeatRunId">) {
+  const run = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, context.heartbeatRunId)).then((rows) => rows[0] ?? null);
   if (!run) throw forbidden("Secret proposals require a verified run-bound agent token");
-  const issue = await db.select({ id: issues.id }).from(issues).where(and(
-    eq(issues.companyId, context.companyId),
-    or(eq(issues.executionRunId, run.id), eq(issues.checkoutRunId, run.id)),
-  )).then((rows) => rows[0] ?? null);
+  const issue = await db.select({ id: issues.id }).from(issues).where(or(eq(issues.executionRunId, run.id), eq(issues.checkoutRunId, run.id))).then((rows) => rows[0] ?? null);
   return { run, originIssueId: issue?.id ?? null };
 }
 
-async function ancestorIds(db: Db, companyId: string, agentId: string, lockForUpdate = false) {
-  const query = db.select({ id: agents.id, reportsTo: agents.reportsTo }).from(agents)
-    .where(eq(agents.companyId, companyId));
+async function ancestorIds(db: Db, agentId: string, lockForUpdate = false) {
+  const query = db.select({ id: agents.id, reportsTo: agents.reportsTo }).from(agents);
   const rows = lockForUpdate ? await query.for("update") : await query;
   const byId = new Map(rows.map((row) => [row.id, row.reportsTo]));
   if (!byId.has(agentId)) throw notFound("Agent not found");
@@ -79,17 +71,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 export function createSecretProposalsService(db: Db) {
-  async function getById(companyId: string, proposalId: string, dbClient: Db = db, lockForUpdate = false) {
-    const query = dbClient.select().from(companySecretProposals).where(and(
-      eq(companySecretProposals.id, proposalId),
-      eq(companySecretProposals.companyId, companyId),
-    ));
+  async function getById(proposalId: string, dbClient: Db = db, lockForUpdate = false) {
+    const query = dbClient.select().from(companySecretProposals).where(eq(companySecretProposals.id, proposalId));
     if (lockForUpdate) return query.for("update").then((rows) => rows[0] ?? null);
     return query.then((rows) => rows[0] ?? null);
   }
 
-  async function requirePending(companyId: string, proposalId: string, dbClient: Db = db, lockForUpdate = false) {
-    const proposal = await getById(companyId, proposalId, dbClient, lockForUpdate);
+  async function requirePending(proposalId: string, dbClient: Db = db, lockForUpdate = false) {
+    const proposal = await getById(proposalId, dbClient, lockForUpdate);
     if (!proposal) throw notFound("Secret proposal not found");
     if (proposal.status !== "pending") throw conflict("Only pending proposals can be resolved");
     return proposal;
@@ -101,17 +90,15 @@ export function createSecretProposalsService(db: Db) {
     }
   }
 
-  type CreationQuotaInput = { companyId: string; agentId: string; runId: string; issueId: string | null };
+  type CreationQuotaInput = { agentId: string; runId: string; issueId: string | null };
 
   async function creationQuotaDenial(dbClient: Db, input: CreationQuotaInput) {
     const [pending, recent] = await Promise.all([
       dbClient.select({ value: count() }).from(companySecretProposals).where(and(
-        eq(companySecretProposals.companyId, input.companyId),
         eq(companySecretProposals.proposedByAgentId, input.agentId),
         eq(companySecretProposals.status, "pending"),
       )).then((rows) => Number(rows[0]?.value ?? 0)),
       dbClient.select({ value: count() }).from(companySecretProposals).where(and(
-        eq(companySecretProposals.companyId, input.companyId),
         eq(companySecretProposals.proposedByAgentId, input.agentId),
         gte(companySecretProposals.createdAt, new Date(Date.now() - 60_000)),
       )).then((rows) => Number(rows[0]?.value ?? 0)),
@@ -127,11 +114,10 @@ export function createSecretProposalsService(db: Db) {
   async function createWithinQuota<T>(input: CreationQuotaInput, create: (txDb: Db) => Promise<T>) {
     const result = await db.transaction(async (tx) => {
       const txDb = tx as unknown as Db;
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.companyId}), hashtext(${input.agentId}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('secret-proposal-quota'), hashtext(${input.agentId}))`);
       const denial = await creationQuotaDenial(txDb, input);
       if (denial) {
         await logActivity(txDb, {
-          companyId: input.companyId,
           actorType: "agent",
           actorId: input.agentId,
           action: "secret.proposal.denied",
@@ -151,7 +137,6 @@ export function createSecretProposalsService(db: Db) {
 
   async function recordCreated(proposal: Proposal, dbClient: Db = db) {
     await logActivity(dbClient, {
-      companyId: proposal.companyId,
       actorType: "agent",
       actorId: proposal.proposedByAgentId,
       action: "secret.proposal.created",
@@ -178,14 +163,13 @@ export function createSecretProposalsService(db: Db) {
     const target = await txDb
       .select({ name: agents.name })
       .from(agents)
-      .where(and(eq(agents.id, proposal.targetId), eq(agents.companyId, proposal.companyId)))
+      .where(eq(agents.id, proposal.targetId))
       .then((rows) => rows[0] ?? null);
     if (!target) throw notFound("Target agent not found");
 
     const [interaction] = await txDb
       .insert(issueThreadInteractions)
       .values({
-        companyId: proposal.companyId,
         issueId: proposal.originIssueId,
         kind: "request_confirmation",
         status: "pending",
@@ -230,7 +214,6 @@ export function createSecretProposalsService(db: Db) {
       .returning();
     await txDb.update(issues).set({ updatedAt: new Date() }).where(eq(issues.id, proposal.originIssueId));
     await logActivity(txDb, {
-      companyId: proposal.companyId,
       actorType: "agent",
       actorId: proposal.proposedByAgentId,
       action: "issue.thread_interaction_created",
@@ -262,10 +245,7 @@ export function createSecretProposalsService(db: Db) {
     const current = await txDb
       .select()
       .from(issueThreadInteractions)
-      .where(and(
-        eq(issueThreadInteractions.id, proposal.interactionId),
-        eq(issueThreadInteractions.companyId, proposal.companyId),
-      ))
+      .where(eq(issueThreadInteractions.id, proposal.interactionId))
       .for("update")
       .then((rows) => rows[0] ?? null);
     if (!current || (current.status !== "pending" && !(outcome === "approved" && current.status === "accepted"))) return;
@@ -333,10 +313,9 @@ export function createSecretProposalsService(db: Db) {
     const prepared = await getSecretProvider("local_encrypted").createSecret({ value: input.value });
     await context.registerForRedaction(input.value);
     return createWithinQuota(
-      { companyId: context.companyId, agentId: run.agentId, runId: run.id, issueId: originIssueId },
+      { agentId: run.agentId, runId: run.id, issueId: originIssueId },
       async (txDb) => {
         const proposal = await txDb.insert(companySecretProposals).values({
-          companyId: context.companyId,
           kind: "secret",
           proposedName: name,
           proposedKey,
@@ -356,7 +335,7 @@ export function createSecretProposalsService(db: Db) {
     );
   }
 
-  async function createBinding(context: Pick<ProposalRunContext, "companyId" | "heartbeatRunId">, input: {
+  async function createBinding(context: Pick<ProposalRunContext, "heartbeatRunId">, input: {
     secretId?: string | null;
     sourceConfigPath?: string | null;
     secretProposalId?: string | null;
@@ -381,8 +360,8 @@ export function createSecretProposalsService(db: Db) {
     const { run, originIssueId } = await loadRunContext(db, context);
     const targetAgentId = input.targetAgentId ?? run.agentId;
     const [proposerAncestors, targetAncestors] = await Promise.all([
-      ancestorIds(db, context.companyId, run.agentId),
-      ancestorIds(db, context.companyId, targetAgentId),
+      ancestorIds(db, run.agentId),
+      ancestorIds(db, targetAgentId),
     ]);
     if (!bindingTargetAllowed(run.agentId, targetAgentId, targetAncestors)) {
       throw forbidden("Binding proposals may target only the proposing agent or its reports");
@@ -393,7 +372,6 @@ export function createSecretProposalsService(db: Db) {
       const sourceBinding = await db.select({ secretId: companySecretBindings.secretId })
         .from(companySecretBindings)
         .where(and(
-          eq(companySecretBindings.companyId, context.companyId),
           eq(companySecretBindings.targetType, "agent"),
           eq(companySecretBindings.targetId, run.agentId),
           eq(companySecretBindings.configPath, input.sourceConfigPath),
@@ -406,14 +384,12 @@ export function createSecretProposalsService(db: Db) {
           .select({ secretId: companySecrets.id })
           .from(userSecretDeclarations)
           .innerJoin(companySecrets, and(
-            eq(companySecrets.companyId, context.companyId),
             eq(companySecrets.scope, "user"),
             eq(companySecrets.ownerUserId, run.responsibleUserId),
             eq(companySecrets.userSecretDefinitionId, userSecretDeclarations.userSecretDefinitionId),
             eq(companySecrets.status, "active"),
           ))
           .where(and(
-            eq(userSecretDeclarations.companyId, context.companyId),
             eq(userSecretDeclarations.targetType, "agent"),
             eq(userSecretDeclarations.targetId, run.agentId),
             eq(userSecretDeclarations.configPath, input.sourceConfigPath),
@@ -424,10 +400,7 @@ export function createSecretProposalsService(db: Db) {
       if (!resolvedSecretId) throw notFound("Source secret binding not found");
     }
     if (resolvedSecretId) {
-      const secret = await db.select().from(companySecrets).where(and(
-        eq(companySecrets.id, resolvedSecretId),
-        eq(companySecrets.companyId, context.companyId),
-      )).then((rows) => rows[0] ?? null);
+      const secret = await db.select().from(companySecrets).where(eq(companySecrets.id, resolvedSecretId)).then((rows) => rows[0] ?? null);
       const sourceBindingAllowsUserSecret = Boolean(input.sourceConfigPath) && secret?.scope === "user";
       if (
         !secret
@@ -439,13 +412,10 @@ export function createSecretProposalsService(db: Db) {
       sourceSecretLabel = secret.name;
     }
     return createWithinQuota(
-      { companyId: context.companyId, agentId: run.agentId, runId: run.id, issueId: originIssueId },
+      { agentId: run.agentId, runId: run.id, issueId: originIssueId },
       async (txDb) => {
         if (input.secretProposalId) {
-          const dependency = await txDb.select().from(companySecretProposals).where(and(
-            eq(companySecretProposals.id, input.secretProposalId),
-            eq(companySecretProposals.companyId, context.companyId),
-          )).for("update").then((rows) => rows[0] ?? null);
+          const dependency = await txDb.select().from(companySecretProposals).where(eq(companySecretProposals.id, input.secretProposalId)).for("update").then((rows) => rows[0] ?? null);
           if (!dependency || dependency.kind !== "secret") throw notFound("Secret proposal not found");
           if (dependency.status !== "pending") {
             throw unprocessable(
@@ -455,7 +425,6 @@ export function createSecretProposalsService(db: Db) {
           sourceSecretLabel = dependency.proposedName;
         }
         const proposal = await txDb.insert(companySecretProposals).values({
-          companyId: context.companyId,
           kind: "binding",
           justification: input.justification.trim(),
           secretId: resolvedSecretId,
@@ -518,31 +487,23 @@ export function createSecretProposalsService(db: Db) {
   }
 
   async function listForAgent(
-    companyId: string,
     agentId: string,
     options: { limit?: number; offset?: number } = {},
   ) {
-    const rows = await db.select().from(companySecretProposals).where(and(
-      eq(companySecretProposals.companyId, companyId),
-      or(
-        eq(companySecretProposals.proposedByAgentId, agentId),
-        and(eq(companySecretProposals.kind, "binding"), eq(companySecretProposals.targetId, agentId)),
-      ),
-    )).orderBy(desc(companySecretProposals.createdAt))
+    const rows = await db.select().from(companySecretProposals).where(or(
+                eq(companySecretProposals.proposedByAgentId, agentId),
+                and(eq(companySecretProposals.kind, "binding"), eq(companySecretProposals.targetId, agentId)),
+              )).orderBy(desc(companySecretProposals.createdAt))
       .limit(options.limit ?? DEFAULT_PROPOSAL_LIST_LIMIT)
       .offset(options.offset ?? 0);
     return Promise.all(rows.map(enrich));
   }
 
   async function listForBoard(
-    companyId: string,
     status?: string | null,
     options: { limit?: number; offset?: number } = {},
   ) {
-    const rows = await db.select().from(companySecretProposals).where(and(
-      eq(companySecretProposals.companyId, companyId),
-      status ? eq(companySecretProposals.status, status) : undefined,
-    )).orderBy(desc(companySecretProposals.createdAt))
+    const rows = await db.select().from(companySecretProposals).where(status ? eq(companySecretProposals.status, status) : undefined).orderBy(desc(companySecretProposals.createdAt))
       .limit(options.limit ?? DEFAULT_PROPOSAL_LIST_LIMIT)
       .offset(options.offset ?? 0);
     return Promise.all(rows.map(enrich));
@@ -554,7 +515,6 @@ export function createSecretProposalsService(db: Db) {
       && bindingTargetAllowed(proposal.proposedByAgentId, proposal.targetId, proposal.targetAncestorIdsSnapshot ?? []);
     const currentTargetAncestors = await ancestorIds(
       dbClient,
-      proposal.companyId,
       proposal.targetId,
       lockForUpdate,
     );
@@ -580,12 +540,11 @@ export function createSecretProposalsService(db: Db) {
     const providerConfig = providerConfigId
       ? await secrets.getProviderConfigById(providerConfigId)
       : null;
-    if (providerConfigId && (!providerConfig || providerConfig.companyId !== proposal.companyId)) {
+    if (providerConfigId && (!providerConfig)) {
       throw notFound("Provider vault not found");
     }
     const provider = (providerConfig?.provider ?? "local_encrypted") as SecretProvider;
     const created = await secrets.create(
-      proposal.companyId,
       {
         name,
         key: proposal.proposedKey || normalizeSecretKey(name.split("/").at(-1) || ""),
@@ -599,7 +558,6 @@ export function createSecretProposalsService(db: Db) {
       { userId: input.resolvedByUserId, agentId: proposal.proposedByAgentId },
     );
     await logActivity(txDb, {
-      companyId: proposal.companyId,
       actorType: "user",
       actorId: input.resolvedByUserId,
       action: "secret.created",
@@ -633,7 +591,6 @@ export function createSecretProposalsService(db: Db) {
     )).returning().then((rows) => rows[0] ?? null);
     if (!updated) throw conflict("Proposal is no longer pending");
     await logActivity(txDb, {
-      companyId: proposal.companyId,
       actorType: "user",
       actorId: input.resolvedByUserId,
       action: "secret.proposal.approved",
@@ -663,13 +620,12 @@ export function createSecretProposalsService(db: Db) {
     if (!proposal.targetId || !proposal.configPath) throw conflict("Binding proposal is incomplete");
     const agentSvc = agentService(txDb);
     const target = await agentSvc.getById(proposal.targetId);
-    if (!target || target.companyId !== proposal.companyId) throw notFound("Target agent not found");
+    if (!target) throw notFound("Target agent not found");
     const adapterConfig = { ...asRecord(target.adapterConfig) };
     const [namespace, key] = proposal.configPath.split(".", 2);
     const userSecretDefinition = secret.scope === "user" && secret.userSecretDefinitionId
       ? await txDb.select({ key: userSecretDefinitions.key }).from(userSecretDefinitions).where(and(
           eq(userSecretDefinitions.id, secret.userSecretDefinitionId),
-          eq(userSecretDefinitions.companyId, proposal.companyId),
           eq(userSecretDefinitions.status, "active"),
         )).then((rows) => rows[0] ?? null)
       : null;
@@ -704,7 +660,6 @@ export function createSecretProposalsService(db: Db) {
     });
     if (!updated) throw notFound("Target agent not found");
     await logActivity(txDb, {
-      companyId: proposal.companyId,
       actorType: "user",
       actorId: resolvedByUserId,
       action: "agent.updated",
@@ -714,7 +669,7 @@ export function createSecretProposalsService(db: Db) {
     });
   }
 
-  async function approve(companyId: string, proposalId: string, input: {
+  async function approve(proposalId: string, input: {
     resolvedByUserId: string;
     cascade?: boolean;
     overrides?: { name?: string; description?: string | null; providerConfigId?: string | null };
@@ -722,7 +677,7 @@ export function createSecretProposalsService(db: Db) {
   }) {
     return db.transaction(async (tx) => {
       const txDb = tx as unknown as Db;
-      const proposal = await requirePending(companyId, proposalId, txDb, true);
+      const proposal = await requirePending(proposalId, txDb, true);
       assertNotExpired(proposal);
       await input.assertCanResolve?.(proposal, txDb);
       await assertBindingSnapshotCurrent(proposal, txDb, true);
@@ -736,7 +691,7 @@ export function createSecretProposalsService(db: Db) {
 
       let secretId = proposal.secretId;
       if (proposal.secretProposalId) {
-        const dependency = await getById(companyId, proposal.secretProposalId, txDb, true);
+        const dependency = await getById(proposal.secretProposalId, txDb, true);
         if (!dependency || dependency.kind !== "secret") throw notFound("Prerequisite secret proposal not found");
         if (dependency.status !== "pending") {
           if (dependency.status !== "approved" || !dependency.createdSecretId) {
@@ -758,7 +713,7 @@ export function createSecretProposalsService(db: Db) {
       }
       if (!secretId) throw conflict("Binding proposal has no approved secret");
       const liveSecret = await secretService(txDb).getById(secretId);
-      if (!liveSecret || liveSecret.companyId !== companyId || liveSecret.status !== "active") {
+      if (!liveSecret || liveSecret.status !== "active") {
         throw conflict("Binding proposal secret is not active");
       }
       await applyBindingApproval(txDb, proposal, liveSecret, input.resolvedByUserId);
@@ -769,12 +724,12 @@ export function createSecretProposalsService(db: Db) {
     });
   }
 
-  async function transition(companyId: string, proposalId: string, status: Exclude<SecretProposalTerminalStatus, "approved">, input: {
+  async function transition(proposalId: string, status: Exclude<SecretProposalTerminalStatus, "approved">, input: {
     resolvedByUserId?: string | null;
     reason?: string | null;
     proposerAgentId?: string | null;
   } = {}) {
-    const proposal = await requirePending(companyId, proposalId);
+    const proposal = await requirePending(proposalId);
     if (status === "withdrawn" && proposal.proposedByAgentId !== input.proposerAgentId) {
       throw forbidden("Only the proposer can withdraw this proposal");
     }
@@ -802,7 +757,6 @@ export function createSecretProposalsService(db: Db) {
             ciphertextScrubbedAt: now,
             updatedAt: now,
           }).where(and(
-            eq(companySecretProposals.companyId, companyId),
             eq(companySecretProposals.status, "pending"),
             eq(companySecretProposals.secretProposalId, proposal.id),
           )).returning()
@@ -810,7 +764,6 @@ export function createSecretProposalsService(db: Db) {
       const actorType = input.resolvedByUserId ? "user" as const : status === "withdrawn" ? "agent" as const : "system" as const;
       const actorId = input.resolvedByUserId ?? input.proposerAgentId ?? "system";
       await logActivity(txDb, {
-        companyId,
         actorType,
         actorId,
         action: `secret.proposal.${status}`,
@@ -822,7 +775,6 @@ export function createSecretProposalsService(db: Db) {
       });
       for (const dependent of dependents) {
         await logActivity(txDb, {
-          companyId,
           actorType,
           actorId,
           action: "secret.proposal.rejected",
@@ -853,10 +805,10 @@ export function createSecretProposalsService(db: Db) {
   async function sweepExpired(
     now = new Date(),
     limit = DEFAULT_EXPIRY_SWEEP_LIMIT,
-    expireProposal: (companyId: string, proposalId: string) => Promise<unknown> =
-      (companyId, proposalId) => transition(companyId, proposalId, "expired", { reason: "Pending proposal expired" }),
+    expireProposal: (proposalId: string) => Promise<unknown> =
+      (proposalId) => transition(proposalId, "expired", { reason: "Pending proposal expired" }),
   ) {
-    const expired = await db.select({ id: companySecretProposals.id, companyId: companySecretProposals.companyId })
+    const expired = await db.select({ id: companySecretProposals.id })
       .from(companySecretProposals)
       .where(and(eq(companySecretProposals.status, "pending"), lte(companySecretProposals.expiresAt, now)))
       .orderBy(companySecretProposals.expiresAt)
@@ -864,7 +816,7 @@ export function createSecretProposalsService(db: Db) {
     let expiredCount = 0;
     for (const proposal of expired) {
       try {
-        await expireProposal(proposal.companyId, proposal.id);
+        await expireProposal(proposal.id);
         expiredCount += 1;
       } catch (error) {
         if (error instanceof HttpError && error.status === 409) continue;

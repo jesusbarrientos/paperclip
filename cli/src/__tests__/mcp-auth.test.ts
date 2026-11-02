@@ -16,7 +16,7 @@ async function seed(value: unknown, mode = 0o600) {
   await fs.writeFile(file, typeof value === "string" ? value : JSON.stringify(value), { mode });
   return file;
 }
-const stored = () => ({ resource, issuer: "https://paperclip.example", clientId: "client", companyId: "company", accessToken: "private-access", refreshToken: "private-refresh", expiresAt: 0 });
+const stored = () => ({ resource, issuer: "https://paperclip.example", clientId: "client", accessToken: "private-access", refreshToken: "private-refresh", expiresAt: 0 });
 describe("MCP protected credential transport", () => {
   it("rejects noncanonical resources and isolates credential files by resource", () => {
     for (const url of ["http://evil.example/mcp/paperclip", resource + "?token=secret", resource + "#x", "https://u:p@paperclip.example/mcp/paperclip", "https://paperclip.example/other"]) expect(() => mcpResource(url)).toThrow();

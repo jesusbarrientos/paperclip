@@ -75,7 +75,6 @@ describeEmbeddedPostgres("decision queue routes", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Prioritizer",
       role: "engineer",
       status: "idle",
@@ -86,7 +85,6 @@ describeEmbeddedPostgres("decision queue routes", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: "DQC-1",
       title: "Review the rollout",
       status: "in_review",
@@ -94,7 +92,6 @@ describeEmbeddedPostgres("decision queue routes", () => {
     });
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId,
       issueId,
       kind: "ask_user_questions",
       status: "pending",
@@ -102,12 +99,11 @@ describeEmbeddedPostgres("decision queue routes", () => {
     });
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
       type: "request_board_approval",
       status: "pending",
       payload: {},
     });
-    return { companyId, agentId, issueId, interactionId, approvalId };
+    return { agentId, issueId, interactionId, approvalId };
   }
 
   function app(actor: Record<string, unknown>) {
@@ -122,21 +118,19 @@ describeEmbeddedPostgres("decision queue routes", () => {
     return testApp;
   }
 
-  function boardActor(companyId: string, userId = "board-user") {
+  function boardActor(userId = "board-user") {
     return {
       type: "board",
       source: "local_implicit",
       userId,
-      companyIds: [companyId],
       isInstanceAdmin: false,
     };
   }
 
-  function agentActor(companyId: string, agentId: string) {
+  function agentActor(agentId: string) {
     return {
       type: "agent",
       source: "agent_key",
-      companyId,
       agentId,
       keyId: null,
       keyScope: { kind: "standard" },
@@ -145,14 +139,14 @@ describeEmbeddedPostgres("decision queue routes", () => {
   }
 
   it("creates idempotently, patches, lists by updated time, and audits queue mutations", async () => {
-    const { companyId } = await seed();
-    const board = boardActor(companyId);
-    const first = await request(app(board)).post(`/api/companies/${companyId}/decision-queues`).send({
+    const {} = await seed();
+    const board = boardActor();
+    const first = await request(app(board)).post(`/api/decision-queues`).send({
       key: "launches",
       title: "Launches",
       description: "Ship decisions",
     }).expect(201);
-    const repeated = await request(app(board)).post(`/api/companies/${companyId}/decision-queues`).send({
+    const repeated = await request(app(board)).post(`/api/decision-queues`).send({
       key: "launches",
       title: "Ignored duplicate title",
     }).expect(200);
@@ -162,19 +156,19 @@ describeEmbeddedPostgres("decision queue routes", () => {
     expect(repeated.body.itemCount).toBe(0);
 
     const patched = await request(app(board))
-      .patch(`/api/companies/${companyId}/decision-queues/launches`)
+      .patch(`/api/decision-queues/launches`)
       .send({ title: "Launch desk", retentionDays: 45 })
       .expect(200);
     expect(patched.body).toMatchObject({ title: "Launch desk", retentionDays: 45 });
 
-    await request(app(board)).post(`/api/companies/${companyId}/decision-queues`).send({
+    await request(app(board)).post(`/api/decision-queues`).send({
       key: "older",
       title: "Older",
     }).expect(201);
-    const listed = await request(app(board)).get(`/api/companies/${companyId}/decision-queues`).expect(200);
+    const listed = await request(app(board)).get(`/api/decision-queues`).expect(200);
     expect(listed.body.map((queue: { key: string }) => queue.key)).toEqual(["older", "launches"]);
     const seedRules = await request(app(board))
-      .get(`/api/companies/${companyId}/decision-queue-seed-rules`)
+      .get(`/api/decision-queue-seed-rules`)
       .expect(200);
     expect(seedRules.body.map((seed: { key: string }) => seed.key)).toEqual(["prs", "plans", "questions"]);
 
@@ -185,9 +179,9 @@ describeEmbeddedPostgres("decision queue routes", () => {
   });
 
   it("adds and removes three attention source kinds and hides board-only membership from agents", async () => {
-    const { companyId, agentId, issueId, interactionId, approvalId } = await seed();
-    const board = boardActor(companyId);
-    await request(app(board)).post(`/api/companies/${companyId}/decision-queues`).send({
+    const { agentId, issueId, interactionId, approvalId } = await seed();
+    const board = boardActor();
+    await request(app(board)).post(`/api/decision-queues`).send({
       key: "triage",
       title: "Triage",
     }).expect(201);
@@ -198,55 +192,48 @@ describeEmbeddedPostgres("decision queue routes", () => {
       { sourceKind: "review", sourceId: issueId },
     ]) {
       await request(app(board))
-        .post(`/api/companies/${companyId}/decision-queues/triage/items`)
+        .post(`/api/decision-queues/triage/items`)
         .send(source)
         .expect(201);
     }
 
     const items = await request(app(board))
-      .get(`/api/companies/${companyId}/decision-queues/triage/items`)
+      .get(`/api/decision-queues/triage/items`)
       .expect(200);
     expect(items.body).toHaveLength(3);
-    const repeated = await request(app(board)).post(`/api/companies/${companyId}/decision-queues`).send({
+    const repeated = await request(app(board)).post(`/api/decision-queues`).send({
       key: "triage",
       title: "Ignored duplicate title",
     }).expect(200);
     expect(repeated.body.itemCount).toBe(3);
 
-    const agentList = await request(app(agentActor(companyId, agentId)))
-      .get(`/api/companies/${companyId}/decision-queues`)
+    const agentList = await request(app(agentActor(agentId)))
+      .get(`/api/decision-queues`)
       .expect(200);
     expect(agentList.body[0].itemCount).toBe(2);
-    const agentItems = await request(app(agentActor(companyId, agentId)))
-      .get(`/api/companies/${companyId}/decision-queues/triage/items`)
+    const agentItems = await request(app(agentActor(agentId)))
+      .get(`/api/decision-queues/triage/items`)
       .expect(200);
     expect(agentItems.body.map((item: { sourceKind: string }) => item.sourceKind).sort()).toEqual([
       "issue_thread_interaction",
       "review",
     ]);
-    await request(app(agentActor(companyId, agentId)))
-      .delete(`/api/companies/${companyId}/decision-queues/triage/items/approval/${approvalId}`)
+    await request(app(agentActor(agentId)))
+      .delete(`/api/decision-queues/triage/items/approval/${approvalId}`)
       .expect(404);
 
     await request(app(board))
-      .delete(`/api/companies/${companyId}/decision-queues/triage/items/review/${issueId}`)
+      .delete(`/api/decision-queues/triage/items/review/${issueId}`)
       .send({ reason: "Handled in the release review" })
       .expect(200);
-    expect(await db.select().from(decisionQueueItems).where(and(
-      eq(decisionQueueItems.companyId, companyId),
-      eq(decisionQueueItems.sourceKind, "review"),
-    ))).toHaveLength(0);
-    const removalAudit = await db.select().from(activityLog).where(and(
-      eq(activityLog.companyId, companyId),
-      eq(activityLog.action, "decision_queue_item.removed"),
-    )).then((rows) => rows[0]);
+    expect(await db.select().from(decisionQueueItems).where(eq(decisionQueueItems.sourceKind, "review"))).toHaveLength(0);
+    const removalAudit = await db.select().from(activityLog).where(eq(activityLog.action, "decision_queue_item.removed")).then((rows) => rows[0]);
     expect(removalAudit?.details).toMatchObject({
       sourceKind: "review",
       sourceId: issueId,
       reason: "Handled in the release review",
     });
     const removalEvent = await db.select().from(decisionTriageEvents).where(and(
-      eq(decisionTriageEvents.companyId, companyId),
       eq(decisionTriageEvents.sourceKind, "review"),
       eq(decisionTriageEvents.sourceId, issueId),
       eq(decisionTriageEvents.action, "queue_item.removed"),
@@ -255,18 +242,14 @@ describeEmbeddedPostgres("decision queue routes", () => {
 
     await db.delete(approvals).where(eq(approvals.id, approvalId));
     await request(app(board))
-      .delete(`/api/companies/${companyId}/decision-queues/triage/items/approval/${approvalId}`)
+      .delete(`/api/decision-queues/triage/items/approval/${approvalId}`)
       .expect(200);
-    expect(await db.select().from(decisionQueueItems).where(and(
-      eq(decisionQueueItems.companyId, companyId),
-      eq(decisionQueueItems.sourceKind, "approval"),
-    ))).toHaveLength(0);
+    expect(await db.select().from(decisionQueueItems).where(eq(decisionQueueItems.sourceKind, "approval"))).toHaveLength(0);
   });
 
   it("materializes data-backed starter queues from plan, question, and pull-request signals", async () => {
-    const { companyId, issueId, interactionId } = await seed();
+    const { issueId, interactionId } = await seed();
     await db.insert(issueWorkProducts).values({
-      companyId,
       issueId,
       type: "pull_request",
       provider: "github",
@@ -283,12 +266,10 @@ describeEmbeddedPostgres("decision queue routes", () => {
     }): AttentionItem {
       return {
         id: `${input.sourceKind}:${input.sourceId}`,
-        companyId,
         sourceKind: input.sourceKind,
         subject: {
           kind: input.subjectKind,
           id: input.sourceId,
-          companyId,
           title: "Seed candidate",
           identifier: null,
           status: "pending",
@@ -311,7 +292,6 @@ describeEmbeddedPostgres("decision queue routes", () => {
         relatedIssue: input.issueId ? {
           kind: "issue",
           id: input.issueId,
-          companyId,
           title: "Issue",
           identifier: "DQC-1",
           status: "in_review",
@@ -342,33 +322,31 @@ describeEmbeddedPostgres("decision queue routes", () => {
         issueId,
       }),
     ];
-    await decisionQueueService(db).materializeSeededQueues(companyId, candidates);
+    await decisionQueueService(db).materializeSeededQueues(candidates);
 
-    const queues = await db.select().from(decisionQueues).where(eq(decisionQueues.companyId, companyId));
+    const queues = await db.select().from(decisionQueues);
     expect(queues.map((queue) => queue.key).sort()).toEqual(["plans", "prs", "questions"]);
     expect(queues.every((queue) => queue.seedRulesEnabled && queue.seedRules.length === 1)).toBe(true);
     const seededItems = await db.select({ queueId: decisionQueueItems.queueId })
-      .from(decisionQueueItems)
-      .where(eq(decisionQueueItems.companyId, companyId));
+      .from(decisionQueueItems);
     expect(seededItems).toHaveLength(5);
     const prQueue = queues.find((queue) => queue.key === "prs")!;
     expect(seededItems.filter((item) => item.queueId === prQueue.id)).toHaveLength(3);
 
-    const firstEvents = await db.select().from(decisionTriageEvents)
-      .where(eq(decisionTriageEvents.companyId, companyId));
-    const firstActivity = await db.select().from(activityLog).where(eq(activityLog.companyId, companyId));
+    const firstEvents = await db.select().from(decisionTriageEvents);
+    const firstActivity = await db.select().from(activityLog);
     const firstUpdatedAt = new Map(queues.map((queue) => [queue.key, queue.updatedAt.toISOString()]));
-    await decisionQueueService(db).materializeSeededQueues(companyId, candidates);
-    const unchangedQueues = await db.select().from(decisionQueues).where(eq(decisionQueues.companyId, companyId));
+    await decisionQueueService(db).materializeSeededQueues(candidates);
+    const unchangedQueues = await db.select().from(decisionQueues);
     expect(unchangedQueues.every((queue) => queue.updatedAt.toISOString() === firstUpdatedAt.get(queue.key))).toBe(true);
-    expect(await db.select().from(decisionTriageEvents).where(eq(decisionTriageEvents.companyId, companyId)))
+    expect(await db.select().from(decisionTriageEvents))
       .toHaveLength(firstEvents.length);
-    expect(await db.select().from(activityLog).where(eq(activityLog.companyId, companyId)))
+    expect(await db.select().from(activityLog))
       .toHaveLength(firstActivity.length);
 
     const questionsQueue = queues.find((queue) => queue.key === "questions")!;
     await db.update(decisionQueues).set({ seedRulesEnabled: false }).where(eq(decisionQueues.id, questionsQueue.id));
-    await decisionQueueService(db).materializeSeededQueues(companyId, [attentionItem({
+    await decisionQueueService(db).materializeSeededQueues([attentionItem({
       sourceKind: "issue_thread_interaction",
       sourceId: randomUUID(),
       subjectKind: "interaction",
@@ -380,12 +358,12 @@ describeEmbeddedPostgres("decision queue routes", () => {
   });
 
   it("records agent decide-by, preserves override history, and exposes the board override attribution", async () => {
-    const { companyId, agentId, issueId } = await seed();
-    const agent = agentActor(companyId, agentId);
-    const board = boardActor(companyId, "override-user");
+    const { agentId, issueId } = await seed();
+    const agent = agentActor(agentId);
+    const board = boardActor("override-user");
 
     const agentSet = await request(app(agent))
-      .put(`/api/companies/${companyId}/decision-triage/review/${issueId}`)
+      .put(`/api/decision-triage/review/${issueId}`)
       .send({ decideBy: "today", snoozedUntil: "2026-08-03T12:00:00.000Z" })
       .expect(200);
     expect(agentSet.body).toMatchObject({
@@ -396,7 +374,7 @@ describeEmbeddedPostgres("decision queue routes", () => {
     });
 
     const overridden = await request(app(board))
-      .put(`/api/companies/${companyId}/decision-triage/review/${issueId}`)
+      .put(`/api/decision-triage/review/${issueId}`)
       .send({ decideBy: "2026-08-08", snoozedUntil: null })
       .expect(200);
     expect(overridden.body).toMatchObject({
@@ -407,7 +385,6 @@ describeEmbeddedPostgres("decision queue routes", () => {
     });
 
     const events = await db.select().from(decisionTriageEvents).where(and(
-      eq(decisionTriageEvents.companyId, companyId),
       eq(decisionTriageEvents.sourceKind, "review"),
       eq(decisionTriageEvents.sourceId, issueId),
     ));
@@ -421,14 +398,14 @@ describeEmbeddedPostgres("decision queue routes", () => {
   });
 
   it("serializes concurrent partial triage updates without losing state or reusing a version", async () => {
-    const { companyId, issueId } = await seed();
-    const board = boardActor(companyId);
+    const { issueId } = await seed();
+    const board = boardActor();
     const [decideByResult, snoozeResult] = await Promise.all([
       request(app(board))
-        .put(`/api/companies/${companyId}/decision-triage/review/${issueId}`)
+        .put(`/api/decision-triage/review/${issueId}`)
         .send({ decideBy: "today" }),
       request(app(board))
-        .put(`/api/companies/${companyId}/decision-triage/review/${issueId}`)
+        .put(`/api/decision-triage/review/${issueId}`)
         .send({ snoozedUntil: "2026-08-03T12:00:00.000Z" }),
     ]);
 
@@ -437,7 +414,7 @@ describeEmbeddedPostgres("decision queue routes", () => {
     expect([decideByResult.body.version, snoozeResult.body.version].sort()).toEqual([1, 2]);
 
     const current = await request(app(board))
-      .get(`/api/companies/${companyId}/decision-triage/review/${issueId}`)
+      .get(`/api/decision-triage/review/${issueId}`)
       .expect(200);
     expect(current.body).toMatchObject({
       decideBy: "today",
@@ -445,7 +422,6 @@ describeEmbeddedPostgres("decision queue routes", () => {
       version: 2,
     });
     const events = await db.select().from(decisionTriageEvents).where(and(
-      eq(decisionTriageEvents.companyId, companyId),
       eq(decisionTriageEvents.sourceKind, "review"),
       eq(decisionTriageEvents.sourceId, issueId),
     ));
@@ -453,38 +429,38 @@ describeEmbeddedPostgres("decision queue routes", () => {
   });
 
   it("rejects task-bridge JWTs and returns the same 404 for missing and unauthorized sources", async () => {
-    const { companyId, agentId, approvalId } = await seed();
+    const { agentId, approvalId } = await seed();
     const bridge = {
-      ...agentActor(companyId, agentId),
+      ...agentActor(agentId),
       source: "agent_jwt",
       keyId: randomUUID(),
       keyScope: { kind: "task_bridge", parentIssueId: randomUUID() },
     };
-    await request(app(bridge)).post(`/api/companies/${companyId}/decision-queues`).send({
+    await request(app(bridge)).post(`/api/decision-queues`).send({
       key: "blocked",
       title: "Blocked",
     }).expect(403);
     const skillTest = {
-      ...agentActor(companyId, agentId),
+      ...agentActor(agentId),
       source: "agent_jwt",
       keyScope: { kind: "skill_test", issueId: randomUUID() },
     };
-    await request(app(skillTest)).post(`/api/companies/${companyId}/decision-queues`).send({
+    await request(app(skillTest)).post(`/api/decision-queues`).send({
       key: "skill-test-blocked",
       title: "Skill test blocked",
     }).expect(403);
 
-    await request(app(boardActor(companyId))).post(`/api/companies/${companyId}/decision-queues`).send({
+    await request(app(boardActor())).post(`/api/decision-queues`).send({
       key: "secure",
       title: "Secure",
     }).expect(201);
-    const standardAgent = app(agentActor(companyId, agentId));
+    const standardAgent = app(agentActor(agentId));
     const unauthorized = await request(standardAgent)
-      .post(`/api/companies/${companyId}/decision-queues/secure/items`)
+      .post(`/api/decision-queues/secure/items`)
       .send({ sourceKind: "approval", sourceId: approvalId })
       .expect(404);
     const missing = await request(standardAgent)
-      .post(`/api/companies/${companyId}/decision-queues/secure/items`)
+      .post(`/api/decision-queues/secure/items`)
       .send({ sourceKind: "approval", sourceId: randomUUID() })
       .expect(404);
     expect(unauthorized.body).toEqual(missing.body);

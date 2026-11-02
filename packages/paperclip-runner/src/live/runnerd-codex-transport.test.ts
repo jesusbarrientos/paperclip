@@ -3536,7 +3536,6 @@ it("does not retry a real memoized transport close whose suspension proof is una
   const identity = {
     runId: "run-recovery",
     sessionId: "session-recovery",
-    companyId: "company-recovery",
     issueId: "issue-recovery",
     agentId: "agent-recovery",
   };
@@ -3569,7 +3568,6 @@ it("does not retry a real memoized transport close whose suspension proof is una
   const input: NativeExecutionInputV1 = {
     schema: "paperclip.native-execution-input.v1",
     binding: {
-      companyId: identity.companyId,
       runId: identity.runId,
       issueId: identity.issueId,
       agentId: identity.agentId,

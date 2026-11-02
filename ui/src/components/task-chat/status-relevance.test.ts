@@ -16,7 +16,7 @@ const hold: ExecutionProjection = {
   predecessorRunId: null, successorRunId: null,
 };
 const notice: IssueChatComment = {
-  id: "notice", companyId: "company", issueId: "issue", authorType: "system",
+  id: "notice", issueId: "issue", authorType: "system",
   authorAgentId: null, authorUserId: null, body: "Execution needs attention.",
   presentation: null, metadata: { version: 1, sourceRunId: "old", sections: [] },
   createdAt: new Date("2025-01-01T10:00:30Z"), updatedAt: new Date("2025-01-01T10:00:30Z"),

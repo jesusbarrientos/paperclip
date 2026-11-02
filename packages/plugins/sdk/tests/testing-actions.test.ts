@@ -16,34 +16,28 @@ const manifest = {
 } satisfies PaperclipPluginManifestV1;
 
 describe("createTestHarness action context", () => {
-  it("passes immutable authenticated actor context and overrides caller company scope", async () => {
+  it("passes immutable authenticated actor context", async () => {
     const harness = createTestHarness({ manifest });
 
-    harness.ctx.actions.register("inspect", async (params, context) => ({
-      paramsCompanyId: params.companyId,
+    harness.ctx.actions.register("inspect", async (_params, context) => ({
       actor: context.actor,
-      companyId: context.companyId,
       contextFrozen: Object.isFrozen(context),
       actorFrozen: Object.isFrozen(context.actor),
     }));
 
     const result = await harness.performAction<{
-      paramsCompanyId: unknown;
       actor: {
         type: string;
         userId: string | null;
         agentId: string | null;
         runId: string | null;
-        companyId: string | null;
       };
-      companyId: string | null;
       contextFrozen: boolean;
       actorFrozen: boolean;
     }>(
       "inspect",
-      { companyId: "spoofed-company", value: true },
+      { value: true },
       {
-        companyId: "host-company",
         actor: {
           type: "user",
           userId: "board-user-1",
@@ -52,14 +46,11 @@ describe("createTestHarness action context", () => {
       },
     );
 
-    expect(result.paramsCompanyId).toBe("host-company");
-    expect(result.companyId).toBe("host-company");
     expect(result.actor).toEqual({
       type: "user",
       userId: "board-user-1",
       agentId: null,
-      runId: "run-1",
-      companyId: "host-company",
+      runId: "run-1"
     });
     expect(result.contextFrozen).toBe(true);
     expect(result.actorFrozen).toBe(true);
@@ -88,7 +79,7 @@ describe("createTestHarness managed routines", () => {
       },
     });
 
-    const resolved = await harness.ctx.routines.managed.reconcile("quiet-watcher", "company-1");
+    const resolved = await harness.ctx.routines.managed.reconcile("quiet-watcher");
 
     expect(resolved.routine).toMatchObject({
       activityGatePolicy: "require_external_activity",
@@ -100,15 +91,15 @@ describe("createTestHarness managed routines", () => {
 describe("createTestHarness issue interactions", () => {
   it("normalizes a canonical question form through the typed host helper", async () => {
     const harness = createTestHarness({ manifest, capabilities: ["issues.create", "issue.interactions.create"] });
-    const issue = await harness.ctx.issues.create({ companyId: "company-1", title: "Ask for a repository" });
+    const issue = await harness.ctx.issues.create({ title: "Ask for a repository" });
     const input = {
       idempotencyKey: "canonical:repo",
       payload: { version: 1 as const, questionSet: { schema: "paperclip.question_set.v1" as const, questions: [{ id: "repo", prompt: "Repository URL?", required: true, answerMode: "text" as const }] } },
     };
-    const created = await harness.ctx.issues.askUserQuestions(issue.id, input, "company-1");
+    const created = await harness.ctx.issues.askUserQuestions(issue.id, input);
     expect(created.payload.questionSet).toEqual(input.payload.questionSet);
     expect(created.payload.questions).toMatchObject([{ id: "repo", options: [{ id: "paperclip_text_answer", freeText: true }] }]);
-    expect(await harness.ctx.issues.askUserQuestions(issue.id, input, "company-1")).toEqual(created);
+    expect(await harness.ctx.issues.askUserQuestions(issue.id, input)).toEqual(created);
   });
   it("creates request_checkbox_confirmation interactions through the typed host helper", async () => {
     const harness = createTestHarness({
@@ -116,7 +107,6 @@ describe("createTestHarness issue interactions", () => {
       capabilities: ["issues.create", "issue.interactions.create"],
     });
     const issue = await harness.ctx.issues.create({
-      companyId: "company-1",
       title: "Pick files",
     });
 
@@ -137,13 +127,11 @@ describe("createTestHarness issue interactions", () => {
           maxSelected: 2,
         },
       },
-      "company-1",
       { authorAgentId: "agent-1" },
     );
 
     expect(interaction).toMatchObject({
       issueId: issue.id,
-      companyId: "company-1",
       kind: "request_checkbox_confirmation",
       status: "pending",
       continuationPolicy: "wake_assignee",

@@ -161,7 +161,6 @@ async function createApp(options?: { companyIds?: string[] }) {
 function makeIssue() {
   return {
     id: ISSUE_ID,
-    companyId: "company-1",
     identifier: "PAP-1",
     projectId: null,
     status: "in_progress",
@@ -174,7 +173,6 @@ function makeWorkProduct(overrides: Record<string, unknown> = {}) {
   const contentPath = `/api/attachments/${attachmentId}/content`;
   return {
     id: WORK_PRODUCT_ID,
-    companyId: "company-1",
     issueId: ISSUE_ID,
     type: "artifact",
     provider: "paperclip",
@@ -197,7 +195,6 @@ function makeWorkProduct(overrides: Record<string, unknown> = {}) {
 function makeDocument(overrides: Record<string, unknown> = {}) {
   return {
     id: "33333333-3333-4333-8333-333333333333",
-    companyId: "company-1",
     issueId: ISSUE_ID,
     key: `artifact-review-${WORK_PRODUCT_ID}`,
     title: "Verification report",
@@ -260,7 +257,7 @@ describe("work product review-document route", () => {
     expect(res.status).toBe(201);
     expect(res.body.key).toBe(`artifact-review-${WORK_PRODUCT_ID}`);
     expect(mockEnsureForWorkProduct).toHaveBeenCalledWith({
-      issue: { id: ISSUE_ID, companyId: "company-1" },
+      issue: { id: ISSUE_ID },
       workProduct: expect.objectContaining({ id: WORK_PRODUCT_ID }),
     });
     expect(mockLogActivity).toHaveBeenCalledWith(
@@ -327,7 +324,7 @@ describe("work product review-document route", () => {
 
     expect(res.status).toBe(200);
     expect(mockEnsureForWorkProduct).toHaveBeenCalledWith({
-      issue: { id: ISSUE_ID, companyId: "company-1" },
+      issue: { id: ISSUE_ID },
       workProduct: renamed,
     });
   });

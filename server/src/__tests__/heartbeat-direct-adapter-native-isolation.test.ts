@@ -158,7 +158,6 @@ describeEmbeddedPostgres("direct adapter native-runner isolation", () => {
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: `Direct ${provider}`,
         role: "engineer",
         status: "idle",
@@ -207,7 +206,7 @@ describeEmbeddedPostgres("direct adapter native-runner isolation", () => {
     await db.insert(companies).values({ id: companyId, name: "Provider stop",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false, defaultResponsibleUserId: "responsible-user" });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Claude", role: "engineer", status: "idle",
+    await db.insert(agents).values({ id: agentId, name: "Claude", role: "engineer", status: "idle",
       adapterType: "claude_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
     const queued = await heartbeat.invoke(agentId, "on_demand", {}, "manual");
     const finished = await waitForRunToFinish(heartbeat, queued!.id);

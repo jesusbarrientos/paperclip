@@ -12,7 +12,7 @@ import { NewProjectForm } from "./NewProjectDialog";
 vi.mock("../api/projects", () => ({ projectsApi: { create: vi.fn() } }));
 vi.mock("./ProjectRepositoryInput", () => ({
   ProjectRepositoryInput: () => null,
-  repositoryOptionsKey: (companyId: string) => ["repositories", companyId],
+  repositoryOptionsKey: () => ["repositories"],
 }));
 vi.mock("@/features/connections/ConnectionSetupFlow", () => ({ ConnectionSetupFlow: () => null }));
 vi.mock("./ui/dialog", () => ({
@@ -47,7 +47,7 @@ describe("new project colors", () => {
       .mockResolvedValueOnce({ id: "project-created" } as Awaited<ReturnType<typeof projectsApi.create>>);
     const onClose = vi.fn();
     act(() => root.render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
-      <NewProjectForm companyId="company-1" onClose={onClose} />
+      <NewProjectForm onClose={onClose} />
     </QueryClientProvider>));
     const previewColor = container.querySelector<HTMLElement>('span[style]')!.style.backgroundColor;
     const input = container.querySelector<HTMLInputElement>('input[aria-label="Project name"]')!;
@@ -58,15 +58,15 @@ describe("new project colors", () => {
     act(() => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     await settle();
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Try again");
-    const firstColor = vi.mocked(projectsApi.create).mock.calls[0][1].color;
+    const firstColor = vi.mocked(projectsApi.create).mock.calls[0]![0].color;
     expect(PROJECT_COLORS).toContain(firstColor);
     const expected = document.createElement("span");
     expected.style.backgroundColor = String(firstColor);
     expect(previewColor).toBe(expected.style.backgroundColor);
     act(() => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     await settle();
-    expect(vi.mocked(projectsApi.create).mock.calls[1][1]).toEqual({ name: "Colorful project", color: firstColor, status: "planned", repositoryIds: [] });
-    expect(getLastProjectId("company-1")).toBe("project-created");
+    expect(vi.mocked(projectsApi.create).mock.calls[1]![0]).toEqual({ name: "Colorful project", color: firstColor, status: "planned", repositoryIds: [] });
+    expect(getLastProjectId()).toBe("project-created");
     expect(onClose).toHaveBeenCalledOnce();
   });
 });

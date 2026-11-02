@@ -172,8 +172,7 @@ async function runExecutor(
   const result = await execute({
     runId: "run-1",
     agent: {
-      id: "agent-1",
-      companyId: "company-1",
+      id: "agent-1"
     },
       runtime: {},
       config,
@@ -285,7 +284,7 @@ function remoteArgs(
   overrides: Record<string, unknown> = {},
 ) {
   return {
-    agent: { id: "agent-1", companyId: "company-1" },
+    agent: { id: "agent-1" },
     runtime: {},
     config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
     context: {},
@@ -314,7 +313,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
     // The engine RETURNS a settled error result on this path; it does not throw.
     const result = await execute({
       runId: "boundary-create-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -344,7 +343,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
 
     const result = await execute({
       runId: "boundary-ensure-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -370,7 +369,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
 
     const result = await execute({
       runId: "boundary-missing-handle",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -405,7 +404,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
 
     const result = await execute({
       runId: "boundary-configure-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -440,7 +439,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
 
     const result = await execute({
       runId: "boundary-prepare-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: throwingHandoffContext(),
@@ -465,7 +464,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
 
     const result = await execute({
       runId: "boundary-turn-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -486,7 +485,7 @@ describe("composed ACPX run: engine-boundary result form per exit path", () => {
 
     const result = await execute({
       runId: "boundary-success",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -737,7 +736,7 @@ describe("composed ACPX run: host-lane warm handle set", () => {
 
     const first = await execute({
       runId: "warm-save-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -753,7 +752,7 @@ describe("composed ACPX run: host-lane warm handle set", () => {
 
     const second = await execute({
       runId: "warm-save-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -792,7 +791,7 @@ describe("composed ACPX run: host-lane warm handle set", () => {
 
     const first = await execute({
       runId: "warm-none-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -806,7 +805,7 @@ describe("composed ACPX run: host-lane warm handle set", () => {
 
     const second = await execute({
       runId: "warm-none-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -841,7 +840,7 @@ describe("composed ACPX run: host-lane warm handle set", () => {
     };
     const first = await execute({
       runId: "warm-hit-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -852,7 +851,7 @@ describe("composed ACPX run: host-lane warm handle set", () => {
 
     await execute({
       runId: "warm-hit-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: (first as { sessionParams?: unknown }).sessionParams },
       config,
       context: {},

@@ -11,9 +11,7 @@ import { resolveAgentAppearance } from "@paperclipai/shared";
  * draggable brush.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "@/lib/router";
 import type { WorkTimelineActor, WorkTimelineResult } from "@paperclipai/shared";
-import { applyCompanyPrefix, extractCompanyPrefixFromPath } from "@/lib/company-routes";
 import {
   AXIS_H,
   actorType,
@@ -258,7 +256,6 @@ export function WorkTimelineChart({
   onVisibleWindowChange,
   nowMs,
 }: WorkTimelineChartProps) {
-  const location = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialWindowKeyRef = useRef<string | null>(null);
   const centerMsRef = useRef<number | null>(null);
@@ -324,7 +321,6 @@ export function WorkTimelineChart({
         : [],
     [connectedRunIds, layout.connectors],
   );
-  const companyPrefix = extractCompanyPrefixFromPath(location.pathname);
 
   const timeToScrollLeft = (ms: number, viewportWidth: number) => {
     const x = layout.gutter + ((ms - layout.fromMs) / 60000) * layout.pxPerMinute;
@@ -384,7 +380,7 @@ export function WorkTimelineChart({
   for (let ms = startTick; ms <= layout.toMs; ms += stepMs) ticks.push(ms);
 
   const openIssue = (issueId: string) => {
-    const href = applyCompanyPrefix(`/issues/${encodeURIComponent(issueId)}`, companyPrefix);
+    const href = `/issues/${encodeURIComponent(issueId)}`;
     window.open(href, "_blank", "noopener,noreferrer");
   };
 

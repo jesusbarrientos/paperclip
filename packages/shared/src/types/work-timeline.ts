@@ -3,7 +3,7 @@ import type { AgentAppearance } from "../agent-appearance.js";
  * Work Timeline (Gantt) types — shared between the aggregation service
  * (`server/src/services/work-timeline.ts`) and the UI page
  * (`ui/src/pages/Timeline.tsx`). Defined here so both sides consume one contract
- * without redefining DTOs. Returned by `GET /api/companies/:companyId/timeline`.
+ * without redefining DTOs. Returned by `GET /api/organization/timeline`.
  */
 
 export type TimelineActorType = "agent" | "user" | "system" | "plugin";

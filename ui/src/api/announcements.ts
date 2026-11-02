@@ -16,9 +16,9 @@ export const announcementsApi = {
     const payload = await response.json();
     return payload === null ? null : announcementSchema.parse(payload);
   },
-  async dismiss(id: string, companyId: string, signal: AbortSignal) {
+  async dismiss(id: string, signal: AbortSignal) {
     await request(`${encodeURIComponent(id)}/dismiss`, {
-      method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId }),
+      method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
     });
   },
 };

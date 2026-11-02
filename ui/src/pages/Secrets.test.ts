@@ -33,7 +33,6 @@ function providerConfig(
   overrides: Partial<CompanySecretProviderConfig> & Pick<CompanySecretProviderConfig, "id" | "provider">,
 ): CompanySecretProviderConfig {
   return {
-    companyId: "company-1",
     displayName: overrides.id,
     status: "ready",
     isDefault: false,
@@ -71,10 +70,9 @@ describe("Secrets page provider helpers", () => {
       getAwsManagedPathPreview({
         provider: awsProvider,
         health,
-        companyId: "company-123",
         secretKeySource: "Anthropic API Key",
       }),
-    ).toBe("paperclip/prod-us-1/company-123/anthropic-api-key");
+    ).toBe("paperclip/prod-us-1/anthropic-api-key");
   });
 
   it("blocks unconfigured providers before create submission", () => {

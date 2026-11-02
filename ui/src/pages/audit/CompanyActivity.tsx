@@ -1,7 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { History } from "lucide-react";
 import { useSearchParams } from "@/lib/router";
-import { useCompany } from "../../context/CompanyContext";
 import { useBreadcrumbs } from "../../context/BreadcrumbContext";
 import { useStreamlinedUiEnabled } from "../../hooks/useStreamlinedUiEnabled";
 import { EmptyState } from "../../components/EmptyState";
@@ -16,7 +15,6 @@ import { AuditHub } from "./AuditHub";
  */
 export function CompanyActivity() {
   const { enabled: streamlinedUiEnabled } = useStreamlinedUiEnabled();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [searchParams, setSearchParams] = useSearchParams();
   const mode: AuditFeedMode = searchParams.get("mode") === "agents" ? "agents" : "all";
@@ -66,13 +64,9 @@ export function CompanyActivity() {
 
   if (streamlinedUiEnabled) return <AuditHub section="activity" />;
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={History} message="Select an organization to view activity." />;
-  }
 
   return (
     <AuditFeed
-      companyId={selectedCompanyId}
       mode={mode}
       onModeChange={handleModeChange}
       actionDomain={actionDomain}

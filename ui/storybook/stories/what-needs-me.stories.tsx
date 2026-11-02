@@ -36,16 +36,14 @@ function item(
   const now = new Date("2026-07-09T12:00:00Z");
   return {
     id,
-    companyId,
     sourceKind,
     subject: {
       kind: "issue",
       id: `${id}-subject`,
-      companyId,
       title,
       identifier: null,
       status: "pending",
-      href: "/PAP/issues/PAP-1000",
+      href: "/issues/PAP-1000",
       metadata: {},
     },
     whyNow,
@@ -66,11 +64,10 @@ function item(
     relatedIssue: {
       kind: "issue",
       id: "issue-1000",
-      companyId,
       title: "Ship the attention queue",
       identifier: "PAP-1000",
       status: "in_progress",
-      href: "/PAP/issues/PAP-1000",
+      href: "/issues/PAP-1000",
       metadata: {},
     },
     project: null,
@@ -114,7 +111,7 @@ const POPULATED: AttentionItem[] = [
     "critical",
     "Run watchdog escalated — agent stalled 40m",
     "Recovery action escalated and needs a human decision.",
-    { subject: { kind: "recovery_action", id: "r1", companyId, title: "Run watchdog escalated — agent stalled 40m", identifier: null, status: "escalated", href: "/PAP/issues/PAP-1000", metadata: {} } },
+    { subject: { kind: "recovery_action", id: "r1", title: "Run watchdog escalated — agent stalled 40m", identifier: null, status: "escalated", href: "/issues/PAP-1000", metadata: {} } },
   ),
   item(
     "appr-1",
@@ -124,7 +121,7 @@ const POPULATED: AttentionItem[] = [
     "Approval is pending a board decision.",
     {
       inlineResolvable: true,
-      subject: { kind: "approval", id: "approval-1", companyId, title: "Hire agent: Research Analyst", identifier: null, status: "pending", href: "/PAP/approvals/approval-1", metadata: { type: "hire_agent" } },
+      subject: { kind: "approval", id: "approval-1", title: "Hire agent: Research Analyst", identifier: null, status: "pending", href: "/approvals/approval-1", metadata: { type: "hire_agent" } },
       relatedIssue: null,
       decisionVerbs: [
         { id: "approve", label: "Approve", description: null },
@@ -141,7 +138,7 @@ const POPULATED: AttentionItem[] = [
     "Questions need answers on an issue thread.",
     {
       inlineResolvable: true,
-      subject: { kind: "interaction", id: "interaction-1", companyId, title: "Which rollout order should we use?", identifier: null, status: "pending", href: "/PAP/issues/PAP-1000#interaction-1", metadata: { kind: "ask_user_questions", issueId: "issue-1000" } },
+      subject: { kind: "interaction", id: "interaction-1", title: "Which rollout order should we use?", identifier: null, status: "pending", href: "/issues/PAP-1000#interaction-1", metadata: { kind: "ask_user_questions", issueId: "issue-1000" } },
       decisionVerbs: [{ id: "respond", label: "Respond", description: null }],
     },
   ),
@@ -167,7 +164,7 @@ const POPULATED: AttentionItem[] = [
     "Join request is pending approval.",
     {
       inlineResolvable: true,
-      subject: { kind: "join_request", id: "join-1", companyId, title: "alex@acme.dev wants to join", identifier: null, status: "pending_approval", href: "/PAP/settings/access", metadata: {} },
+      subject: { kind: "join_request", id: "join-1", title: "alex@acme.dev wants to join", identifier: null, status: "pending_approval", href: "/settings/access", metadata: {} },
       relatedIssue: null,
     },
   ),
@@ -232,7 +229,7 @@ const SHOWCASE: AttentionItem[] = [
   {
     ...item("plan-1", "issue_thread_interaction", "high", "Approve plan: Attention queue redesign", "A plan is awaiting your approval.", {
       inlineResolvable: true,
-      subject: { kind: "interaction", id: "intx-plan", companyId, title: "Approve plan: Attention queue redesign", identifier: null, status: "pending", href: "/PAP/issues/PAP-1000#plan", metadata: { kind: "request_confirmation", issueId: "issue-1000" } },
+      subject: { kind: "interaction", id: "intx-plan", title: "Approve plan: Attention queue redesign", identifier: null, status: "pending", href: "/issues/PAP-1000#plan", metadata: { kind: "request_confirmation", issueId: "issue-1000" } },
       decisionVerbs: [
         { id: "approve", label: "Approve plan", description: null },
         { id: "request_changes", label: "Request changes", description: null },
@@ -245,7 +242,7 @@ const SHOWCASE: AttentionItem[] = [
   {
     ...item("conf-1", "approval", "medium", "Confirm: publish release notes", "A confirmation is pending.", {
       inlineResolvable: true,
-      subject: { kind: "approval", id: "appr-conf", companyId, title: "Confirm: publish release notes", identifier: null, status: "pending", href: "/PAP/approvals/appr-conf", metadata: {} },
+      subject: { kind: "approval", id: "appr-conf", title: "Confirm: publish release notes", identifier: null, status: "pending", href: "/approvals/appr-conf", metadata: {} },
       relatedIssue: null,
       decisionVerbs: [
         { id: "approve", label: "Approve", description: null },
@@ -259,7 +256,7 @@ const SHOWCASE: AttentionItem[] = [
   {
     ...item("qs-1", "issue_thread_interaction", "medium", "Answer 2 questions on rollout", "Questions need answers.", {
       inlineResolvable: true,
-      subject: { kind: "interaction", id: "intx-qs", companyId, title: "Answer 2 questions on rollout", identifier: null, status: "pending", href: "/PAP/issues/PAP-1000#qs", metadata: { kind: "ask_user_questions", issueId: "issue-1000" } },
+      subject: { kind: "interaction", id: "intx-qs", title: "Answer 2 questions on rollout", identifier: null, status: "pending", href: "/issues/PAP-1000#qs", metadata: { kind: "ask_user_questions", issueId: "issue-1000" } },
       decisionVerbs: [{ id: "respond", label: "Answer", description: null }],
       project: PROJECTS["intx-1"],
     }),
@@ -285,7 +282,7 @@ const SHOWCASE: AttentionItem[] = [
   {
     ...item("join-2", "join_request", "medium", "alex@acme.dev wants to join", "Join request pending.", {
       inlineResolvable: true,
-      subject: { kind: "join_request", id: "join-2", companyId, title: "alex@acme.dev wants to join", identifier: null, status: "pending_approval", href: "/PAP/settings/access", metadata: {} },
+      subject: { kind: "join_request", id: "join-2", title: "alex@acme.dev wants to join", identifier: null, status: "pending_approval", href: "/settings/access", metadata: {} },
       relatedIssue: null,
     }),
     activityAt: new Date(NOW - 6 * HOUR).toISOString(),
@@ -307,7 +304,7 @@ const IMAGE_ROWS: AttentionItem[] = [
   {
     ...item("img-questions", "issue_thread_interaction", "medium", "Answer 2 questions on rollout", "Questions need answers.", {
       inlineResolvable: true,
-      subject: { kind: "interaction", id: "intx-img", companyId, title: "Answer 2 questions on rollout", identifier: null, status: "pending", href: "/PAP/issues/PAP-1000#qs", metadata: { kind: "ask_user_questions", issueId: "issue-1000" } },
+      subject: { kind: "interaction", id: "intx-img", title: "Answer 2 questions on rollout", identifier: null, status: "pending", href: "/issues/PAP-1000#qs", metadata: { kind: "ask_user_questions", issueId: "issue-1000" } },
       decisionVerbs: [{ id: "respond", label: "Answer", description: null }],
       project: { id: "proj-alpha", name: "Alpha", urlKey: "alpha", color: "#0f766e", icon: "rocket" },
     }),
@@ -426,7 +423,6 @@ function Queue({
                     <AttentionQueueRow
                       key={it.id}
                       item={it}
-                      companyId={companyId}
                       expanded={expandedId === it.id}
                       onToggleExpand={() => setExpandedId((p) => (p === it.id ? null : it.id))}
                       onDismiss={(d) => setCleared((prev) => new Set(prev).add(d.id))}
@@ -447,7 +443,6 @@ function Queue({
                     <AttentionQueueRow
                       key={it.id}
                       item={it}
-                      companyId={companyId}
                       variant="hidden"
                       expanded={false}
                       onToggleExpand={() => {}}
@@ -469,7 +464,6 @@ function Queue({
                     <AttentionQueueRow
                       key={it.id}
                       item={it}
-                      companyId={companyId}
                       variant="hidden"
                       expanded={false}
                       onToggleExpand={() => {}}

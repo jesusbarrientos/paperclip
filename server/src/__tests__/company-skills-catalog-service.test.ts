@@ -146,15 +146,14 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("creates a company skill with catalog provenance and materialized files", async () => {
-    const companyId = await createCompany();
+    await createCompany();
 
-    const result = await svc.installFromCatalog(companyId, {
+    const result = await svc.installFromCatalog({
       catalogSkillId: sampleCatalogSkill.id,
     });
 
     expect(result.action).toBe("created");
     expect(result.skill).toMatchObject({
-      companyId,
       folderId: expect.any(String),
       key: sampleCatalogSkill.key,
       slug: sampleCatalogSkill.slug,
@@ -177,7 +176,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
     });
     await expect(fs.readFile(path.join(result.skill.sourceLocator!, "SKILL.md"), "utf8")).resolves.toBe(sampleSkillMarkdown);
     await expect(fs.readFile(path.join(result.skill.sourceLocator!, "references/checklist.md"), "utf8")).resolves.toBe(sampleReferenceMarkdown);
-    const listed = await svc.list(companyId);
+    const listed = await svc.list();
     expect(listed.find((skill) => skill.id === result.skill.id)).toMatchObject({
       catalogKind: "bundled",
       originHash: sampleCatalogSkill.contentHash,
@@ -197,14 +196,14 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("repairs an existing unfiled Paperclip catalog skill during inventory refresh", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     await db
       .update(companySkills)
       .set({ folderId: null })
       .where(eq(companySkills.id, installed.skill.id));
 
-    const listed = await svc.list(companyId);
+    const listed = await svc.list();
     const repaired = listed.find((skill) => skill.id === installed.skill.id);
     const folder = repaired?.folderId
       ? await db.select().from(folders).where(eq(folders.id, repaired.folderId)).then((rows) => rows[0])
@@ -237,19 +236,19 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       const content = filePath === "SKILL.md" ? sampleSkillMarkdown : sampleReferenceMarkdown;
       await fs.writeFile(targetPath, content, "utf8");
     });
-    const companyId = await createCompany();
+    await createCompany();
 
-    const result = await svc.installFromCatalog(companyId, {
+    const result = await svc.installFromCatalog({
       catalogSkillId: assetCatalogSkill.id,
     });
 
     await expect(fs.readFile(path.join(result.skill.sourceLocator!, "assets/logo.png"))).resolves.toEqual(sampleAssetBytes);
-    await expect(svc.installUpdate(companyId, result.skill.id)).resolves.toMatchObject({
+    await expect(svc.installUpdate(result.skill.id)).resolves.toMatchObject({
       metadata: expect.objectContaining({
         updateHoldReason: null,
       }),
     });
-    await expect(svc.resetSkill(companyId, result.skill.id)).resolves.toMatchObject({
+    await expect(svc.resetSkill(result.skill.id)).resolves.toMatchObject({
       metadata: expect.objectContaining({
         updateHoldReason: null,
       }),
@@ -277,9 +276,9 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       const content = filePath === "SKILL.md" ? sampleSkillMarkdown : sampleReferenceMarkdown;
       await fs.writeFile(targetPath, content, "utf8");
     });
-    const companyId = await createCompany();
+    await createCompany();
 
-    const result = await svc.installFromCatalog(companyId, {
+    const result = await svc.installFromCatalog({
       catalogSkillId: scriptCatalogSkill.id,
     });
 
@@ -298,7 +297,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("restores portable catalog provenance when importing packaged skills", async () => {
-    const companyId = await createCompany();
+    await createCompany();
     const importedFiles = {
       "skills/paperclipai/bundled/software-development/review/SKILL.md": [
         "---",
@@ -335,11 +334,10 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       "skills/paperclipai/bundled/software-development/review/references/checklist.md": sampleReferenceMarkdown,
     };
 
-    const [result] = await svc.importPackageFiles(companyId, importedFiles, { onConflict: "replace" });
+    const [result] = await svc.importPackageFiles(importedFiles, { onConflict: "replace" });
 
     expect(result?.action).toBe("created");
     expect(result?.skill).toMatchObject({
-      companyId,
       key: sampleCatalogSkill.key,
       slug: "review",
       sourceType: "catalog",
@@ -368,10 +366,10 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("returns unchanged for an already-current catalog skill", async () => {
-    const companyId = await createCompany();
-    await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
 
-    const result = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const result = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
 
     expect(result.action).toBe("unchanged");
     expect(result.skill.metadata).toEqual(expect.objectContaining({
@@ -382,16 +380,16 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
     const rows = await db
       .select()
       .from(companySkills)
-      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.key, sampleCatalogSkill.key)));
+      .where(eq(companySkills.key, sampleCatalogSkill.key));
     expect(rows).toHaveLength(1);
   });
 
   it("detects installed catalog drift during update checks", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     await fs.writeFile(path.join(installed.skill.sourceLocator!, "SKILL.md"), `${sampleSkillMarkdown}\nTampered\n`, "utf8");
 
-    const status = await svc.updateStatus(companyId, installed.skill.id);
+    const status = await svc.updateStatus(installed.skill.id);
 
     expect(status).toMatchObject({
       supported: true,
@@ -403,14 +401,14 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("returns unsupported update status when the catalog entry is no longer shipped", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     mockCatalogService.resolveCatalogSkillReference.mockReturnValue({
       skill: null,
       ambiguous: false,
     });
 
-    const status = await svc.updateStatus(companyId, installed.skill.id);
+    const status = await svc.updateStatus(installed.skill.id);
 
     expect(status).toMatchObject({
       supported: false,
@@ -422,14 +420,14 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("clears stale local modification hold status when catalog files are restored", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     const skillPath = path.join(installed.skill.sourceLocator!, "SKILL.md");
     await fs.writeFile(skillPath, `${sampleSkillMarkdown}\nTampered\n`, "utf8");
-    await svc.auditSkill(companyId, installed.skill.id);
+    await svc.auditSkill(installed.skill.id);
     await fs.writeFile(skillPath, sampleSkillMarkdown, "utf8");
 
-    const status = await svc.updateStatus(companyId, installed.skill.id);
+    const status = await svc.updateStatus(installed.skill.id);
 
     expect(status).toMatchObject({
       updateHoldReason: null,
@@ -439,11 +437,11 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("reports hard-stop audit findings for idempotent catalog reinstall drift", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     await fs.rm(path.join(installed.skill.sourceLocator!, "SKILL.md"));
 
-    await expect(svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id })).rejects.toMatchObject({
+    await expect(svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id })).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining("hard-stop audit findings"),
       details: expect.objectContaining({
@@ -461,16 +459,16 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("resets a modified catalog skill back to the pinned origin when forced", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     await fs.writeFile(path.join(installed.skill.sourceLocator!, "SKILL.md"), `${sampleSkillMarkdown}\nTampered\n`, "utf8");
 
-    await expect(svc.resetSkill(companyId, installed.skill.id)).rejects.toMatchObject({
+    await expect(svc.resetSkill(installed.skill.id)).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining("local modifications"),
     });
 
-    const reset = await svc.resetSkill(companyId, installed.skill.id, { force: true });
+    const reset = await svc.resetSkill(installed.skill.id, { force: true });
 
     expect(reset?.metadata).toMatchObject({
       installedHash: sampleCatalogSkill.contentHash,
@@ -482,8 +480,8 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("rejects force when audit finds a hard-stop remote execution pattern", async () => {
-    const companyId = await createCompany();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    await createCompany();
+    const installed = await svc.installFromCatalog({ catalogSkillId: sampleCatalogSkill.id });
     await fs.writeFile(path.join(installed.skill.sourceLocator!, "SKILL.md"), [
       "---",
       "name: review",
@@ -493,7 +491,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       "",
     ].join("\n"), "utf8");
 
-    await expect(svc.installUpdate(companyId, installed.skill.id, { force: true })).rejects.toMatchObject({
+    await expect(svc.installUpdate(installed.skill.id, { force: true })).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining("hard-stop audit"),
     });
@@ -505,7 +503,6 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Existing\n", "utf8");
     await db.insert(companySkills).values({
-      companyId,
       key: `company/${companyId}/review`,
       slug: "review",
       name: "Existing Review",
@@ -519,7 +516,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       metadata: { sourceKind: "local_path" },
     });
 
-    await expect(svc.installFromCatalog(companyId, {
+    await expect(svc.installFromCatalog({
       catalogSkillId: sampleCatalogSkill.id,
     })).rejects.toMatchObject({
       status: 409,

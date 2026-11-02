@@ -5,7 +5,6 @@ import { reconcileRuntimeServiceWorkProducts } from "../services/work-products.j
 function workProduct(overrides: Partial<IssueWorkProduct> = {}): IssueWorkProduct {
   return {
     id: "wp-1",
-    companyId: "company-1",
     projectId: "project-1",
     issueId: "issue-1",
     executionWorkspaceId: "ews-1",

@@ -24,7 +24,7 @@ function genericResponse(value: { apps?: any[]; sync?: Record<string, unknown> }
       appSlug: snapshot.appSlug ?? aggregatorCatalogMock.find(app => app.aliases.includes(snapshot.toolkit) || app.routes.some(route => route.toolkit === snapshot.toolkit))?.slug ?? snapshot.toolkit,
       appName: snapshot.appName ?? snapshot.toolkit })) };
 }
-vi.mock("@/api/agents", () => ({ agentsApi: { list: (companyId: string) => listAgentsMock(companyId) } }));
+vi.mock("@/api/agents", () => ({ agentsApi: { list: () => listAgentsMock() } }));
 vi.mock("@paperclipai/shared/aggregator-app-catalog", async (importOriginal) => ({
   ...await importOriginal<typeof import("@paperclipai/shared/aggregator-app-catalog")>(),
   AGGREGATOR_APP_CATALOG: aggregatorCatalogMock,
@@ -33,7 +33,7 @@ vi.mock("@paperclipai/shared/aggregator-app-catalog", async (importOriginal) => 
 vi.mock("@/context/DialogContext", () => ({ useDialogActions: () => ({ openNewIssue: openNewIssueMock }) }));
 
 const accountIdentity = vi.hoisted(() => ({ userId: "board-user" as string | null, settled: true, failed: false }));
-vi.mock("@/api/companies-query", () => ({ useAccountIdentity: () => accountIdentity }));
+vi.mock("@/api/account-identity", () => ({ useAccountIdentity: () => accountIdentity }));
 
 const poolListMock = vi.hoisted(() => vi.fn());
 const poolRemoveMock = vi.hoisted(() => vi.fn());
@@ -70,9 +70,9 @@ vi.mock("@/api/tools", () => ({
     refreshComposioApps: (...args: unknown[]) => refreshComposioAppsMock(...args),
     manageComposioAppAccount: (...args: unknown[]) => manageComposioAppAccountMock(...args),
     setupComposioApp: (...args: unknown[]) => setupComposioAppMock(...args),
-    listGallery: (companyId: string) => listGalleryMock(companyId),
-    listApplications: (companyId: string) => listApplicationsMock(companyId),
-    listConnections: (companyId: string) => listConnectionsMock(companyId),
+    listGallery: () => listGalleryMock(),
+    listApplications: () => listApplicationsMock(),
+    listConnections: () => listConnectionsMock(),
     archiveConnection: (
       connectionId: string,
     ) => archiveConnectionMock(connectionId),
@@ -81,7 +81,7 @@ vi.mock("@/api/tools", () => ({
 
 vi.mock("@/api/access", () => ({
   accessApi: {
-    listUserDirectory: (companyId: string) => listUserDirectoryMock(companyId),
+    listUserDirectory: () => listUserDirectoryMock(),
   },
 }));
 
@@ -92,10 +92,9 @@ vi.mock("@/lib/router", () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
 }));
 
@@ -274,7 +273,7 @@ describe("Connectors landing page", () => {
     expect(container.textContent).not.toContain("No connectors match");
   });
 
-  const assistantGrant = { id: "grant", companyId: "company-1", companyName: "Paperclip", clientName: "Claude", scopes: ["paperclip:read"], createdAt: "2026-10-06T00:00:00Z", revokedAt: null };
+  const assistantGrant = { id: "grant", companyName: "Paperclip", clientName: "Claude", scopes: ["paperclip:read"], createdAt: "2026-10-06T00:00:00Z", revokedAt: null };
 
   it("shows active assistant grants in Installed and removes them after revocation", async () => {
     assistantConnectionsMock.mockResolvedValue([assistantGrant]);
@@ -294,7 +293,6 @@ describe("Connectors landing page", () => {
   it.each([
     ["empty", []],
     ["revoked", [{ ...assistantGrant, revokedAt: "2026-10-06T01:00:00Z" }]],
-    ["another organization", [{ ...assistantGrant, companyId: "other-company" }]],
   ])("does not show %s assistant grants as installed", async (_label, grants) => {
     assistantConnectionsMock.mockResolvedValue(grants);
     await renderBrowse(false);
@@ -800,7 +798,7 @@ describe("Connectors landing page", () => {
       expect(container.querySelector(`[data-app-slug="${definition.slug}"]`)).toBeNull();
     }
     expect(container.querySelector('[data-app-slug="notion"]')).not.toBeNull();
-    expect(client.getQueryData(queryKeys.apps.gallery("company-1"))).toEqual({
+    expect(client.getQueryData(queryKeys.apps.gallery())).toEqual({
       apps: [...definitions, getAppStoreDefinition("notion")],
     });
     expect(archiveConnectionMock).not.toHaveBeenCalled();
@@ -826,8 +824,8 @@ describe("Connectors landing page", () => {
         expect(container.querySelector(`[data-app-slug="${slug}"]`)).toBeNull();
         expect(container.textContent).not.toContain(`Account for ${slug}`);
       }
-      expect(client.getQueryData(queryKeys.tools.connections("company-1"))).toEqual({ connections });
-      expect(client.getQueryData(queryKeys.tools.applications("company-1"))).toEqual({ applications });
+      expect(client.getQueryData(queryKeys.tools.connections())).toEqual({ connections });
+      expect(client.getQueryData(queryKeys.tools.applications())).toEqual({ applications });
       expect(archiveConnectionMock).not.toHaveBeenCalled();
     },
   );
@@ -872,7 +870,7 @@ describe("Connectors landing page", () => {
       expect(container.textContent).toContain("Visible Notion account");
       expect(container.textContent).not.toContain("Hidden Google account");
       expect(container.textContent).toContain(rowKind === "catalog" ? "Notion" : "My tools");
-      expect(client.getQueryData(queryKeys.tools.connections("company-1"))).toEqual({ connections });
+      expect(client.getQueryData(queryKeys.tools.connections())).toEqual({ connections });
       expect(archiveConnectionMock).not.toHaveBeenCalled();
     },
   );
@@ -896,8 +894,8 @@ describe("Connectors landing page", () => {
       expect(container.querySelector('[data-app-slug="custom-provider"]')).not.toBeNull();
       expect(container.textContent).toContain("My custom connector");
       expect(container.textContent).not.toContain("Hidden Google account");
-      expect(client.getQueryData(queryKeys.tools.applications("company-1"))).toEqual({ applications: [savedApplication] });
-      expect(client.getQueryData(queryKeys.tools.connections("company-1"))).toEqual({ connections });
+      expect(client.getQueryData(queryKeys.tools.applications())).toEqual({ applications: [savedApplication] });
+      expect(client.getQueryData(queryKeys.tools.connections())).toEqual({ connections });
       expect(archiveConnectionMock).not.toHaveBeenCalled();
     },
   );
@@ -912,8 +910,8 @@ describe("Connectors landing page", () => {
     await flushReact();
     for (const slug of providers) expect(container.querySelector(`[data-app-slug="${slug}"]`)).not.toBeNull();
     await act(() => {
-      client.setQueryData(queryKeys.tools.connections("company-1"), { connections: [connection({ id: "saved", applicationId: "saved-app", config: { sourceTemplateKey: "mem0", connectionMethodKey: "mcp" }, transport: "mcp_remote" })] });
-      client.setQueryData(queryKeys.tools.applications("company-1"), { applications: [application({ id: "saved-app", name: "Mem0", metadata: { sourceTemplateKey: "mem0" } })] });
+      client.setQueryData(queryKeys.tools.connections(), { connections: [connection({ id: "saved", applicationId: "saved-app", config: { sourceTemplateKey: "mem0", connectionMethodKey: "mcp" }, transport: "mcp_remote" })] });
+      client.setQueryData(queryKeys.tools.applications(), { applications: [application({ id: "saved-app", name: "Mem0", metadata: { sourceTemplateKey: "mem0" } })] });
       client.setQueryData(queryKeys.instance.experimentalSettings, { enableMemoryConnectors: false });
     });
     await flushReact();
@@ -938,7 +936,7 @@ describe("Connectors landing page", () => {
       id: "chat-app", type: "chat", name: "Private bot", applicationKey: "chat:github:endpoint-1", metadata: { purpose: "channel" },
     })] });
     await renderBrowse();
-    expect(chatListMock).toHaveBeenCalledWith("company-1");
+    expect(chatListMock).toHaveBeenCalledWith();
     expect(container.querySelector('[data-app-slug="github"]')).not.toBeNull();
     for (const slug of ["github-code-review-bot", "discord", "telegram", "microsoft-teams", "slack"]) {
       expect(container.querySelector(`[data-app-slug="${slug}"]`)).toBeNull();
@@ -1248,7 +1246,7 @@ describe("Connectors landing page", () => {
     poolListMock.mockResolvedValue([{ id: "conn-notion", name: "Edited elsewhere", revision: 8 }]);
     await act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.trim() === "Remove connection")!.click());
     await flushReact();
-    expect(poolRemoveMock).toHaveBeenCalledWith("company-1", "conn-notion", 7);
+    expect(poolRemoveMock).toHaveBeenCalledWith("conn-notion", 7);
     expect(poolListMock).toHaveBeenCalledTimes(1);
     expect(archiveConnectionMock).not.toHaveBeenCalled();
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
@@ -1317,8 +1315,8 @@ describe("Connectors landing page", () => {
       expect(emailControlMock).not.toHaveBeenCalled();
     }
     expect(archiveConnectionMock).not.toHaveBeenCalled();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.chatEndpoints.list("company-1") });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["email-inboxes", "company-1"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.chatEndpoints.list() });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["email-inboxes"] });
     expect(container.textContent).not.toContain("CEO");
   });
 

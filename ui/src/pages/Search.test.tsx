@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Search, buildSearchUrl } from "./Search";
 
 const companyState = vi.hoisted(() => ({
-  selectedCompanyId: "company-1",
+  organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
 }));
 
 const breadcrumbState = vi.hoisted(() => ({
@@ -42,8 +42,8 @@ const authApiMock = vi.hoisted(() => ({
   getSession: vi.fn(),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => companyState,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => companyState,
 }));
 
 vi.mock("../context/BreadcrumbContext", () => ({
@@ -245,7 +245,7 @@ describe("Search page", () => {
     const { root } = renderSearch("/search?q=auth+flake", container);
 
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth flake",
         scope: "all",
         limit: 20,
@@ -345,7 +345,7 @@ describe("Search page", () => {
     const { root } = renderSearch("/search?q=launch+brief&scope=artifacts", container);
 
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "launch brief",
         scope: "artifacts",
         limit: 20,
@@ -538,7 +538,7 @@ describe("Search page", () => {
     await new Promise((resolve) => setTimeout(resolve, 350));
 
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "deflake",
         scope: "all",
         limit: 20,
@@ -677,7 +677,7 @@ describe("Search page", () => {
     const { root } = renderSearch("/search?q=auth&status=todo&updatedWithin=7d", container);
 
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth",
         scope: "all",
         limit: 20,
@@ -731,7 +731,7 @@ describe("Search page", () => {
     await new Promise((resolve) => setTimeout(resolve, 350));
 
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth",
         scope: "all",
         limit: 20,
@@ -762,7 +762,7 @@ describe("Search page", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 350));
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth",
         scope: "all",
         limit: 20,
@@ -779,7 +779,7 @@ describe("Search page", () => {
     await new Promise((resolve) => setTimeout(resolve, 350));
     await waitForAssertion(() => {
       const lastCall = searchApiMock.search.mock.calls.at(-1);
-      expect(lastCall?.[1]).toEqual({ q: "auth", scope: "all", limit: 20 });
+      expect(lastCall?.[0]).toEqual({ q: "auth", scope: "all", limit: 20 });
     });
 
     flushSync(() => {
@@ -801,7 +801,7 @@ describe("Search page", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 350));
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth",
         scope: "all",
         limit: 20,
@@ -827,7 +827,7 @@ describe("Search page", () => {
     await waitForAssertion(() => {
       expect(input.value).toBe("auth");
       const lastCall = searchApiMock.search.mock.calls.at(-1);
-      expect(lastCall?.[1]).toEqual({ q: "auth", scope: "all", limit: 20 });
+      expect(lastCall?.[0]).toEqual({ q: "auth", scope: "all", limit: 20 });
     });
 
     flushSync(() => {
@@ -925,7 +925,7 @@ describe("Search page", () => {
     const { root } = renderSearch("/search?q=auth&sort=updated", container);
 
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth",
         scope: "all",
         limit: 20,
@@ -950,7 +950,7 @@ describe("Search page", () => {
 
     // First request carries the status filter from the URL.
     await waitForAssertion(() => {
-      expect(searchApiMock.search).toHaveBeenCalledWith("company-1", {
+      expect(searchApiMock.search).toHaveBeenCalledWith({
         q: "auth",
         scope: "all",
         limit: 20,
@@ -975,7 +975,7 @@ describe("Search page", () => {
     // After removal the search re-fires with no status filter.
     await waitForAssertion(() => {
       const lastCall = searchApiMock.search.mock.calls.at(-1);
-      expect(lastCall?.[1]).toEqual({ q: "auth", scope: "all", limit: 20 });
+      expect(lastCall?.[0]).toEqual({ q: "auth", scope: "all", limit: 20 });
     });
 
     flushSync(() => {

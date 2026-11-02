@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { projectNativeRuntimeRequest } from "./native-question-bridge.js";
 
 const binding = {
-  companyId: "company-1", issueId: "issue-1", runId: "run-1", agentId: "agent-1",
+  issueId: "issue-1", runId: "run-1", agentId: "agent-1",
   normalizedSessionId: "session-1", runnerSourceInstanceId: "runner-1",
 };
 

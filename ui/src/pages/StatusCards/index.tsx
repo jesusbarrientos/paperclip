@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, Loader2, Plus } from "lucide-react";
 
 import { statusCardsApi } from "@/api/statusCards";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useNavigate, useParams } from "@/lib/router";
 import { queryKeys } from "@/lib/queryKeys";
@@ -19,7 +18,6 @@ import { StatusCardDetailDrawer } from "./StatusCardDetailDrawer";
 import type { StatusCardView } from "./types";
 
 export function StatusCards() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -37,14 +35,12 @@ export function StatusCards() {
   }, [setBreadcrumbs]);
 
   const activeQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.statusCards.list(selectedCompanyId, false) : ["status-cards", "none", "active"],
-    queryFn: () => statusCardsApi.list(selectedCompanyId!, false),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.statusCards.list(false),
+    queryFn: () => statusCardsApi.list(false),
   });
   const archivedQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.statusCards.list(selectedCompanyId, true) : ["status-cards", "none", "archived"],
-    queryFn: () => statusCardsApi.list(selectedCompanyId!, true),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.statusCards.list(true),
+    queryFn: () => statusCardsApi.list(true),
   });
 
   const activeCards = (activeQuery.data ?? []) as StatusCardView[];
@@ -64,12 +60,10 @@ export function StatusCards() {
   const detailCard = (cardInLists ?? detailFallbackQuery.data ?? null) as StatusCardView | null;
 
   const invalidateLists = () =>
-    selectedCompanyId
-      ? Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(selectedCompanyId, false) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(selectedCompanyId, true) }),
-        ])
-      : Promise.resolve();
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(false) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(true) }),
+    ]);
 
   const refreshMutation = useMutation({
     mutationFn: (id: string) => statusCardsApi.refresh(id),
@@ -128,7 +122,7 @@ export function StatusCards() {
               Today: {formatTokens(todayTotals.tokens)} · ~{formatCents(todayTotals.cents)}
             </span>
           ) : null}
-          <Button onClick={() => setCreateOpen(true)} disabled={!selectedCompanyId}>
+          <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />
             New card
           </Button>
@@ -150,7 +144,7 @@ export function StatusCards() {
           icon={FlaskConical}
           title="No status cards yet"
           message="Create a card to keep a living summary of the issues you care about."
-          action={selectedCompanyId ? "New card" : undefined}
+          action="New card"
           onAction={() => setCreateOpen(true)}
         />
       ) : (
@@ -159,7 +153,6 @@ export function StatusCards() {
             <StatusCardTile
               key={card.id}
               card={card}
-              companyId={selectedCompanyId}
               onOpen={() => openDetail(card.id)}
               onRefresh={() => refreshMutation.mutate(card.id)}
               onRecompile={() => recompileMutation.mutate(card.id)}
@@ -196,13 +189,10 @@ export function StatusCards() {
         </div>
       ) : null}
 
-      {selectedCompanyId ? (
-        <CreateStatusCardDialog companyId={selectedCompanyId} open={createOpen} onOpenChange={setCreateOpen} />
-      ) : null}
+      <CreateStatusCardDialog open={createOpen} onOpenChange={setCreateOpen} />
 
       <StatusCardDetailDrawer
         card={detailCard}
-        companyId={selectedCompanyId}
         open={Boolean(cardId)}
         onOpenChange={(open) => (open ? undefined : closeDetail())}
         initialTab={detailTab}

@@ -22,7 +22,7 @@ export const CHAT_CONTROL_RECOVERY_ADMISSION_KEY =
 type AdmissionRun = Pick<
   typeof heartbeatRuns.$inferSelect,
   | "id"
-  | "companyId"
+
   | "agentId"
   | "wakeupRequestId"
   | "nativeIssueId"
@@ -36,7 +36,6 @@ export function chatControlRecoveryAdmission(
   return {
     version: 1,
     phase,
-    companyId: run.companyId,
     runId: run.id,
     agentId: run.agentId,
     issueId:
@@ -76,7 +75,6 @@ function id(value: unknown): value is string {
 }
 
 export type ChatControlRecoveryScope = {
-  companyId: string;
   issueId: string;
   agentId: string;
   sourceRunId: string;
@@ -110,7 +108,6 @@ export async function readChatControlNativeParent(
     .where(
       and(
         eq(agentWakeupRequests.id, intentId),
-        eq(agentWakeupRequests.companyId, scope.companyId),
         eq(agentWakeupRequests.agentId, scope.agentId),
       ),
     )
@@ -133,7 +130,6 @@ export async function readChatControlNativeParent(
     .innerJoin(
       statusDecisionEffects,
       and(
-        eq(statusDecisionEffects.companyId, scope.companyId),
         eq(statusDecisionEffects.issueId, scope.issueId),
         eq(statusDecisionEffects.decisionId, statusDecisions.id),
         eq(statusDecisionEffects.effectKind, "enqueue_continuation"),
@@ -144,14 +140,10 @@ export async function readChatControlNativeParent(
     )
     .innerJoin(
       heartbeatRuns,
-      and(
-        eq(heartbeatRuns.companyId, scope.companyId),
-        eq(heartbeatRuns.id, statusDecisions.runId),
-      ),
+      eq(heartbeatRuns.id, statusDecisions.runId),
     )
     .where(
       and(
-        eq(statusDecisions.companyId, scope.companyId),
         eq(statusDecisions.issueId, scope.issueId),
         eq(statusDecisions.id, payload.nativeDecisionId),
         eq(statusDecisions.applicationState, "applied"),
@@ -186,10 +178,7 @@ export async function readChatControlRecoveryStop(
       .select()
       .from(heartbeatRuns)
       .where(
-        and(
-          eq(heartbeatRuns.id, runId),
-          eq(heartbeatRuns.companyId, scope.companyId),
-        ),
+        eq(heartbeatRuns.id, runId),
       )
       .limit(1);
     if (
@@ -208,7 +197,6 @@ export async function readChatControlRecoveryStop(
           .where(
             and(
               eq(agentWakeupRequests.id, run.wakeupRequestId),
-              eq(agentWakeupRequests.companyId, scope.companyId),
               eq(agentWakeupRequests.agentId, scope.agentId),
             ),
           )
@@ -219,13 +207,12 @@ export async function readChatControlRecoveryStop(
       .from(agentWakeupRequests)
       .where(
         and(
-          eq(agentWakeupRequests.companyId, scope.companyId),
           eq(agentWakeupRequests.agentId, scope.agentId),
           eq(agentWakeupRequests.runId, run.id),
           eq(agentWakeupRequests.status, "coalesced"),
           eq(agentWakeupRequests.requestedByActorType, "user"),
           sql`${agentWakeupRequests.payload}->>'issueId' = ${scope.issueId}`,
-          sql`not exists (select 1 from chat_actions chat_cause where chat_cause.company_id = ${scope.companyId}::uuid and chat_cause.id = ${agentWakeupRequests.id})`,
+          sql`not exists (select 1 from chat_actions chat_cause where chat_cause.id = ${agentWakeupRequests.id})`,
         ),
       )
       .limit(1);
@@ -237,7 +224,6 @@ export async function readChatControlRecoveryStop(
           .where(
             and(
               eq(chatActions.id, run.wakeupRequestId),
-              eq(chatActions.companyId, scope.companyId),
               inArray(chatActions.kind, ["inbound_wakeup", "failed_run_retry"]),
             ),
           )
@@ -295,7 +281,6 @@ export async function readChatControlRecoveryStop(
       .from(chatConversations)
       .where(
         and(
-          eq(chatConversations.companyId, scope.companyId),
           eq(chatConversations.id, action.conversationId),
           eq(chatConversations.endpointId, action.endpointId),
           eq(chatConversations.issueId, scope.issueId),
@@ -313,10 +298,7 @@ export async function readChatControlRecoveryStop(
       .select({ provider: chatEndpoints.provider })
       .from(chatEndpoints)
       .where(
-        and(
-          eq(chatEndpoints.companyId, scope.companyId),
-          eq(chatEndpoints.id, action.endpointId),
-        ),
+        eq(chatEndpoints.id, action.endpointId),
       )
       .limit(1);
     if (!endpoint) return { kind: "unresolved" };
@@ -337,7 +319,6 @@ export async function readChatControlRecoveryStop(
         .where(
           and(
             eq(heartbeatRuns.id, payload.failedRunId),
-            eq(heartbeatRuns.companyId, scope.companyId),
             eq(heartbeatRuns.agentId, scope.agentId),
             sql`${heartbeatRuns.contextSnapshot}->>'issueId' = ${scope.issueId}`,
           ),
@@ -354,13 +335,11 @@ export async function readChatControlRecoveryStop(
               agentWakeupRequests,
               and(
                 eq(agentWakeupRequests.id, chatActions.id),
-                eq(agentWakeupRequests.companyId, scope.companyId),
                 eq(agentWakeupRequests.agentId, scope.agentId),
               ),
             )
             .where(
               and(
-                eq(chatActions.companyId, scope.companyId),
                 eq(chatActions.kind, "inbound_wakeup"),
                 or(
                   eq(agentWakeupRequests.runId, run.id),
@@ -386,10 +365,7 @@ export async function readChatControlRecoveryStop(
               .select()
               .from(chatActions)
               .where(
-                and(
-                  eq(chatActions.companyId, scope.companyId),
-                  inArray(chatActions.id, ids),
-                ),
+                inArray(chatActions.id, ids),
               );
           })();
     if (
@@ -436,7 +412,6 @@ export async function readChatControlRecoveryStop(
         .where(
           and(
             eq(agentWakeupRequests.id, source.id),
-            eq(agentWakeupRequests.companyId, scope.companyId),
             eq(agentWakeupRequests.agentId, scope.agentId),
           ),
         )
@@ -463,7 +438,6 @@ export async function readChatControlRecoveryStop(
           chatDeliveries,
           and(
             eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-            eq(chatDeliveries.companyId, scope.companyId),
             eq(chatDeliveries.endpointId, action.endpointId),
             eq(chatDeliveries.conversationId, conversation.id),
             eq(chatDeliveries.principalId, source.principalId),
@@ -474,13 +448,11 @@ export async function readChatControlRecoveryStop(
           issueComments,
           and(
             eq(issueComments.id, chatMessageLinks.commentId),
-            eq(issueComments.companyId, scope.companyId),
             eq(issueComments.issueId, scope.issueId),
           ),
         )
         .where(
           and(
-            eq(chatMessageLinks.companyId, scope.companyId),
             eq(chatMessageLinks.endpointId, action.endpointId),
             eq(chatMessageLinks.conversationId, conversation.id),
             eq(chatMessageLinks.direction, "inbound"),
@@ -499,7 +471,6 @@ export async function readChatControlRecoveryStop(
       .innerJoin(
         chatActions,
         and(
-          eq(chatActions.companyId, scope.companyId),
           eq(chatActions.endpointId, action.endpointId),
           eq(chatActions.conversationId, conversation.id),
           eq(chatActions.kind, "task_control_authorization"),
@@ -512,7 +483,6 @@ export async function readChatControlRecoveryStop(
       .innerJoin(
         chatMessageLinks,
         and(
-          eq(chatMessageLinks.companyId, scope.companyId),
           eq(chatMessageLinks.endpointId, action.endpointId),
           eq(chatMessageLinks.conversationId, conversation.id),
           eq(chatMessageLinks.publicationId, chatPublications.id),
@@ -526,7 +496,6 @@ export async function readChatControlRecoveryStop(
       )
       .where(
         and(
-          eq(chatPublications.companyId, scope.companyId),
           eq(chatPublications.endpointId, action.endpointId),
           eq(chatPublications.conversationId, conversation.id),
           eq(chatPublications.issueId, scope.issueId),
@@ -534,7 +503,7 @@ export async function readChatControlRecoveryStop(
           sql`${chatPublications.idempotencyKey} ~ '^control:(close|new):'`,
           sql`length(${chatPublications.providerMessageId}) > 0`,
           sql`${chatPublications.publishedAt} is not null`,
-          sql`not exists (select 1 from chat_actions admitted_source where admitted_source.company_id = ${scope.companyId}::uuid and ${inArray(
+          sql`not exists (select 1 from chat_actions admitted_source where ${inArray(
             sql`admitted_source.id`,
             sourceActions.map((source) => source.id),
           )} and admitted_source.created_at > ${chatPublications.createdAt})`,
@@ -555,7 +524,6 @@ export async function readChatControlRecoveryStop(
           .where(
             and(
               eq(chatDeliveries.id, match[2]),
-              eq(chatDeliveries.companyId, scope.companyId),
               eq(chatDeliveries.endpointId, action.endpointId),
               eq(chatDeliveries.conversationId, conversation.id),
               eq(chatDeliveries.principalId, authorization.principalId),
@@ -599,7 +567,6 @@ export async function readChatControlRecoveryStop(
           .from(chatActions)
           .where(
             and(
-              eq(chatActions.companyId, scope.companyId),
               eq(chatActions.endpointId, action.endpointId),
               eq(chatActions.conversationId, conversation.id),
               eq(chatActions.kind, "discord_native_command"),

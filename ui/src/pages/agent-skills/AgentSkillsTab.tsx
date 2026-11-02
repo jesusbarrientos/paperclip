@@ -76,14 +76,12 @@ export function AgentSkillsTab({ agent, companyId }: { agent: Agent; companyId?:
 
   const { data: skillSnapshot, isLoading } = useQuery({
     queryKey: queryKeys.agents.skills(agent.id),
-    queryFn: () => agentsApi.skills(agent.id, companyId),
-    enabled: Boolean(companyId),
+    queryFn: () => agentsApi.skills(agent.id),
   });
 
   const { data: companySkills } = useQuery({
-    queryKey: queryKeys.companySkills.list(companyId ?? ""),
-    queryFn: () => companySkillsApi.list(companyId!),
-    enabled: Boolean(companyId),
+    queryKey: queryKeys.companySkills.list(),
+    queryFn: () => companySkillsApi.list(),
   });
 
   // Beta skills experimental flag — gates the per-agent release picker entirely.
@@ -101,9 +99,9 @@ export function AgentSkillsTab({ agent, companyId }: { agent: Agent; companyId?:
   // Seeded releases (release_id IS NOT NULL) for the paperclip core skill. Only
   // fetched when the flag is on and the skill is present in the library.
   const { data: paperclipVersions } = useQuery({
-    queryKey: queryKeys.companySkills.versions(companyId ?? "", paperclipCoreSkill?.id ?? ""),
-    queryFn: () => companySkillsApi.versions(companyId!, paperclipCoreSkill!.id),
-    enabled: Boolean(companyId && betaSkillsEnabled && paperclipCoreSkill?.id),
+    queryKey: queryKeys.companySkills.versions(paperclipCoreSkill?.id ?? ""),
+    queryFn: () => companySkillsApi.versions(paperclipCoreSkill!.id),
+    enabled: Boolean(betaSkillsEnabled && paperclipCoreSkill?.id),
   });
   const paperclipReleases = useMemo(
     () => (paperclipVersions ?? []).filter((version) => version.releaseId != null),
@@ -112,7 +110,7 @@ export function AgentSkillsTab({ agent, companyId }: { agent: Agent; companyId?:
 
   const syncSkills = useMutation({
     mutationFn: (desiredSkills: Array<string | AgentDesiredSkillEntry>) =>
-      agentsApi.syncSkills(agent.id, desiredSkills, "replace", companyId),
+      agentsApi.syncSkills(agent.id, desiredSkills, "replace"),
     onSuccess: async (snapshot) => {
       queryClient.setQueryData(queryKeys.agents.skills(agent.id), snapshot);
       lastSavedSkillsRef.current = snapshot.desiredSkills;

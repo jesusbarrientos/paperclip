@@ -4,7 +4,6 @@ import { projectCreatedItems } from "./project-created-items";
 const event = (overrides: Partial<ActivityEvent> = {}): ActivityEvent =>
   ({
     id: "activity",
-    companyId: "company",
     actorType: "agent",
     actorId: "agent",
     agentId: "agent",
@@ -66,7 +65,6 @@ describe("durable project creation feed", () => {
 describe("project creation repository hydration", () => {
   const project = {
     id: "project",
-    companyId: "company",
     workspaces: [
       { id: "workspace-1", name: "App", repoUrl: "https://github.com/org/app" },
       {
@@ -102,10 +100,7 @@ describe("project creation repository hydration", () => {
         .repositories,
     ).toEqual([]);
     expect(
-      projectCreatedItems(
-        [event()],
-        [{ ...project, companyId: "other-company" }],
-      ),
+      projectCreatedItems([event()], []),
     ).toEqual(projectCreatedItems([event()]));
   });
 

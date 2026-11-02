@@ -54,7 +54,6 @@ export type SealedConnectorCredentials = {
   refreshTokenExpiresAt: string | null;
   scopes: string[];
   subject: string;
-  companyId: string;
   instanceId: string;
   environment: PaperclipCloudConnectorEnvironment;
   provider: PaperclipCloudConnectorProvider;
@@ -269,7 +268,8 @@ export function createPaperclipCloudConnector(input: {
 
   async function call(
     operation: PaperclipCloudConnectorOperation,
-    claims: { subject: string; companyId: string; profile?: PaperclipCloudConnectorProfileId; returnUri?: string; returnState?: string; claimId?: string; redemptionId?: string },
+    claims: { subject: string;
+ profile?: PaperclipCloudConnectorProfileId; returnUri?: string; returnState?: string; claimId?: string; redemptionId?: string },
     secret?: { field: "refreshToken" | "token" | "binding" | "acknowledgement"; value: string },
   ): Promise<ConnectorResponse> {
     const endpoint = new URL(ENDPOINTS[operation], `${config.baseUrl}/`).toString();
@@ -278,7 +278,6 @@ export function createPaperclipCloudConnector(input: {
       iss: config.instanceId,
       aud: endpoint,
       sub: claims.subject,
-      cid: claims.companyId,
       env: config.environment,
       op: operation,
       iat: issuedAt,
@@ -331,7 +330,6 @@ export function createPaperclipCloudConnector(input: {
     response: ConnectorResponse,
     purpose: SealedEnvelope["purpose"],
     subject: string,
-    companyId: string,
     profile: PaperclipCloudConnectorProfileId,
   ): SealedConnectorCredentials {
     const definition = connectorProfileDefinition(profile);
@@ -349,7 +347,6 @@ export function createPaperclipCloudConnector(input: {
       credentials.instanceId !== config.instanceId
       || credentials.environment !== config.environment
       || credentials.subject !== subject
-      || credentials.companyId !== companyId
       || credentials.provider !== definition.provider
     ) {
       throw new PaperclipCloudConnectorError("Paperclip Cloud credential binding did not match", "CONNECTOR_BINDING_MISMATCH");
@@ -368,8 +365,7 @@ export function createPaperclipCloudConnector(input: {
       let response: ConnectorResponse;
       try {
         response = await call("status", {
-          subject: "instance-status",
-          companyId: "instance-status",
+          subject: "instance-status"
         });
       } catch (error) {
         if (error instanceof PaperclipCloudConnectorError && error.status === 401) return "removed";
@@ -384,8 +380,7 @@ export function createPaperclipCloudConnector(input: {
       let response: ConnectorResponse;
       try {
         response = await call("status", {
-          subject: "instance-capabilities",
-          companyId: "instance-capabilities",
+          subject: "instance-capabilities"
         });
       } catch {
         return [];
@@ -395,7 +390,8 @@ export function createPaperclipCloudConnector(input: {
         typeof value === "string" && isPaperclipCloudConnectorProfileId(value) ? [value] : []
       ))];
     },
-    async startAuthorization(values: { subject: string; companyId: string; profile?: PaperclipCloudConnectorProfileId; returnUri: string; returnState: string }) {
+    async startAuthorization(values: { subject: string;
+ profile?: PaperclipCloudConnectorProfileId; returnUri: string; returnState: string }) {
       const profile = values.profile ?? "gmail.draft";
       const response = await call("session", { ...values, profile });
       if (typeof response.confirmationUrl !== "string" || typeof response.expiresAt !== "string") {
@@ -444,26 +440,27 @@ export function createPaperclipCloudConnector(input: {
         ...(handoff ? { handoff } : {}),
       };
     },
-    async claim(values: { subject: string; companyId: string; profile?: PaperclipCloudConnectorProfileId; claimId: string; redemptionId: string }) {
+    async claim(values: { subject: string;
+ profile?: PaperclipCloudConnectorProfileId; claimId: string; redemptionId: string }) {
       const profile = values.profile ?? "gmail.draft";
-      return openCredentials(await call("claim", { ...values, profile }), sealPurpose("initial", profile), values.subject, values.companyId, profile);
+      return openCredentials(await call("claim", { ...values, profile }), sealPurpose("initial", profile), values.subject, profile);
     },
-    async refresh(values: { subject: string; companyId: string; profile?: PaperclipCloudConnectorProfileId; refreshToken: string }) {
+    async refresh(values: { subject: string;
+ profile?: PaperclipCloudConnectorProfileId; refreshToken: string }) {
       const profile = values.profile ?? "gmail.draft";
       return openCredentials(
         await call("refresh", { ...values, profile }, { field: "refreshToken", value: values.refreshToken }),
         sealPurpose("access", profile),
         values.subject,
-        values.companyId,
         profile,
       );
     },
-    async revoke(values: { subject: string; companyId: string; profile?: PaperclipCloudConnectorProfileId; token: string }) {
+    async revoke(values: { subject: string;
+ profile?: PaperclipCloudConnectorProfileId; token: string }) {
       await call("revoke", { ...values, profile: values.profile ?? "gmail.draft" }, { field: "token", value: values.token });
     },
     async setWebhookBinding(values: {
       subject: string;
-      companyId: string;
       id: string;
       installationId: string;
       connectionId: string;
@@ -487,7 +484,7 @@ export function createPaperclipCloudConnector(input: {
       });
       await call("webhook-bind", { ...values, profile: "github.code" }, { field: "binding", value: binding });
     },
-    async leaseEvents(values: { subject: string; companyId: string }): Promise<{ leaseId: string; events: SealedConnectorEvents["events"] } | null> {
+    async leaseEvents(values: { subject: string; }): Promise<{ leaseId: string; events: SealedConnectorEvents["events"] } | null> {
       const response = await call("event-lease", values);
       if (Array.isArray(response.events) && response.events.length === 0) return null;
       if (typeof response.leaseId !== "string") {
@@ -500,7 +497,8 @@ export function createPaperclipCloudConnector(input: {
       }
       return { leaseId: opened.leaseId, events: opened.events };
     },
-    async acknowledgeEvents(values: { subject: string; companyId: string; leaseId: string; deliveryIds: string[] }): Promise<number> {
+    async acknowledgeEvents(values: { subject: string;
+ leaseId: string; deliveryIds: string[] }): Promise<number> {
       const acknowledgement = JSON.stringify({ leaseId: values.leaseId, deliveryIds: values.deliveryIds });
       const response = await call("event-ack", values, { field: "acknowledgement", value: acknowledgement });
       const acknowledged = response.acknowledged;
@@ -655,7 +653,7 @@ function unseal(
       || !(parsed.accessTokenExpiresAt === null || typeof parsed.accessTokenExpiresAt === "string")
       || !(parsed.refreshTokenExpiresAt === null || typeof parsed.refreshTokenExpiresAt === "string")
       || !Array.isArray(parsed.scopes) || !parsed.scopes.every((scope) => typeof scope === "string")
-      || typeof parsed.subject !== "string" || typeof parsed.companyId !== "string"
+      || typeof parsed.subject !== "string"
       || typeof parsed.instanceId !== "string" || typeof parsed.environment !== "string"
       || !(parsed.appSlug === undefined || (typeof parsed.appSlug === "string" && /^[a-z0-9-]{1,100}$/.test(parsed.appSlug)))
       || parsed.provider !== provider || parsed.profile !== profile) {

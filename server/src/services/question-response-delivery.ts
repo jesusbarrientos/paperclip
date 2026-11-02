@@ -274,7 +274,6 @@ export function questionResponseDeliveryValues(
 ) {
   const envelope = buildQuestionResponseDeliveryEnvelope(interaction);
   return {
-    companyId: interaction.companyId,
     issueId: interaction.issueId,
     interactionId: interaction.id,
     sourceRunId: interaction.sourceRunId ?? null,
@@ -291,11 +290,10 @@ export function questionResponseDeliveryValues(
  */
 export async function isRetiredExternalChatQuestionSource(
   database: Db,
-  scope: { companyId: string; issueId: string; agentId: string; runId: string },
+  scope: { issueId: string; agentId: string; runId: string },
 ): Promise<boolean> {
   const source = await database.select().from(heartbeatRuns).where(and(
     eq(heartbeatRuns.id, scope.runId),
-    eq(heartbeatRuns.companyId, scope.companyId),
     eq(heartbeatRuns.agentId, scope.agentId),
     eq(heartbeatRuns.nativeIssueId, scope.issueId),
     eq(heartbeatRuns.runtimeMode, "native"),
@@ -308,10 +306,9 @@ export async function isRetiredExternalChatQuestionSource(
   const interactionId = result.interactionId;
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (
-    result.externalChatContinuation !== true ||
-    typeof interactionId !== "string" || !uuid.test(interactionId) ||
-    cancellation.schema !== "paperclip.native-cancellation.v1" ||
-    cancellation.companyId !== scope.companyId ||
+    (result.externalChatContinuation !== true ||
+          typeof interactionId !== "string" || !uuid.test(interactionId) ||
+          cancellation.schema !== "paperclip.native-cancellation.v1") ||
     cancellation.runId !== scope.runId ||
     cancellation.issueId !== scope.issueId ||
     cancellation.scope !== "run" ||
@@ -322,7 +319,6 @@ export async function isRetiredExternalChatQuestionSource(
   ) return false;
   const interaction = await database.select().from(issueThreadInteractions).where(and(
     eq(issueThreadInteractions.id, interactionId),
-    eq(issueThreadInteractions.companyId, scope.companyId),
     eq(issueThreadInteractions.issueId, scope.issueId),
     eq(issueThreadInteractions.createdByAgentId, scope.agentId),
     eq(issueThreadInteractions.sourceRunId, scope.runId),
@@ -337,7 +333,6 @@ export async function isRetiredExternalChatQuestionSource(
     return false;
   }
   const delivery = await database.select({ id: issueQuestionResponseDeliveries.id }).from(issueQuestionResponseDeliveries).where(and(
-    eq(issueQuestionResponseDeliveries.companyId, scope.companyId),
     eq(issueQuestionResponseDeliveries.issueId, scope.issueId),
     eq(issueQuestionResponseDeliveries.interactionId, interactionId),
     eq(issueQuestionResponseDeliveries.sourceRunId, scope.runId),
@@ -346,7 +341,6 @@ export async function isRetiredExternalChatQuestionSource(
   )).limit(1);
   if (!delivery.length) return false;
   const audits = await database.select().from(activityLog).where(and(
-    eq(activityLog.companyId, scope.companyId),
     eq(activityLog.agentId, scope.agentId),
     eq(activityLog.runId, scope.runId),
     eq(activityLog.entityType, "heartbeat_run"),
@@ -529,7 +523,6 @@ export function questionResponseDeliveryService(
         .then((rows) => rows[0] ?? null);
       if (!row) return null;
       await logActivity(tx as unknown as Db, {
-        companyId: input.interaction.companyId,
         actorType: "system",
         actorId: "question-response-delivery",
         agentId: input.interaction.resolvedByAgentId,
@@ -698,7 +691,6 @@ export function questionResponseDeliveryService(
   }
 
   async function findDurableWakeRequest(input: {
-    companyId: string;
     idempotencyKey: string;
   }) {
     const request = await db
@@ -711,7 +703,6 @@ export function questionResponseDeliveryService(
       .from(agentWakeupRequests)
       .where(
         and(
-          eq(agentWakeupRequests.companyId, input.companyId),
           eq(agentWakeupRequests.idempotencyKey, input.idempotencyKey),
           inArray(agentWakeupRequests.status, [
             ...DURABLE_WAKE_REQUEST_STATUSES,
@@ -728,7 +719,6 @@ export function questionResponseDeliveryService(
       .where(
         and(
           eq(heartbeatRuns.id, request.runId),
-          eq(heartbeatRuns.companyId, input.companyId),
           eq(heartbeatRuns.agentId, request.agentId),
         ),
       )
@@ -749,7 +739,6 @@ export function questionResponseDeliveryService(
       .where(
         and(
           eq(issueThreadInteractions.id, interactionId),
-          eq(issueThreadInteractions.companyId, claimed.companyId),
           eq(issueThreadInteractions.issueId, claimed.issueId),
         ),
       )
@@ -766,7 +755,6 @@ export function questionResponseDeliveryService(
           interaction ??
           ({
             id: interactionId,
-            companyId: claimed.companyId,
             issueId: claimed.issueId,
             sourceRunId: claimed.sourceRunId,
             resolvedByAgentId: null,
@@ -785,10 +773,7 @@ export function questionResponseDeliveryService(
           .select()
           .from(issues)
           .where(
-            and(
-              eq(issues.id, interaction.issueId),
-              eq(issues.companyId, interaction.companyId),
-            ),
+            eq(issues.id, interaction.issueId),
           )
           .limit(1)
           .then((rows) => rows[0] ?? null),
@@ -797,10 +782,7 @@ export function questionResponseDeliveryService(
               .select({ adapterType: agents.adapterType })
               .from(agents)
               .where(
-                and(
-                  eq(agents.id, interaction.createdByAgentId),
-                  eq(agents.companyId, interaction.companyId),
-                ),
+                eq(agents.id, interaction.createdByAgentId),
               )
               .limit(1)
               .then((rows) => rows[0] ?? null)
@@ -810,10 +792,7 @@ export function questionResponseDeliveryService(
               .select()
               .from(heartbeatRuns)
               .where(
-                and(
-                  eq(heartbeatRuns.id, interaction.sourceRunId),
-                  eq(heartbeatRuns.companyId, interaction.companyId),
-                ),
+                eq(heartbeatRuns.id, interaction.sourceRunId),
               )
               .limit(1)
               .then((rows) => rows[0] ?? null)
@@ -823,7 +802,6 @@ export function questionResponseDeliveryService(
           .from(chatPublications)
           .where(
             and(
-              eq(chatPublications.companyId, interaction.companyId),
               eq(chatPublications.issueId, interaction.issueId),
               eq(
                 sql<string>`${chatPublications.payload}->>'interactionId'`,
@@ -867,7 +845,6 @@ export function questionResponseDeliveryService(
           .where(
             and(
               eq(issueComments.id, sourceCommentCandidate),
-              eq(issueComments.companyId, interaction.companyId),
               eq(issueComments.issueId, interaction.issueId),
             ),
           )
@@ -880,7 +857,6 @@ export function questionResponseDeliveryService(
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, interaction.companyId),
           eq(heartbeatRuns.agentId, assigneeAgentId),
           inArray(heartbeatRuns.status, [
             "queued",
@@ -907,10 +883,6 @@ export function questionResponseDeliveryService(
             .from(issueQuestionResponseDeliveries)
             .where(
               and(
-                eq(
-                  issueQuestionResponseDeliveries.companyId,
-                  interaction.companyId,
-                ),
                 inArray(
                   issueQuestionResponseDeliveries.targetRunId,
                   issueRunIds,
@@ -938,7 +910,6 @@ export function questionResponseDeliveryService(
             .from(chatPublications)
             .where(
               and(
-                eq(chatPublications.companyId, interaction.companyId),
                 eq(chatPublications.issueId, interaction.issueId),
                 inArray(chatPublications.state, [
                   "published",
@@ -1151,7 +1122,6 @@ export function questionResponseDeliveryService(
     const wakeIdempotencyKey = `question-response:${interaction.id}`;
     try {
       const existingWake = await findDurableWakeRequest({
-        companyId: interaction.companyId,
         idempotencyKey: wakeIdempotencyKey,
       });
       const wakeRun =
@@ -1208,7 +1178,6 @@ export function questionResponseDeliveryService(
         (wakeRun
           ? null
           : await findDurableWakeRequest({
-              companyId: interaction.companyId,
               idempotencyKey: wakeIdempotencyKey,
             }));
       if (!wakeRun && !durableWake) {
@@ -1246,7 +1215,6 @@ export function questionResponseDeliveryService(
         // preflight lookup. Reuse its committed receipt instead of consuming
         // an error retry or issuing another continuation.
         const durableWake = await findDurableWakeRequest({
-          companyId: interaction.companyId,
           idempotencyKey: wakeIdempotencyKey,
         });
         if (durableWake) {

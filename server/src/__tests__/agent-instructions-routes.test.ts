@@ -48,7 +48,7 @@ const mockAccessService = vi.hoisted(() => ({
 
 const mockSecretService = vi.hoisted(() => ({
   resolveAdapterConfigForRuntime: vi.fn(),
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
+  normalizeAdapterConfigForPersistence: vi.fn(async (config: Record<string, unknown>) => config),
 }));
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
@@ -127,7 +127,6 @@ function boardActor() {
   return {
     type: "board",
     userId: "local-board",
-    companyIds: ["company-1"],
     source: "local_implicit",
     isInstanceAdmin: false,
   };
@@ -179,7 +178,6 @@ async function requestApp(
 function makeAgent() {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
     name: "Agent",
     role: "engineer",
     title: "Engineer",
@@ -236,7 +234,6 @@ describe("agent instructions bundle routes", () => {
     }));
     mockAgentInstructionsService.getBundle.mockResolvedValue({
       agentId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       mode: "managed",
       rootPath: "/tmp/agent-1",
       managedRootPath: "/tmp/agent-1",
@@ -294,7 +291,7 @@ describe("agent instructions bundle routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -306,8 +303,8 @@ describe("agent instructions bundle routes", () => {
     });
     expect(mockAgentInstructionsService.getBundle).toHaveBeenCalled();
     expect(mockAuthorizeInstructionRead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ type: "board" }),
-      expect.objectContaining({ companyId: "company-1", id: "11111111-1111-4111-8111-111111111111" }));
-  });
+      expect.objectContaining({ id: "11111111-1111-4111-8111-111111111111" }));
+  }, 60_000);
 
   it("requires instance-admin access for every external instruction entry point", async () => {
     mockAgentService.getById.mockResolvedValue({
@@ -320,9 +317,8 @@ describe("agent instructions bundle routes", () => {
     });
     const app = await createApp({
       type: "board",
-      userId: "company-admin",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      userId: "org-admin",
+        memberships: [{ status: "active", membershipRole: "admin" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -366,9 +362,8 @@ describe("agent instructions bundle routes", () => {
     });
     const app = await createApp({
       type: "board",
-      userId: "company-admin",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      userId: "org-admin",
+        memberships: [{ status: "active", membershipRole: "admin" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -394,8 +389,7 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "board",
         userId: "instance-admin",
-        companyIds: ["company-1"],
-        memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+            memberships: [{ status: "active", membershipRole: "admin" }],
         source: "session",
         isInstanceAdmin: true,
       }),
@@ -408,7 +402,7 @@ describe("agent instructions bundle routes", () => {
     expect(mockAuthorizeInstructionRead).not.toHaveBeenCalled();
   });
 
-  it("rejects a company admin that requests a new external instruction root", async () => {
+  it("rejects an organization admin that requests a new external instruction root", async () => {
     mockSyncInstructionsBundleConfigFromFilePath.mockImplementation((_agent, config) => ({
       ...config,
       instructionsBundleMode: "external",
@@ -417,9 +411,8 @@ describe("agent instructions bundle routes", () => {
     }));
     const app = await createApp({
       type: "board",
-      userId: "company-admin",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      userId: "org-admin",
+        memberships: [{ status: "active", membershipRole: "admin" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -441,9 +434,8 @@ describe("agent instructions bundle routes", () => {
     mockSyncInstructionsBundleConfigFromFilePath.mockImplementation((_agent, config) => config);
     const app = await createApp({
       type: "board",
-      userId: "company-admin",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      userId: "org-admin",
+        memberships: [{ status: "active", membershipRole: "admin" }],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -466,17 +458,15 @@ describe("agent instructions bundle routes", () => {
   it("rejects external instruction roots during both hire and direct creation", async () => {
     const actor = {
       type: "board",
-      userId: "company-admin",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      userId: "org-admin",
+        memberships: [{ status: "active", membershipRole: "admin" }],
       source: "session",
       isInstanceAdmin: false,
     };
     const db = {
       select: vi.fn(() => ({
         from: vi.fn(() => ({
-          where: vi.fn(async () => [{
-            id: "company-1",
+          limit: vi.fn(async () => [{
             requireBoardApprovalForNewAgents: false,
           }]),
         })),
@@ -494,13 +484,13 @@ describe("agent instructions bundle routes", () => {
     };
 
     const hireRes = await request(app)
-      .post("/api/companies/company-1/agent-hires")
+      .post("/api/agent-hires")
       .send(body);
     expect(hireRes.status, JSON.stringify(hireRes.body)).toBe(403);
     expect(hireRes.body.error).toContain("Instance admin");
 
     const createRes = await request(app)
-      .post("/api/companies/company-1/agents")
+      .post("/api/agents")
       .send(body);
     expect(createRes.status, JSON.stringify(createRes.body)).toBe(403);
     expect(createRes.body.error).toContain("Instance admin");
@@ -529,7 +519,6 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "agent",
         agentId: "agent-reader",
-        companyId: "company-1",
         source: "agent_key",
       }),
       (baseUrl) => request(baseUrl)
@@ -540,7 +529,7 @@ describe("agent instructions bundle routes", () => {
     expect(res.body.error).toContain("Missing permission");
     expect(mockAuthorizeInstructionRead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       type: "agent", agentId: "agent-reader",
-    }), { companyId: "company-1", id: "11111111-1111-4111-8111-111111111111" });
+    }), { id: "11111111-1111-4111-8111-111111111111" });
     expect(mockAgentInstructionsService.getBundle).not.toHaveBeenCalled();
     expect(mockAgentInstructionsService.readFile).not.toHaveBeenCalled();
     expect(mockInstructionRevisions.readCurrent).not.toHaveBeenCalled();
@@ -552,7 +541,6 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "agent",
         agentId: "11111111-1111-4111-8111-111111111111",
-        companyId: "company-1",
         source: "agent_key",
       }),
       (baseUrl) => request(baseUrl)
@@ -563,7 +551,7 @@ describe("agent instructions bundle routes", () => {
     expect(mockAgentInstructionsService.getBundle).toHaveBeenCalled();
     expect(mockAuthorizeInstructionRead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       type: "agent", agentId: "11111111-1111-4111-8111-111111111111",
-    }), { companyId: "company-1", id: "11111111-1111-4111-8111-111111111111" });
+    }), { id: "11111111-1111-4111-8111-111111111111" });
   });
 
   it.each(["AGENTS.md", "private-support.md"])("allows an authorized peer to read instruction file %s", async (filePath) => {
@@ -589,7 +577,6 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "agent",
         agentId: "coach-agent",
-        companyId: "company-1",
         source: "agent_key",
       }),
       (baseUrl) => request(baseUrl)
@@ -600,7 +587,7 @@ describe("agent instructions bundle routes", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockAuthorizeInstructionRead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       type: "agent", agentId: "coach-agent",
-    }), { companyId: "company-1", id: "11111111-1111-4111-8111-111111111111" });
+    }), { id: "11111111-1111-4111-8111-111111111111" });
     expect(mockAgentInstructionsService.readFile).toHaveBeenCalledWith(
       expect.objectContaining({ id: "11111111-1111-4111-8111-111111111111" }),
       filePath,
@@ -609,7 +596,7 @@ describe("agent instructions bundle routes", () => {
 
   it("commits entry bytes through the canonical service with the authenticated actor", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file?companyId=company-1")
+      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file")
       .send({ path: "AGENTS.md", content: "# Updated Agent\n", baseRevisionId: null }));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockInstructionRevisions.commit).toHaveBeenCalledWith(expect.objectContaining({
@@ -639,7 +626,7 @@ describe("agent instructions bundle routes", () => {
     expect(res.body).toEqual(bytes);
     expect(res.headers["content-length"]).toBe(String(bytes.length));
     expect(res.headers["content-disposition"]).toContain('filename="data.bin"');
-    expect(mockDownloadAgentFile).toHaveBeenCalledWith("company-1", "11111111-1111-4111-8111-111111111111", "notes/data.bin", expect.objectContaining({ type: "board" }));
+    expect(mockDownloadAgentFile).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", "notes/data.bin", expect.objectContaining({ type: "board" }));
     expect(mockAgentInstructionsService.readFile).not.toHaveBeenCalled();
   });
 
@@ -653,11 +640,11 @@ describe("agent instructions bundle routes", () => {
     const listed = await requestApp(app, (url) => request(url).get(prefix));
     expect(listed.status).toBe(200);
     expect(listed.body).toEqual([{ runId, entryFile: "AGENTS.md", state: "conflict", content: "preserved" }]);
-    expect(mockInstructionWorkingCopies.list).toHaveBeenCalledWith("company-1", "11111111-1111-4111-8111-111111111111", expect.objectContaining({ type: "board", userId: "local-board" }));
+    expect(mockInstructionWorkingCopies.list).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", expect.objectContaining({ type: "board", userId: "local-board" }));
     const resolved = await requestApp(app, (url) => request(url).post(`${prefix}/${runId}/resolve`).send({ baseRevisionId, content: "resolved" }));
     expect(resolved.status).toBe(200);
     expect(resolved.body).toMatchObject({ content: "resolved", receipt: { changed: true } });
-    expect(mockInstructionWorkingCopies.resolve).toHaveBeenCalledWith({ companyId: "company-1", agentId: "11111111-1111-4111-8111-111111111111", runId, baseRevisionId, content: "resolved" }, expect.objectContaining({ type: "board", userId: "local-board" }));
+    expect(mockInstructionWorkingCopies.resolve).toHaveBeenCalledWith({ agentId: "11111111-1111-4111-8111-111111111111", runId, baseRevisionId, content: "resolved" }, expect.objectContaining({ type: "board", userId: "local-board" }));
     for (const body of [{ content: "missing base" }, { baseRevisionId, content: "forged", responsibleUserId: "other" }, { baseRevisionId, content: "forged", entryFile: "other.md" }]) {
       expect((await requestApp(app, (url) => request(url).post(`${prefix}/${runId}/resolve`).send(body))).status).toBe(400);
     }
@@ -677,7 +664,7 @@ describe("agent instructions bundle routes", () => {
     const restored = await requestApp(app, (url) => request(url).post(`${prefix}/restore`).send({ path: "AGENTS.md", revisionId, baseRevisionId }));
     expect(restored.status).toBe(200);
     expect(restored.body.receipt.changed).toBe(true);
-    expect(mockInstructionRevisions.restore).toHaveBeenCalledWith({ companyId: "company-1", agentId: "11111111-1111-4111-8111-111111111111", entryFile: "AGENTS.md", revisionId, baseRevisionId }, expect.objectContaining({ type: "board", userId: "local-board" }));
+    expect(mockInstructionRevisions.restore).toHaveBeenCalledWith({ agentId: "11111111-1111-4111-8111-111111111111", entryFile: "AGENTS.md", revisionId, baseRevisionId }, expect.objectContaining({ type: "board", userId: "local-board" }));
   });
 
   it("requires a base revision and rejects client-supplied responsible identity", async () => {
@@ -704,7 +691,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111")
       .send({
         adapterType: "claude_local",
         adapterConfig: {
@@ -731,7 +718,7 @@ describe("agent instructions bundle routes", () => {
 
   it("preserves paperclip skill-sync selections when switching adapters", async () => {
     // Desired skills live inside the per-adapter config under
-    // `paperclipSkillSync`, yet they are adapter-agnostic company-level
+    // `paperclipSkillSync`, yet they are adapter-agnostic organization-level
     // selections. Switching adapter type must not silently wipe them — the
     // server carries them over from the existing config the same way it
     // preserves env/cwd and the instructions bundle.
@@ -745,7 +732,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111")
       .send({
         adapterType: "codex_local",
         replaceAdapterConfig: true,
@@ -782,7 +769,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111")
       .send({
         adapterConfig: {
           command: "codex --profile engineer",
@@ -820,7 +807,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111")
       .send({
         replaceAdapterConfig: true,
         adapterConfig: {

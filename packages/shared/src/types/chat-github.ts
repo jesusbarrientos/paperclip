@@ -104,7 +104,6 @@ export type GitHubReviewConclusion =
 /** Stored evidence attached to a task/run. Never independently scheduled. */
 export interface GitHubTaskReview {
   id: string;
-  companyId: string;
   endpointId: string;
   issueId: string;
   runId: string | null;

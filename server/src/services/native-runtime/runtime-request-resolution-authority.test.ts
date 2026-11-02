@@ -20,7 +20,6 @@ function dbReturning(row: Record<string, unknown> | null): Db {
 }
 
 const binding = {
-  companyId: "company-1",
   runId: "00000000-0000-4000-8000-000000000901",
   requestId: "request-1",
 };

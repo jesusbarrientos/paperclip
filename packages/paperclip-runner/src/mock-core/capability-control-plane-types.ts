@@ -31,7 +31,6 @@ export interface CapabilityFixtureCompany {
 }
 export interface CapabilityFixtureActor {
   id: string;
-  companyId: string;
   name: string;
   role: string;
   status: "active" | "paused";
@@ -42,7 +41,6 @@ export interface CapabilityFixtureActor {
 export interface CapabilityFixtureTask {
   statusVersion?: number;
   id: string;
-  companyId: string;
   identifier: string;
   title: string;
   description: string | null;
@@ -115,7 +113,6 @@ export interface CapabilityFixtureApprovalComment {
 
 export interface CapabilityFixtureApproval {
   id: string;
-  companyId: string;
   taskIds: string[];
   type: string;
   status: "pending" | "approved" | "rejected" | "cancelled";
@@ -200,7 +197,6 @@ export interface CapabilityScheduledWake {
 
 export interface CapabilityFixtureRun {
   id: string;
-  companyId: string;
   actorId: string;
   taskId: string;
   sessionId: string;
@@ -316,7 +312,7 @@ export interface CapabilityFixtureState {
   outOfScopeTaskIds: string[];
   comments: CapabilityFixtureComment[];
   documents: CapabilityFixtureDocument[];
-  skills?: Array<{ id: string; companyId: string; name: string; slug: string; description: string; markdown: string; versionId: string }>;
+  skills?: Array<{ id: string; name: string; slug: string; description: string; markdown: string; versionId: string }>;
 
   interactions: CapabilityFixtureInteraction[];
   approvals: CapabilityFixtureApproval[];
@@ -554,7 +550,6 @@ export function createCapabilityFixtureState(seed: CapabilityFixtureSeed = {}): 
   const actors = seed.actors ?? [
     {
       id: "actor-1",
-      companyId: company.id,
       name: "Mock Engineer",
       role: "engineer",
       status: "active",
@@ -565,7 +560,6 @@ export function createCapabilityFixtureState(seed: CapabilityFixtureSeed = {}): 
   const tasks = seed.tasks ?? [
     {
       id: "task-1",
-      companyId: company.id,
       identifier: `${company.issuePrefix}-1`,
       title: "Deterministic fixture task",
       description: null,

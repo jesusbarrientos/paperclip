@@ -6,7 +6,6 @@ import { aiConnectionsApi } from "@/api/ai-connections";
 import { aiConnectionPoolsApi, type PoolInspection } from "@/api/ai-connection-pools";
 import { toolsApi } from "@/api/tools";
 import { agentsApi } from "@/api/agents";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useToast } from "@/context/ToastContext";
 import { Link, useNavigate } from "@/lib/router";
@@ -36,17 +35,16 @@ function memberOf(account: AiManagedConnectionSummary): AiConnectionPoolMember {
 
 /** Native connector surface shared by all plugins implementing the pool contract. */
 export function AiConnectionPoolConnector({ pluginKey, connection }: { pluginKey: string; connection?: ToolConnection }) {
-  const { selectedCompanyId } = useCompany();
-  return selectedCompanyId ? <PoolConnector key={`${selectedCompanyId}:${connection?.id ?? pluginKey}`} companyId={selectedCompanyId} pluginKey={pluginKey} connection={connection} /> : <p>Select a company to continue.</p>;
+  return <PoolConnector key={connection?.id ?? pluginKey} pluginKey={pluginKey} connection={connection} />;
 }
-function PoolConnector({ companyId, pluginKey, connection }: { companyId: string; pluginKey: string; connection?: ToolConnection }) {
+function PoolConnector({ pluginKey, connection }: { pluginKey: string; connection?: ToolConnection }) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const { pushToast } = useToast();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const accountsQuery = useQuery({ queryKey: ["pool-accounts", companyId], queryFn: () => aiConnectionsApi.list(companyId) });
-  const poolsQuery = useQuery({ queryKey: ["ai-connection-pools", companyId], queryFn: () => aiConnectionPoolsApi.list(companyId), enabled: accountsQuery.data?.canManageConnections === true });
-  const galleryQuery = useQuery({ queryKey: queryKeys.apps.gallery(companyId), queryFn: () => toolsApi.listGallery(companyId) });
+  const accountsQuery = useQuery({ queryKey: ["pool-accounts"], queryFn: () => aiConnectionsApi.list() });
+  const poolsQuery = useQuery({ queryKey: ["ai-connection-pools"], queryFn: () => aiConnectionPoolsApi.list(), enabled: accountsQuery.data?.canManageConnections === true });
+  const galleryQuery = useQuery({ queryKey: queryKeys.apps.gallery(), queryFn: () => toolsApi.listGallery() });
   const [editing, setEditing] = useState<AiConnectionPool>();
   const [draft, setDraft] = useState(emptyConfig);
   const [step, setStep] = useState(0);
@@ -64,7 +62,7 @@ function PoolConnector({ companyId, pluginKey, connection }: { companyId: string
   const unavailable = galleryQuery.isSuccess && (!entry || entry.availability?.available === false);
   const canManage = Boolean(accountsQuery.data?.canManageConnections);
   const disabled = busy || !canManage || unavailable;
-  const agentsQuery = useQuery({ queryKey: queryKeys.agents.list(companyId), queryFn: () => agentsApi.list(companyId), enabled: Boolean(connection) && canManage });
+  const agentsQuery = useQuery({ queryKey: queryKeys.agents.list(), queryFn: () => agentsApi.list(), enabled: Boolean(connection) && canManage });
   const usingAgents = (agentsQuery.data ?? []).filter(agent => agent.status !== "terminated" && agent.runtimeConfig?.aiConnection?.mode === "router" && agent.runtimeConfig.aiConnection.connectionId === connection?.id).sort((a, b) => a.name.localeCompare(b.name));
   useEffect(() => {
     if (connection && !editing && canManage) {
@@ -79,21 +77,21 @@ function PoolConnector({ companyId, pluginKey, connection }: { companyId: string
   useEffect(() => {
     if (!editing || !canManage) return;
     let alive = true;
-    void aiConnectionPoolsApi.inspect(companyId, editing.id).then(value => { if (alive) setInspection(value); }).catch(() => { if (alive) setInspectionError("Usage unavailable."); });
+    void aiConnectionPoolsApi.inspect(editing.id).then(value => { if (alive) setInspection(value); }).catch(() => { if (alive) setInspectionError("Usage unavailable."); });
     return () => { alive = false; };
-  }, [companyId, editing, canManage]);
+  }, [editing, canManage]);
   async function invalidate() {
     await Promise.all([
-      client.invalidateQueries({ queryKey: ["ai-connection-pools", companyId] }),
-      client.invalidateQueries({ queryKey: queryKeys.tools.connections(companyId) }),
-      client.invalidateQueries({ queryKey: queryKeys.tools.applications(companyId) }),
+      client.invalidateQueries({ queryKey: ["ai-connection-pools"] }),
+      client.invalidateQueries({ queryKey: queryKeys.tools.connections() }),
+      client.invalidateQueries({ queryKey: queryKeys.tools.applications() }),
       ...(connection ? [client.invalidateQueries({ queryKey: queryKeys.tools.connection(connection.id) })] : []),
     ]);
   }
   async function save(config = draft) {
     setBusy(true); setError("");
     try {
-      const saved = await aiConnectionPoolsApi.save(companyId, { pluginKey, ...(editing ? { id: editing.id, expectedRevision: editing.revision } : {}), config });
+      const saved = await aiConnectionPoolsApi.save({ pluginKey, ...(editing ? { id: editing.id, expectedRevision: editing.revision } : {}), config });
       setEditing(saved); setDraft(configOf(saved)); setRenaming(false);
       await invalidate();
       pushToast({ title: connection ? "Connection pool saved" : "Connection pool created", tone: "success" });
@@ -104,7 +102,7 @@ function PoolConnector({ companyId, pluginKey, connection }: { companyId: string
   async function remove() {
     if (!editing) return;
     setBusy(true); setError("");
-    try { await aiConnectionPoolsApi.remove(companyId, editing.id, editing.revision); await invalidate(); navigate("/apps"); }
+    try { await aiConnectionPoolsApi.remove(editing.id, editing.revision); await invalidate(); navigate("/apps"); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   }

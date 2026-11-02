@@ -155,11 +155,11 @@ Runnerd is authoritative only for its local responsibilities:
 - bounded process diagnostics.
 
 Runnerd receives a short-lived, one-use bootstrap ticket. The ticket is bound to
-the company, agent, issue, run, runner, session, turn, and verified artifact. The
+the agent, issue, run, runner, session, turn, and verified artifact. The
 server exchanges it for a short-lived connection lease. Raw tickets are never
 stored. Runnerd never receives a broad Paperclip API key.
 
-The server rejects expired, replayed, revoked, cross-company, mismatched,
+The server rejects expired, replayed, revoked, mismatched,
 malformed, oversized, or protocol-incompatible connections. Cancellation,
 timeout, supersession, and environment-lease loss revoke runner authority.
 
@@ -277,7 +277,7 @@ prevent server implementation details from becoming accidental public API.
 - TypeScript and Rust accept and reject the same protocol fixtures.
 - Lost acknowledgements, reconnects, runner restarts, and duplicate commands do
   not duplicate events or effects.
-- Bootstrap replay, binding mismatch, and cross-company access fail closed.
+- Bootstrap replay and binding mismatch fail closed.
 - Only authorized and production-bound actions appear in discovery.
 - Cancellation settles provider, runner, transport, and application state.
 - Flag-off direct-adapter runs create no native records and start no runner

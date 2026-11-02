@@ -11,10 +11,10 @@ import type { TrustPresetResolution } from "./trust-preset-resolver.js";
 export async function withHumanDirectedWork(
   db: Pick<Db, "execute">,
   resolution: TrustPresetResolution,
-  input: { companyId: string; agentId: string; runId: string },
+  input: { agentId: string; runId: string },
 ): Promise<TrustPresetResolution> {
   if (resolution.kind !== "low_trust_review" ||
-      resolution.boundary.companyId !== input.companyId) return resolution;
+      false) return resolution;
 
   // One snapshot binds the live run, current assignee, and authenticated wake.
   // Reassignment cancels the old request records in the assignment transaction.
@@ -25,8 +25,8 @@ export async function withHumanDirectedWork(
       SELECT i.id, i.conversation_agent_id, i.conversation_user_id, r.id AS run_id
       FROM heartbeat_runs r
       JOIN issues i ON i.id::text = coalesce(r.context_snapshot->>'issueId', r.context_snapshot->>'taskId')
-        AND i.company_id = r.company_id AND i.assignee_agent_id = r.agent_id
-      WHERE r.id = ${input.runId}::uuid AND r.company_id = ${input.companyId}::uuid
+        AND i.assignee_agent_id = r.agent_id
+      WHERE r.id = ${input.runId}::uuid
         AND r.agent_id = ${input.agentId}::uuid AND r.status = 'running'
     ), task_runs AS (
       SELECT r.id, r.retry_of_run_id
@@ -35,7 +35,7 @@ export async function withHumanDirectedWork(
       SELECT parent.id, parent.retry_of_run_id
       FROM heartbeat_runs parent JOIN task_runs child ON parent.id = child.retry_of_run_id
       JOIN current_task t ON t.id::text = coalesce(parent.context_snapshot->>'issueId', parent.context_snapshot->>'taskId')
-      WHERE parent.company_id = ${input.companyId}::uuid AND parent.agent_id = ${input.agentId}::uuid
+      WHERE parent.agent_id = ${input.agentId}::uuid
         AND parent.status <> 'cancelled'
     )
     SELECT t.id FROM current_task t
@@ -44,7 +44,7 @@ export async function withHumanDirectedWork(
         SELECT 1 FROM agent_wakeup_requests w
         WHERE (w.run_id IN (SELECT id FROM task_runs) OR
             (w.run_id IS NULL AND w.reason = 'issue_human_assignment' AND w.status = 'completed'))
-        AND w.company_id = ${input.companyId}::uuid AND w.agent_id = ${input.agentId}::uuid
+        AND w.agent_id = ${input.agentId}::uuid
           AND w.requested_by_actor_type = 'user' AND nullif(trim(w.requested_by_actor_id), '') IS NOT NULL
           AND w.status NOT IN ('skipped', 'cancelled')
           -- The source is copied from server-owned context at admission, never
@@ -72,7 +72,8 @@ export async function withHumanDirectedWork(
  */
 export async function retainBacklogHumanAssignment(
   db: Db,
-  issue: { id: string; companyId: string; assigneeAgentId: string | null; status: string; statusVersion: number },
+  issue: { id: string;
+ assigneeAgentId: string | null; status: string; statusVersion: number },
   actor: { actorType: string; actorId: string },
 ) {
   if (actor.actorType !== "user" || !actor.actorId.trim() || issue.status !== "backlog" || !issue.assigneeAgentId) return;
@@ -80,12 +81,12 @@ export async function retainBacklogHumanAssignment(
     // An assignment that changed (even A -> B -> A) before this callback cannot
     // revive stale direction. Reassignment and this receipt share the issue lock.
     const [current] = await tx.select({ id: issues.id }).from(issues).where(and(
-      eq(issues.id, issue.id), eq(issues.companyId, issue.companyId),
+      eq(issues.id, issue.id),
       eq(issues.assigneeAgentId, issue.assigneeAgentId!), eq(issues.statusVersion, issue.statusVersion),
     )).for("update");
     if (!current) return;
     await tx.insert(agentWakeupRequests).values({
-      companyId: issue.companyId, agentId: issue.assigneeAgentId!, source: "assignment",
+      agentId: issue.assigneeAgentId!, source: "assignment",
       reason: "issue_human_assignment", status: "completed", finishedAt: new Date(),
       requestedByActorType: "user", requestedByActorId: actor.actorId,
       payload: { issueId: issue.id, _paperclipWakeContext: { source: "issue.backlog_assignment" } },

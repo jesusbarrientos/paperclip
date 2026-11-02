@@ -69,14 +69,12 @@ const support = await getEmbeddedPostgresTestSupport();
       }).onConflictDoUpdate(membershipUpsert);
       await db.insert(goals).values({
         id: goalId,
-        companyId,
         title: "Connect a service",
         level: "task",
         status: "active",
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Researcher",
         role: "researcher",
         status: "active",
@@ -87,7 +85,6 @@ const support = await getEmbeddedPostgresTestSupport();
       });
       await db.insert(issues).values({
         id: issueId,
-        companyId,
         goalId,
         title: "Read Notion",
         status: "in_progress",
@@ -96,7 +93,6 @@ const support = await getEmbeddedPostgresTestSupport();
       });
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId,
         status: "running",
         responsibleUserId: "responsible-user",
@@ -126,7 +122,6 @@ const support = await getEmbeddedPostgresTestSupport();
       await db
         .insert(issueComments)
         .values({
-          companyId: claims.company_id,
           issueId: run!.contextSnapshot!.issueId as string,
           authorUserId: userId,
           body,
@@ -134,20 +129,15 @@ const support = await getEmbeddedPostgresTestSupport();
     }
     async function resetQuestions() {
       await db
-        .delete(issueComments)
-        .where(eq(issueComments.companyId, claims.company_id));
+        .delete(issueComments);
       await db
-        .delete(issueThreadInteractions)
-        .where(eq(issueThreadInteractions.companyId, claims.company_id));
+        .delete(issueThreadInteractions);
       await db
-        .delete(toolConnections)
-        .where(eq(toolConnections.companyId, claims.company_id));
+        .delete(toolConnections);
       await db
-        .delete(toolProfiles)
-        .where(eq(toolProfiles.companyId, claims.company_id));
+        .delete(toolProfiles);
       await db
-        .delete(toolApplications)
-        .where(eq(toolApplications.companyId, claims.company_id));
+        .delete(toolApplications);
     }
     async function selectProvider(
       option: string,
@@ -160,8 +150,7 @@ const support = await getEmbeddedPostgresTestSupport();
         .from(heartbeatRuns)
         .where(eq(heartbeatRuns.id, runId));
       const issue = {
-        id: run!.contextSnapshot!.issueId as string,
-        companyId: claims.company_id,
+        id: run!.contextSnapshot!.issueId as string
       };
       const interaction = await issueThreadInteractionService(db).create(
         issue,
@@ -196,7 +185,6 @@ const support = await getEmbeddedPostgresTestSupport();
       const [app] = await db
         .insert(toolApplications)
         .values({
-          companyId: claims.company_id,
           applicationKey: randomUUID(),
           name: provider,
           type: "mcp_http",
@@ -207,7 +195,6 @@ const support = await getEmbeddedPostgresTestSupport();
       const [connection] = await db
         .insert(toolConnections)
         .values({
-          companyId: claims.company_id,
           applicationId: app!.id,
           uid: randomUUID(),
           name: provider,
@@ -221,14 +208,12 @@ const support = await getEmbeddedPostgresTestSupport();
         })
         .returning();
       await db.insert(connectionGrants).values({
-        companyId: claims.company_id,
         connectionId: connection!.id,
         kind: "user",
         subjectUserId: userId,
         status: "active",
       });
       await db.insert(toolCatalogEntries).values({
-        companyId: claims.company_id,
         connectionId: connection!.id,
         toolName,
         name: toolName,
@@ -238,7 +223,6 @@ const support = await getEmbeddedPostgresTestSupport();
         lastSeenAt: new Date("2026-09-20T00:00:00Z"),
       });
       await db.insert(toolConnectionInstalls).values({
-        companyId: claims.company_id,
         connectionId: connection!.id,
         targetType: "agent",
         targetId: claims.sub,
@@ -247,7 +231,6 @@ const support = await getEmbeddedPostgresTestSupport();
         const [profile] = await db
           .insert(toolProfiles)
           .values({
-            companyId: claims.company_id,
             profileKey: randomUUID(),
             name: "Fixture reads",
             defaultAction: "allow",
@@ -255,7 +238,6 @@ const support = await getEmbeddedPostgresTestSupport();
           })
           .returning();
         await db.insert(toolProfileBindings).values({
-          companyId: claims.company_id,
           profileId: profile!.id,
           targetType: "agent",
           targetId: claims.sub,
@@ -393,8 +375,7 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(
         await db
           .select()
-          .from(issueThreadInteractions)
-          .where(eq(issueThreadInteractions.companyId, claims.company_id)),
+          .from(issueThreadInteractions),
       ).toHaveLength(0);
     });
     it("requires a real saved provider answer before requesting setup", async () => {
@@ -474,8 +455,7 @@ const support = await getEmbeddedPostgresTestSupport();
         .where(eq(heartbeatRuns.id, runId));
       const interaction = await issueThreadInteractionService(db).create(
         {
-          id: run!.contextSnapshot!.issueId as string,
-          companyId: claims.company_id,
+          id: run!.contextSnapshot!.issueId as string
         },
         {
           kind: "ask_user_questions",

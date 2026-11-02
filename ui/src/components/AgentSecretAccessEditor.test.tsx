@@ -41,7 +41,6 @@ import {
 function makeSecret(id: string, name: string): CompanySecret {
   return {
     id,
-    companyId: "co",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,
@@ -208,7 +207,6 @@ describe("AgentSecretAccessEditor component", () => {
     const rejected: string[] = [];
     const proposal = {
       id: "prop-1",
-      companyId: "co",
       kind: "binding" as const,
       status: "pending" as const,
       justification: "Bind Stripe for the billing agent.",

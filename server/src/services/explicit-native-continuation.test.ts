@@ -37,20 +37,20 @@ const support = await getEmbeddedPostgresTestSupport();
     const sourceRunId = randomUUID(), successorRunId = randomUUID();
     const commentId: string = randomUUID();
     await db.insert(companies).values({ id: companyId, name: "Explicit turn", defaultResponsibleUserId: "board", issuePrefix: `E${companyId.slice(0, 6)}` });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Native", role: "engineer", adapterType: "paperclip_runner", status: "idle", runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } });
-    await db.insert(issues).values({ id: issueId, companyId, title: "Deploy", status: "blocked", assigneeAgentId: agentId });
-    await db.insert(heartbeatRuns).values({ id: sourceRunId, companyId, agentId,
+    await db.insert(agents).values({ id: agentId, name: "Native", role: "engineer", adapterType: "paperclip_runner", status: "idle", runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } });
+    await db.insert(issues).values({ id: issueId, title: "Deploy", status: "blocked", assigneeAgentId: agentId });
+    await db.insert(heartbeatRuns).values({ id: sourceRunId, agentId,
       nativeIssueId: issueId, runtimeMode: "native", status: "failed", processPid: 999999999,
       contextSnapshot: { issueId }, finishedAt: new Date("2026-09-11T10:00:00Z") });
-    await db.insert(nativeRunFinalizations).values({ runId: sourceRunId, companyId, issueId,
+    await db.insert(nativeRunFinalizations).values({ runId: sourceRunId, issueId,
       phase: "terminal_failure", attempt: 3, failureDetail: { replacementDenied: "uncertain_external_action" } });
-    await db.insert(issueRecoveryActions).values({ companyId, sourceIssueId: issueId,
+    await db.insert(issueRecoveryActions).values({ sourceIssueId: issueId,
       kind: "active_run_watchdog", cause: "uncertain_external_action", fingerprint: sourceRunId,
       status: "resolved", outcome: "blocked", nextAction: "Automatic recovery stopped.",
       evidence: { runId: sourceRunId, automaticRecovery: { replay: "blocked", actionOutcome: "unknown" } } });
-    await db.insert(issueComments).values({ id: commentId, companyId, issueId, authorType: "user",
+    await db.insert(issueComments).values({ id: commentId, issueId, authorType: "user",
       authorUserId: "board", body: "What happened?", createdAt: new Date("2026-09-11T11:00:00Z") });
-    return { companyId, issueId, agentId, sourceRunId, commentId, successorRunId,
+    return { issueId, agentId, sourceRunId, commentId, successorRunId,
       actorType: "user", actorId: "board", reason: "issue_commented" };
   }
   type Fixture = Awaited<ReturnType<typeof seed>>;
@@ -58,15 +58,15 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await seed(), nextAgentId = randomUUID(), queueId = randomUUID();
     await db.delete(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     await db.delete(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
-    await db.insert(agents).values({ id: nextAgentId, companyId: f.companyId, name: "Replacement", role: "engineer", adapterType: "paperclip_runner", runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } });
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: nextAgentId, status: "running" });
+    await db.insert(agents).values({ id: nextAgentId, name: "Replacement", role: "engineer", adapterType: "paperclip_runner", runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } });
+    await db.insert(heartbeatRuns).values({ agentId: nextAgentId, status: "running" });
     await db.update(issues).set({ status: "in_progress", assigneeAgentId: kind === "different_owner" ? f.agentId : nextAgentId }).where(eq(issues.id, f.issueId));
     await db.update(heartbeatRuns).set({ status: kind === "running_source" ? "running" : "cancelled", errorCode: "issue_reassigned",
       nativeIssueId: kind === "foreign_task" ? null : f.issueId,
       contextSnapshot: { issueId: kind === "foreign_task" ? randomUUID() : f.issueId } }).where(eq(heartbeatRuns.id, f.sourceRunId));
     const secondId = randomUUID();
-    await db.insert(issueComments).values({ id: secondId, companyId: f.companyId, issueId: f.issueId, authorType: "user", authorUserId: "second-user", body: "Preserve the existing draft." });
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(issueComments).values({ id: secondId, issueId: f.issueId, authorType: "user", authorUserId: "second-user", body: "Preserve the existing draft." });
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", reason: "issue_execution_deferred", status: "deferred_issue_execution",
       requestedByActorType: "user", requestedByActorId: "board", idempotencyKey: kind === "chat" ? "chat-inbound:handoff-test" : null,
       payload: { issueId: f.issueId, commentId: secondId, _paperclipWakeContext: { issueId: f.issueId,
@@ -98,24 +98,24 @@ const support = await getEmbeddedPostgresTestSupport();
     const [source] = await db.update(heartbeatRuns).set({ status: "cancelled",
       processPid: gate === "process_running" ? process.pid : gate === "identity_missing" ? null : 999999999, resultJson: {
       cancelledByActorType: "user", cancelledByUserId: "board", nativeCancellation: {
-        schema: "paperclip.native-cancellation.v1", runId: f.sourceRunId, companyId: f.companyId,
+        schema: "paperclip.native-cancellation.v1", runId: f.sourceRunId,
         issueId: f.issueId, scope: "run", reasonCode: "cancellation_run_only", dispatched: true,
         dispatchState: gate === "unacknowledged" ? "requested" : "acknowledged",
         intentAuditId: randomUUID(), acknowledgementAuditId: randomUUID(),
       },
     } }).where(eq(heartbeatRuns.id, f.sourceRunId)).returning();
     // Occupy the agent slot: admission is real, but no provider should launch.
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     if (gate === "pause") {
       const holdId = randomUUID();
-      await db.insert(issueTreeHolds).values({ id: holdId, companyId: f.companyId, rootIssueId: f.issueId, mode: "pause", status: "active" });
-      await db.insert(issueTreeHoldMembers).values({ companyId: f.companyId, holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "in_progress" });
+      await db.insert(issueTreeHolds).values({ id: holdId, rootIssueId: f.issueId, mode: "pause", status: "active" });
+      await db.insert(issueTreeHoldMembers).values({ holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "in_progress" });
     }
     let queuedIds = [f.commentId];
     let expectedIds = queuedIds;
     if (["first_delivered", "last_delivered", "mixed_authors"].includes(gate)) {
       const secondId = randomUUID();
-      await db.insert(issueComments).values({ id: secondId, companyId: f.companyId, issueId: f.issueId,
+      await db.insert(issueComments).values({ id: secondId, issueId: f.issueId,
         authorType: "user", authorUserId: gate === "mixed_authors" ? "second-author" : "board",
         body: "Keep the earlier direction too.", createdAt: new Date("2026-09-11T09:01:00Z") });
       queuedIds = [f.commentId, secondId];
@@ -125,14 +125,14 @@ const support = await getEmbeddedPostgresTestSupport();
       }).where(eq(heartbeatRuns.id, f.sourceRunId));
     }
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", triggerDetail: "system", reason: "issue_execution_deferred", status: "deferred_issue_execution",
       requestedByActorType: "user", requestedByActorId: "board", payload: {
         issueId: f.issueId, commentId: queuedIds.at(-1), _paperclipWakeContext: { issueId: f.issueId, wakeReason: "issue_commented", wakeCommentId: queuedIds.at(-1), wakeCommentIds: queuedIds },
       },
     });
     if (gate.startsWith("remote_")) {
-      const identity = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+      const identity = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
         provider: "daytona", providerLeaseId: "owned-sandbox" };
       await db.insert(environmentLeases).values({ ...identity, status: gate === "remote_stopped" ? "released" : "active",
         leasePolicy: "ephemeral", releasedAt: gate === "remote_stopped" ? new Date() : null,
@@ -144,13 +144,13 @@ const support = await getEmbeddedPostgresTestSupport();
     const heartbeat = heartbeatService(db);
     await heartbeat.resumeRemoteStopComments(source);
     await heartbeat.resumeRemoteStopComments(source);
-    const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+    const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
     expect(successors).toHaveLength(["ready", "remote_stopped", "first_delivered", "last_delivered", "mixed_authors"].includes(gate) ? 1 : 0);
     const [wake] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, queueId));
     if (["ready", "remote_stopped", "first_delivered", "last_delivered", "mixed_authors"].includes(gate)) {
       expect(wake).toMatchObject({ status: "coalesced", runId: successors[0].id, requestedByActorId: "board" });
       expect(successors[0].contextSnapshot).toMatchObject({ wakeCommentIds: expectedIds });
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+      expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     } else expect(wake.status).toBe("deferred_issue_execution");
   });
   it.each(["pending", "failed", "historical", "shared", "retained"])("an explicit queued interrupt retries only its stopped sandbox, without granting automatic retries (%s)", async scenario => {
@@ -163,15 +163,15 @@ const support = await getEmbeddedPostgresTestSupport();
       .where(eq(heartbeatRuns.id, f.sourceRunId));
     await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", reason: "issue_commented", status: "deferred_issue_execution",
       requestedByActorType: "system", payload: { issueId: f.issueId, commentId: f.commentId,
         _paperclipWakeContext: { wakeCommentIds: [f.commentId] },
         queuedCommentInterrupt: { actorId: "board", requestedAt: new Date().toISOString() } },
     });
-    const identities = [f, other].map(fixture => ({ id: randomUUID(), companyId: fixture.companyId,
+    const identities = [f, other].map(fixture => ({ id: randomUUID(),
       heartbeatRunId: fixture.sourceRunId, provider: "daytona", providerLeaseId: fixture.sourceRunId }));
     for (const identity of identities) await db.insert(environmentLeases).values({ ...identity,
       status: "pending_cleanup", leasePolicy: "ephemeral", releasedAt: new Date(), cleanupStatus: "failed",
@@ -195,11 +195,11 @@ const support = await getEmbeddedPostgresTestSupport();
       },
     } as unknown as HeartbeatEnvironmentRuntime });
     try {
-      await heartbeat.resumeQueuedCommentInterrupt(f.companyId, queueId);
+      await heartbeat.resumeQueuedCommentInterrupt(queueId);
       expect(attempted).toEqual([]);
-      await heartbeat.resumeQueuedCommentInterrupt(f.companyId, queueId, { retryCleanup: true });
+      await heartbeat.resumeQueuedCommentInterrupt(queueId, { retryCleanup: true });
       expect(attempted).toEqual(protectedLease ? [] : [identities[0].id]);
-      await heartbeat.resumeQueuedCommentInterrupt(f.companyId, queueId);
+      await heartbeat.resumeQueuedCommentInterrupt(queueId);
       expect(attempted).toHaveLength(protectedLease ? 0 : 1);
       const [queue] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, queueId));
       expect(queue.status).toBe(fails || protectedLease ? "deferred_issue_execution" : "coalesced");
@@ -222,7 +222,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(issueComments).set({ authorUserId: "original-author", createdAt: new Date("2026-09-11T09:00:00Z") })
       .where(eq(issueComments.id, f.commentId));
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "on_demand", reason: "issue_commented", status: "deferred_issue_execution",
       requestedByActorType: "user", requestedByActorId: "original-author",
       payload: { issueId: f.issueId, _paperclipWakeContext: { wakeCommentIds: [f.commentId] },
@@ -252,19 +252,19 @@ const support = await getEmbeddedPostgresTestSupport();
       .where(eq(issueComments.id, f.commentId));
     // Hold adapter startup so the test can exercise the real dispatch envelope
     // deterministically, without invoking a provider.
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", reason: "issue_commented", status: "deferred_issue_execution",
       requestedByActorType: "system", payload: { issueId: f.issueId, commentId: f.commentId,
         _paperclipWakeContext: { wakeCommentIds: [f.commentId] },
         queuedCommentInterrupt: { actorId: "board", requestedAt: new Date().toISOString() } },
     });
-    await heartbeatService(db).resumeQueuedCommentInterrupt(f.companyId, queueId);
+    await heartbeatService(db).resumeQueuedCommentInterrupt(queueId);
     const [receipt] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, queueId));
     expect(receipt.status).toBe("coalesced");
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, receipt.runId!));
-    const dispatch = (runId = run.id) => buildExecutionContinuation({ db, companyId: f.companyId,
+    const dispatch = (runId = run.id) => buildExecutionContinuation({ db,
       issueId: f.issueId, agentId: f.agentId, runId, context: run.contextSnapshot!,
       summary: null, exposeLowTrustRaw: false });
     const envelope = await dispatch();
@@ -290,7 +290,7 @@ const support = await getEmbeddedPostgresTestSupport();
     } }).where(eq(issueRecoveryActions.id, action.id));
     await expect(dispatch()).rejects.toThrow("continuation_user_authorization_missing");
   });
-  it.each(["valid", "stale_retry_context", "wrong_actor", "wrong_run", "wrong_company", "discarded"])("verifies another author's queued Interrupt at execution setup: %s", async kind => {
+  it.each(["valid", "stale_retry_context", "wrong_actor", "wrong_run", "discarded"])("verifies another author's queued Interrupt at execution setup: %s", async kind => {
     const f = await seed();
     await db.update(agents).set({ adapterType: "claude_local" }).where(eq(agents.id, f.agentId));
     await db.delete(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
@@ -300,15 +300,15 @@ const support = await getEmbeddedPostgresTestSupport();
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     await db.update(issueComments).set({ authorUserId: "original-author", createdAt: new Date("2026-09-11T09:00:00Z") })
       .where(eq(issueComments.id, f.commentId));
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId,
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId,
       status: "running", contextSnapshot: { issueId: randomUUID() } });
     const queueId = randomUUID();
     const payload = { issueId: f.issueId, _paperclipWakeContext: { wakeCommentIds: [f.commentId] },
       queuedCommentInterrupt: { actorId: "board", requestedAt: new Date().toISOString() } };
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", reason: "issue_commented", status: "deferred_issue_execution",
       requestedByActorType: "system", payload });
-    await heartbeatService(db).resumeQueuedCommentInterrupt(f.companyId, queueId);
+    await heartbeatService(db).resumeQueuedCommentInterrupt(queueId);
     const [wake] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, queueId));
     expect(wake.status).toBe("coalesced");
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, wake.runId!));
@@ -317,11 +317,9 @@ const support = await getEmbeddedPostgresTestSupport();
     }).where(eq(agentWakeupRequests.id, queueId));
     if (kind === "wrong_run") await db.update(agentWakeupRequests).set({ runId: f.sourceRunId })
       .where(eq(agentWakeupRequests.id, queueId));
-    if (kind === "wrong_company") await db.update(agentWakeupRequests).set({ companyId: (await seed()).companyId })
-      .where(eq(agentWakeupRequests.id, queueId));
     if (kind === "discarded") await db.update(issueComments).set({ deletedAt: new Date() })
       .where(eq(issueComments.id, f.commentId));
-    const result = buildExecutionContinuation({ db, companyId: f.companyId, issueId: f.issueId,
+    const result = buildExecutionContinuation({ db, issueId: f.issueId,
       agentId: f.agentId, runId: run.id, context: {
         ...run.contextSnapshot, ...(kind === "stale_retry_context" ? { retryOfRunId: randomUUID() } : {}),
       }, summary: null, exposeLowTrustRaw: false });
@@ -349,13 +347,13 @@ const support = await getEmbeddedPostgresTestSupport();
       ...(kind === "discarded" ? { deletedAt: new Date() } : {}),
     }).where(eq(issueComments.id, f.commentId));
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", reason: "issue_commented", status: kind === "consumed" ? "coalesced" : "deferred_issue_execution",
       requestedByActorType: "system", payload: { issueId: kind === "foreign_queue" ? randomUUID() : f.issueId,
         _paperclipWakeContext: { wakeCommentIds: [f.commentId] } },
     });
     if (kind.startsWith("unstarted_cancelled")) {
-      await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId,
+      await db.insert(heartbeatRuns).values({ agentId: f.agentId,
         status: "cancelled", runtimeMode: "legacy", errorCode: "agent_paused", finishedAt: new Date(),
         ...(kind === "unstarted_cancelled_metadata" ? { nativeIssueId: f.issueId, processPid: 999999999, processGroupId: 999999999 } : {}),
         contextSnapshot: { issueId: f.issueId, wakeCommentIds: [f.commentId] },
@@ -363,7 +361,7 @@ const support = await getEmbeddedPostgresTestSupport();
     }
     if (kind === "earlier_delivered") {
       const earlierId = randomUUID();
-      await db.insert(issueComments).values({ id: earlierId, companyId: f.companyId, issueId: f.issueId,
+      await db.insert(issueComments).values({ id: earlierId, issueId: f.issueId,
         authorType: "user", authorUserId: f.actorId, body: "Already handled" });
       await db.update(heartbeatRuns).set({ contextSnapshot: { issueId: f.issueId, wakeCommentIds: [earlierId] } })
         .where(eq(heartbeatRuns.id, f.sourceRunId));
@@ -383,7 +381,7 @@ const support = await getEmbeddedPostgresTestSupport();
   const admit = (f: Fixture, dryRun = false) => db.transaction(async tx => {
     await tx.select().from(issues).where(eq(issues.id, f.issueId)).for("update");
     const result = await admitExplicitNativeContinuation({ ...f, dryRun, db: tx as unknown as typeof db });
-    if (result && !dryRun) await tx.insert(heartbeatRuns).values({ id: f.successorRunId, companyId: f.companyId,
+    if (result && !dryRun) await tx.insert(heartbeatRuns).values({ id: f.successorRunId,
       agentId: f.agentId, status: "queued", contextSnapshot: { issueId: f.issueId, previousRunId: result.previousRunId, forceFreshSession: true } });
     return result;
   });
@@ -407,7 +405,7 @@ const support = await getEmbeddedPostgresTestSupport();
     return { ...f, parent, receipt, now };
   }
   const dispatchExplicitRetry = (f: Fixture, run: typeof heartbeatRuns.$inferSelect) => buildExecutionContinuation({
-    db, companyId: f.companyId, issueId: f.issueId, agentId: f.agentId, runId: run.id,
+    db, issueId: f.issueId, agentId: f.agentId, runId: run.id,
     context: run.contextSnapshot!, summary: null, exposeLowTrustRaw: false,
   });
 
@@ -486,7 +484,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await seedTimedOutExplicitTurn();
     await db.execute(sql`update heartbeat_runs set created_at = ${f.now.toISOString()}::timestamptz +
       case when id = ${f.sourceRunId} then interval '100 microseconds' else interval '500 microseconds' end
-      where company_id = ${f.companyId} and id in (${f.sourceRunId}, ${f.parent.id})`);
+      where id in (${f.sourceRunId}, ${f.parent.id})`);
     const result = await heartbeatService(db).scheduleBoundedRetry(f.parent.id, { now: f.now });
     expect(result.outcome).toBe("scheduled");
   });
@@ -500,7 +498,7 @@ const support = await getEmbeddedPostgresTestSupport();
     },
   );
 
-  it.each(["deleted", "edited", "same_millisecond_edit", "empty", "actor", "run_authored", "legacy_receipt", "receipt_run", "receipt_company", "source", "task", "reassigned", "done", "superseded", "native_superseding", "interrupted_intent"])(
+  it.each(["deleted", "edited", "same_millisecond_edit", "empty", "actor", "run_authored", "legacy_receipt", "receipt_run", "source", "task", "reassigned", "done", "superseded", "native_superseding", "interrupted_intent"])(
     "refuses to re-admit an automatic explicit retry after %s changes", async kind => {
       const f = await seedTimedOutExplicitTurn();
       if (["deleted", "edited", "same_millisecond_edit", "empty", "actor", "run_authored"].includes(kind)) await db.update(issueComments).set({
@@ -517,8 +515,6 @@ const support = await getEmbeddedPostgresTestSupport();
           ...(kind === "receipt_run" ? { runId: randomUUID() } : { queuedCommentInterruptId: randomUUID() }),
         },
       } }).where(eq(issueRecoveryActions.id, f.receipt.id));
-      if (kind === "receipt_company") await db.update(issueRecoveryActions).set({ companyId: (await seed()).companyId })
-        .where(eq(issueRecoveryActions.id, f.receipt.id));
       if (kind === "legacy_receipt") {
         const { commentBodyHash: _bodyHash, commentUpdatedAt: _updatedAt, ...legacy } =
           f.receipt.evidence.explicitUserContinuation as Record<string, unknown>;
@@ -531,9 +527,9 @@ const support = await getEmbeddedPostgresTestSupport();
       } }).where(eq(heartbeatRuns.id, f.parent.id));
       if (kind === "reassigned" || kind === "done") await db.update(issues).set(kind === "done"
         ? { status: "done" } : { assigneeAgentId: null }).where(eq(issues.id, f.issueId));
-      if (kind === "superseded") await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId,
+      if (kind === "superseded") await db.insert(heartbeatRuns).values({ agentId: f.agentId,
         status: "succeeded", contextSnapshot: { issueId: f.issueId }, createdAt: new Date(f.now.getTime() + 1000) });
-      if (kind === "native_superseding") await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId,
+      if (kind === "native_superseding") await db.insert(heartbeatRuns).values({ agentId: f.agentId,
         status: "running", runtimeMode: "native", nativeIssueId: f.issueId, contextSnapshot: {} });
       const result = await heartbeatService(db).scheduleBoundedRetry(f.parent.id, { now: f.now });
       expect(result.outcome).not.toBe("scheduled");
@@ -591,18 +587,18 @@ const support = await getEmbeddedPostgresTestSupport();
     }).where(eq(heartbeatRuns.id, f.sourceRunId));
     await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ canContinue: true });
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ canContinue: true });
     const applicationId = randomUUID(), connectionId = randomUUID(), endpointId = randomUUID();
-    await db.insert(toolApplications).values({ id: applicationId, companyId: f.companyId, name: "Slack", type: "chat" });
-    await db.insert(toolConnections).values({ id: connectionId, companyId: f.companyId, applicationId,
+    await db.insert(toolApplications).values({ id: applicationId, name: `Slack ${applicationId}`, type: "chat" });
+    await db.insert(toolConnections).values({ id: connectionId, applicationId,
       name: "Slack", uid: connectionId, transport: "chat_sdk", connectionPurpose: "channel", status: "active", enabled: kind !== "disabled" });
-    await db.insert(chatEndpoints).values({ id: endpointId, companyId: f.companyId, connectionId,
+    await db.insert(chatEndpoints).values({ id: endpointId, connectionId,
       provider: "slack", publicId: endpointId, assignedAgentId: f.agentId,
       status: kind === "removed" ? "archived" : kind === "paused" ? "paused" : "active" });
-    await db.insert(chatConversations).values({ companyId: f.companyId, endpointId, issueId: f.issueId,
+    await db.insert(chatConversations).values({ endpointId, issueId: f.issueId,
       externalConversationId: "channel", externalLabel: "#recovery",
       state: kind === "removed" ? "endpoint_removed" : kind === "unavailable" ? "unavailable" : "active" });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({
       runId: f.sourceRunId, canContinue: false,
       nextAction: kind === "active" ? "Send a new chat message to continue this conversation."
         : kind === "removed" ? "This chat connection was removed. Inspect the stopped run and create a new task to continue the work."
@@ -614,7 +610,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await seed();
     await db.update(agents).set({ adapterType: "claude_local" }).where(eq(agents.id, f.agentId));
     // Hold agent capacity so the test observes durable admission without launching a provider.
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     await db.delete(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
     const resultJson = { status: "cancelled", acpToolInventoryComplete: true, acpPendingToolCount: 0,
       cancellation: { source: "provider", expected: false, initiator: { type: "provider" },
@@ -626,21 +622,21 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", reason: "issue_commented", status: "deferred_issue_execution",
       requestedByActorType: "user", requestedByActorId: f.actorId, updatedAt: new Date(0),
       payload: { issueId: f.issueId, commentId: f.commentId, executionWait: { reason: "execution_recovery" },
         _paperclipWakeContext: { issueId: f.issueId, wakeReason: "issue_commented", wakeCommentIds: [f.commentId], wakeCommentId: f.commentId } },
     });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ savedMessageCount: 1, canContinue: true });
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ savedMessageCount: 1, canContinue: true });
     await Promise.all([heartbeatService(db).resumeExecutionWaitComments(), heartbeatService(db).resumeExecutionWaitComments()]);
     await heartbeatService(db).resumeExecutionWaitComments();
-    const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+    const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
     expect(runs).toHaveLength(1);
     expect(runs[0].contextSnapshot).toMatchObject({ forceFreshSession: true, previousRunId: f.sourceRunId, wakeCommentIds: [f.commentId] });
     const [queue] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, queueId));
     expect(queue).toMatchObject({ status: "coalesced", runId: runs[0].id });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     expect(source.resultJson).toEqual(resultJson);
   });
@@ -681,7 +677,7 @@ const support = await getEmbeddedPostgresTestSupport();
         const nativeSessionId = randomUUID(), runnerInstanceId = randomUUID();
         const execution = {
           schema: "paperclip.native-execution-input.v1", provider: { kind: "codex", model: null },
-          binding: { companyId: f.companyId, issueId: f.issueId, agentId: f.agentId, runId: f.sourceRunId, executionWorkspaceId: "workspace" },
+          binding: { issueId: f.issueId, agentId: f.agentId, runId: f.sourceRunId, executionWorkspaceId: "workspace" },
           task: { identifier: "TEST", title: "Continue", description: null, prompt: "Continue", workMode: "standard" },
           workspace: { cwd: stateBase, repoUrl: null, repoRef: null, branchName: null },
           session: { normalizedSessionId: nativeSessionId, driverKind: "codex_app_server", protocolVersion: 1, lifecyclePolicy: { mode: "per_turn", idleTimeoutMs: null } },
@@ -697,7 +693,7 @@ const support = await getEmbeddedPostgresTestSupport();
           ? `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`
           : JSON.stringify(value);
         const root = join(stateBase, createHash("sha256").update(canonical({
-          schema: "paperclip.native-session-scope.v2", companyId: f.companyId, agentId: f.agentId,
+          schema: "paperclip.native-session-scope.v2", agentId: f.agentId,
           workspace: { kind: "managed", executionWorkspaceId: "workspace" },
           provider: { driverKind: "codex_app_server", identity: { kind: "codex" } }, normalizedSessionId: nativeSessionId,
         })).digest("hex"));
@@ -717,31 +713,31 @@ const support = await getEmbeddedPostgresTestSupport();
             toolBridge: { pending: kind === "pending_tool" ? { call: {} } : {} }, activeProviderResultFingerprint: null,
           }));
         }
-        if (kind === "new_launch") await appendHeartbeatRunEvent(db, { companyId: f.companyId, runId: f.sourceRunId,
+        if (kind === "new_launch") await appendHeartbeatRunEvent(db, { runId: f.sourceRunId,
           agentId: f.agentId, eventType: PROCESS_START_REQUESTED });
         if (kind !== "suspended") {
           expect(await admit(f, true)).toBeNull();
-          expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+          expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
           return;
         }
         expect(await admit(f, true)).toMatchObject({ previousRunId: f.sourceRunId });
-        expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+        expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
         // Exercise the real message admission path while keeping the provider slot occupied.
-        await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+        await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
         const heartbeat = heartbeatService(db);
         for (let n = 0; n < 2; n++) await heartbeat.wakeup(f.agentId, { source: "automation", triggerDetail: "system",
           reason: "issue_commented", requestedByActorType: "user", requestedByActorId: "board",
           payload: { issueId: f.issueId, commentId: f.commentId },
           contextSnapshot: { issueId: f.issueId, wakeCommentId: f.commentId } });
-        const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+        const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
         expect(successors).toHaveLength(1);
         expect(successors[0].contextSnapshot).toMatchObject({ previousRunId: f.sourceRunId, forceFreshSession: true, wakeCommentId: f.commentId });
-        expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+        expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
         const [coordinator] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
         expect(coordinator).toMatchObject({ phase: "terminal_failure", attempt: 3 });
         const [action] = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
         expect(action.evidence.automaticRecovery).toMatchObject({ actionOutcome: "unknown", replay: "explicit_user_continuation" });
-        expect(await hasNativeLocalProcessStop(db, f.companyId, f.sourceRunId)).toBe(false);
+        expect(await hasNativeLocalProcessStop(db, f.sourceRunId)).toBe(false);
       } finally {
         if (previous === undefined) delete process.env.PAPERCLIP_RUNNER_STATE_DIR;
         else process.env.PAPERCLIP_RUNNER_STATE_DIR = previous;
@@ -759,7 +755,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(nativeRunFinalizations).set({ phase: "observed", attempt: 0,
       failureDetail: null,
     }).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
-    await db.insert(environmentLeases).values({ companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    await db.insert(environmentLeases).values({ heartbeatRunId: f.sourceRunId,
       provider: "local", status: "released", releasedAt: new Date("2026-09-11T10:00:02Z"),
       cleanupStatus: "succeeded", leasePolicy: "ephemeral" });
     return f;
@@ -776,7 +772,7 @@ const support = await getEmbeddedPostgresTestSupport();
       failureCode: "native_startup_cancelled", failureDetail: { replacementDenied: "explicit_user_continuation" } });
     const [action] = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     expect(action.evidence.automaticRecovery).toMatchObject({ actionOutcome: "unknown", replay: "explicit_user_continuation" });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId)))[0].status).toBe("cancelled");
     expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.successorRunId))).toHaveLength(1);
   });
@@ -842,10 +838,10 @@ const support = await getEmbeddedPostgresTestSupport();
       try { expect((await heartbeat.getRun(f.sourceRunId))?.resultJson).toBeNull(); }
       finally { encoding.mockRestore(); }
     }
-    const notice = await getExecutionBlocker(db, f.companyId, f.issueId);
+    const notice = await getExecutionBlocker(db, f.issueId);
     expect(notice).toMatchObject({ canRetry: true, runError: "Waiting for review; this continuation never started." });
     expect(notice?.nextAction).not.toContain("Inspect the run before sending a new message");
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const successor = await heartbeat.wakeup(f.agentId, { source: kind === "retry" ? "on_demand" : "automation", triggerDetail: "manual",
       reason: kind === "retry" ? "retry_failed_run" : "issue_commented",
       ...(kind === "retry" ? { failedRunId: f.sourceRunId } : {}), requestedByActorType: "user", requestedByActorId: "board",
@@ -854,7 +850,7 @@ const support = await getEmbeddedPostgresTestSupport();
     });
     expect(successor).toMatchObject({ status: "queued", contextSnapshot: { forceFreshSession: true,
       previousRunId: f.sourceRunId, explicitUserContinuation: { commentId: kind === "message" ? f.commentId : null } } });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId)))[0].status).toBe("cancelled");
   });
 
@@ -866,37 +862,36 @@ const support = await getEmbeddedPostgresTestSupport();
       try { expect((await heartbeat.getRun(f.sourceRunId))?.resultJson).toBeNull(); }
       finally { encoding.mockRestore(); }
     }
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const leaseId = randomUUID();
-    await db.insert(environmentLeases).values({ id: leaseId, companyId: f.companyId,
+    await db.insert(environmentLeases).values({ id: leaseId,
       heartbeatRunId: f.sourceRunId, provider: "local", status: "pending_cleanup", cleanupStatus: "failed" });
     await heartbeat.wakeup(f.agentId, { source: "automation", reason: "issue_commented",
       requestedByActorType: "user", requestedByActorId: "board", payload: { issueId: f.issueId, commentId: f.commentId },
       contextSnapshot: { issueId: f.issueId, wakeCommentId: f.commentId } });
-    const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId));
+    const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId));
     expect(waiting.status).toBe("deferred_issue_execution");
     await db.update(environmentLeases).set({ status: "released", releasedAt: new Date(), cleanupStatus: "succeeded" })
       .where(eq(environmentLeases.id, leaseId));
     await db.update(agentWakeupRequests).set({ updatedAt: new Date(0) }).where(eq(agentWakeupRequests.id, waiting.id));
     await Promise.all([heartbeat.resumeExecutionWaitComments(), heartbeat.resumeExecutionWaitComments()]);
-    const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+    const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
     expect(successors).toHaveLength(1);
     expect(successors[0].contextSnapshot).toMatchObject({ wakeCommentIds: [f.commentId],
       explicitUserContinuation: { commentId: f.commentId }, forceFreshSession: true });
     expect((await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, waiting.id)))[0])
       .toMatchObject({ status: "coalesced", runId: successors[0].id });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
 
   it.each(["launch", "provider", "cleanup"])("retains a pre-dispatch review wait with contradictory %s evidence", async kind => {
     const f = await seedCancelledReviewWait();
-    if (kind === "cleanup") await db.insert(environmentLeases).values({ companyId: f.companyId,
-      heartbeatRunId: f.sourceRunId, provider: "local", status: "pending_cleanup", cleanupStatus: "failed" });
-    else await db.insert(heartbeatRunEvents).values({ companyId: f.companyId, runId: f.sourceRunId,
+    if (kind === "cleanup") await db.insert(environmentLeases).values({ heartbeatRunId: f.sourceRunId, provider: "local", status: "pending_cleanup", cleanupStatus: "failed" });
+    else await db.insert(heartbeatRunEvents).values({ runId: f.sourceRunId,
       agentId: f.agentId, seq: 1, eventType: kind === "launch" ? PROCESS_START_REQUESTED : "provider.event",
       stream: "system", level: "info", message: "Contradictory execution evidence" });
     try {
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ canRetry: false });
+      expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ canRetry: false });
       expect(await admit(f)).toBeNull();
     } finally {
       await db.delete(environmentLeases).where(eq(environmentLeases.heartbeatRunId, f.sourceRunId));
@@ -906,8 +901,8 @@ const support = await getEmbeddedPostgresTestSupport();
   it.each([false, true].flatMap(receipt => ["message", "retry"].map(kind => ({ receipt, kind }))))(
     "recovers historical native preparation through an explicit $kind (receipt: $receipt)", async ({ receipt, kind }) => {
     const f = await seedHistoricalCancelledPreparation(receipt);
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ canRetry: true });
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ canRetry: true });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const successor = await heartbeatService(db).wakeup(f.agentId, {
       source: "on_demand", triggerDetail: "manual", reason: kind === "retry" ? "retry_failed_run" : "issue_commented",
       ...(kind === "retry" ? { failedRunId: f.sourceRunId } : {}), requestedByActorType: "user", requestedByActorId: "board",
@@ -916,7 +911,7 @@ const support = await getEmbeddedPostgresTestSupport();
     });
     expect(successor).toMatchObject({ status: "queued", contextSnapshot: { forceFreshSession: true,
       previousRunId: f.sourceRunId, explicitUserContinuation: { commentId: kind === "message" ? f.commentId : null } } });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     expect(source).toMatchObject({ status: "cancelled", runtimeMode: "legacy",
       resultJson: receipt ? { startupCancellation: { beforeNativeSelection: true } } : null });
@@ -925,20 +920,20 @@ const support = await getEmbeddedPostgresTestSupport();
   it.each([false, true].flatMap(receipt => ["fresh", "earlier_delivered", "last_delivered"].map(kind => ({ receipt, kind }))))(
     "resumes saved input after historical native preparation expires across restart exactly once ($kind, receipt: $receipt)", async ({ receipt, kind }) => {
     const f = await seedHistoricalCancelledPreparation(receipt);
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     await db.update(heartbeatRuns).set({ controllerLeaseExpiresAt: new Date(Date.now() + 60_000) })
       .where(eq(heartbeatRuns.id, f.sourceRunId));
     await heartbeatService(db).wakeup(f.agentId, { source: "automation", reason: "issue_commented",
       requestedByActorType: "user", requestedByActorId: "board", payload: { issueId: f.issueId, commentId: f.commentId },
       contextSnapshot: { issueId: f.issueId, wakeCommentId: f.commentId } });
-    const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId));
+    const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId));
     expect(waiting.status).toBe("deferred_issue_execution");
     if (kind !== "fresh") {
       const deliveredId = randomUUID();
-      await db.insert(issueComments).values({ id: deliveredId, companyId: f.companyId, issueId: f.issueId,
+      await db.insert(issueComments).values({ id: deliveredId, issueId: f.issueId,
         authorType: "user", authorUserId: "another-author", body: "Already handled",
         createdAt: new Date(kind === "earlier_delivered" ? "2026-09-11T10:30:00Z" : "2026-09-11T11:30:00Z") });
-      await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "succeeded",
+      await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "succeeded",
         startedAt: new Date("2026-09-11T12:00:00Z"), finishedAt: new Date("2026-09-11T12:01:00Z"),
         contextSnapshot: { issueId: f.issueId, wakeCommentIds: [deliveredId] } });
       await db.update(agentWakeupRequests).set({ payload: { ...waiting.payload,
@@ -949,13 +944,13 @@ const support = await getEmbeddedPostgresTestSupport();
       .where(eq(heartbeatRuns.id, f.sourceRunId));
     await db.update(agentWakeupRequests).set({ updatedAt: new Date(0) }).where(eq(agentWakeupRequests.id, waiting.id));
     await Promise.all([heartbeatService(db).resumeExecutionWaitComments(), heartbeatService(db).resumeExecutionWaitComments()]);
-    const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+    const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
     expect(successors).toHaveLength(1);
     expect(successors[0].contextSnapshot).toMatchObject({ wakeCommentIds: [f.commentId],
       explicitUserContinuation: { commentId: f.commentId }, forceFreshSession: true });
     const [queueReceipt] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, waiting.id));
     expect(queueReceipt).toMatchObject({ status: "coalesced", runId: successors[0].id });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
 
   it.each([false, true].flatMap(receipt => ["resolved", "dispatching", "adapter", "missing_boot", "current_boot", "missing_lease", "live_lease", "receipt", "launch", "invoked", "coordinator", "cleanup", "remote"].map(kind => ({ receipt, kind }))))(
@@ -970,19 +965,16 @@ const support = await getEmbeddedPostgresTestSupport();
         : kind === "live_lease" ? { controllerLeaseExpiresAt: new Date(Date.now() + 60_000) }
         : kind === "receipt" ? { resultJson: { startupCancellation: { beforeNativeSelection: false } } } : {};
       if (Object.keys(patch).length) await db.update(heartbeatRuns).set(patch).where(eq(heartbeatRuns.id, f.sourceRunId));
-      if (kind === "launch" || kind === "invoked") await db.insert(heartbeatRunEvents).values({ companyId: f.companyId,
-        agentId: f.agentId, runId: f.sourceRunId, seq: 1,
+      if (kind === "launch" || kind === "invoked") await db.insert(heartbeatRunEvents).values({ agentId: f.agentId, runId: f.sourceRunId, seq: 1,
         eventType: kind === "launch" ? PROCESS_START_REQUESTED : "adapter.invoke", payload: { adapterType: "paperclip_runner" } });
       if (kind === "coordinator") {
         await db.update(heartbeatRuns).set({ nativeIssueId: f.issueId }).where(eq(heartbeatRuns.id, f.sourceRunId));
-        await db.insert(nativeRunFinalizations).values({ companyId: f.companyId,
-          runId: f.sourceRunId, issueId: f.issueId, phase: "observed", attempt: 0 });
+        await db.insert(nativeRunFinalizations).values({ runId: f.sourceRunId, issueId: f.issueId, phase: "observed", attempt: 0 });
       }
-      if (kind === "cleanup" || kind === "remote") await db.insert(environmentLeases).values({ companyId: f.companyId,
-        heartbeatRunId: f.sourceRunId, provider: kind === "remote" ? "daytona" : "local",
+      if (kind === "cleanup" || kind === "remote") await db.insert(environmentLeases).values({ heartbeatRunId: f.sourceRunId, provider: kind === "remote" ? "daytona" : "local",
         providerLeaseId: kind === "remote" ? "unverified" : null, leasePolicy: "ephemeral",
         status: "pending_cleanup", cleanupStatus: "failed" });
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ canRetry: false });
+      expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ canRetry: false });
       expect(await admit(f)).toBeNull();
       // Later tests exercise the global cleanup sweep with their own retry
       // counters. Do not leave this negative fixture as another cleanup target.
@@ -998,8 +990,7 @@ const support = await getEmbeddedPostgresTestSupport();
       if (kind === "controller") await db.update(nativeRunFinalizations).set({ controllerBootId: "old-owner" }).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
       if (kind === "lease") await db.update(nativeRunFinalizations).set({ leaseOwner: "owner", leaseExpiresAt: new Date(Date.now() + 60000) }).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
       if (kind === "process") await db.update(heartbeatRuns).set({ processPid: process.pid }).where(eq(heartbeatRuns.id, f.sourceRunId));
-      if (kind === "launch" || kind === "provider") await db.insert(heartbeatRunEvents).values({ companyId: f.companyId,
-        agentId: f.agentId, runId: f.sourceRunId, seq: 1,
+      if (kind === "launch" || kind === "provider") await db.insert(heartbeatRunEvents).values({ agentId: f.agentId, runId: f.sourceRunId, seq: 1,
         eventType: kind === "launch" ? PROCESS_START_REQUESTED : "provider.event",
         ...(kind === "provider" ? { sourceEventId: "provider-1", sourceInstanceId: "provider", sourceSeq: 1, protocolSchemaVersion: 1, canonicalPayloadHash: "hash" } : {}),
       });
@@ -1021,14 +1012,13 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(await recordNativeLocalProcessStop(tx as unknown as typeof db, source)).toBe(true);
       await tx.update(heartbeatRuns).set({ processPid: null }).where(eq(heartbeatRuns.id, source.id));
     });
-    expect(await hasNativeLocalProcessStop(db, f.companyId, source.id)).toBe(true);
-    expect(await hasNativeLocalProcessStop(db, randomUUID(), source.id)).toBe(false);
+    expect(await hasNativeLocalProcessStop(db, source.id)).toBe(true);
     expect(await admit(f, true)).toMatchObject({ previousRunId: source.id });
     await persistHeartbeatRunProcessMetadata(db, source.id, { pid: 999999999, processGroupId: null, startedAt: new Date().toISOString() });
     await db.update(heartbeatRuns).set({ processPid: null }).where(eq(heartbeatRuns.id, source.id));
     expect(await admit(f, true)).toBeNull();
     expect(await recordNativeLocalProcessStop(db, source)).toBe(true);
-    await appendHeartbeatRunEvent(db, { companyId: f.companyId, runId: source.id, agentId: f.agentId,
+    await appendHeartbeatRunEvent(db, { runId: source.id, agentId: f.agentId,
       eventType: PROCESS_START_REQUESTED });
     // No PID was stored for the new launch, as when the server dies after spawn.
     expect(await admit(f, true)).toBeNull();
@@ -1038,43 +1028,43 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await seed();
     if (kind === "remote") {
       const [environment] = await db.insert(environments).values({ name: "Remote stop", driver: "sandbox" }).returning();
-      await db.insert(environmentLeases).values({ companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+      await db.insert(environmentLeases).values({ heartbeatRunId: f.sourceRunId,
         environmentId: environment.id, provider: "daytona", status: "active", leasePolicy: "ephemeral" });
     }
     if (kind === "live") await db.update(heartbeatRuns).set({ processPid: process.pid }).where(eq(heartbeatRuns.id, f.sourceRunId));
     const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     if (kind === "provider_event") {
-      await db.insert(heartbeatRunEvents).values({ companyId: f.companyId, runId: source.id, agentId: f.agentId,
+      await db.insert(heartbeatRunEvents).values({ runId: source.id, agentId: f.agentId,
         eventType: "native.local_process_stopped", seq: 1, sourceEventId: randomUUID() });
     } else expect(await recordNativeLocalProcessStop(db, source)).toBe(false);
-    expect(await hasNativeLocalProcessStop(db, f.companyId, source.id)).toBe(false);
+    expect(await hasNativeLocalProcessStop(db, source.id)).toBe(false);
   });
 
   it.each(["stopped_process", "cancelled_startup"])("resumes saved local messages after restart exactly once: %s", async kind => {
     const f = kind === "cancelled_startup" ? await seedCancelledStartup() : await seed();
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     await db.update(heartbeatRuns).set({ processPid: process.pid }).where(eq(heartbeatRuns.id, f.sourceRunId));
     // A prior cancelled admission is also held, but cannot select the native
     // retry source. The newest blocker must win just as it does on Send.
     const oldAdmissionId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: oldAdmissionId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(heartbeatRuns).values({ id: oldAdmissionId, agentId: f.agentId,
       status: "cancelled", errorCode: "execution_reconciliation_required", contextSnapshot: { issueId: f.issueId },
       finishedAt: new Date("2026-09-11T09:00:00Z") });
     await db.update(issueRecoveryActions).set({ updatedAt: new Date(0), evidence: { runId: oldAdmissionId,
       automaticRecovery: { replay: "blocked", actionOutcome: "unknown" } } }).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
-    await db.insert(issueRecoveryActions).values({ companyId: f.companyId, sourceIssueId: f.issueId,
+    await db.insert(issueRecoveryActions).values({ sourceIssueId: f.issueId,
       kind: "active_run_watchdog", cause: "uncertain_external_action", fingerprint: randomUUID(), status: "active",
       nextAction: "Waiting for the current run.", evidence: { runId: f.sourceRunId } });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ runId: f.sourceRunId });
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ runId: f.sourceRunId });
     await heartbeatService(db).wakeup(f.agentId, { source: "automation", triggerDetail: "system", reason: "issue_commented",
       requestedByActorType: "user", requestedByActorId: "board", payload: { issueId: f.issueId, commentId: f.commentId },
       contextSnapshot: { issueId: f.issueId, wakeCommentId: f.commentId } });
-    const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId));
+    const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId));
     expect(waiting.payload?.executionWait).toMatchObject({ reason: kind === "cancelled_startup" ? "controller_settling" : "process_running" });
     const makeDue = () => db.update(agentWakeupRequests).set({ updatedAt: new Date(0) }).where(eq(agentWakeupRequests.id, waiting.id));
     await makeDue();
     await heartbeatService(db).resumeExecutionWaitComments();
-    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId))).toHaveLength(1);
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId))).toHaveLength(1);
     await db.update(heartbeatRuns).set({ processPid: 999999999 }).where(eq(heartbeatRuns.id, f.sourceRunId));
     const [stopped] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     await db.transaction(async tx => {
@@ -1082,14 +1072,14 @@ const support = await getEmbeddedPostgresTestSupport();
       await tx.update(heartbeatRuns).set({ processPid: null }).where(eq(heartbeatRuns.id, stopped.id));
     });
     const holdId = randomUUID();
-    await db.insert(issueTreeHolds).values({ id: holdId, companyId: f.companyId, rootIssueId: f.issueId, mode: "pause", status: "active" });
-    await db.insert(issueTreeHoldMembers).values({ companyId: f.companyId, holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "blocked" });
+    await db.insert(issueTreeHolds).values({ id: holdId, rootIssueId: f.issueId, mode: "pause", status: "active" });
+    await db.insert(issueTreeHoldMembers).values({ holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "blocked" });
     for (let attempt = 0; attempt < 2; attempt++) {
       await makeDue();
       await heartbeatService(db).resumeExecutionWaitComments();
     }
-    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId))).toHaveLength(1);
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId))).toHaveLength(1);
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
     const [paused] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, waiting.id));
     expect(paused.payload?.executionWait).toMatchObject({ reason: "issue_tree_hold_active" });
     await db.update(issueTreeHolds).set({ status: "released" }).where(eq(issueTreeHolds.id, holdId));
@@ -1098,18 +1088,18 @@ const support = await getEmbeddedPostgresTestSupport();
       await makeDue();
       await heartbeatService(db).resumeExecutionWaitComments();
     }
-    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId))).toHaveLength(1);
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId))).toHaveLength(1);
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
     await db.update(agents).set({ runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } }).where(eq(agents.id, f.agentId));
     await makeDue();
     await Promise.all([heartbeatService(db).resumeExecutionWaitComments(), heartbeatService(db).resumeExecutionWaitComments()]);
-    const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+    const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
     expect(runs).toHaveLength(1);
     expect(runs[0].contextSnapshot).toMatchObject({ forceFreshSession: true, previousRunId: f.sourceRunId,
       explicitUserContinuation: { commentId: f.commentId } });
     const [adopted] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, waiting.id));
     expect(adopted).toMatchObject({ status: "coalesced", runId: runs[0].id });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
 
 
@@ -1128,7 +1118,7 @@ const support = await getEmbeddedPostgresTestSupport();
       onBlocked: blocked, db: tx as unknown as typeof db,
     }))).toBeNull();
     expect(blocked).toHaveBeenCalledWith("workspace_repair_required", expect.any(String));
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ runId: f.sourceRunId });
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ runId: f.sourceRunId });
   });
 
   it.each(["issue_commented", "retry_failed_run"])("continues a legacy Daytona run lost before adapter.invoke: %s", async reason => {
@@ -1140,7 +1130,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     const [environment] = await db.insert(environments).values({ name: `Daytona startup ${f.sourceRunId}`, driver: "sandbox" }).returning();
-    const identity = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    const identity = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
       provider: "daytona", providerLeaseId: "startup-sandbox" };
     await db.insert(environmentLeases).values({ ...identity, environmentId: environment.id,
       status: "released", leasePolicy: "ephemeral", releasedAt: new Date(), cleanupStatus: "success",
@@ -1151,7 +1141,7 @@ const support = await getEmbeddedPostgresTestSupport();
       failedRunId: reason === "retry_failed_run" ? f.sourceRunId : null,
       db: tx as unknown as typeof db }));
     expect(result).toMatchObject({ previousRunId: f.sourceRunId });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     expect(source.resultJson).toBeNull();
   });
@@ -1162,14 +1152,13 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(heartbeatRuns).set({ runtimeMode: "legacy", errorCode: "process_lost",
       runnerProfileJson: evidence === "claim" ? { adapterDispatch: { adapterType: "process" } } : null,
     }).where(eq(heartbeatRuns.id, f.sourceRunId));
-    if (evidence === "invocation") await db.insert(heartbeatRunEvents).values({ companyId: f.companyId,
-      runId: f.sourceRunId, agentId: f.agentId, seq: 1, eventType: "adapter.invoke", payload: { adapterType: "process" } });
+    if (evidence === "invocation") await db.insert(heartbeatRunEvents).values({ runId: f.sourceRunId, agentId: f.agentId, seq: 1, eventType: "adapter.invoke", payload: { adapterType: "process" } });
     await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     expect(await admit(f)).toBeNull();
     expect(await admitExplicitNativeContinuation({ ...f, db, reason: "retry_failed_run",
       commentId: null, failedRunId: f.sourceRunId })).toBeNull();
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
   });
 
   it("keeps failed remote cleanup blocked even after the lease release timestamp is recorded", async () => {
@@ -1177,17 +1166,17 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(heartbeatRuns).set({ runtimeMode: "legacy", processPid: null,
       resultJson: { conversationContinuation: "continue_conversation_v1" } }).where(eq(heartbeatRuns.id, f.sourceRunId));
     const [environment] = await db.insert(environments).values({ name: `Cleanup ${f.sourceRunId}`, driver: "sandbox" }).returning();
-    await db.insert(environmentLeases).values({ companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    await db.insert(environmentLeases).values({ heartbeatRunId: f.sourceRunId,
       environmentId: environment.id, provider: "daytona", providerLeaseId: "still-running",
       status: "pending_cleanup", releasedAt: new Date(), cleanupStatus: "failed", leasePolicy: "ephemeral" });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toMatchObject({ cause: "execution_owner_active" });
+    expect(await getExecutionBlocker(db, f.issueId)).toMatchObject({ cause: "execution_owner_active" });
     await db.delete(environmentLeases).where(eq(environmentLeases.heartbeatRunId, f.sourceRunId));
   });
 
   it("retries exhausted cleanup only for the selected failed run and adopts concurrent Retry clicks", async () => {
     const f = await seed(), other = await seed();
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
-    const identities = [f, other].map(fixture => ({ id: randomUUID(), companyId: fixture.companyId,
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
+    const identities = [f, other].map(fixture => ({ id: randomUUID(),
       heartbeatRunId: fixture.sourceRunId, provider: "daytona", providerLeaseId: fixture.sourceRunId }));
     for (const identity of identities) await db.insert(environmentLeases).values({ ...identity,
       status: "pending_cleanup", leasePolicy: "ephemeral", releasedAt: new Date(), cleanupStatus: "failed",
@@ -1216,7 +1205,7 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(destroyed).toEqual([identities[0].id]);
       const [untouched] = await db.select().from(environmentLeases).where(eq(environmentLeases.id, identities[1].id));
       expect(untouched).toMatchObject({ status: "pending_cleanup", metadata: { pendingCleanupRetryAttempts: 5 } });
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+      expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     } finally {
       for (const identity of identities) await db.delete(environmentLeases).where(eq(environmentLeases.id, identity.id));
     }
@@ -1224,8 +1213,8 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("allows a later user cleanup attempt after transient failure without resetting automatic retries", async () => {
     const f = await seed();
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
-    const identity = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
+    const identity = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
       provider: "daytona", providerLeaseId: f.sourceRunId };
     await db.insert(environmentLeases).values({ ...identity, status: "pending_cleanup", leasePolicy: "ephemeral",
       releasedAt: new Date(), cleanupStatus: "failed", metadata: { pendingCleanupRetryAttempts: 5 } });
@@ -1244,13 +1233,13 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(attempts).toBe(1);
       expect(await heartbeat.wakeup(f.agentId, request)).toBeNull();
       expect(attempts).toBe(2);
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+      expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
       await heartbeat.sweepPendingCleanupLeases();
       expect(attempts).toBe(2);
       const successor = await heartbeat.wakeup(f.agentId, request);
       expect(attempts).toBe(3);
       expect(successor?.retryOfRunId).toBe(f.sourceRunId);
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+      expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
       expect((await heartbeat.wakeup(f.agentId, request))?.id).toBe(successor?.id);
       expect(attempts).toBe(3);
     } finally {
@@ -1260,7 +1249,7 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("queues one exact Retry with fresh history and adopts repeated clicks", async () => {
     const f = await seed();
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const service = heartbeatService(db);
     const request = { source: "on_demand" as const, triggerDetail: "manual" as const,
       reason: "retry_failed_run", failedRunId: f.sourceRunId,
@@ -1270,13 +1259,13 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(second?.id).toBe(first?.id);
     expect(first).toMatchObject({ retryOfRunId: f.sourceRunId,
       contextSnapshot: { previousRunId: f.sourceRunId, forceFreshSession: true } });
-    const envelope = await buildExecutionContinuation({ db, companyId: f.companyId, issueId: f.issueId,
+    const envelope = await buildExecutionContinuation({ db, issueId: f.issueId,
       agentId: f.agentId, runId: first!.id, context: first!.contextSnapshot!, summary: null, exposeLowTrustRaw: false });
     expect(envelope.interruptedRunId).toBe(f.sourceRunId);
-    await expect(buildExecutionContinuation({ db, companyId: f.companyId, issueId: f.issueId,
+    await expect(buildExecutionContinuation({ db, issueId: f.issueId,
       agentId: f.agentId, runId: randomUUID(), context: first!.contextSnapshot!, summary: null, exposeLowTrustRaw: false }))
       .rejects.toThrow("continuation_user_authorization_missing");
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
 
   it.each([true, false])("acknowledges a legacy remote Stop only after confirmed lease cleanup: %s", async confirmed => {
@@ -1285,24 +1274,23 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.update(heartbeatRuns).set({ runtimeMode: "legacy", status: "cancelled", processPid: null,
       resultJson: { executionCancellation: { state: "requested" } },
     }).where(eq(heartbeatRuns.id, f.sourceRunId));
-    await db.insert(heartbeatRunEvents).values({ companyId: f.companyId, runId: f.sourceRunId,
+    await db.insert(heartbeatRunEvents).values({ runId: f.sourceRunId,
       agentId: f.agentId, seq: 1, eventType: "adapter.invoke", payload: { adapterType: "claude_local" } });
     await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
       .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     const [environment] = await db.insert(environments).values({ name: `Remote ${f.sourceRunId}`, driver: "sandbox" }).returning();
-    const identity = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    const identity = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
       provider: "daytona", providerLeaseId: "sandbox-legacy" };
     await db.insert(environmentLeases).values({ ...identity, environmentId: environment.id,
       status: "expired", leasePolicy: "ephemeral", releasedAt: new Date(), cleanupStatus: "success",
       metadata: confirmed ? { remoteExecutionTermination: remoteTerminationReceipt(identity,
         { providerLeaseId: identity.providerLeaseId, state: "destroyed" }) } : {},
     });
-    await heartbeatService(db).releaseEnvironmentLeasesForRun({ runId: f.sourceRunId,
-      companyId: f.companyId, agentId: f.agentId, status: "cancelled" });
+    await heartbeatService(db).releaseEnvironmentLeasesForRun({ runId: f.sourceRunId, agentId: f.agentId, status: "cancelled" });
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     expect(run.resultJson?.executionCancellation).toMatchObject({ state: confirmed ? "acknowledged" : "requested" });
-    if (confirmed) expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
-    else expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    if (confirmed) expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
+    else expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
   });
 
   it.each(["stopped", "destroyed", "missing", "wrong_lease", "cleanup_failed", "active"])(
@@ -1312,7 +1300,7 @@ const support = await getEmbeddedPostgresTestSupport();
       // infer liveness of the identically numbered remote process.
       await db.update(heartbeatRuns).set({ processPid: process.pid }).where(eq(heartbeatRuns.id, f.sourceRunId));
       const [environment] = await db.insert(environments).values({ name: `Remote ${f.sourceRunId}`, driver: "sandbox" }).returning();
-      const identity = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+      const identity = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
         provider: "daytona", providerLeaseId: "sandbox-1" };
       const proof = remoteTerminationReceipt(identity, { providerLeaseId: "sandbox-1",
         state: kind === "destroyed" ? "destroyed" : "stopped" });
@@ -1341,15 +1329,15 @@ const support = await getEmbeddedPostgresTestSupport();
       if (runtime === "legacy_startup") {
         await db.update(heartbeatRuns).set({ status: "failed", resultJson: null, errorCode: "process_lost" })
           .where(eq(heartbeatRuns.id, f.sourceRunId));
-      } else await db.insert(heartbeatRunEvents).values({ companyId: f.companyId, runId: f.sourceRunId,
+      } else await db.insert(heartbeatRunEvents).values({ runId: f.sourceRunId,
         agentId: f.agentId, seq: 1, eventType: "adapter.invoke", payload: { adapterType: "claude_local" } });
       await db.update(issueRecoveryActions).set({ cause: "legacy_execution_requires_reconciliation" })
         .where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     }
     // Keep the successor queued so this test never starts an actual provider.
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const [environment] = await db.insert(environments).values({ name: `pending-${f.sourceRunId}`, driver: "sandbox" }).returning();
-    const identity = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    const identity = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
       provider: "daytona", providerLeaseId: "pending-sandbox" };
     await db.insert(environmentLeases).values({ ...identity, environmentId: environment.id, status: "active", leasePolicy: "ephemeral" });
     const heartbeat = heartbeatService(db, retry ? { environmentRuntime: {
@@ -1360,7 +1348,7 @@ const support = await getEmbeddedPostgresTestSupport();
       contextSnapshot: { issueId: f.issueId, wakeCommentId: f.commentId } });
     const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     await heartbeat.resumeRemoteStopComments(source);
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
     if (retry) {
       await db.update(environmentLeases).set({ status: "pending_cleanup", cleanupStatus: "failed" })
         .where(eq(environmentLeases.id, identity.id));
@@ -1371,23 +1359,23 @@ const support = await getEmbeddedPostgresTestSupport();
       await db.update(environmentLeases).set({ status: "released", releasedAt: new Date(), cleanupStatus: "success",
         metadata: { remoteExecutionTermination: remoteTerminationReceipt(identity,
           { providerLeaseId: identity.providerLeaseId, state: "stopped" }) } }).where(eq(environmentLeases.id, identity.id));
-      await heartbeat.releaseEnvironmentLeasesForRun({ runId: source.id, companyId: source.companyId,
+      await heartbeat.releaseEnvironmentLeasesForRun({ runId: source.id,
         agentId: source.agentId, status: source.status });
     }
     await heartbeat.resumeRemoteStopComments(source);
     await heartbeat.resumeRemoteStopComments(source);
-    const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+    const runs = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
     expect(runs).toHaveLength(1);
     if (runtime !== "legacy") expect(runs[0].contextSnapshot).toMatchObject({ forceFreshSession: true, previousRunId: f.sourceRunId,
       explicitUserContinuation: { commentId: f.commentId } });
     else expect(runs[0].contextSnapshot).toMatchObject({ wakeCommentId: f.commentId });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
 
   it("queues the actual user wake with a fresh session and retained source context", async () => {
     const f = await seed();
     // Occupy this agent's only slot so this admission test never starts a provider.
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const wake = await heartbeatService(db).wakeup(f.agentId, {
       source: "automation", triggerDetail: "system", reason: "issue_commented",
       requestedByActorType: "user", requestedByActorId: "board",
@@ -1399,7 +1387,7 @@ const support = await getEmbeddedPostgresTestSupport();
         explicitUserContinuation: { previousRunId: f.sourceRunId, commentId: f.commentId } } });
     const [action] = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     expect(action.evidence.explicitUserContinuation).toMatchObject({ runId: wake!.id });
-    const envelope = await buildExecutionContinuation({ db, companyId: f.companyId, issueId: f.issueId,
+    const envelope = await buildExecutionContinuation({ db, issueId: f.issueId,
       agentId: f.agentId, context: wake!.contextSnapshot!, summary: "Deployment completed.", exposeLowTrustRaw: false });
     expect(envelope.interruptedRunId).toBe(f.sourceRunId);
     expect(envelope.objective).toBe("What happened?");
@@ -1408,15 +1396,15 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it.each(["pause", "dependency", "state"])("keeps the existing %s gate on the actual user wake", async gate => {
     const f = await seed();
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     if (gate === "pause") {
       const holdId = randomUUID();
-      await db.insert(issueTreeHolds).values({ id: holdId, companyId: f.companyId, rootIssueId: f.issueId, mode: "pause", status: "active" });
-      await db.insert(issueTreeHoldMembers).values({ companyId: f.companyId, holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "blocked" });
+      await db.insert(issueTreeHolds).values({ id: holdId, rootIssueId: f.issueId, mode: "pause", status: "active" });
+      await db.insert(issueTreeHoldMembers).values({ holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "blocked" });
     } else if (gate === "dependency") {
       const blockerId = randomUUID();
-      await db.insert(issues).values({ id: blockerId, companyId: f.companyId, title: "Required approval", status: "todo" });
-      await db.insert(issueRelations).values({ companyId: f.companyId, issueId: blockerId, relatedIssueId: f.issueId, type: "blocks" });
+      await db.insert(issues).values({ id: blockerId, title: "Required approval", status: "todo" });
+      await db.insert(issueRelations).values({ issueId: blockerId, relatedIssueId: f.issueId, type: "blocks" });
     }
     const wake = await heartbeatService(db).wakeup(f.agentId, {
       source: "automation", triggerDetail: "system", reason: "issue_commented", requestedByActorType: "user", requestedByActorId: "board",
@@ -1429,14 +1417,14 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(action.evidence.explicitUserContinuation).toBeUndefined();
     } else {
       expect(wake).toMatchObject({ contextSnapshot: { dependencyBlockedInteraction: true, unresolvedBlockerCount: 1 } });
-      expect(await db.select().from(issueRelations).where(eq(issueRelations.companyId, f.companyId))).toHaveLength(1);
+      expect(await db.select().from(issueRelations).where(eq(issueRelations.relatedIssueId, f.issueId))).toHaveLength(1);
     }
   });
 
   it("preflights eligibility without retiring the hold or creating a successor", async () => {
     const f = await seed();
     expect(await admit(f, true)).toMatchObject({ previousRunId: f.sourceRunId });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
     expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.successorRunId))).toHaveLength(0);
     const [action] = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     expect(action.evidence.explicitUserContinuation).toBeUndefined();
@@ -1451,15 +1439,15 @@ const support = await getEmbeddedPostgresTestSupport();
       contextSnapshot: { issueId: f.issueId, wakeCommentId: f.commentId },
     });
     expect(wake).toBeNull();
-    const [receipt] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId));
+    const [receipt] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId));
     expect(receipt).toMatchObject({ status: "deferred_issue_execution", requestedByActorId: "board", runId: null });
-    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.companyId, f.companyId))).toHaveLength(1);
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, f.agentId))).toHaveLength(1);
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
   });
   it("lets a new human message continue after exhausted recovery without certifying old actions", async () => {
     const f = await seed();
     expect(await admit(f)).toEqual({ previousRunId: f.sourceRunId, commentId: f.commentId });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     const [action] = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, f.issueId));
     expect(action.evidence).toMatchObject({ automaticRecovery: { actionOutcome: "unknown" }, explicitUserContinuation: { runId: f.successorRunId, commentId: f.commentId } });
     const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
@@ -1473,12 +1461,12 @@ const support = await getEmbeddedPostgresTestSupport();
     "automatically delivers an unconsumed native message sent before the failed run stopped, respecting %s", async gate => {
     const f = await seed();
     await db.update(issueComments).set({ createdAt: new Date("2026-09-11T09:59:00Z") }).where(eq(issueComments.id, f.commentId));
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     let queuedIds = [f.commentId];
     let expectedIds = queuedIds;
     if (["mixed_authors", "last_delivered"].includes(gate)) {
       const secondId = randomUUID();
-      await db.insert(issueComments).values({ id: secondId, companyId: f.companyId, issueId: f.issueId,
+      await db.insert(issueComments).values({ id: secondId, issueId: f.issueId,
         authorType: "user", authorUserId: "second-author", body: "Also preserve the existing work.",
         createdAt: new Date("2026-09-11T09:59:01Z") });
       queuedIds = [f.commentId, secondId];
@@ -1493,11 +1481,11 @@ const support = await getEmbeddedPostgresTestSupport();
       wakeCommentIds: queuedIds } }).where(eq(heartbeatRuns.id, f.sourceRunId));
     if (gate === "pause") {
       const holdId = randomUUID();
-      await db.insert(issueTreeHolds).values({ id: holdId, companyId: f.companyId, rootIssueId: f.issueId, mode: "pause", status: "active" });
-      await db.insert(issueTreeHoldMembers).values({ companyId: f.companyId, holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "blocked" });
+      await db.insert(issueTreeHolds).values({ id: holdId, rootIssueId: f.issueId, mode: "pause", status: "active" });
+      await db.insert(issueTreeHoldMembers).values({ holdId, issueId: f.issueId, depth: 0, issueTitle: "Deploy", issueStatus: "blocked" });
     }
     const queueId = randomUUID();
-    await db.insert(agentWakeupRequests).values({ id: queueId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(agentWakeupRequests).values({ id: queueId, agentId: f.agentId,
       source: "automation", status: "deferred_issue_execution", reason: "issue_commented",
       requestedByActorType: "user", requestedByActorId: "board", updatedAt: new Date(0),
       payload: { issueId: f.issueId, commentId: queuedIds.at(-1), executionWait: { reason: "execution_recovery" },
@@ -1509,15 +1497,15 @@ const support = await getEmbeddedPostgresTestSupport();
     const [receipt] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, queueId));
     if (!["ready", "mixed_authors", "last_delivered"].includes(gate)) {
       expect(receipt.status).toBe("deferred_issue_execution");
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
-      expect(await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")))).toHaveLength(0);
+      expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
+      expect(await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")))).toHaveLength(0);
       return;
     }
     expect(receipt.status).toBe("coalesced");
     const [successor] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, receipt.runId!));
     expect(successor.contextSnapshot).toMatchObject({ wakeCommentIds: expectedIds,
       explicitUserContinuation: { previousRunId: f.sourceRunId, commentId: expectedIds.at(-1) } });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     const [prior] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
     expect(prior.status).toBe("failed");
   });
@@ -1531,26 +1519,26 @@ const support = await getEmbeddedPostgresTestSupport();
         resultJson: { startupCancellation: { beforeNativeSelection: true }, startupPreparationSettledAt: new Date().toISOString() },
       }).where(eq(heartbeatRuns.id, f.sourceRunId));
     }
-    const blocker = await getExecutionBlocker(db, f.companyId, f.issueId);
+    const blocker = await getExecutionBlocker(db, f.issueId);
     expect(blocker).toMatchObject({ runId: f.sourceRunId, canRetry: true });
-    await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+    await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
     const service = heartbeatService(db);
     const successor = await service.wakeup(f.agentId, { source: "on_demand", triggerDetail: "manual", reason: "retry_failed_run",
       failedRunId: f.sourceRunId, requestedByActorType: "user", requestedByActorId: "board", payload: { issueId: f.issueId } });
     expect(successor).toMatchObject({ status: "queued", retryOfRunId: f.sourceRunId });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
   it.each(["failed", "succeeded_result", "rejected_result", "still_committing", "controller", "successor", "live_process"])(
     "requires a fully committed failed result and verified stop for a new turn (%s)", async scenario => {
       const f = await seed(), contractId = randomUUID(), resultId = randomUUID();
-      await db.insert(completionContracts).values({ id: contractId, companyId: f.companyId, issueId: f.issueId,
+      await db.insert(completionContracts).values({ id: contractId, issueId: f.issueId,
         revision: 1, schemaVersion: "paperclip.completion-contract.v1", policyVersion: "test",
         risk: "standard", completionAuthority: "server_arbiter", incompleteCriteriaPolicy: "preserve_non_terminal",
         contractJson: {}, canonicalSha256: contractId, createdByActorType: "system", createdByActorId: "test" });
       await db.update(heartbeatRuns).set({ completionContractId: contractId,
         ...(scenario === "live_process" ? { processPid: process.pid } : {}),
       }).where(eq(heartbeatRuns.id, f.sourceRunId));
-      await db.insert(nativeRunResults).values({ id: resultId, companyId: f.companyId, issueId: f.issueId,
+      await db.insert(nativeRunResults).values({ id: resultId, issueId: f.issueId,
         runId: f.sourceRunId, completionContractId: contractId, serverFingerprint: resultId,
         schemaStatus: scenario === "rejected_result" ? "rejected" : "accepted", canonicalSha256: resultId,
         resultJson: { terminal: { runTerminalState: scenario === "succeeded_result" ? "succeeded" : "failed" } } });
@@ -1562,17 +1550,17 @@ const support = await getEmbeddedPostgresTestSupport();
       const result = await admit(f);
       if (scenario === "failed") {
         expect(result).toEqual({ previousRunId: f.sourceRunId, commentId: f.commentId });
-        expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+        expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
         const [saved] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
         expect(saved).toMatchObject({ phase: "committed", resultId });
       } else {
         expect(result).toBeNull();
-        expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+        expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
       }
     });
   async function seedResultBeforeTerminalFailure(f: Fixture) {
     const contractId = randomUUID(), resultId = randomUUID();
-    await db.insert(completionContracts).values({ id: contractId, companyId: f.companyId, issueId: f.issueId,
+    await db.insert(completionContracts).values({ id: contractId, issueId: f.issueId,
       revision: 1, schemaVersion: "paperclip.completion-contract.v1", policyVersion: "test",
       risk: "standard", completionAuthority: "server_arbiter", incompleteCriteriaPolicy: "preserve_non_terminal",
       contractJson: {}, canonicalSha256: contractId, createdByActorType: "system", createdByActorId: "test" });
@@ -1580,7 +1568,7 @@ const support = await getEmbeddedPostgresTestSupport();
       .where(eq(heartbeatRuns.id, f.sourceRunId));
     // Dickens returned a result before checkpoint/suspension failed. Accepting
     // that result did not commit its disposition or make the failed run live.
-    await db.insert(nativeRunResults).values({ id: resultId, companyId: f.companyId, issueId: f.issueId,
+    await db.insert(nativeRunResults).values({ id: resultId, issueId: f.issueId,
       runId: f.sourceRunId, completionContractId: contractId, serverFingerprint: resultId,
       schemaStatus: "accepted", canonicalSha256: resultId,
       resultJson: { terminal: { runTerminalState: "succeeded", reportedWorkDisposition: "blocked" } } });
@@ -1605,7 +1593,7 @@ const support = await getEmbeddedPostgresTestSupport();
       }
       const result = await admit(f);
       expect(result).toEqual(scenario === "stopped" ? { previousRunId: f.sourceRunId, commentId: f.commentId } : null);
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toEqual(scenario === "stopped" ? null : expect.anything());
+      expect(await getExecutionBlocker(db, f.issueId)).toEqual(scenario === "stopped" ? null : expect.anything());
       const [coordinator] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
       expect(coordinator).toMatchObject({ resultId, attempt: 3,
         phase: scenario === "still_committing" ? "result_accepted" : "terminal_failure" });
@@ -1624,8 +1612,8 @@ const support = await getEmbeddedPostgresTestSupport();
         conversationUserId: "board", conversationState: "active",
       }).where(eq(issues.id, f.issueId));
       // Occupy the agent slot so admission is real without launching a provider.
-      await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
-      const lease = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+      await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
+      const lease = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
         provider: "daytona", providerLeaseId: "dickens-stopped-sandbox" };
       await db.insert(environmentLeases).values({ ...lease, status: "active", leasePolicy: "ephemeral" });
       const heartbeat = heartbeatService(db);
@@ -1636,7 +1624,7 @@ const support = await getEmbeddedPostgresTestSupport();
         contextSnapshot: { source: "issue.comment", issueId: f.issueId, wakeCommentId: f.commentId },
       });
       expect(wake).toBeNull();
-      const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, f.companyId));
+      const [waiting] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agentId));
       expect(waiting).toMatchObject({ status: "deferred_issue_execution", runId: null,
         payload: { executionWait: { reason: "remote_cleanup" } } });
       let nextCommentId: string | null = null;
@@ -1644,9 +1632,9 @@ const support = await getEmbeddedPostgresTestSupport();
       if (kind === "chat_with_next_message") {
         nextCommentId = randomUUID();
         nextWakeId = randomUUID();
-        await db.insert(issueComments).values({ id: nextCommentId, companyId: f.companyId, issueId: f.issueId,
+        await db.insert(issueComments).values({ id: nextCommentId, issueId: f.issueId,
           authorType: "user", authorUserId: "board", body: "A separate follow-up." });
-        await db.insert(agentWakeupRequests).values({ id: nextWakeId, companyId: f.companyId, agentId: f.agentId,
+        await db.insert(agentWakeupRequests).values({ id: nextWakeId, agentId: f.agentId,
           source: "on_demand", triggerDetail: "manual", reason: "issue_commented", status: "deferred_issue_execution",
           requestedByActorType: "user", requestedByActorId: "board", payload: {
             issueId: f.issueId, commentId: nextCommentId,
@@ -1656,13 +1644,13 @@ const support = await getEmbeddedPostgresTestSupport();
       }
       const [source] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
       await heartbeat.resumeRemoteStopComments(source);
-      expect(await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")))).toHaveLength(0);
+      expect(await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")))).toHaveLength(0);
       await db.update(environmentLeases).set({ status: "released", releasedAt: new Date(), cleanupStatus: "success",
         metadata: { remoteExecutionTermination: remoteTerminationReceipt(lease, { providerLeaseId: lease.providerLeaseId, state: "stopped" }) },
       }).where(eq(environmentLeases.id, lease.id));
       // Cleanup and periodic recovery can race to dispatch the same receipt.
       await Promise.all([heartbeat.resumeRemoteStopComments(source), heartbeat.resumeRemoteStopComments(source)]);
-      const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+      const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
       expect(successors).toHaveLength(1);
       expect(successors[0].contextSnapshot).toMatchObject({ forceFreshSession: true, previousRunId: f.sourceRunId, wakeCommentId: f.commentId });
       if (nextWakeId) {
@@ -1684,11 +1672,11 @@ const support = await getEmbeddedPostgresTestSupport();
         }),
         recovery: { escalateStrandedAssignedIssue: async () => {}, escalateStrandedRecoveryIssueInPlace: async () => {} },
       });
-      const drained = await release({ companyId: f.companyId, runId: successors[0].id, now: new Date(), suppressImmediateRecovery: true });
+      const drained = await release({ runId: successors[0].id, now: new Date(), suppressImmediateRecovery: true });
       expect(drained.outcome.kind).toBe(nextWakeId ? "promoted" : "released");
       await heartbeat.resumeRemoteStopComments(source);
-      await release({ companyId: f.companyId, runId: successors[0].id, now: new Date(), suppressImmediateRecovery: true });
-      const afterDrain = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+      await release({ runId: successors[0].id, now: new Date(), suppressImmediateRecovery: true });
+      const afterDrain = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
       expect(afterDrain).toHaveLength(nextWakeId ? 1 : 0);
       if (nextWakeId) {
         expect(afterDrain[0]).toMatchObject({ wakeupRequestId: nextWakeId, contextSnapshot: { wakeCommentId: nextCommentId } });
@@ -1698,7 +1686,7 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(delivered).toMatchObject({ status: "coalesced", runId: successors[0].id });
       const [coordinator] = await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.sourceRunId));
       expect(coordinator).toMatchObject({ phase: "terminal_failure", resultId, attempt: 3 });
-      expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+      expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
     } finally {
       await settings.updateExperimental({ enableAgentChat: experimental.enableAgentChat });
     }
@@ -1710,7 +1698,7 @@ const support = await getEmbeddedPostgresTestSupport();
       .where(eq(nativeRunFinalizations.runId, f.sourceRunId));
     await db.update(heartbeatRuns).set({ status: "running", nativePhase: "result_accepted", finishedAt: null })
       .where(eq(heartbeatRuns.id, f.sourceRunId));
-    const lease = { id: randomUUID(), companyId: f.companyId, heartbeatRunId: f.sourceRunId,
+    const lease = { id: randomUUID(), heartbeatRunId: f.sourceRunId,
       provider: "daytona", providerLeaseId: "pending-workspace-export" };
     await db.insert(environmentLeases).values({ ...lease, status: "active", leasePolicy: "ephemeral" });
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.sourceRunId));
@@ -1756,7 +1744,7 @@ const support = await getEmbeddedPostgresTestSupport();
     "admits a fresh Slack message after failure only with current linked-user authority (%s)", async scenario => {
       const f = await seed();
       // Keep execution queued so this tests real admission without launching a provider.
-      await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId, status: "running" });
+      await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "running" });
       const authorize = vi.fn(async () => { if (scenario === "revoked") throw new Error("chat_authorization_revoked"); });
       const request = createDurableChatWakeupRequest({ id: randomUUID(), ...f,
         requestedByActorType: scenario === "unlinked" ? "system" : "user",
@@ -1771,17 +1759,16 @@ const support = await getEmbeddedPostgresTestSupport();
       if (scenario === "revoked") await expect(wake()).rejects.toThrow("chat_authorization_revoked");
       else await wake();
       expect(authorize).toHaveBeenCalled();
-      const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")));
+      const successors = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")));
       expect(successors).toHaveLength(scenario === "linked" ? 1 : 0);
       if (scenario === "linked") {
         expect(successors[0].contextSnapshot).toMatchObject({ forceFreshSession: true, previousRunId: f.sourceRunId });
-        expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
-      } else expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+        expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
+      } else expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
     });
   it.each(["live_process", "missing_process", "lease", "coordinator", "successor", "agent_message", "old_comment", "wrong_author", "run_authored", "reassigned", "automatic", "approval", "question", "malformed_comment", "legacy_owner"])("keeps the hold for %s", async kind => {
     const f = await seed();
-    if (kind === "legacy_owner") await db.insert(heartbeatRuns).values({ companyId: f.companyId,
-      agentId: f.agentId, status: "failed", runtimeMode: "legacy", processPid: process.pid,
+    if (kind === "legacy_owner") await db.insert(heartbeatRuns).values({ agentId: f.agentId, status: "failed", runtimeMode: "legacy", processPid: process.pid,
       contextSnapshot: { issueId: f.issueId }, resultJson: { conversationContinuation: "continue_conversation_v1" } });
     if (kind === "live_process") await db.update(heartbeatRuns).set({ processPid: process.pid }).where(eq(heartbeatRuns.id, f.sourceRunId));
     if (kind === "missing_process") await db.update(heartbeatRuns).set({ processPid: null }).where(eq(heartbeatRuns.id, f.sourceRunId));
@@ -1790,15 +1777,15 @@ const support = await getEmbeddedPostgresTestSupport();
     if (kind === "lease") {
       const [environment] = await db.select().from(environments).where(eq(environments.driver, "local"));
       const environmentId = environment.id;
-      await db.insert(environmentLeases).values({ companyId: f.companyId, environmentId, heartbeatRunId: f.sourceRunId, issueId: f.issueId, status: "active", leasePolicy: "ephemeral", provider: "local" });
+      await db.insert(environmentLeases).values({ environmentId, heartbeatRunId: f.sourceRunId, issueId: f.issueId, status: "active", leasePolicy: "ephemeral", provider: "local" });
     }
     if (kind === "question") await db.insert(issueThreadInteractions).values({
-      companyId: f.companyId, issueId: f.issueId, kind: "ask_user_questions", status: "pending", payload: { version: 1, questions: [] },
+      issueId: f.issueId, kind: "ask_user_questions", status: "pending", payload: { version: 1, questions: [] },
     });
     if (kind === "approval") {
       const approvalId = randomUUID();
-      await db.insert(approvals).values({ id: approvalId, companyId: f.companyId, type: "hire_agent", status: "pending", payload: {} });
-      await db.insert(issueApprovals).values({ companyId: f.companyId, issueId: f.issueId, approvalId });
+      await db.insert(approvals).values({ id: approvalId, type: "hire_agent", status: "pending", payload: {} });
+      await db.insert(issueApprovals).values({ issueId: f.issueId, approvalId });
     }
     if (kind === "malformed_comment") f.commentId = "not-a-uuid";
     if (kind === "agent_message") f.actorType = "agent";
@@ -1808,7 +1795,7 @@ const support = await getEmbeddedPostgresTestSupport();
     if (kind === "old_comment") await db.update(issueComments).set({ createdAt: new Date("2026-09-11T09:00:00Z") }).where(eq(issueComments.id, f.commentId));
     if (kind === "reassigned") await db.update(issues).set({ assigneeAgentId: null }).where(eq(issues.id, f.issueId));
     expect(await admit(f)).toBeNull();
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).not.toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).not.toBeNull();
   });
   it.each(["foreign_source", "missing_authorization", "nonterminal_source"])("rejects unverified interruption context: %s", async kind => {
     const f = await seed();
@@ -1818,7 +1805,7 @@ const support = await getEmbeddedPostgresTestSupport();
       await admit(f);
       await db.update(heartbeatRuns).set({ status: "running" }).where(eq(heartbeatRuns.id, f.sourceRunId));
     }
-    await expect(buildExecutionContinuation({ db, companyId: f.companyId, issueId: f.issueId,
+    await expect(buildExecutionContinuation({ db, issueId: f.issueId,
       agentId: f.agentId, context: { previousRunId: f.sourceRunId,
         explicitUserContinuation: { previousRunId, commentId: f.commentId } },
       summary: null, exposeLowTrustRaw: false })).rejects.toThrow("continuation_user_authorization_missing");
@@ -1827,17 +1814,17 @@ const support = await getEmbeddedPostgresTestSupport();
     const f = await seed();
     const results = await Promise.all([admit(f), admit(f)]);
     expect(results.filter(Boolean)).toHaveLength(1);
-    expect(await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.companyId, f.companyId), eq(heartbeatRuns.status, "queued")))).toHaveLength(1);
+    expect(await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.agentId, f.agentId), eq(heartbeatRuns.status, "queued")))).toHaveLength(1);
   });
   it("retains the source incident through prior rejected message admissions", async () => {
     const f = await seed(), rejectedRunId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: rejectedRunId, companyId: f.companyId, agentId: f.agentId,
+    await db.insert(heartbeatRuns).values({ id: rejectedRunId, agentId: f.agentId,
       status: "cancelled", errorCode: "execution_reconciliation_required", contextSnapshot: { issueId: f.issueId },
       finishedAt: new Date("2026-09-11T10:30:00Z") });
-    await db.insert(issueRecoveryActions).values({ companyId: f.companyId, sourceIssueId: f.issueId,
+    await db.insert(issueRecoveryActions).values({ sourceIssueId: f.issueId,
       kind: "active_run_watchdog", cause: "legacy_execution_requires_reconciliation", fingerprint: rejectedRunId,
       status: "resolved", outcome: "blocked", nextAction: "Could not start", evidence: { runId: rejectedRunId, automaticRecovery: { replay: "blocked" } } });
     expect(await admit(f)).toMatchObject({ previousRunId: f.sourceRunId });
-    expect(await getExecutionBlocker(db, f.companyId, f.issueId)).toBeNull();
+    expect(await getExecutionBlocker(db, f.issueId)).toBeNull();
   });
 });

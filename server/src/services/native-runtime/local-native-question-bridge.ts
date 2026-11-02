@@ -34,7 +34,7 @@ export function createLocalNativeQuestionBridge(input: {
             authorizeBeforeDispatch: async () => {
               const current = await readPendingNativeRuntimeRequest(input.db, { ...input.binding, requestId });
               const [run] = await input.db.select({ status: heartbeatRuns.status }).from(heartbeatRuns).where(and(
-                eq(heartbeatRuns.id, input.binding.runId), eq(heartbeatRuns.companyId, input.binding.companyId),
+                eq(heartbeatRuns.id, input.binding.runId),
                 eq(heartbeatRuns.nativeIssueId, input.binding.issueId), eq(heartbeatRuns.agentId, input.binding.agentId),
               )).limit(1);
               if (run?.status !== "running" || current?.turnId !== pending.turnId || current.requestKind !== "runtime") throw new Error("native_question_not_pending");

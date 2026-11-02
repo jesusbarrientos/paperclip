@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { PillGuy } from "@/components/onboarding/PillGuy";
 import { Stepper } from "@/components/onboarding/Stepper";
-import { useCompanyListQuery } from "@/api/companies-query";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useDialog } from "@/context/DialogContext";
 import {
   ONBOARDING_ARC_ENTRY_STEP,
@@ -76,16 +76,13 @@ function WizardArc() {
 
   useEffect(() => clearOnboardingDraft, []);
 
-  // Nothing is mounted until the companies list has settled, and that ordering
-  // is load-bearing rather than tidiness. The wizard's own mount gate waits on
-  // `isFetching`, but this query is *disabled* until the account settles, and a
-  // disabled query is not fetching — so mounting immediately gets an inner
-  // wizard whose ~20 one-shot initializers read a null draft, take `initialStep`
-  // instead, and then persist that back over the seed. A real session does not
-  // hit this because the dashboard has already loaded the list by the time
-  // anyone opens onboarding.
-  const companies = useCompanyListQuery();
-  const ready = companies.isSuccess && companies.data !== undefined;
+  // Nothing is mounted until the organization has settled, and that ordering
+  // is load-bearing rather than tidiness: mounting immediately gets an inner
+  // wizard whose ~20 one-shot initializers read a null draft, take
+  // `initialStep` instead, and then persist that back over the seed. A real
+  // session does not hit this because the shell has already loaded the
+  // organization by the time anyone opens onboarding.
+  const ready = !useOrganization().loading;
 
   const { openOnboarding } = useDialog();
   useEffect(() => {
@@ -172,13 +169,11 @@ async function pickFirstSource() {
  */
 function NamingStep() {
   useEffect(() => clearOnboardingDraft, []);
-  const companies = useCompanyListQuery();
-  const ready = companies.isSuccess && companies.data !== undefined;
+  const ready = !useOrganization().loading;
   const { openOnboarding } = useDialog();
   useEffect(() => {
     if (!ready) return;
-    // No `companyId`: this step is where one is created, and naming the run's
-    // company here would be handing it the thing it exists to ask for.
+    // No `companyId`: this step is where the organization is created.
     openOnboarding({ initialStep: 1 });
   }, [ready, openOnboarding]);
   if (!ready) return null;

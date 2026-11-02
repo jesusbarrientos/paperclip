@@ -45,7 +45,6 @@ const USAGE_AGENTS: CompanySkillUsageAgent[] = [
 function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
   return {
     id: SKILL_ID,
-    companyId: COMPANY_ID,
     key: "github/anthropics/skills",
     slug: "deep-research",
     name: "Deep Research",
@@ -66,7 +65,6 @@ function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
     sharingScope: "company",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,
@@ -118,7 +116,6 @@ function makeForkSummary(over: Partial<CompanySkillForkSummary> = {}): CompanySk
     sourceRef: null,
     key: "company/deep-research-fork",
     forkedFromSkillId: ORIGINAL_ID,
-    forkedFromCompanyId: COMPANY_ID,
     currentVersionId: "v1",
     createdByCurrentActor: true,
     diverged: false,
@@ -140,12 +137,12 @@ function Seed({
 }) {
   const queryClient = useQueryClient();
   queryClient.setQueryData(
-    queryKeys.companySkills.forkPrecheck(COMPANY_ID, skill.id),
+    queryKeys.companySkills.forkPrecheck(skill.id),
     precheck ?? makePrecheck(),
   );
   // Original detail for the lineage chip on forked skills.
   queryClient.setQueryData(
-    queryKeys.companySkills.detail(COMPANY_ID, ORIGINAL_ID),
+    queryKeys.companySkills.detail(ORIGINAL_ID),
     makeSkill(),
   );
   return <>{children}</>;
@@ -187,7 +184,7 @@ export const ForkDialogAgentsSwitchOn: Story = {
     const skill = makeSkill();
     return (
       <Seed skill={skill}>
-        <ForkSkillDialog companyId={COMPANY_ID} skill={skill} open onOpenChange={() => {}} />
+        <ForkSkillDialog skill={skill} open onOpenChange={() => {}} />
       </Seed>
     );
   },
@@ -199,7 +196,7 @@ export const ForkDialogNoAgents: Story = {
     const skill = makeSkill({ usedByAgents: [], attachedAgentCount: 0 });
     return (
       <Seed skill={skill} precheck={makePrecheck({ agentUsageCount: 0, usedByAgents: [] })}>
-        <ForkSkillDialog companyId={COMPANY_ID} skill={skill} open onOpenChange={() => {}} />
+        <ForkSkillDialog skill={skill} open onOpenChange={() => {}} />
       </Seed>
     );
   },
@@ -212,7 +209,7 @@ export const ForkDialogExistingCopy: Story = {
     const skill = makeSkill({ existingForks: existing });
     return (
       <Seed skill={skill} precheck={makePrecheck({ existingForks: existing })}>
-        <ForkSkillDialog companyId={COMPANY_ID} skill={skill} open onOpenChange={() => {}} />
+        <ForkSkillDialog skill={skill} open onOpenChange={() => {}} />
       </Seed>
     );
   },
@@ -239,8 +236,8 @@ export const ForkedSkillHeader: Story = {
         <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
           <span className="text-base font-semibold">Deep Research (copy)</span>
           <Badge variant="secondary">Unsaved edits</Badge>
-          <SkillLineageChip companyId={COMPANY_ID} forkedFromSkillId={ORIGINAL_ID} />
-          <AgentsUsingSkillBadge companyId={COMPANY_ID} skill={fork} />
+          <SkillLineageChip forkedFromSkillId={ORIGINAL_ID} />
+          <AgentsUsingSkillBadge skill={fork} />
         </div>
       </Seed>
     );

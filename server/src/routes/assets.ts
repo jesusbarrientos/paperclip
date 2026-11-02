@@ -12,7 +12,7 @@ import {
   isInlineAttachmentContentType,
   MAX_ATTACHMENT_BYTES,
 } from "../attachment-types.js";
-import { assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getAccessibleResource, getActorInfo } from "./authz.js";
 const SVG_CONTENT_TYPE = "image/svg+xml";
 const ALLOWED_COMPANY_LOGO_CONTENT_TYPES = new Set([
   "image/png",
@@ -112,9 +112,8 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
   }
 
-  router.post("/companies/:companyId/assets/images", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/assets/images", async (req, res) => {
+    assertOrgAccess(req);
 
     try {
       await runSingleFileUpload(assetUpload, req, res);
@@ -169,14 +168,13 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     const actor = getActorInfo(req);
     const stored = await storage.putFile({
-      companyId,
       namespace: `assets/${namespaceSuffix}`,
       originalFilename: file.originalname || null,
       contentType,
       body: fileBody,
     });
 
-    const asset = await svc.create(companyId, {
+    const asset = await svc.create({
       provider: stored.provider,
       objectKey: stored.objectKey,
       contentType: stored.contentType,
@@ -188,7 +186,6 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
 
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -206,7 +203,6 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     res.status(201).json({
       assetId: asset.id,
-      companyId: asset.companyId,
       provider: asset.provider,
       objectKey: asset.objectKey,
       contentType: asset.contentType,
@@ -221,9 +217,8 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
   });
 
-  router.post("/companies/:companyId/logo", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/organization/logo", async (req, res) => {
+    assertOrgAccess(req);
 
     try {
       await runSingleFileUpload(companyLogoUpload, req, res);
@@ -270,14 +265,13 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     const actor = getActorInfo(req);
     const stored = await storage.putFile({
-      companyId,
       namespace: "assets/companies",
       originalFilename: file.originalname || null,
       contentType,
       body: fileBody,
     });
 
-    const asset = await svc.create(companyId, {
+    const asset = await svc.create({
       provider: stored.provider,
       objectKey: stored.objectKey,
       contentType: stored.contentType,
@@ -289,7 +283,6 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
 
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -308,7 +301,6 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     res.status(201).json({
       assetId: asset.id,
-      companyId: asset.companyId,
       provider: asset.provider,
       objectKey: asset.objectKey,
       contentType: asset.contentType,
@@ -343,7 +335,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
       return;
     }
     const range = Array.isArray(ranges) ? ranges[0] : undefined;
-    const object = await storage.getObject(asset.companyId, asset.objectKey, range ? { range } : undefined);
+    const object = await storage.getObject(asset.objectKey, range ? { range } : undefined);
     const responseContentType = asset.contentType || object.contentType || "application/octet-stream";
     const mediaType = responseContentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
     const inlineSafe = mediaType !== SVG_CONTENT_TYPE

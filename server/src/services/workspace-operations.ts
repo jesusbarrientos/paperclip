@@ -98,7 +98,6 @@ const liveRuntimeControlOperationIds = new Set<string>();
 
 type NativeFinalizationActivityScope = {
   operationId: string;
-  companyId: string;
   runId: string;
   issueId: string;
 };
@@ -108,7 +107,7 @@ const liveNativeFinalizationOperations = new Map<string, NativeFinalizationActiv
 
 export function isNativeWorkspaceFinalizationOperationActive(scope: NativeFinalizationActivityScope): boolean {
   const active = liveNativeFinalizationOperations.get(scope.operationId);
-  return Boolean(active && active.companyId === scope.companyId
+  return Boolean(active
     && active.runId === scope.runId && active.issueId === scope.issueId);
 }
 
@@ -199,7 +198,6 @@ export function resetWorkspaceRuntimeControlLocksForTests() {
 function toWorkspaceOperation(row: WorkspaceOperationRow): WorkspaceOperation {
   return {
     id: row.id,
-    companyId: row.companyId,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
     heartbeatRunId: row.heartbeatRunId ?? null,
     issueId: row.issueId ?? null,
@@ -454,7 +452,6 @@ export function workspaceOperationService(db: Db) {
     },
 
     createRecorder(input: {
-      companyId: string;
       heartbeatRunId?: string | null;
       executionWorkspaceId?: string | null;
       issueId?: string | null;
@@ -482,7 +479,6 @@ export function workspaceOperationService(db: Db) {
           const startedAt = new Date();
           const id = randomUUID();
           const handle = await logStore.begin({
-            companyId: input.companyId,
             operationId: id,
           });
 
@@ -523,7 +519,6 @@ export function workspaceOperationService(db: Db) {
           try {
             await db.insert(workspaceOperations).values({
               id,
-              companyId: input.companyId,
               executionWorkspaceId,
               heartbeatRunId: input.heartbeatRunId ?? null,
               issueId: input.issueId ?? null,
@@ -600,7 +595,7 @@ export function workspaceOperationService(db: Db) {
               && recordInput.metadata?.owningService === "native_workspace_finalizer"
               && input.heartbeatRunId && input.issueId;
             if (nativeFinalization) liveNativeFinalizationOperations.set(id, {
-              operationId: id, companyId: input.companyId,
+              operationId: id,
               runId: input.heartbeatRunId!, issueId: input.issueId!,
             });
             try {

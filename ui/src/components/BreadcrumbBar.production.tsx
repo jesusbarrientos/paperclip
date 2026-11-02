@@ -2,7 +2,6 @@ import { Link } from "@/lib/router";
 import { Menu } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
-import { useCompany } from "../context/CompanyContext";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -12,11 +11,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Fragment, useMemo } from "react";
+import { Fragment } from "react";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
 
-type GlobalToolbarContext = { companyId: string | null; companyPrefix: string | null };
+const GLOBAL_TOOLBAR_SLOT_CONTEXT = {};
 
 /** Task identifier rendered in gray monospace between the glyph and the title. */
 function CrumbIdentifier({ identifier }: { identifier?: string }) {
@@ -24,16 +23,16 @@ function CrumbIdentifier({ identifier }: { identifier?: string }) {
   return <span className="shrink-0 font-mono text-muted-foreground">{identifier}</span>;
 }
 
-function GlobalToolbar({ context }: { context: GlobalToolbarContext }) {
-  const { slots } = usePluginSlots({ slotTypes: ["globalToolbarButton"], companyId: context.companyId });
-  const { launchers } = usePluginLaunchers({ placementZones: ["globalToolbarButton"], companyId: context.companyId, enabled: !!context.companyId });
+function GlobalToolbar() {
+  const { slots } = usePluginSlots({ slotTypes: ["globalToolbarButton"] });
+  const { launchers } = usePluginLaunchers({ placementZones: ["globalToolbarButton"] });
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2 empty:hidden">
       {slots.length > 0 ? (
-        <PluginSlotOutlet slotTypes={["globalToolbarButton"]} context={context} className="flex items-center gap-1" />
+        <PluginSlotOutlet slotTypes={["globalToolbarButton"]} context={GLOBAL_TOOLBAR_SLOT_CONTEXT} className="flex items-center gap-1" />
       ) : null}
       {launchers.length > 0 ? (
-        <PluginLauncherOutlet placementZones={["globalToolbarButton"]} context={context} className="flex items-center gap-1" />
+        <PluginLauncherOutlet placementZones={["globalToolbarButton"]} context={GLOBAL_TOOLBAR_SLOT_CONTEXT} className="flex items-center gap-1" />
       ) : null}
     </div>
   );
@@ -42,17 +41,8 @@ function GlobalToolbar({ context }: { context: GlobalToolbarContext }) {
 export function BreadcrumbBar() {
   const { breadcrumbs, mobileToolbar } = useBreadcrumbs();
   const { toggleSidebar, isMobile } = useSidebar();
-  const { selectedCompanyId, selectedCompany } = useCompany();
 
-  const globalToolbarSlotContext = useMemo(
-    () => ({
-      companyId: selectedCompanyId ?? null,
-      companyPrefix: selectedCompany?.issuePrefix ?? null,
-    }),
-    [selectedCompanyId, selectedCompany?.issuePrefix],
-  );
-
-  const globalToolbarSlots = <GlobalToolbar context={globalToolbarSlotContext} />;
+  const globalToolbarSlots = <GlobalToolbar />;
 
   if (isMobile && mobileToolbar) {
     return (

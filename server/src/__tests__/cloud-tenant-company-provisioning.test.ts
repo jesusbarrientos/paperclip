@@ -83,7 +83,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
     await tempDb?.cleanup();
   });
 
-  async function readCompany(companyId: string) {
+  async function readCompany() {
     return db
       .select({
         name: companies.name,
@@ -91,19 +91,19 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
         description: companies.description,
       })
       .from(companies)
-      .where(eq(companies.id, companyId))
-      .then((rows) => rows[0] ?? null);
+      .then((rows) => {
+        expect(rows).toHaveLength(1);
+        return rows[0] ?? null;
+      });
   }
 
-  async function readIdentifiers(companyId: string) {
+  async function readIdentifiers() {
     const issueRows = await db
       .select({ identifier: issues.identifier })
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     const caseRows = await db
       .select({ identifier: cases.identifier })
-      .from(cases)
-      .where(eq(cases.companyId, companyId));
+      .from(cases);
     return {
       issues: issueRows.map((row) => row.identifier).sort(),
       cases: caseRows.map((row) => row.identifier).sort(),
@@ -112,13 +112,11 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
 
   describe("claim time", () => {
     it("derives the issue prefix from the company name and writes no placeholder description", async () => {
-      const actor = await resolveCloudTenantActor(
+      await resolveCloudTenantActor(
         db,
         tenantHeaders({ stackId: "stack-claim-1", userId: "user-claim-1", companyName: "Acme Robotics" }),
       );
-
-      const companyId = actor!.companyIds![0]!;
-      await expect(readCompany(companyId)).resolves.toEqual({
+      await expect(readCompany()).resolves.toEqual({
         name: "Acme Robotics",
         issuePrefix: "ACM",
         description: null,
@@ -126,31 +124,27 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
     });
 
     it("derives the prefix from the humanized stack slug when no company name header is sent", async () => {
-      const actor = await resolveCloudTenantActor(
+      await resolveCloudTenantActor(
         db,
         tenantHeaders({ stackId: "paperclip-stack-borealis", userId: "user-claim-2" }),
       );
-
-      const companyId = actor!.companyIds![0]!;
-      await expect(readCompany(companyId)).resolves.toMatchObject({
+      await expect(readCompany()).resolves.toMatchObject({
         name: "Borealis",
         issuePrefix: "BOR",
         description: null,
       });
     });
 
-    it("suffixes the derived prefix when another company already holds it", async () => {
+    it("keeps the existing organization instead of provisioning another one", async () => {
       await db.insert(companies).values({ name: "Acme Holdings", issuePrefix: "ACM" });
 
-      const actor = await resolveCloudTenantActor(
+      await resolveCloudTenantActor(
         db,
         tenantHeaders({ stackId: "stack-claim-3", userId: "user-claim-3", companyName: "Acme Robotics" }),
       );
-
-      const companyId = actor!.companyIds![0]!;
-      await expect(readCompany(companyId)).resolves.toMatchObject({
-        name: "Acme Robotics",
-        issuePrefix: "ACMA",
+      await expect(readCompany()).resolves.toMatchObject({
+        name: "Acme Holdings",
+        issuePrefix: "ACM",
       });
     });
   });
@@ -167,7 +161,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
       issuePrefix?: string;
       description?: string | null;
     }) {
-      const actor = await resolveCloudTenantActor(
+      await resolveCloudTenantActor(
         db,
         tenantHeaders({
           stackId: input.stackId,
@@ -175,7 +169,6 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
           companyName: input.companyName,
         }),
       );
-      const companyId = actor!.companyIds![0]!;
       const issuePrefix = input.issuePrefix ?? legacyProvisionedPrefix(input.stackId);
       await db
         .update(companies)
@@ -184,25 +177,23 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
           description: input.description === undefined
             ? legacyProvisionedDescription(input.stackId)
             : input.description,
-        })
-        .where(eq(companies.id, companyId));
+        });
       await db.insert(issues).values([
-        { companyId, title: "First", issueNumber: 1, identifier: `${issuePrefix}-1` },
-        { companyId, title: "Second", issueNumber: 20, identifier: `${issuePrefix}-20` },
+        { title: "First", issueNumber: 1, identifier: `${issuePrefix}-1` },
+        { title: "Second", issueNumber: 20, identifier: `${issuePrefix}-20` },
       ]);
       await db.insert(cases).values({
-        companyId,
         caseNumber: 4,
         identifier: `${issuePrefix}-C4`,
         caseType: "decision",
         title: "A case",
       });
-      return { companyId, issuePrefix };
+      return { issuePrefix };
     }
 
     it("re-derives the prefix, clears the placeholder, and re-keys both identifier tables", async () => {
       const stackId = "stack-repair-1";
-      const { companyId, issuePrefix: legacyPrefix } = await seedLegacyCompany({
+      const { issuePrefix: legacyPrefix } = await seedLegacyCompany({
         stackId,
         claimUserId: "user-repair-seed-1",
         companyName: "Acme Robotics",
@@ -213,12 +204,12 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
         tenantHeaders({ stackId, userId: "user-repair-1", companyName: "Acme Robotics" }),
       );
 
-      await expect(readCompany(companyId)).resolves.toEqual({
+      await expect(readCompany()).resolves.toEqual({
         name: "Acme Robotics",
         issuePrefix: "ACM",
         description: null,
       });
-      await expect(readIdentifiers(companyId)).resolves.toEqual({
+      await expect(readIdentifiers()).resolves.toEqual({
         issues: ["ACM-1", "ACM-20"],
         cases: ["ACM-C4"],
       });
@@ -226,10 +217,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
       const logged = await db
         .select({ details: activityLog.details })
         .from(activityLog)
-        .where(and(
-          eq(activityLog.companyId, companyId),
-          eq(activityLog.action, "company.updated"),
-        ));
+        .where(eq(activityLog.action, "company.updated"));
       expect(logged).toHaveLength(1);
       expect(logged[0]).toMatchObject({
         details: {
@@ -246,7 +234,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
 
     it("is a no-op on a second pass", async () => {
       const stackId = "stack-repair-2";
-      const { companyId } = await seedLegacyCompany({
+      const {} = await seedLegacyCompany({
         stackId,
         claimUserId: "user-repair-seed-2",
         companyName: "Acme Robotics",
@@ -256,15 +244,15 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
         db,
         tenantHeaders({ stackId, userId: "user-repair-2a", companyName: "Acme Robotics" }),
       );
-      const afterFirstPass = await readCompany(companyId);
+      const afterFirstPass = await readCompany();
 
       await resolveCloudTenantActor(
         db,
         tenantHeaders({ stackId, userId: "user-repair-2b", companyName: "Acme Robotics" }),
       );
 
-      await expect(readCompany(companyId)).resolves.toEqual(afterFirstPass);
-      await expect(readIdentifiers(companyId)).resolves.toEqual({
+      await expect(readCompany()).resolves.toEqual(afterFirstPass);
+      await expect(readIdentifiers()).resolves.toEqual({
         issues: ["ACM-1", "ACM-20"],
         cases: ["ACM-C4"],
       });
@@ -272,16 +260,13 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
       const logged = await db
         .select({ id: activityLog.id })
         .from(activityLog)
-        .where(and(
-          eq(activityLog.companyId, companyId),
-          eq(activityLog.action, "company.updated"),
-        ));
+        .where(eq(activityLog.action, "company.updated"));
       expect(logged).toHaveLength(1);
     });
 
     it("clears only the placeholder description when the prefix is not the legacy hash", async () => {
       const stackId = "stack-repair-3";
-      const { companyId } = await seedLegacyCompany({
+      const {} = await seedLegacyCompany({
         stackId,
         claimUserId: "user-repair-seed-3",
         companyName: "Acme Robotics",
@@ -294,26 +279,25 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
         tenantHeaders({ stackId, userId: "user-repair-3", companyName: "Acme Robotics" }),
       );
 
-      await expect(readCompany(companyId)).resolves.toEqual({
+      await expect(readCompany()).resolves.toEqual({
         name: "Acme Robotics",
         issuePrefix: "ZEN",
         description: null,
       });
       // Nothing was re-keyed, so the identifiers keep the prefix they had.
-      await expect(readIdentifiers(companyId)).resolves.toEqual({
+      await expect(readIdentifiers()).resolves.toEqual({
         issues: ["ZEN-1", "ZEN-20"],
         cases: ["ZEN-C4"],
       });
       const logged = await db
         .select({ id: activityLog.id })
-        .from(activityLog)
-        .where(eq(activityLog.companyId, companyId));
+        .from(activityLog);
       expect(logged).toHaveLength(0);
     });
 
     it("leaves an operator-written description alone while it re-derives the prefix", async () => {
       const stackId = "stack-repair-4";
-      const { companyId } = await seedLegacyCompany({
+      const {} = await seedLegacyCompany({
         stackId,
         claimUserId: "user-repair-seed-4",
         companyName: "Acme Robotics",
@@ -325,7 +309,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
         tenantHeaders({ stackId, userId: "user-repair-4", companyName: "Acme Robotics" }),
       );
 
-      await expect(readCompany(companyId)).resolves.toEqual({
+      await expect(readCompany()).resolves.toEqual({
         name: "Acme Robotics",
         issuePrefix: "ACM",
         description: "We build robots.",

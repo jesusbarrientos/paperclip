@@ -64,18 +64,16 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     return companyId;
   }
 
-  async function seedProjectWorkspace(companyId: string) {
+  async function seedProjectWorkspace() {
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Workspace authz",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       sourceType: "local_path",
@@ -85,11 +83,10 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     return { projectId, projectWorkspaceId };
   }
 
-  async function seedExecutionWorkspace(companyId: string, projectId: string, projectWorkspaceId: string) {
+  async function seedExecutionWorkspace(projectId: string, projectWorkspaceId: string) {
     const executionWorkspaceId = randomUUID();
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       projectWorkspaceId,
       mode: "isolated_workspace",
@@ -103,13 +100,11 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
   }
 
   async function seedAgent(
-    companyId: string,
     input: { role?: string; reportsTo?: string | null; name?: string } = {},
   ) {
     const agentId = randomUUID();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: input.name ?? "Agent",
       role: input.role ?? "engineer",
       reportsTo: input.reportsTo ?? null,
@@ -119,44 +114,41 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
   it("allows board actors to manage project workspace runtime services", async () => {
     const companyId = await seedCompany();
-    const { projectWorkspaceId } = await seedProjectWorkspace(companyId);
+    const { projectWorkspaceId } = await seedProjectWorkspace();
 
     await expect(assertCanManageProjectWorkspaceRuntimeServices(db, {
       actor: {
         type: "board",
         userId: "board-1",
-        companyIds: [companyId],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "session",
         isInstanceAdmin: false,
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).resolves.toBeUndefined();
   });
 
   it("allows CEO agents to manage any project workspace runtime services in their company", async () => {
     const companyId = await seedCompany();
-    const { projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const ceoAgentId = await seedAgent(companyId, { role: "ceo", name: "CEO" });
+    const { projectWorkspaceId } = await seedProjectWorkspace();
+    const ceoAgentId = await seedAgent({ role: "ceo", name: "CEO" });
 
     await expect(assertCanManageProjectWorkspaceRuntimeServices(db, {
       actor: {
         type: "agent",
         agentId: ceoAgentId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).resolves.toBeUndefined();
   });
 
   it("rejects low-trust CEO runtime service mutations unless runtime.manage is granted", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const ceoAgentId = await seedAgent(companyId, { role: "ceo", name: "CEO" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const ceoAgentId = await seedAgent({ role: "ceo", name: "CEO" });
     await db
       .update(agents)
       .set({
@@ -165,7 +157,6 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
           authorizationPolicy: {
             trustBoundary: {
               mode: LOW_TRUST_REVIEW_PRESET,
-              companyId,
               projectIds: [projectId],
             },
           },
@@ -175,7 +166,6 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Low-trust workspace",
@@ -188,11 +178,9 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId: ceoAgentId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).rejects.toMatchObject({
       status: 403,
@@ -202,12 +190,11 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
   it("allows standard CEO runtime service mutations for low-trust workspace issues", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const ceoAgentId = await seedAgent(companyId, { role: "ceo", name: "CEO" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const ceoAgentId = await seedAgent({ role: "ceo", name: "CEO" });
 
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Issue-scoped low-trust workspace",
@@ -218,7 +205,6 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId,
             projectIds: [projectId],
           },
         },
@@ -229,25 +215,22 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId: ceoAgentId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).resolves.toBeUndefined();
   });
 
   it("rejects runtime service mutations when only the run policy is low-trust without runtime.manage", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const ceoAgentId = await seedAgent(companyId, { role: "ceo", name: "CEO" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const ceoAgentId = await seedAgent({ role: "ceo", name: "CEO" });
     const issueId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Run-scoped low-trust workspace",
@@ -257,7 +240,6 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: ceoAgentId,
       status: "running",
       contextSnapshot: {
@@ -266,7 +248,6 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
           authorizationPolicy: {
             trustBoundary: {
               mode: LOW_TRUST_REVIEW_PRESET,
-              companyId,
               projectIds: [projectId],
             },
           },
@@ -278,12 +259,10 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId: ceoAgentId,
-        companyId,
         runId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).rejects.toMatchObject({
       status: 403,
@@ -293,12 +272,11 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
   it("allows agents with a non-terminal assigned issue in the target project workspace", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const agentId = await seedAgent(companyId, { name: "Engineer" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const agentId = await seedAgent({ name: "Engineer" });
 
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Use this workspace",
@@ -311,25 +289,22 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).resolves.toBeUndefined();
   });
 
   it("allows managers to manage execution workspace runtime services for their reporting subtree", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const executionWorkspaceId = await seedExecutionWorkspace(companyId, projectId, projectWorkspaceId);
-    const managerId = await seedAgent(companyId, { role: "cto", name: "Manager" });
-    const reportId = await seedAgent(companyId, { reportsTo: managerId, name: "Report" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const executionWorkspaceId = await seedExecutionWorkspace(projectId, projectWorkspaceId);
+    const managerId = await seedAgent({ role: "cto", name: "Manager" });
+    const reportId = await seedAgent({ reportsTo: managerId, name: "Report" });
 
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
       projectId,
       projectWorkspaceId,
       executionWorkspaceId,
@@ -343,11 +318,9 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId: managerId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       executionWorkspaceId,
     })).resolves.toMatchObject({
       actorType: "agent",
@@ -358,14 +331,13 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
   it("rejects unrelated same-company agents without matching workspace assignments", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const executionWorkspaceId = await seedExecutionWorkspace(companyId, projectId, projectWorkspaceId);
-    const assignedAgentId = await seedAgent(companyId, { name: "Assigned" });
-    const unrelatedAgentId = await seedAgent(companyId, { name: "Unrelated" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const executionWorkspaceId = await seedExecutionWorkspace(projectId, projectWorkspaceId);
+    const assignedAgentId = await seedAgent({ name: "Assigned" });
+    const unrelatedAgentId = await seedAgent({ name: "Unrelated" });
 
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
       projectId,
       projectWorkspaceId,
       executionWorkspaceId,
@@ -379,11 +351,9 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId: unrelatedAgentId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       executionWorkspaceId,
     })).rejects.toMatchObject({
       status: 403,
@@ -393,12 +363,11 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
   it("rejects completed workspace assignments so stale issues do not keep access alive", async () => {
     const companyId = await seedCompany();
-    const { projectId, projectWorkspaceId } = await seedProjectWorkspace(companyId);
-    const agentId = await seedAgent(companyId, { name: "Engineer" });
+    const { projectId, projectWorkspaceId } = await seedProjectWorkspace();
+    const agentId = await seedAgent({ name: "Engineer" });
 
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Completed issue",
@@ -411,11 +380,9 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
       actor: {
         type: "agent",
         agentId,
-        companyId,
         source: "agent_key",
       },
     } as any, {
-      companyId,
       projectWorkspaceId,
     })).rejects.toMatchObject({
       status: 403,

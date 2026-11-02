@@ -25,7 +25,7 @@ import {
 
 const notion = CONNECTABLE_APP_DEFINITIONS.find((app) => app.slug === "notion")!;
 const connection = {
-  id: "11111111-1111-4111-8111-111111111119", companyId: pending.companyId,
+  id: "11111111-1111-4111-8111-111111111119", 
   applicationId: "11111111-1111-4111-8111-111111111118", name: "My Notion workspace",
   uid: "notion/storybook", transport: "mcp_remote", authKind: "oauth", status: "active",
   enabled: true, healthStatus: "ok", credentialPolicy: "per_user",
@@ -53,7 +53,7 @@ const meta: Meta = {
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
       if (scenario.missingAiAccount) {
-        if (url.pathname.endsWith("/environments")) return Response.json([{ id: "local-env", companyId: pending.companyId, name: "Local", driver: "local", status: "active", config: {}, isDefault: true }]);
+        if (url.pathname.endsWith("/environments")) return Response.json([{ id: "local-env", name: "Local", driver: "local", status: "active", config: {}, isDefault: true }]);
         if (url.pathname.endsWith("/environments/capabilities")) return Response.json({ sandboxProviders: {} });
         if (url.pathname === "/api/instance/settings") return Response.json({ defaultEnvironmentId: "local-env" });
         if (url.pathname === "/api/instance/settings/general") return Response.json({ executionMode: "any" });
@@ -80,7 +80,7 @@ const meta: Meta = {
       if (scenario.ai && url.pathname.endsWith("/ai-connections") && init?.method === "POST") return scenario.completeError
         ? Response.json({ error: "This key could not be verified. Check it and try again." }, { status: 422 })
         : Response.json({ connectionId: aiAccount.id, grantId: aiAccount.grantId });
-      if (url.pathname.endsWith("/agents")) return Response.json([{ id: pending.payload.requestingAgentId, companyId: pending.companyId, name: pending.payload.requestingAgentName, status: "active", adapterType: "paperclip_runner", role: "researcher" }]);
+      if (url.pathname.endsWith("/agents")) return Response.json([{ id: pending.payload.requestingAgentId, name: pending.payload.requestingAgentName, status: "active", adapterType: "paperclip_runner", role: "researcher" }]);
       if (scenario.access && url.pathname === `/api/agents/${accessPending.payload.requestingAgentId}`) return Response.json({
         ...storybookAgents[0], id: accessPending.payload.requestingAgentId, name: accessPending.payload.requestingAgentName,
       });
@@ -263,7 +263,7 @@ export const HistoricalCards: Story = { render: () => <Host><Card interaction={c
 function IdentityHost({ kind = "agent", unavailable = false, loading = false }: { kind?: "agent" | "user" | "organization"; unavailable?: boolean; loading?: boolean }) {
   const [identity, setIdentity] = useState(kind);
   const [selected, setSelected] = useState(new Set([pending.payload.requestingAgentId]));
-  return <Host><AccessStep companyId={pending.companyId} authKind="oauth" grantKind={identity} setGrantKind={setIdentity}
+  return <Host><AccessStep authKind="oauth" grantKind={identity} setGrantKind={setIdentity}
     grantKinds={["user", "agent", "organization"]} installChoice="specific" setInstallChoice={() => {}}
     installAgentIds={selected} setInstallAgentIds={setSelected} lockedAgentId={pending.payload.requestingAgentId}
     capabilities={{ canCreateOrganizationGrant: !unavailable, canSetCompanyInstall: !unavailable, organizationGrantReason: "Ask an administrator to enable shared identities." }}
@@ -311,7 +311,7 @@ export const SetupFailureRetry: Story = { ...SetupFailure, play: async (context)
 // form below are the production components used inside the task.
 const openrouter = CONNECTABLE_APP_DEFINITIONS.find((app) => app.slug === "openrouter")!;
 const aiPending: ConnectionIntentInteraction = { ...pending, payload: { ...pending.payload, purpose: "ai", serviceName: "OpenRouter", serviceSlug: "openrouter", serviceLogoUrl: openrouter.branding.logoUrl ?? null, serviceDarkLogoUrl: openrouter.branding.darkLogoUrl ?? null } };
-const aiAccount = { id: connection.id, grantId: "storybook-grant", companyId: pending.companyId, provider: "openrouter", method: "api_key", name: "My OpenRouter account", ownership: "personal", ownerName: "Alex", isDefault: true, status: "revoked" };
+const aiAccount = { id: connection.id, grantId: "storybook-grant", provider: "openrouter", method: "api_key", name: "My OpenRouter account", ownership: "personal", ownerName: "Alex", isDefault: true, status: "revoked" };
 const aiRepair: Story = {
   parameters: { connectionScenario: { ai: true } },
   render: () => <Host><Card interaction={aiPending} /></Host>,

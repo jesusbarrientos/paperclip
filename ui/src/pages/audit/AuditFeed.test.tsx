@@ -16,17 +16,17 @@ const pushToastMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/audit", () => ({
   auditApi: {
-    listAgentActions: (companyId: string, filters: unknown) => listAgentActionsMock(companyId, filters),
-    exportAgentActionsCsv: (companyId: string, filters: unknown) => exportCsvMock(companyId, filters),
+    listAgentActions: (filters: unknown) => listAgentActionsMock(filters),
+    exportAgentActionsCsv: (filters: unknown) => exportCsvMock(filters),
   },
 }));
 
 vi.mock("@/api/agents", () => ({
-  agentsApi: { list: (companyId: string) => listAgentsMock(companyId) },
+  agentsApi: { list: () => listAgentsMock() },
 }));
 
 vi.mock("@/api/access", () => ({
-  accessApi: { listUserDirectory: (companyId: string) => listUserDirectoryMock(companyId) },
+  accessApi: { listUserDirectory: () => listUserDirectoryMock() },
 }));
 
 vi.mock("@/context/ToastContext", () => ({
@@ -64,7 +64,6 @@ async function flushReact() {
 function record(overrides: Record<string, unknown> = {}) {
   return {
     id: "evt-1",
-    companyId: "company-1",
     actorType: "agent",
     actorId: "agent-1",
     action: "issue.comment_added",
@@ -123,7 +122,6 @@ describe("AuditFeed", () => {
       root.render(
         <QueryClientProvider client={client}>
           <AuditFeed
-            companyId={props.companyId ?? "company-1"}
             lockedAgentId={props.lockedAgentId}
             lockedRunId={props.lockedRunId}
             lockedEntity={props.lockedEntity}
@@ -193,7 +191,6 @@ describe("AuditFeed", () => {
     await render();
 
     expect(listAgentActionsMock).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ actorScope: "all" }),
     );
     expect(container.textContent).toContain("Fable");
@@ -227,7 +224,6 @@ describe("AuditFeed", () => {
     await render({ actionDomain: "tool_" });
 
     expect(listAgentActionsMock).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ action: "tool_" }),
     );
     expect(container.textContent).toContain("tested get repository on");
@@ -263,7 +259,7 @@ describe("AuditFeed", () => {
 
   it("clears privileged filters and recovers the basic feed after an access downgrade", async () => {
     let permissionRevoked = false;
-    listAgentActionsMock.mockImplementation((_companyId: string, filters: { agentId?: string }) => {
+    listAgentActionsMock.mockImplementation((filters: { agentId?: string }) => {
       if (permissionRevoked && filters.agentId) {
         return Promise.reject(
           new ApiError("Missing permission: audit:view_agent_actions", 403, { error: "Missing permission" }),
@@ -287,16 +283,16 @@ describe("AuditFeed", () => {
     });
     await waitForCondition(
       () =>
-        listAgentActionsMock.mock.calls.some(([, filters]) => filters.agentId)
-        && listAgentActionsMock.mock.calls.at(-1)?.[1]?.agentId === undefined
+        listAgentActionsMock.mock.calls.some(([filters]) => filters.agentId)
+        && listAgentActionsMock.mock.calls.at(-1)?.[0]?.agentId === undefined
         && !container.textContent?.includes("All agents"),
       "the basic feed after the access downgrade",
       20_000,
     );
 
-    expect(listAgentActionsMock.mock.calls.some(([, filters]) => filters.agentId)).toBe(true);
+    expect(listAgentActionsMock.mock.calls.some(([filters]) => filters.agentId)).toBe(true);
     await vi.waitFor(() => {
-      expect(listAgentActionsMock.mock.calls.at(-1)?.[1]).toEqual(
+      expect(listAgentActionsMock.mock.calls.at(-1)?.[0]).toEqual(
         expect.objectContaining({ actorScope: "all", agentId: undefined }),
       );
       expect(container.textContent).toContain("commented on");
@@ -308,7 +304,7 @@ describe("AuditFeed", () => {
 
   it("drops cached privileged pages when pagination observes an access downgrade", async () => {
     let permissionRevoked = false;
-    listAgentActionsMock.mockImplementation((_companyId: string, filters: { cursor?: string }) => {
+    listAgentActionsMock.mockImplementation((filters: { cursor?: string }) => {
       if (filters.cursor === "cursor-2") {
         return Promise.resolve({
           items: [record({
@@ -342,13 +338,13 @@ describe("AuditFeed", () => {
     // a fixed flush count.
     await waitForCondition(
       () =>
-        listAgentActionsMock.mock.calls.at(-1)?.[1]?.cursor === undefined
+        listAgentActionsMock.mock.calls.at(-1)?.[0]?.cursor === undefined
         && !container.textContent?.includes("on behalf of Dotta"),
       "the basic feed after the pagination downgrade",
       20_000,
     );
 
-    expect(listAgentActionsMock.mock.calls.at(-1)?.[1]).toEqual(
+    expect(listAgentActionsMock.mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({ actorScope: "all", cursor: undefined }),
     );
     expect(container.textContent).toContain("commented on");
@@ -364,7 +360,7 @@ describe("AuditFeed", () => {
     // "Refreshing audit access…" forever with no way out.
     let downgraded = false;
     let calls = 0;
-    listAgentActionsMock.mockImplementation((_companyId: string, filters: { cursor?: string }) => {
+    listAgentActionsMock.mockImplementation((filters: { cursor?: string }) => {
       calls += 1;
       if (filters.cursor === "cursor-2") {
         downgraded = true;
@@ -399,7 +395,7 @@ describe("AuditFeed", () => {
     // Pathological but reachable: the refetch succeeds and still returns one
     // full page plus one basic page. The recovery has had its shot, so the feed
     // must render at the least-privileged tier instead of sitting on the banner.
-    listAgentActionsMock.mockImplementation((_companyId: string, filters: { cursor?: string }) =>
+    listAgentActionsMock.mockImplementation((filters: { cursor?: string }) =>
       filters.cursor === "cursor-2"
         ? Promise.resolve({
             items: [record({ id: "evt-2", agentId: null, runId: null, responsibleUserId: null, details: null })],
@@ -430,7 +426,7 @@ describe("AuditFeed", () => {
   it("hides the agent filter and pins the query when lockedAgentId is set", async () => {
     await render({ lockedAgentId: "agent-1" });
 
-    const [, filters] = listAgentActionsMock.mock.calls[0];
+    const [filters] = listAgentActionsMock.mock.calls[0];
     expect(filters).toEqual(expect.objectContaining({ actorScope: "agents", agentId: "agent-1" }));
     // No "All agents" option means the agent filter is hidden on the per-agent tab.
     expect(container.textContent).not.toContain("All agents");
@@ -441,7 +437,7 @@ describe("AuditFeed", () => {
     await render({ lockedAgentId: "agent-1", mode: "all", onModeChange });
 
     expect(container.querySelector('[role="tab"]')).toBeFalsy();
-    expect(listAgentActionsMock.mock.calls[0]?.[1]).toEqual(
+    expect(listAgentActionsMock.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ actorScope: "agents", agentId: "agent-1" }),
     );
     expect(onModeChange).not.toHaveBeenCalled();
@@ -451,7 +447,7 @@ describe("AuditFeed", () => {
     // Mirror the page: the mode lives above the feed, so toggling re-queries.
     function Harness() {
       const [mode, setMode] = useState<"all" | "agents">("all");
-      return <AuditFeed companyId="company-1" mode={mode} onModeChange={setMode} />;
+      return <AuditFeed mode={mode} onModeChange={setMode} />;
     }
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     root = createRoot(container);
@@ -466,14 +462,14 @@ describe("AuditFeed", () => {
 
     expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Agent Actions");
-    expect(listAgentActionsMock.mock.calls[0]?.[1]).toEqual(
+    expect(listAgentActionsMock.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ actorScope: "all" }),
     );
 
     await clickTab("Agent Actions");
     await flushReact();
 
-    expect(listAgentActionsMock.mock.calls.at(-1)?.[1]).toEqual(
+    expect(listAgentActionsMock.mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({ actorScope: "agents" }),
     );
     // The privileged scope keeps the attribution filters and the export.
@@ -554,14 +550,14 @@ describe("AuditFeed", () => {
 
   it("pins run and entity scopes into distinct audit requests", async () => {
     await render({ lockedRunId: "run-42" });
-    expect(listAgentActionsMock.mock.calls[0]?.[1]).toEqual(
+    expect(listAgentActionsMock.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ actorScope: "agents", runId: "run-42" }),
     );
     expect(container.textContent).toContain("Scoped to run run-42");
 
     flushSync(() => root.unmount());
     await render({ lockedEntity: { type: "routine", id: "routine-7", label: "Nightly triage" } });
-    expect(listAgentActionsMock.mock.calls.at(-1)?.[1]).toEqual(
+    expect(listAgentActionsMock.mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({ entityType: "routine", entityId: "routine-7" }),
     );
     expect(container.textContent).toContain("Scoped to Nightly triage");
@@ -576,7 +572,7 @@ describe("AuditFeed", () => {
   });
 
   it("loads more when a cursor is returned", async () => {
-    listAgentActionsMock.mockImplementation((_companyId: string, filters: { cursor?: string }) => {
+    listAgentActionsMock.mockImplementation((filters: { cursor?: string }) => {
       if (filters.cursor === "cursor-2") {
         return Promise.resolve({ items: [record({ id: "evt-2", entity: { issue: { id: "i2", identifier: "PAP-2", title: "Second" }, comment: null, document: null } })], nextCursor: null, accessTier: "full" });
       }
@@ -604,7 +600,6 @@ describe("AuditFeed", () => {
     await flushReact();
 
     expect(exportCsvMock).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ actorScope: "all" }),
     );
     expect(createUrl).toHaveBeenCalled();

@@ -1,12 +1,12 @@
 import type { ProjectRepositoryOptions, SkillSourceFilePreview, SkillSourcePreviewRequest, SkillSource, SkillSourceCreateRequest, SkillSourceDiscovery, SkillSourceDiscoveryRequest, SkillSourceRefreshResult, SkillSourceSelectionRequest, SkillSourceScanUpdate, SkillSourceDiscoveryEvent } from '@paperclipai/shared';
 import { api, ApiError, requestResponse } from './client';
-const base = (companyId: string) => `/companies/${companyId}/skill-sources`;
+const base = () => `/skill-sources`;
 export const skillSourcesApi = {
-  list: (companyId: string) => api.get<SkillSource[]>(base(companyId)),
-  repositories: (companyId: string) => api.get<ProjectRepositoryOptions>(`${base(companyId)}/repositories`),
-  discover: (companyId: string, input: SkillSourceDiscoveryRequest) => api.post<SkillSourceDiscovery>(`${base(companyId)}/discover`, input),
-  discoverStream: async (companyId: string, input: SkillSourceDiscoveryRequest, onProgress: (event: SkillSourceScanUpdate) => void, signal?: AbortSignal): Promise<SkillSourceDiscovery> => {
-    const response = await requestResponse(`${base(companyId)}/discover`, {
+  list: () => api.get<SkillSource[]>(base()),
+  repositories: () => api.get<ProjectRepositoryOptions>(`${base()}/repositories`),
+  discover: (input: SkillSourceDiscoveryRequest) => api.post<SkillSourceDiscovery>(`${base()}/discover`, input),
+  discoverStream: async (input: SkillSourceDiscoveryRequest, onProgress: (event: SkillSourceScanUpdate) => void, signal?: AbortSignal): Promise<SkillSourceDiscovery> => {
+    const response = await requestResponse(`${base()}/discover`, {
       method: 'POST', body: JSON.stringify(input), headers: { Accept: 'application/x-ndjson' }, signal,
     });
     if (!response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) throw new Error('Live scan unavailable. Refresh the page and try again.');
@@ -37,9 +37,9 @@ export const skillSourcesApi = {
       reader.releaseLock();
     }
   },
-  preview: (companyId: string, input: SkillSourcePreviewRequest) => api.post<SkillSourceFilePreview>(`${base(companyId)}/preview`, input),
-  create: (companyId: string, input: SkillSourceCreateRequest) => api.post<SkillSourceRefreshResult>(base(companyId), input),
-  select: (companyId: string, id: string, input: SkillSourceSelectionRequest) => api.patch<SkillSourceRefreshResult>(`${base(companyId)}/${id}`, input),
-  refresh: (companyId: string, id: string) => api.post<SkillSourceRefreshResult>(`${base(companyId)}/${id}/refresh`, {}),
-  disconnect: (companyId: string, id: string) => api.delete<SkillSource>(`${base(companyId)}/${id}`),
+  preview: (input: SkillSourcePreviewRequest) => api.post<SkillSourceFilePreview>(`${base()}/preview`, input),
+  create: (input: SkillSourceCreateRequest) => api.post<SkillSourceRefreshResult>(base(), input),
+  select: (id: string, input: SkillSourceSelectionRequest) => api.patch<SkillSourceRefreshResult>(`${base()}/${id}`, input),
+  refresh: (id: string) => api.post<SkillSourceRefreshResult>(`${base()}/${id}/refresh`, {}),
+  disconnect: (id: string) => api.delete<SkillSource>(`${base()}/${id}`),
 };

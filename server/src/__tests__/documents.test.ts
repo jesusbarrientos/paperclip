@@ -35,7 +35,7 @@ describe("document creation conflicts", () => {
     const db = {
       select: () => ({
         from: () => ({
-          where: () => Promise.resolve([{ id: "issue-1", companyId: "company-1" }]),
+          where: () => Promise.resolve([{ id: "issue-1" }]),
         }),
       }),
       transaction: vi.fn().mockRejectedValue(error),

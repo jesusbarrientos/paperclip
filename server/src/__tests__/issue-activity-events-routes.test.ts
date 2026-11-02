@@ -147,7 +147,7 @@ async function createApp(db: unknown = {}) {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ status: "active", membershipRole: "owner" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -161,7 +161,6 @@ async function createApp(db: unknown = {}) {
 function makeIssue() {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
     status: "todo",
     assigneeAgentId: "22222222-2222-4222-8222-222222222222",
     assigneeUserId: null,
@@ -382,7 +381,6 @@ describe("issue activity event routes", () => {
           },
         },
         "comment": null,
-        "companyId": "company-1",
         "createdByUserId": "local-board",
         "description": null,
         "executionPolicy": null,

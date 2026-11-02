@@ -29,7 +29,8 @@ import { filterResolvedGitHubConnectionsForRun } from "../git-credentials.js";
 
 const MAX_ASSET_FILES = 10_000;
 const MAX_ASSET_BYTES = 64 * 1024 * 1024;
-type RuntimeAgent = { id: string; companyId: string; name: string; adapterType?: string | null; adapterConfig: unknown };
+type RuntimeAgent = { id: string;
+ name: string; adapterType?: string | null; adapterConfig: unknown };
 type AssetFile = { path: string; content: Buffer; mode: number };
 
 const sha256 = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
@@ -149,7 +150,7 @@ export async function materializeAsset(files: AssetFile[]): Promise<NativeRuntim
 
 async function materializeInstructionBundle(db: Db, agent: RuntimeAgent, agentFiles = false) {
   if (agentFiles) {
-    const current = await agentInstructionRevisionService(db).readCommittedForRuntime({ companyId: agent.companyId, agentId: agent.id });
+    const current = await agentInstructionRevisionService(db).readCommittedForRuntime({ agentId: agent.id });
     if (!current) throw new Error("Configured instruction entry is missing");
     const entryPath = safeRelativePath(current.revision.entryFile, "instruction entry path");
     return { entryPath, bundle: await materializeAsset([{ path: entryPath, content: Buffer.from(current.content, "utf8"), mode: 0o444 }]) };
@@ -159,7 +160,7 @@ async function materializeInstructionBundle(db: Db, agent: RuntimeAgent, agentFi
     // The database head remains authoritative when a saved revision could not
     // update its disk projection. Overlay the exact committed snapshot directly;
     // a repair followed by a separate export can race another pending commit.
-    const current = await agentInstructionRevisionService(db).readCommittedForRuntime({ companyId: agent.companyId, agentId: agent.id });
+    const current = await agentInstructionRevisionService(db).readCommittedForRuntime({ agentId: agent.id });
     if (current) {
       exported.entryFile = current.revision.entryFile;
       exported.files[current.revision.entryFile] = current.content;
@@ -184,8 +185,8 @@ async function materializeSelectedSkills(runtimeConfig: Record<string, unknown>,
   }));
 }
 
-export async function resolveNativeRuntimeMcpSnapshot(input: { db: Db; agent: Pick<RuntimeAgent, "id" | "companyId">; runId: string }) {
-  const effective = await toolAccessService(input.db).getEffectiveProfilesForAgent(input.agent.companyId, input.agent.id);
+export async function resolveNativeRuntimeMcpSnapshot(input: { db: Db; agent: Pick<RuntimeAgent, "id">; runId: string }) {
+  const effective = await toolAccessService(input.db).getEffectiveProfilesForAgent(input.agent.id);
   const permitted = new Set([...effective.entries.filter((entry) => entry.effect === "include" && entry.connectionId).map((entry) => entry.connectionId!), ...effective.allowedTools.map((tool) => tool.connectionId)]);
   const hasGitHubConnection = effective.installedConnections.some((connection) => {
     const config = connection.config && typeof connection.config === "object"
@@ -201,7 +202,6 @@ export async function resolveNativeRuntimeMcpSnapshot(input: { db: Db; agent: Pi
       .from(heartbeatRuns)
       .where(and(
         eq(heartbeatRuns.id, input.runId),
-        eq(heartbeatRuns.companyId, input.agent.companyId),
         eq(heartbeatRuns.agentId, input.agent.id),
       ))
       .limit(1)
@@ -211,14 +211,13 @@ export async function resolveNativeRuntimeMcpSnapshot(input: { db: Db; agent: Pi
   const resolvedInstalledConnections = runIdentity?.activeIdentityContextId
     ? effective.installedConnections : await filterResolvedGitHubConnectionsForRun({
     db: input.db,
-    companyId: input.agent.companyId,
     agentId: input.agent.id,
     responsibleUserId: runIdentity?.responsibleUserId ?? null,
     connections: effective.installedConnections,
   });
   // App access is optional runtime context. Keep usable assignments pinned, but
   // do not stop unrelated work because an assigned app needs attention.
-  const githubBotConnectionIds = await githubBotConnectionIdsForRun(input.db, input.agent.companyId, input.agent.id, input.runId);
+  const githubBotConnectionIds = await githubBotConnectionIdsForRun(input.db, input.agent.id, input.runId);
   const availableConnectionIds = new Set(resolvedInstalledConnections.filter((connection) =>
     permitted.has(connection.id)
     && connection.status === "active"

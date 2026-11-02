@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -25,8 +24,6 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let app!: ReturnType<typeof createApp>;
-  let companyId!: string;
-
   const title = "验证中文任务";
   const description = [
     "请用中文回复并保留上下文。",
@@ -54,11 +51,9 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-multilingual-issues-");
     db = createDb(tempDb.connectionString);
-    companyId = randomUUID();
-    app = createApp(companyId);
+    app = createApp();
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Multilingual tenant",
       issuePrefix: "LNG",
       requireBoardApprovalForNewAgents: false,
@@ -90,18 +85,17 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
     };
   }
 
-  function createApp(companyId: string) {
+  function createApp() {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "board",
         userId: "cloud-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
         // cloud_tenant actors are never instance admins — reads flow through
-        // the active company membership seeded in beforeAll.
+        // the active organization membership seeded in beforeAll.
         isInstanceAdmin: false,
       };
       next();
@@ -113,7 +107,7 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
 
   it("creates an issue with multilingual title and description", async () => {
     const createRes = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({
         title,
         description,
@@ -139,7 +133,7 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
   });
 
   it("finds the issue by Chinese search text", async () => {
-    const searchRes = await request(app).get(`/api/companies/${companyId}/issues`).query({ q: "中文" });
+    const searchRes = await request(app).get(`/api/issues`).query({ q: "中文" });
     expect(searchRes.status, JSON.stringify(searchRes.body)).toBe(200);
     expect(searchRes.body.map((issue: { identifier: string }) => issue.identifier)).toContain("LNG-1");
   });

@@ -428,7 +428,7 @@ describe("eval-session budget settlement", () => {
         sessionId: "session-1", revision: 1, providerThreadId: "provider-1", providerSessionId: "provider-1",
         providerModel: { id: model, provider: agent === "grok" ? "xai" : "github" }, status: "idle", activeTurnId: null,
         createdAt: "2026-09-28T19:00:00.000Z", updatedAt: "2026-09-28T19:00:01.000Z",
-        authority: { companyId: "company-1", actorId: "actor-1", taskId: "task-1", runId: "run-1", sessionId: "session-1", scenarioId: "budget-test" },
+        authority: { actorId: "actor-1", taskId: "task-1", runId: "run-1", sessionId: "session-1", scenarioId: "budget-test" },
         config: { provider: "acpx", acpxAgent: agent, driver: "acpx_runtime", seedState: state, workingDirectory: workspace, scenario: { id: "budget-test" }, capabilities: [], explicitClaims: [], turnTimeoutMs: 1000 },
         mockState: state, process: null, networkEvidence: { realPaperclipRequests: 0, childPaperclipEnvironmentKeys: [] },
         transcript: [{ id: "assistant-1", role: "assistant", text: "Retained actual provider response", turnId: "turn-1", at: "2026-09-28T19:00:01.000Z" }],

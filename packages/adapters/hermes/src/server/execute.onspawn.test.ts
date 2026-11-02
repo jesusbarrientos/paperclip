@@ -48,7 +48,6 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
       runId: "test-run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Hermes",
         adapterType: "hermes_local",
         adapterConfig: {},

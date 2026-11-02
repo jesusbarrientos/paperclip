@@ -3,7 +3,6 @@
   "fixtureName": "Semantic tool denial and redaction",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_semantic_denied",
     "issueId": "issue_semantic_denied",
     "runId": "run_semantic_denied",
     "environmentLeaseId": "lease_semantic_denied",

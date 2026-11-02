@@ -3,10 +3,8 @@ import {
   isCloudPinnedPrimaryCompany,
   notifyCloudOfPrimaryCompanyLifecycleChange,
 } from "../services/cloud-lifecycle-sync.js";
-import { cloudTenantPrimaryCompanyId } from "../services/cloud-instance.js";
 
 const STACK_ID = "stack-lifecycle-sync";
-const PRIMARY_ID = cloudTenantPrimaryCompanyId(STACK_ID);
 
 const CLOUD_ENV = {
   PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN: "tenant-token-test",
@@ -15,18 +13,17 @@ const CLOUD_ENV = {
 } as NodeJS.ProcessEnv;
 
 describe("isCloudPinnedPrimaryCompany", () => {
-  it("matches only the derived primary company of a cloud-managed instance", () => {
-    expect(isCloudPinnedPrimaryCompany(PRIMARY_ID, CLOUD_ENV)).toBe(true);
-    expect(isCloudPinnedPrimaryCompany("some-other-company", CLOUD_ENV)).toBe(false);
+  it("matches only a cloud-managed instance", () => {
+    expect(isCloudPinnedPrimaryCompany(CLOUD_ENV)).toBe(true);
     // Self-hosted: no cloud signal, never primary.
-    expect(isCloudPinnedPrimaryCompany(PRIMARY_ID, {} as NodeJS.ProcessEnv)).toBe(false);
+    expect(isCloudPinnedPrimaryCompany({} as NodeJS.ProcessEnv)).toBe(false);
   });
 });
 
 describe("notifyCloudOfPrimaryCompanyLifecycleChange", () => {
   it("rings the harness doorbell with the tenant token and stack id", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ outcome: "archived" }), { status: 200 }));
-    await notifyCloudOfPrimaryCompanyLifecycleChange(PRIMARY_ID, {
+    await notifyCloudOfPrimaryCompanyLifecycleChange({
       env: CLOUD_ENV,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -39,17 +36,13 @@ describe("notifyCloudOfPrimaryCompanyLifecycleChange", () => {
     expect(headers.get("x-paperclip-cloud-stack-id")).toBe(STACK_ID);
   });
 
-  it("is a silent no-op for non-primary companies and incomplete cloud metadata", async () => {
+  it("is a silent no-op for incomplete cloud metadata", async () => {
     const fetchImpl = vi.fn();
-    await notifyCloudOfPrimaryCompanyLifecycleChange("some-other-company", {
-      env: CLOUD_ENV,
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-    });
-    await notifyCloudOfPrimaryCompanyLifecycleChange(PRIMARY_ID, {
+    await notifyCloudOfPrimaryCompanyLifecycleChange({
       env: { ...CLOUD_ENV, PAPERCLIP_CLOUD_API_ORIGIN: undefined } as NodeJS.ProcessEnv,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    await notifyCloudOfPrimaryCompanyLifecycleChange(PRIMARY_ID, {
+    await notifyCloudOfPrimaryCompanyLifecycleChange({
       env: {} as NodeJS.ProcessEnv,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -62,7 +55,7 @@ describe("notifyCloudOfPrimaryCompanyLifecycleChange", () => {
     });
     const sleeps: number[] = [];
     await expect(
-      notifyCloudOfPrimaryCompanyLifecycleChange(PRIMARY_ID, {
+      notifyCloudOfPrimaryCompanyLifecycleChange({
         env: CLOUD_ENV,
         fetchImpl: fetchImpl as unknown as typeof fetch,
         sleep: async (ms) => {
@@ -78,7 +71,7 @@ describe("notifyCloudOfPrimaryCompanyLifecycleChange", () => {
     // Any answer means the harness heard the ring; it does its own
     // verified read-back, so a 4xx outcome is final.
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: "stack_not_found" }), { status: 404 }));
-    await notifyCloudOfPrimaryCompanyLifecycleChange(PRIMARY_ID, {
+    await notifyCloudOfPrimaryCompanyLifecycleChange({
       env: CLOUD_ENV,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       sleep: async () => {

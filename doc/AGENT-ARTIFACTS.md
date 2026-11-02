@@ -36,12 +36,11 @@ environment:
 
 - `PAPERCLIP_API_URL`
 - `PAPERCLIP_API_KEY`
-- `PAPERCLIP_COMPANY_ID`
 - `PAPERCLIP_TASK_ID`
 - `PAPERCLIP_RUN_ID`
 
 It uploads the file to
-`POST /api/companies/{companyId}/issues/{issueId}/attachments` and creates an
+`POST /api/issues/{issueId}/attachments` and creates an
 artifact work product on `POST /api/issues/{issueId}/work-products` by default.
 The command prints issue-safe markdown links for the final task comment.
 
@@ -92,7 +91,7 @@ do not store host-local absolute paths as workspace references.
 
 Workspace file links resolve only inside registered Paperclip workspaces. The
 default target is the current issue's execution workspace first, then its
-project workspace. A link may target another same-company project workspace only
+project workspace. A link may target another project workspace only
 when it carries both that `projectId` and `workspaceId`. Paperclip does not
 resolve arbitrary machine-wide filesystem paths, absolute host paths, home
 paths, or relative paths that escape the selected workspace.
@@ -153,7 +152,7 @@ If the helper is unavailable, use the same API shape:
 
 ```sh
 curl -sS -X POST \
-  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/issues/$PAPERCLIP_TASK_ID/attachments" \
+  "$PAPERCLIP_API_URL/api/issues/$PAPERCLIP_TASK_ID/attachments" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" \
   -F 'file=@"dist/demo.mp4";type=video/mp4'
@@ -175,7 +174,7 @@ uploaded `attachmentId`. The server canonicalizes `contentType`, `byteSize`,
 `contentPath`, `openPath`, `downloadPath`, and `originalFilename`.
 
 The optional `executionWorkspaceId` on work-product create and update requests
-must identify an execution workspace in the same company. A project workspace
+must identify an existing execution workspace. A project workspace
 ID is a different identifier and cannot be used here. Omit the field when no
 execution workspace is available, or send `null` to clear an existing link.
 Invalid references return `422` without changing the work product or the current
@@ -186,7 +185,7 @@ primary product.
 The file-delivery integration suite runs the real helper through queue and
 HTTP/2 gateways against a disposable API, database, and storage. It also tests
 native registration with generic API tools disabled, duplicate retries, Unicode
-filenames, company isolation, and downloads after deleting the workspace.
+filenames, access checks, and downloads after deleting the workspace.
 
 ```sh
 pnpm exec vitest run server/src/__tests__/file-delivery-bridges.test.ts

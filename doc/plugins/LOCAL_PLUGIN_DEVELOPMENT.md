@@ -120,7 +120,7 @@ paperclipai plugin inspect acme.hello-plugin
 
 The five-step loop above assumes one Paperclip on `http://127.0.0.1:3100`. That breaks down the moment your plugin depends on **server code that only exists on a branch**. Examples:
 
-- a new scoped API route the plugin calls (e.g. a `GET /api/companies/:companyId/...` endpoint the branch adds),
+- a new scoped API route the plugin calls (e.g. a `GET /api/...` endpoint the branch adds),
 - a new field in an existing response the plugin reads,
 - a new managed-resource capability the worker reconciles.
 
@@ -167,7 +167,7 @@ When the behavior you care about is a branch-only route, hit it directly against
 
 ```bash
 # Same base URL you installed into; expect JSON, not "API route not found".
-curl -s "http://127.0.0.1:3120/api/companies/<companyId>/<branch-route>" \
+curl -s "http://127.0.0.1:3120/api/<branch-route>" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" | head
 ```
 

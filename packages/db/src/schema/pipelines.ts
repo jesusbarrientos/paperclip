@@ -1,14 +1,12 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { projects } from "./projects.js";
 
 export const pipelines = pgTable(
   "pipelines",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     key: text("key").notNull(),
     name: text("name").notNull(),
@@ -21,9 +19,8 @@ export const pipelines = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyKeyUq: uniqueIndex("pipelines_company_key_uq").on(table.companyId, table.key),
-    companyIdx: index("pipelines_company_idx").on(table.companyId),
-    companyProjectIdx: index("pipelines_company_project_idx").on(table.companyId, table.projectId),
+    companyKeyUq: uniqueIndex("pipelines_company_key_uq").on(table.key),
+    companyProjectIdx: index("pipelines_company_project_idx").on(table.projectId),
   }),
 );
 

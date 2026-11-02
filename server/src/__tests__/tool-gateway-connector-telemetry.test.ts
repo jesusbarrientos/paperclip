@@ -102,11 +102,10 @@ async function createCompany(db: Db) {
     .then((rows) => rows[0]!);
 }
 
-async function createAgent(db: Db, companyId: string) {
+async function createAgent(db: Db) {
   return db
     .insert(agents)
     .values({
-      companyId,
       name: `Agent ${randomUUID()}`,
       role: "engineer",
       adapterType: "process",
@@ -118,16 +117,15 @@ async function createAgent(db: Db, companyId: string) {
     .then((rows) => rows[0]!);
 }
 
-async function createIssueAndRun(db: Db, companyId: string, agentId: string) {
+async function createIssueAndRun(db: Db, agentId: string) {
   const project = await db
     .insert(projects)
-    .values({ companyId, name: `Project ${randomUUID()}` })
+    .values({ name: `Project ${randomUUID()}` })
     .returning()
     .then((rows) => rows[0]!);
   const issue = await db
     .insert(issues)
     .values({
-      companyId,
       projectId: project.id,
       title: `Telemetry issue ${randomUUID()}`,
       status: "in_progress",
@@ -138,7 +136,6 @@ async function createIssueAndRun(db: Db, companyId: string, agentId: string) {
   const run = await db
     .insert(heartbeatRuns)
     .values({
-      companyId,
       agentId,
       invocationSource: "assignment",
       status: "running",
@@ -149,11 +146,10 @@ async function createIssueAndRun(db: Db, companyId: string, agentId: string) {
   return { issue, run };
 }
 
-async function allowAllToolsForAgent(db: Db, companyId: string, agentId: string) {
+async function allowAllToolsForAgent(db: Db, agentId: string) {
   const profile = await db
     .insert(toolProfiles)
     .values({
-      companyId,
       profileKey: `telemetry-all-${randomUUID()}`,
       name: `Telemetry profile ${randomUUID()}`,
       defaultAction: "allow",
@@ -161,18 +157,16 @@ async function allowAllToolsForAgent(db: Db, companyId: string, agentId: string)
     .returning()
     .then((rows) => rows[0]!);
   await db.insert(toolProfileBindings).values({
-    companyId,
     profileId: profile.id,
     targetType: "agent",
     targetId: agentId,
   });
 }
 
-async function createRemoteMcpTool(db: Db, companyId: string) {
+async function createRemoteMcpTool(db: Db) {
   const [application] = await db
     .insert(toolApplications)
     .values({
-      companyId,
       applicationKey: `telemetry-app-${randomUUID().slice(0, 8)}`,
       name: `Remote app ${randomUUID()}`,
       type: "mcp_http",
@@ -186,7 +180,6 @@ async function createRemoteMcpTool(db: Db, companyId: string) {
   const [connection] = await db
     .insert(toolConnections)
     .values({
-      companyId,
       applicationId: application!.id,
       name: `Remote connection ${randomUUID()}`,
       uid: `test/${randomUUID()}`,
@@ -201,7 +194,6 @@ async function createRemoteMcpTool(db: Db, companyId: string) {
     })
     .returning();
   await db.insert(connectionGrants).values({
-    companyId,
     connectionId: connection!.id,
     kind: "organization",
     credentialSecretRefs: [],
@@ -211,7 +203,6 @@ async function createRemoteMcpTool(db: Db, companyId: string) {
   const [catalogEntry] = await db
     .insert(toolCatalogEntries)
     .values({
-      companyId,
       applicationId: application!.id,
       connectionId: connection!.id,
       entryKind: "tool",
@@ -297,17 +288,16 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
 
   async function fixture(options: Parameters<typeof createToolGatewayService>[1] = {}) {
     const company = await createCompany(db);
-    const agent = await createAgent(db, company.id);
-    const { run } = await createIssueAndRun(db, company.id, agent.id);
-    const remoteTool = await createRemoteMcpTool(db, company.id);
-    await allowAllToolsForAgent(db, company.id, agent.id);
+    const agent = await createAgent(db);
+    const { run } = await createIssueAndRun(db, agent.id);
+    const remoteTool = await createRemoteMcpTool(db);
+    await allowAllToolsForAgent(db, agent.id);
     const gateway = createToolGatewayService(db, {
       toolActionSigningSecret: SIGNING_SECRET,
       remoteHttpRequest: async (_url, init) => mcpSuccessResponse(init),
       ...options,
     });
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -382,7 +372,6 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
   it("emits one denied event for a policy block and one rate_limited event past the limit", async () => {
     const f = await fixture();
     await db.insert(toolPolicies).values({
-      companyId: f.company.id,
       name: "Block telemetry tool",
       policyType: "block",
       selectors: { connectionId: f.remoteTool.connection.id },
@@ -403,7 +392,6 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
     track.mockClear();
     await db.delete(toolPolicies);
     await db.insert(toolPolicies).values({
-      companyId: f.company.id,
       name: "One call only",
       policyType: "rate_limit",
       selectors: { connectionId: f.remoteTool.connection.id },
@@ -435,7 +423,6 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
   it("approval flow: pending emits nothing, decline emits denied, approve emits succeeded", async () => {
     const f = await fixture();
     await db.insert(toolPolicies).values({
-      companyId: f.company.id,
       name: "Review telemetry tool",
       policyType: "require_approval",
       selectors: { connectionId: f.remoteTool.connection.id },
@@ -464,7 +451,6 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
 
     const [pendingRequest] = await db.select().from(toolActionRequests);
     await f.gateway.declineActionRequest({
-      companyId: f.company.id,
       actionRequestId: pendingRequest!.id,
       actor: { userId: "board" },
     });
@@ -491,7 +477,6 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
       .where(eq(toolActionRequests.status, "pending"))
       .then((rows) => rows[0]!);
     await f.gateway.approveActionRequest({
-      companyId: f.company.id,
       actionRequestId: approvable.id,
       actor: { userId: "board" },
     });
@@ -509,7 +494,6 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
       membershipRole: "member",
     }).onConflictDoUpdate(membershipUpsert);
     const testCall = await f.gateway.executeTestCall({
-      companyId: f.company.id,
       connectionId: f.remoteTool.connection.id,
       agentId: f.agent.id,
       userId: "board-user",

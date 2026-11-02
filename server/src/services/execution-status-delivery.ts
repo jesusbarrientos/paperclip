@@ -14,7 +14,6 @@ export async function deliverExecutionStatuses(
   const rows = await db
     .select({
       id: heartbeatRuns.id,
-      companyId: heartbeatRuns.companyId,
       agentId: heartbeatRuns.agentId,
       issueId: issues.id,
       status: heartbeatRuns.status,
@@ -28,14 +27,11 @@ export async function deliverExecutionStatuses(
     // context values cannot cause a UUID cast error or escape onto the wire.
     .leftJoin(
       issues,
-      and(
-        eq(issues.companyId, heartbeatRuns.companyId),
-        sql`${issues.id}::text = coalesce(
+      sql`${issues.id}::text = coalesce(
         ${heartbeatRuns.nativeIssueId}::text,
         case when jsonb_typeof(${heartbeatRuns.contextSnapshot} -> 'issueId') = 'string'
           then ${heartbeatRuns.contextSnapshot} ->> 'issueId' end
       )`,
-      ),
     )
     .where(isNotNull(heartbeatRuns.executionStatusDeliveryId))
     .limit(100);
@@ -43,7 +39,6 @@ export async function deliverExecutionStatuses(
   for (const run of rows) {
     try {
       (options.publish ?? publishLiveEvent)({
-        companyId: run.companyId,
         type: "heartbeat.run.status",
         payload: {
           // This retryable broadcast only invalidates caches. Provider output,
@@ -63,7 +58,6 @@ export async function deliverExecutionStatuses(
         .set({ executionStatusDeliveryId: null })
         .where(
           and(
-            eq(heartbeatRuns.companyId, run.companyId),
             eq(heartbeatRuns.id, run.id),
             eq(
               heartbeatRuns.executionStatusDeliveryId,

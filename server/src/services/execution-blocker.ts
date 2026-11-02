@@ -18,16 +18,13 @@ export function executionBlockerPredicate() {
   );
 }
 
-export async function getExecutionBlocker(db: Db, companyId: string, issueId: string, options?: { conversationResetCommentId?: string | null }): Promise<ExecutionBlocker | null> {
+export async function getExecutionBlocker(db: Db, issueId: string, options?: { conversationResetCommentId?: string | null }): Promise<ExecutionBlocker | null> {
   const [conversation] = await db.select({ agentId: issues.conversationAgentId,
     boundaryId: issues.conversationBoundaryCommentId, status: issues.status,
-    assigneeAgentId: issues.assigneeAgentId }).from(issues).where(and(
-    eq(issues.companyId, companyId), eq(issues.id, issueId),
-  )).limit(1);
+    assigneeAgentId: issues.assigneeAgentId }).from(issues).where(eq(issues.id, issueId)).limit(1);
   // Resetting model context cannot make an unsafe workspace safe. This hold
   // survives conversation boundaries until the existing repair/reconciliation path clears it.
   const [restoreHold] = await db.select().from(issueRecoveryActions).where(and(
-    eq(issueRecoveryActions.companyId, companyId),
     eq(issueRecoveryActions.sourceIssueId, issueId),
     executionBlockerPredicate(),
     sql`${issueRecoveryActions.evidence}->>'workspaceRestoreFailure' = 'restore_unsafe_archive'`,
@@ -36,21 +33,20 @@ export async function getExecutionBlocker(db: Db, companyId: string, issueId: st
   // The normal issue execution lock still serializes it behind any active turn.
   if (!restoreHold && conversation?.agentId && options?.conversationResetCommentId) {
     const [command] = await db.select().from(issueComments).where(and(
-      eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId),
+      eq(issueComments.issueId, issueId),
       eq(issueComments.id, options.conversationResetCommentId),
     )).limit(1);
     if (command?.authorUserId && !command.deletedAt && command.body.trim() === "/new") return null;
   }
   const [boundary] = conversation?.agentId && conversation.boundaryId
     ? await db.select({ createdAt: issueComments.createdAt }).from(issueComments).where(and(
-      eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId),
+      eq(issueComments.issueId, issueId),
       eq(issueComments.id, conversation.boundaryId),
     )).limit(1) : [];
 
-  const ownership = await getConversationOwnershipBlocker(db, companyId, issueId);
+  const ownership = await getConversationOwnershipBlocker(db, issueId);
   if (ownership) return { ...ownership, recoveryActionId: null };
   const [action] = restoreHold ? [restoreHold] : await db.select().from(issueRecoveryActions).where(and(
-    eq(issueRecoveryActions.companyId, companyId),
     eq(issueRecoveryActions.sourceIssueId, issueId),
     executionBlockerPredicate(),
     boundary ? gt(issueRecoveryActions.createdAt, boundary.createdAt) : undefined,
@@ -58,11 +54,9 @@ export async function getExecutionBlocker(db: Db, companyId: string, issueId: st
   if (!action) return null;
   const parsedRunId = z.string().guid().safeParse(action.evidence.runId ?? action.evidence.sourceRunId);
   const runId = parsedRunId.success ? parsedRunId.data : null;
-  const [run] = runId ? await db.select().from(heartbeatRuns).where(and(
-    eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId),
-  )).limit(1) : [];
+  const [run] = runId ? await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId)).limit(1) : [];
   const queue = await db.select({ payload: agentWakeupRequests.payload }).from(agentWakeupRequests).where(and(
-    eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.status, "deferred_issue_execution"),
+    eq(agentWakeupRequests.status, "deferred_issue_execution"),
     sql`${agentWakeupRequests.payload}->>'issueId' = ${issueId}`,
   ));
   const savedIds = [...new Set(queue.flatMap(entry => {
@@ -71,10 +65,9 @@ export async function getExecutionBlocker(db: Db, companyId: string, issueId: st
       .filter((id): id is string => z.string().guid().safeParse(id).success);
   }))];
   const saved = savedIds.length ? await db.select({ id: issueComments.id }).from(issueComments).where(and(
-    eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId),
+    eq(issueComments.issueId, issueId),
     inArray(issueComments.id, savedIds), eq(issueComments.authorType, "user"), sql`${issueComments.deletedAt} is null`,
-    sql`not exists (select 1 from ${heartbeatRuns} consumed where consumed.company_id = ${companyId}
-      and consumed.context_snapshot->>'issueId' = ${issueId}
+    sql`not exists (select 1 from ${heartbeatRuns} consumed where consumed.context_snapshot->>'issueId' = ${issueId}
       and not (consumed.status = 'cancelled' and consumed.started_at is null)
       and (consumed.context_snapshot->>'wakeCommentId' = ${issueComments.id}::text
         or consumed.context_snapshot->'wakeCommentIds' @> jsonb_build_array(${issueComments.id}::text)))`,
@@ -92,13 +85,7 @@ export async function getExecutionBlocker(db: Db, companyId: string, issueId: st
   const [chatBinding] = eligibleContinuation || canRetry ? await db.select({
     state: chatConversations.state, endpointStatus: chatEndpoints.status,
     connectionStatus: toolConnections.status, connectionEnabled: toolConnections.enabled,
-  }).from(chatConversations).leftJoin(chatEndpoints, and(
-    eq(chatEndpoints.companyId, companyId), eq(chatEndpoints.id, chatConversations.endpointId),
-  )).leftJoin(toolConnections, and(
-    eq(toolConnections.companyId, companyId), eq(toolConnections.id, chatEndpoints.connectionId),
-  )).where(and(
-    eq(chatConversations.companyId, companyId), eq(chatConversations.issueId, issueId),
-  )).limit(1) : [];
+  }).from(chatConversations).leftJoin(chatEndpoints, eq(chatEndpoints.id, chatConversations.endpointId)).leftJoin(toolConnections, eq(toolConnections.id, chatEndpoints.connectionId)).where(eq(chatConversations.issueId, issueId)).limit(1) : [];
   let nextAction = action.nextAction;
   if (canRetry && !eligibleContinuation) nextAction += " Try again or send a new message to continue once the previous execution has stopped.";
   if (chatBinding) {

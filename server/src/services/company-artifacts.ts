@@ -159,11 +159,11 @@ function attachmentContentPath(attachmentId: string) {
 
 async function readTextAttachmentPreview(
   storage: StorageService | undefined,
-  input: { companyId: string; objectKey: string; byteSize: number },
+  input: { objectKey: string; byteSize: number },
 ) {
   if (!storage || input.byteSize <= 0) return null;
   try {
-    const object = await storage.getObject(input.companyId, input.objectKey, {
+    const object = await storage.getObject(input.objectKey, {
       range: { start: 0, end: Math.min(input.byteSize, TEXT_PREVIEW_BYTES) - 1 },
     });
     const body = await buffer(object.stream);
@@ -195,7 +195,7 @@ function pageByCursor<T extends { id: string; updatedAt: string }>(
   return { page, nextCursor };
 }
 
-async function loadIssueGroupingRows(db: Db, companyId: string, seedIssueIds: Iterable<string>) {
+async function loadIssueGroupingRows(db: Db, seedIssueIds: Iterable<string>) {
   const rowsById = new Map<string, IssueGroupingRow>();
   let pending = [...new Set(seedIssueIds)];
 
@@ -209,7 +209,7 @@ async function loadIssueGroupingRows(db: Db, companyId: string, seedIssueIds: It
         updatedAt: issues.updatedAt,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), inArray(issues.id, pending)));
+      .where(inArray(issues.id, pending));
 
     const nextPending = new Set<string>();
     for (const row of rows) {
@@ -319,7 +319,6 @@ function buildArtifactGroups(input: {
 export function companyArtifactsService(db: Db, storage?: StorageService) {
   return {
     list: async (
-      companyId: string,
       rawQuery: Partial<CompanyArtifactsQuery> = {},
       options: { issueConditions?: SQL[]; userId?: string } = {},
     ): Promise<CompanyArtifactsResponse> => {
@@ -329,7 +328,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
       const company = await db
         .select({ id: companies.id, issuePrefix: companies.issuePrefix })
         .from(companies)
-        .where(eq(companies.id, companyId))
+        .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!company) throw notFound("Company not found");
 
@@ -354,12 +353,9 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const updatedAgent = alias(agents, "document_updated_agent");
         const documentArtifactId = sql<string>`concat('document:', ${documents.id})`;
         const documentConditions: SQL[] = [
-          eq(issueDocuments.companyId, companyId),
-          eq(documents.companyId, companyId),
           ...issueConditions,
           ...(query.starred
             ? [
-              eq(documentMemberships.companyId, companyId),
               eq(documentMemberships.userId, options.userId!),
               isNotNull(documentMemberships.starredAt),
             ]
@@ -405,45 +401,33 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
           .from(issueDocuments)
           .innerJoin(
             documents,
-            and(
-              eq(issueDocuments.documentId, documents.id),
-              eq(documents.companyId, issueDocuments.companyId),
-            ),
+            eq(issueDocuments.documentId, documents.id),
           )
           .leftJoin(
             documentMemberships,
             and(
               eq(documentMemberships.documentId, documents.id),
-              eq(documentMemberships.companyId, documents.companyId),
               eq(documentMemberships.userId, options.userId ?? ""),
             ),
           )
           .innerJoin(
             issues,
-            and(
-              eq(issueDocuments.issueId, issues.id),
-              eq(issues.companyId, issueDocuments.companyId),
-            ),
+            eq(issueDocuments.issueId, issues.id),
           )
           .leftJoin(
             projects,
-            and(
-              eq(issues.projectId, projects.id),
-              eq(projects.companyId, issues.companyId),
-            ),
+            eq(issues.projectId, projects.id),
           )
           .leftJoin(
             createdAgent,
             and(
               eq(documents.createdByAgentId, createdAgent.id),
-              eq(createdAgent.companyId, documents.companyId),
             ),
           )
           .leftJoin(
             updatedAgent,
             and(
               eq(documents.updatedByAgentId, updatedAgent.id),
-              eq(updatedAgent.companyId, documents.companyId),
             ),
           )
           .where(and(...documentConditions))
@@ -479,7 +463,6 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const workProductArtifactId = sql<string>`concat('work_product:', ${issueWorkProducts.id})`;
         const workProductContentType = sql<string>`coalesce(${issueWorkProducts.metadata}->>'contentType', '')`;
         const workProductBaseConditions: SQL[] = [
-          eq(issueWorkProducts.companyId, companyId),
           eq(issueWorkProducts.type, "artifact"),
           eq(issueWorkProducts.provider, "paperclip"),
           ...issueConditions,
@@ -537,30 +520,20 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
           .from(issueWorkProducts)
           .innerJoin(
             issues,
-            and(
-              eq(issueWorkProducts.issueId, issues.id),
-              eq(issues.companyId, issueWorkProducts.companyId),
-            ),
+            eq(issueWorkProducts.issueId, issues.id),
           )
           .leftJoin(
             projects,
-            and(
-              eq(issues.projectId, projects.id),
-              eq(projects.companyId, issueWorkProducts.companyId),
-            ),
+            eq(issues.projectId, projects.id),
           )
           .leftJoin(
             heartbeatRuns,
-            and(
-              eq(issueWorkProducts.createdByRunId, heartbeatRuns.id),
-              eq(heartbeatRuns.companyId, issueWorkProducts.companyId),
-            ),
+            eq(issueWorkProducts.createdByRunId, heartbeatRuns.id),
           )
           .leftJoin(
             workProductAgent,
             and(
               eq(heartbeatRuns.agentId, workProductAgent.id),
-              eq(workProductAgent.companyId, issueWorkProducts.companyId),
             ),
           )
           .where(and(...workProductConditions))
@@ -574,10 +547,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
           .from(issueWorkProducts)
           .innerJoin(
             issues,
-            and(
-              eq(issueWorkProducts.issueId, issues.id),
-              eq(issues.companyId, issueWorkProducts.companyId),
-            ),
+            eq(issueWorkProducts.issueId, issues.id),
           )
           .where(and(...workProductBaseConditions, sql`${issueWorkProducts.metadata}->>'attachmentId' IS NOT NULL`))
           .limit(sourceFetchLimit);
@@ -619,7 +589,6 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const attachmentAgent = alias(agents, "attachment_agent");
         const attachmentArtifactId = sql<string>`concat('attachment:', ${issueAttachments.id})`;
         const attachmentConditions: SQL[] = [
-          eq(issueAttachments.companyId, companyId),
           isNull(issueAttachments.issueCommentId),
           isNotNull(assets.createdByAgentId),
           ...issueConditions,
@@ -645,7 +614,6 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
           .select({
             artifactId: attachmentArtifactId,
             attachmentId: issueAttachments.id,
-            companyId: issueAttachments.companyId,
             issueId: issues.id,
             issueIdentifier: issues.identifier,
             issueTitle: issues.title,
@@ -662,30 +630,20 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
           .from(issueAttachments)
           .innerJoin(
             assets,
-            and(
-              eq(issueAttachments.assetId, assets.id),
-              eq(assets.companyId, issueAttachments.companyId),
-            ),
+            eq(issueAttachments.assetId, assets.id),
           )
           .innerJoin(
             issues,
-            and(
-              eq(issueAttachments.issueId, issues.id),
-              eq(issues.companyId, issueAttachments.companyId),
-            ),
+            eq(issueAttachments.issueId, issues.id),
           )
           .leftJoin(
             projects,
-            and(
-              eq(issues.projectId, projects.id),
-              eq(projects.companyId, issues.companyId),
-            ),
+            eq(issues.projectId, projects.id),
           )
           .leftJoin(
             attachmentAgent,
             and(
               eq(assets.createdByAgentId, attachmentAgent.id),
-              eq(attachmentAgent.companyId, assets.companyId),
             ),
           )
           .where(and(...attachmentConditions))
@@ -704,7 +662,6 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
             title: row.originalFilename ?? "Attachment",
             previewText: mediaKind === "text"
               ? await readTextAttachmentPreview(storage, {
-                companyId: row.companyId,
                 objectKey: row.objectKey,
                 byteSize: row.byteSize,
               })
@@ -742,7 +699,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
 
       const issueSeedIds = new Set(artifacts.map((artifact) => artifact.issue.id));
       if (query.groupIssueId) issueSeedIds.add(query.groupIssueId);
-      const issueRows = await loadIssueGroupingRows(db, companyId, issueSeedIds);
+      const issueRows = await loadIssueGroupingRows(db, issueSeedIds);
       const groups = buildArtifactGroups({
         artifacts: sorted,
         companyPrefix: company.issuePrefix,

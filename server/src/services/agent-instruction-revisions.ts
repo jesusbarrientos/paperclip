@@ -42,7 +42,7 @@ type PluginResetActor = { type: "plugin"; pluginId: string; pluginKey: string; a
 type RevisionActor = AuthorizationActor | PluginResetActor;
 const { contentBase64: _contentColumn, ...revisionMetadataColumns } =
   getTableColumns(revisions);
-export type InstructionTarget = { companyId: string; agentId: string };
+export type InstructionTarget = { agentId: string };
 export type InstructionCommitInput = InstructionTarget & {
   entryFile: string;
   content: string | Uint8Array;
@@ -66,14 +66,12 @@ function snapshot(row: Revision): AgentInstructionSnapshot {
 }
 function owner(target: InstructionTarget, entryFile: string) {
   return and(
-    eq(revisions.companyId, target.companyId),
     eq(revisions.agentId, target.agentId),
     eq(revisions.entryFile, entryFile),
   );
 }
 function headOwner(target: InstructionTarget, entryFile: string) {
   return and(
-    eq(heads.companyId, target.companyId),
     eq(heads.agentId, target.agentId),
     eq(heads.entryFile, entryFile),
   );
@@ -85,16 +83,11 @@ export function agentInstructionRevisionService(db: Db) {
     target: InstructionTarget,
     actor?: AuthorizationActor,
   ) {
-    if (actor?.type === "agent" && actor.companyId !== target.companyId)
-      throw notFound("Agent not found");
     const [agent] = await tx
       .select()
       .from(agents)
       .where(
-        and(
-          eq(agents.id, target.agentId),
-          eq(agents.companyId, target.companyId),
-        ),
+        eq(agents.id, target.agentId),
       )
       .for("update");
     if (!agent) throw notFound("Agent not found");
@@ -113,15 +106,14 @@ export function agentInstructionRevisionService(db: Db) {
     actor: AuthorizationActor,
     target: InstructionTarget,
   ) {
-    return authorizeInstructionRead(tx, actor, { companyId: target.companyId, id: target.agentId });
+    return authorizeInstructionRead(tx, actor, { id: target.agentId });
   }
   // Trusted host-only reset authority. No HTTP or agent tool accepts this actor.
   async function authorizePluginReset(tx: Tx, actor: PluginResetActor, target: InstructionTarget, agent: typeof agents.$inferSelect) {
     const [plugin] = await tx.select().from(plugins).where(and(eq(plugins.id, actor.pluginId), eq(plugins.pluginKey, actor.pluginKey)));
     const marker = agent.metadata?.paperclipManagedResource as Record<string, unknown> | undefined;
     const [binding] = await tx.select().from(pluginManagedResources).where(and(
-      eq(pluginManagedResources.pluginId, actor.pluginId), eq(pluginManagedResources.pluginKey, actor.pluginKey),
-      eq(pluginManagedResources.companyId, target.companyId), eq(pluginManagedResources.resourceKind, "agent"),
+      eq(pluginManagedResources.pluginId, actor.pluginId), eq(pluginManagedResources.pluginKey, actor.pluginKey), eq(pluginManagedResources.resourceKind, "agent"),
       eq(pluginManagedResources.resourceKey, actor.agentKey), eq(pluginManagedResources.resourceId, target.agentId),
     ));
     if (!plugin || plugin.status !== "ready" || !plugin.manifestJson.capabilities.includes("agents.managed")
@@ -290,8 +282,7 @@ export function agentInstructionRevisionService(db: Db) {
       }
       await materializeInstructionBytes(state.root, state.entryFile, candidate);
       const row = currentRow(input, input.entryFile, candidate, bound);
-      await tx.insert(activityLog).values({ companyId: input.companyId,
-        actorType: bound.type === "plugin" ? "plugin" : bound.type === "board" ? "user" : "agent",
+      await tx.insert(activityLog).values({ actorType: bound.type === "plugin" ? "plugin" : bound.type === "board" ? "user" : "agent",
         actorId: (bound.type === "plugin" ? bound.pluginId : bound.type === "board" ? bound.userId : bound.agentId)!,
         agentId: bound.type === "agent" ? bound.agentId : null, runId: row.sourceRunId,
         responsibleUserId: row.responsibleUserId, action: "agent.files_updated", entityType: "agent", entityId: input.agentId,

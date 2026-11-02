@@ -34,7 +34,6 @@ export type ProviderConnection = {
   applyStoredClaudeLogin?: boolean;
 };
 export function AgentProviderConnection({
-  companyId,
   adapterType,
   environmentId,
   canLogin,
@@ -45,7 +44,6 @@ export function AgentProviderConnection({
   testError,
   managedAccount,
 }: {
-  companyId: string;
   adapterType: "claude_local" | "codex_local" | "grok_local";
   environmentId: string | null;
   canLogin: boolean;
@@ -94,7 +92,7 @@ export function AgentProviderConnection({
   const envKey =
     adapterType === "claude_local" ? "ANTHROPIC_API_KEY" : adapterType === "grok_local" ? "XAI_API_KEY" : "OPENAI_API_KEY";
   const aiProvider = adapterType === "claude_local" ? "anthropic" : adapterType === "grok_local" ? "xai" : "openai";
-  const availableKeys = useSavedProviderKeys(companyId, envKey);
+  const availableKeys = useSavedProviderKeys(envKey);
   // Add/reconnect creates the requested account, never copies a saved account's
   // credential or silently changes its ownership. Agent setup retains reuse.
   const savedKeys = managedAccount
@@ -133,20 +131,18 @@ export function AgentProviderConnection({
       ? managedAccount.intent.name
       : managedAccount.nameForMethod?.(authMethod) ?? managedAccount.intent.name,
   } : undefined;
-  const localLogin = useLocalAiLogin(companyId, managedIntent ?? {
+  const localLogin = useLocalAiLogin(managedIntent ?? {
     provider: aiProvider, method: "subscription", name: `My ${provider} subscription`,
     ownership: "personal", agentIds: [], allAgents: true,
   }, canUseLocalLogin && method === "subscription" && !savedSubscription && !storedLogin.data,
   { allowHostClaude: health.data?.deploymentMode === "local_trusted" });
   const auth = useQuery({
     queryKey: queryKeys.agents.authSignal(
-      companyId,
       adapterType,
       environmentId,
     ),
     queryFn: () =>
       agentsApi.getAdapterAuthSignal(
-        companyId,
         adapterType,
         environmentId ?? undefined,
       ),
@@ -162,7 +158,7 @@ export function AgentProviderConnection({
       if (managedAccount && managedIntent) {
         if (method === "subscription" && !canUseLocalLogin) return;
         const result = savedManagedAccount.current ?? await (method === "api"
-          ? aiConnectionsApi.create(companyId, { ...managedIntent, method: "api_key", apiKey: apiKey.trim() })
+          ? aiConnectionsApi.create({ ...managedIntent, method: "api_key", apiKey: apiKey.trim() })
           : localLogin.connect(managedIntent));
         savedManagedAccount.current = result;
         setApiKey("");
@@ -194,7 +190,7 @@ export function AgentProviderConnection({
         connection = { env: {}, aiConnection: { provider: aiProvider, method: "subscription", mode: "responsible_user" } };
       }
       if (connection.credentials) {
-        await aiConnectionsApi.create(companyId, { provider: aiProvider, method: "api_key", name: `My ${provider} API`, ownership: "personal", apiKey: connection.credentials[envKey], agentIds: [], allAgents: true });
+        await aiConnectionsApi.create({ provider: aiProvider, method: "api_key", name: `My ${provider} API`, ownership: "personal", apiKey: connection.credentials[envKey], agentIds: [], allAgents: true });
         connection = { env: {}, aiConnection: { provider: aiProvider, method: "api_key", mode: "responsible_user" } };
       }
       if (run !== epoch.current) return;
@@ -329,7 +325,6 @@ export function AgentProviderConnection({
               </OnboardingLoginCard>
             ) : needsLogin ? (
               <AdapterLoginPanel
-                companyId={companyId}
                 adapterType={adapterType}
                 environmentId={environmentId}
                 chrome="onboarding"
@@ -352,7 +347,7 @@ export function AgentProviderConnection({
                     if (!sessionId) { setError("The login did not return a saved connection. Try again."); return; }
                     const run = epoch.current;
                     setLoginPhase("connecting");
-                    void aiConnectionsApi.loginResult(companyId, sessionId).then((result) => {
+                    void aiConnectionsApi.loginResult(sessionId).then((result) => {
                       if (run === epoch.current) managedAccount.onComplete({ ...result, method: "subscription" });
                     }).catch(() => {
                       if (run !== epoch.current) return;

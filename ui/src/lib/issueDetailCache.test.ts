@@ -20,7 +20,6 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-1",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,

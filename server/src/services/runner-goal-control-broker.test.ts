@@ -12,14 +12,12 @@ describe("runner goal control broker", () => {
   it("dispatches controls only to the matching live issue session", async () => {
     const control = vi.fn().mockResolvedValue(undefined);
     const release = registerLiveRunnerGoalController({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
       runId: "run-1",
     }, { control });
 
     expect(dispatchLiveRunnerGoalControl({
-      companyId: "company-1",
       issueId: "issue-other",
       agentId: "agent-1",
     }, {
@@ -28,7 +26,6 @@ describe("runner goal control broker", () => {
     })).toBeNull();
 
     const dispatched = dispatchLiveRunnerGoalControl({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
     }, {
@@ -46,7 +43,6 @@ describe("runner goal control broker", () => {
 
     release();
     expect(dispatchLiveRunnerGoalControl({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
     }, {
@@ -57,14 +53,12 @@ describe("runner goal control broker", () => {
 
   it("does not let a superseded run unregister the current controller", async () => {
     const firstRelease = registerLiveRunnerGoalController({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
       runId: "run-1",
     }, { control: vi.fn().mockResolvedValue(undefined) });
     const currentControl = vi.fn().mockResolvedValue(undefined);
     registerLiveRunnerGoalController({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
       runId: "run-2",
@@ -72,7 +66,6 @@ describe("runner goal control broker", () => {
 
     firstRelease();
     const dispatched = dispatchLiveRunnerGoalControl({
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
     }, {

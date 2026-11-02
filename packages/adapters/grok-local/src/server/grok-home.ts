@@ -6,7 +6,7 @@ import { resolvePaperclipInstanceRootForAdapter } from "@paperclipai/adapter-uti
 // The Grok credential home. `GROK_HOME` replaces `~/.grok` and holds one file,
 // `auth.json`. Unlike Codex, a Grok `auth.json` has no fixed top-level key: it
 // holds exactly one key, and that key is a composite `<issuer>::<uuid>` value.
-// This module resolves the company-scoped home path and reads its usable-auth
+// This module resolves the managed home path and reads its usable-auth
 // shape. It never writes to the managed home itself; {@link
 // promoteGrokDeviceLoginCredential} in `adapter-auth-promotion.ts` owns that
 // write. {@link stageGrokHomeForSync} writes only to a fresh, private staging
@@ -85,24 +85,15 @@ export async function grokHomeHasUsableAuth(home: string): Promise<boolean> {
   }
 }
 
-/**
- * Resolves the managed Grok home directory. With a `companyId`, it resolves the
- * company-scoped home under the Paperclip instance tree, the same isolation
- * boundary `resolveManagedCodexHomeDir` uses. Without one, it resolves the
- * instance-global home, which a promotion must never write.
- */
 export function resolveManagedGrokHomeDir(
   env: NodeJS.ProcessEnv,
-  companyId?: string,
 ): string {
   const instanceRoot = resolvePaperclipInstanceRootForAdapter({
     homeDir: nonEmpty(env.PAPERCLIP_HOME) ?? undefined,
     instanceId: nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? undefined,
     env,
   });
-  return companyId
-    ? path.resolve(instanceRoot, "companies", companyId, "grok-home")
-    : path.resolve(instanceRoot, "grok-home");
+  return path.resolve(instanceRoot, "organization", "grok-home");
 }
 
 export interface StageGrokHomeForSyncOptions {
@@ -132,7 +123,7 @@ async function readFileBytesIfPresent(candidate: string): Promise<Buffer | null>
  * - **The symlink is dereferenced to bytes** — the single-use `auth.json`
  *   credential (a symlink into the shared source home) lands as a real file,
  *   never a dangling link.
- * - **A missing `auth.json` is not an error** — a company with no completed
+ * - **A missing `auth.json` is not an error** — an organization with no completed
  *   device login yet stages an empty directory.
  * - **`mkdtemp` guarantees the staged dir is `0700`** on POSIX, and the staged
  *   `auth.json` is written `0600` (least privilege).

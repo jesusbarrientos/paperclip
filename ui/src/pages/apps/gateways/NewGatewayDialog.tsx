@@ -16,7 +16,7 @@ import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { allowedToolsLabel } from "./gateway-helpers";
 
-export const gatewaysQueryKey = (companyId: string) => ["tools", "gateways", companyId] as const;
+export const gatewaysQueryKey = () => ["tools", "gateways"] as const;
 
 /**
  * "New gateway" dialog. A gateway is one safe MCP endpoint that exposes only
@@ -24,12 +24,10 @@ export const gatewaysQueryKey = (companyId: string) => ["tools", "gateways", com
  * PAP-11178 design of record.
  */
 export function NewGatewayDialog({
-  companyId,
   open,
   onOpenChange,
   onCreated,
 }: {
-  companyId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (gatewayId: string) => void;
@@ -41,8 +39,8 @@ export function NewGatewayDialog({
   const [profileId, setProfileId] = useState("");
 
   const profilesQuery = useQuery({
-    queryKey: queryKeys.tools.profiles(companyId),
-    queryFn: () => toolsApi.listProfiles(companyId),
+    queryKey: queryKeys.tools.profiles(),
+    queryFn: () => toolsApi.listProfiles(),
     enabled: open,
   });
   const activeProfiles = (profilesQuery.data?.profiles ?? []).filter(
@@ -55,7 +53,7 @@ export function NewGatewayDialog({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      toolsApi.createGateway(companyId, {
+      toolsApi.createGateway({
         name: name.trim(),
         description: description.trim() || null,
         profileId,
@@ -64,7 +62,7 @@ export function NewGatewayDialog({
       }),
     onSuccess: async (gateway) => {
       pushToast({ title: "Gateway created", body: gateway.name, tone: "success" });
-      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey(companyId) });
+      await queryClient.invalidateQueries({ queryKey: gatewaysQueryKey() });
       setName("");
       setDescription("");
       onOpenChange(false);

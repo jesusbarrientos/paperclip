@@ -13,11 +13,8 @@ vi.mock("acpx/runtime", () => ({
 }));
 
 const agentId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
-
 const baseAgent = {
   id: agentId,
-  companyId,
   name: "Builder",
   urlKey: "builder",
   role: "engineer",
@@ -223,19 +220,19 @@ function registerModuleMocks() {
 }
 
 function createDbStub(options: { requireBoardApprovalForNewAgents?: boolean } = {}) {
+  const rows = () => [{
+    id: "organization-1",
+    name: "Paperclip",
+    requireBoardApprovalForNewAgents: options.requireBoardApprovalForNewAgents ?? false,
+  }];
+  const query = {
+    where: vi.fn(() => query),
+    limit: vi.fn(() => query),
+    then: vi.fn((resolve) => Promise.resolve(resolve(rows()))),
+  };
   return {
     select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          then: vi.fn((resolve) =>
-            Promise.resolve(resolve([{
-              id: companyId,
-              name: "Paperclip",
-              requireBoardApprovalForNewAgents: options.requireBoardApprovalForNewAgents ?? false,
-            }])),
-          ),
-        }),
-      }),
+      from: vi.fn().mockReturnValue(query),
     }),
   };
 }
@@ -281,10 +278,7 @@ describe("agent permission routes", () => {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
-      (req as any).actor = {
-        ...actor,
-        companyIds: Array.isArray(actor.companyIds) ? [...actor.companyIds] : actor.companyIds,
-      };
+      (req as any).actor = { ...actor };
       next();
     });
     app.use("/api", agentRoutes(createDbStub(dbOptions) as any));
@@ -367,7 +361,6 @@ describe("agent permission routes", () => {
     mockAccessService.hasPermission.mockResolvedValue(false);
     mockAccessService.getMembership.mockResolvedValue({
       id: "membership-1",
-      companyId,
       principalType: "agent",
       principalId: agentId,
       status: "active",
@@ -379,7 +372,7 @@ describe("agent permission routes", () => {
     mockAccessService.ensureMembership.mockResolvedValue(undefined);
     mockAccessService.setPrincipalPermission.mockResolvedValue(undefined);
     mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([]);
-    mockCompanySkillService.resolveRequestedSkillKeys.mockImplementation(async (_companyId, requested) => requested);
+    mockCompanySkillService.resolveRequestedSkillKeys.mockImplementation(async (requested) => requested);
     mockBudgetService.upsertPolicy.mockResolvedValue(undefined);
     mockAgentInstructionsService.materializeManagedBundle.mockImplementation(
       async (agent: Record<string, unknown>, files: Record<string, string>) => ({
@@ -396,10 +389,10 @@ describe("agent permission routes", () => {
     );
     mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([]);
     mockCompanySkillService.resolveRequestedSkillKeys.mockImplementation(
-      async (_companyId: string, requested: string[]) => requested,
+      async (requested: string[]) => requested,
     );
-    mockSecretService.normalizeAdapterConfigForPersistence.mockImplementation(async (_companyId, config) => config);
-    mockSecretService.resolveAdapterConfigForRuntime.mockImplementation(async (_companyId, config) => ({ config }));
+    mockSecretService.normalizeAdapterConfigForPersistence.mockImplementation(async (config) => config);
+    mockSecretService.resolveAdapterConfigForRuntime.mockImplementation(async (config) => ({ config }));
     mockInstanceSettingsService.getGeneral.mockResolvedValue({
       censorUsernameInLogs: false,
     });
@@ -419,7 +412,7 @@ describe("agent permission routes", () => {
       userId: "member-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/agents/${agentId}`));
@@ -459,7 +452,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/agents/${agentId}`));
@@ -486,7 +479,7 @@ describe("agent permission routes", () => {
 
   // TEC-7032 reported the leak against the company agent-list endpoint, which
   // serialises rows directly instead of going through buildAgentDetail.
-  it("redacts env values in board GET /api/companies/:companyId/agents responses", async () => {
+  it("redacts env values in board GET /api/agents responses", async () => {
     const plaintextValue = "listed-value-must-not-leak";
     mockAgentService.list.mockResolvedValue([
       {
@@ -511,11 +504,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get(`/api/companies/${companyId}/agents`),
+      request(baseUrl).get(`/api/agents`),
     );
 
     expect(res.status).toBe(200);
@@ -553,7 +546,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) =>
@@ -587,7 +580,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       runId: null,
       source: "agent_key",
     });
@@ -624,7 +616,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const redactedResponse = await requestApp(app, (baseUrl) =>
@@ -664,10 +656,10 @@ describe("agent permission routes", () => {
       userId: "member-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/companies/${companyId}/agents`));
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/agents`));
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
@@ -687,7 +679,7 @@ describe("agent permission routes", () => {
       userId: "member-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -703,7 +695,7 @@ describe("agent permission routes", () => {
       userId: "agent-admin-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -720,7 +712,7 @@ describe("agent permission routes", () => {
       userId: "instance-admin-user",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -738,15 +730,15 @@ describe("agent permission routes", () => {
   });
 
   it.each([
-    ["direct creation", `/api/companies/${companyId}/agents`],
-    ["hire creation", `/api/companies/${companyId}/agent-hires`],
+    ["direct creation", `/api/agents`],
+    ["hire creation", `/api/agent-hires`],
   ])("requires instance administration for raw provider traces during %s", async (_label, path) => {
     const app = await createApp({
       type: "board",
       userId: "agent-admin-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -769,7 +761,7 @@ describe("agent permission routes", () => {
       userId: "instance-admin-user",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
     const body = {
       name: "Trace capture agent",
@@ -779,12 +771,12 @@ describe("agent permission routes", () => {
 
     const createResponse = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post(`/api/companies/${companyId}/agents`)
+        .post(`/api/agents`)
         .send(body),
     );
     const hireResponse = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post(`/api/companies/${companyId}/agent-hires`)
+        .post(`/api/agent-hires`)
         .send(body),
     );
 
@@ -807,7 +799,7 @@ describe("agent permission routes", () => {
       userId: "agent-admin-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const response = await requestApp(app, (baseUrl) =>
@@ -843,7 +835,7 @@ describe("agent permission routes", () => {
       userId: "instance-admin-user",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) =>
@@ -865,7 +857,7 @@ describe("agent permission routes", () => {
       userId: "member-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -883,7 +875,7 @@ describe("agent permission routes", () => {
       userId: "member-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -897,7 +889,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -926,7 +917,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -944,7 +934,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -969,7 +958,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -984,7 +972,7 @@ describe("agent permission routes", () => {
 
   it("allows an agent to update a peer's local model without host settings", async () => {
     mockAgentService.getById.mockResolvedValue({ ...baseAgent, adapterType: "claude_local" });
-    const app = await createApp({ type: "agent", agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .patch(`/api/agents/${agentId}`)
       .send({ adapterConfig: { model: "claude-sonnet-4-5" } }));
@@ -995,7 +983,7 @@ describe("agent permission routes", () => {
 
   it("allows a provider credential reference without allowing arbitrary environment variables", async () => {
     mockAgentService.getById.mockResolvedValue({ ...baseAgent, adapterType: "claude_local" });
-    const app = await createApp({ type: "agent", agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .patch(`/api/agents/${agentId}`)
       .send({ adapterConfig: { env: { ANTHROPIC_API_KEY: { type: "secret_ref", secretId: "33333333-3333-4333-8333-333333333333" } } } }));
@@ -1010,7 +998,7 @@ describe("agent permission routes", () => {
       adapterType: "paperclip_runner",
       adapterConfig: { env: { PATH: "/tmp" } },
     });
-    const app = await createApp({ type: "agent", agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .patch(`/api/agents/${agentId}`)
       .send({ adapterType: "claude_local", adapterConfig: { engine: "cli" } }));
@@ -1021,10 +1009,10 @@ describe("agent permission routes", () => {
   });
 
   it.each([
-    ["create", `/api/companies/${companyId}/agents`],
-    ["hire", `/api/companies/${companyId}/agent-hires`],
+    ["create", `/api/agents`],
+    ["hire", `/api/agent-hires`],
   ])("blocks agent-authenticated process adapter commands on %s", async (_label, path) => {
-    const app = await createApp({ type: "agent", agentId, companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId, source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .post(path)
       .send({ name: "Host process", role: "engineer", adapterType: "process", adapterConfig: { command: "sh" } }));
@@ -1035,10 +1023,10 @@ describe("agent permission routes", () => {
   });
 
   it.each([
-    ["create", `/api/companies/${companyId}/agents`],
-    ["hire", `/api/companies/${companyId}/agent-hires`],
+    ["create", `/api/agents`],
+    ["hire", `/api/agent-hires`],
   ])("blocks agent-authenticated local adapter commands on %s", async (_label, path) => {
-    const app = await createApp({ type: "agent", agentId, companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId, source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .post(path)
       .send({ name: "Local peer", role: "engineer", adapterType: "claude_local", adapterConfig: { engine: "cli", command: "/tmp/untrusted" } }));
@@ -1053,7 +1041,7 @@ describe("agent permission routes", () => {
       id: "33333333-3333-4333-8333-333333333333",
       afterConfig: { adapterType: "process", adapterConfig: { command: "sh" }, runtimeConfig: {} },
     });
-    const app = await createApp({ type: "agent", agentId, companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId, source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .post(`/api/agents/${agentId}/config-revisions/33333333-3333-4333-8333-333333333333/rollback`));
 
@@ -1068,7 +1056,7 @@ describe("agent permission routes", () => {
       id: revisionId,
       afterConfig: { adapterType: "claude_local", adapterConfig: { engine: "cli", command: "/tmp/untrusted" }, runtimeConfig: {} },
     });
-    const app = await createApp({ type: "agent", agentId, companyId, source: "agent_key", runId: "run-1" });
+    const app = await createApp({ type: "agent", agentId, source: "agent_key", runId: "run-1" });
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
       .post(`/api/agents/${agentId}/config-revisions/${revisionId}/rollback`));
 
@@ -1092,7 +1080,6 @@ describe("agent permission routes", () => {
       const app = await createApp({
         type: "agent",
         agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        companyId,
         source: "agent_key",
         runId: "run-1",
       });
@@ -1118,7 +1105,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -1133,7 +1119,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -1156,7 +1141,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
@@ -1176,13 +1160,12 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send({
         name: "Injected",
         role: "engineer",
@@ -1207,11 +1190,11 @@ describe("agent permission routes", () => {
       userId: "member-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Backdoor",
         role: "engineer",
@@ -1233,11 +1216,11 @@ describe("agent permission routes", () => {
       userId: "agent-admin-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1247,21 +1230,19 @@ describe("agent permission routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      companyId,
       expect.objectContaining({
         status: "idle",
       }),
       { claudeLogin: { storedSessionId: null, ownerUserId: "agent-admin-user", applyExistingWithoutClaim: false } },
     );
     expect(mockAccessService.setPrincipalPermission).toHaveBeenCalledWith(
-      companyId,
       "agent",
       agentId,
       "tasks:assign",
       true,
       "agent-admin-user",
     );
-    expect(mockBuiltInAgentService.ensureCompanyDefaultAgentGrants).toHaveBeenCalledWith(companyId);
+    expect(mockBuiltInAgentService.ensureCompanyDefaultAgentGrants).toHaveBeenCalledWith();
   });
 
   it("rejects direct agent creation when new agents require board approval", async () => {
@@ -1271,13 +1252,13 @@ describe("agent permission routes", () => {
         userId: "board-user",
         source: "local_implicit",
         isInstanceAdmin: true,
-        companyIds: [companyId],
+        memberships: [{ status: "active", membershipRole: "member" }],
       },
       { requireBoardApprovalForNewAgents: true },
     );
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1298,11 +1279,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1312,14 +1293,12 @@ describe("agent permission routes", () => {
 
     expect([200, 201]).toContain(res.status);
     expect(mockAccessService.ensureMembership).toHaveBeenCalledWith(
-      companyId,
       "agent",
       agentId,
       "member",
       "active",
     );
     expect(mockAccessService.setPrincipalPermission).toHaveBeenCalledWith(
-      companyId,
       "agent",
       agentId,
       "tasks:assign",
@@ -1334,11 +1313,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .get(`/api/companies/${companyId}/agents`)
+      .get(`/api/agents`)
       .query({ urlKey: "builder" }));
 
     expect(res.status).toBe(400);
@@ -1352,11 +1331,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1371,7 +1350,6 @@ describe("agent permission routes", () => {
 
     expect([200, 201]).toContain(res.status);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      companyId,
       expect.objectContaining({
         runtimeConfig: {
           heartbeat: {
@@ -1395,11 +1373,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "OpenCode Builder",
         role: "engineer",
@@ -1410,7 +1388,6 @@ describe("agent permission routes", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockEnsureOpenCodeModelConfiguredAndAvailable).not.toHaveBeenCalled();
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      companyId,
       expect.objectContaining({
         adapterType: "opencode_local",
         adapterConfig: expect.objectContaining({
@@ -1431,11 +1408,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "OpenCode Builder",
         role: "engineer",
@@ -1448,7 +1425,6 @@ describe("agent permission routes", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockEnsureOpenCodeModelConfiguredAndAvailable).not.toHaveBeenCalled();
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      companyId,
       expect.objectContaining({
         adapterType: "opencode_local",
         adapterConfig: expect.objectContaining({
@@ -1465,11 +1441,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agent-hires`)
+      .post(`/api/agent-hires`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1484,7 +1460,6 @@ describe("agent permission routes", () => {
 
     expect(res.status).toBe(201);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      companyId,
       expect.objectContaining({
         runtimeConfig: {
           heartbeat: {
@@ -1525,7 +1500,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1536,7 +1511,6 @@ describe("agent permission routes", () => {
     expect(mockAgentService.activatePendingApproval).toHaveBeenCalledWith(agentId);
     expect(mockApprovalService.approve).not.toHaveBeenCalled();
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId,
       actorType: "user",
       actorId: "board-user",
       action: "agent.approved",
@@ -1562,7 +1536,6 @@ describe("agent permission routes", () => {
       .mockResolvedValue(approvedAgent);
     mockApprovalService.findOpenHireApprovalForAgent.mockResolvedValue({
       id: "approval-1",
-      companyId,
       type: "hire_agent",
       status: "pending",
       payload: { agentId },
@@ -1577,7 +1550,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1610,7 +1583,6 @@ describe("agent permission routes", () => {
       .mockResolvedValue(terminatedAgent);
     mockApprovalService.findOpenHireApprovalForAgent.mockResolvedValue({
       id: "approval-1",
-      companyId,
       type: "hire_agent",
       status: "pending",
       payload: { agentId },
@@ -1630,7 +1602,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1659,7 +1631,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1678,7 +1650,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1696,7 +1668,6 @@ describe("agent permission routes", () => {
     const environmentId = "33333333-3333-4333-8333-333333333333";
     mockEnvironmentService.getById.mockResolvedValue({
       id: environmentId,
-      companyId: "other-company",
       driver: "local",
       config: {},
     });
@@ -1706,11 +1677,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1721,7 +1692,6 @@ describe("agent permission routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      companyId,
       expect.objectContaining({
         defaultEnvironmentId: environmentId,
       }),
@@ -1733,7 +1703,6 @@ describe("agent permission routes", () => {
     const environmentId = "33333333-3333-4333-8333-333333333333";
     mockEnvironmentService.getById.mockResolvedValue({
       id: environmentId,
-      companyId,
       driver: "ssh",
       config: {},
     });
@@ -1743,11 +1712,11 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post(`/api/companies/${companyId}/agents`)
+      .post(`/api/agents`)
       .send({
         name: "Builder",
         role: "engineer",
@@ -1775,7 +1744,6 @@ describe("agent permission routes", () => {
       const environmentId = "33333333-3333-4333-8333-333333333333";
       mockEnvironmentService.getById.mockResolvedValue({
         id: environmentId,
-        companyId,
         driver: "ssh",
         config: {},
       });
@@ -1791,11 +1759,11 @@ describe("agent permission routes", () => {
         userId: "board-user",
         source: "local_implicit",
         isInstanceAdmin: true,
-        companyIds: [companyId],
+        memberships: [{ status: "active", membershipRole: "member" }],
       });
 
       const res = await requestApp(app, (baseUrl) => request(baseUrl)
-        .post(`/api/companies/${companyId}/agents`)
+        .post(`/api/agents`)
         .send({
           name: adapterCase.name,
           role: "engineer",
@@ -1806,7 +1774,6 @@ describe("agent permission routes", () => {
 
       expect(res.status, JSON.stringify(res.body)).toBe(201);
       expect(mockAgentService.create).toHaveBeenCalledWith(
-        companyId,
         expect.objectContaining({
           adapterType: adapterCase.adapterType,
           defaultEnvironmentId: environmentId,
@@ -1820,7 +1787,6 @@ describe("agent permission routes", () => {
     const environmentId = "33333333-3333-4333-8333-333333333333";
     mockEnvironmentService.getById.mockResolvedValue({
       id: environmentId,
-      companyId,
       driver: "ssh",
       config: {},
     });
@@ -1830,7 +1796,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1849,7 +1815,6 @@ describe("agent permission routes", () => {
       const environmentId = "33333333-3333-4333-8333-333333333333";
       mockEnvironmentService.getById.mockResolvedValue({
         id: environmentId,
-        companyId,
         driver: "ssh",
         config: {},
       });
@@ -1871,7 +1836,7 @@ describe("agent permission routes", () => {
         userId: "board-user",
         source: "local_implicit",
         isInstanceAdmin: true,
-        companyIds: [companyId],
+        memberships: [{ status: "active", membershipRole: "member" }],
       });
 
       const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1895,7 +1860,6 @@ describe("agent permission routes", () => {
     const environmentId = "33333333-3333-4333-8333-333333333333";
     mockEnvironmentService.getById.mockResolvedValue({
       id: environmentId,
-      companyId,
       driver: "ssh",
       config: {},
     });
@@ -1910,7 +1874,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1928,7 +1892,6 @@ describe("agent permission routes", () => {
     mockAccessService.listPrincipalGrants.mockResolvedValue([
       {
         id: "grant-1",
-        companyId,
         principalType: "agent",
         principalId: agentId,
         permissionKey: "tasks:assign",
@@ -1944,7 +1907,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/agents/${agentId}`));
@@ -1962,7 +1925,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/agents/${agentId}`));
@@ -1983,7 +1946,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -1992,7 +1955,6 @@ describe("agent permission routes", () => {
 
     expect(res.status).toBe(200);
     expect(mockAccessService.setPrincipalPermission).toHaveBeenCalledWith(
-      companyId,
       "agent",
       agentId,
       "tasks:assign",
@@ -2014,7 +1976,7 @@ describe("agent permission routes", () => {
       userId: "board-user",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      memberships: [{ status: "active", membershipRole: "member" }],
     });
 
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
@@ -2027,27 +1989,6 @@ describe("agent permission routes", () => {
       canAssignTasks: true,
     });
     expect(res.body.permissions.canCreateSkills).toBe(false);
-  });
-
-  it("rejects CEO permission updates outside the caller company scope", async () => {
-    const app = await createApp({
-      type: "agent",
-      agentId: "ceo-agent",
-      companyId: "33333333-3333-4333-8333-333333333333",
-      runId: "run-1",
-      source: "agent_key",
-    });
-
-    const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .patch(`/api/agents/${agentId}/permissions`)
-      .send({ canCreateAgents: true, canAssignTasks: true }));
-
-    // Cross-tenant requests return 404 (not 403) so the status code cannot be
-    // used as an existence oracle for other tenants' agent ids.
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("Agent not found");
-    expect(mockAgentService.updatePermissions).not.toHaveBeenCalled();
-    expect(mockAccessService.setPrincipalPermission).not.toHaveBeenCalled();
   });
 
   it("exposes a dedicated agent route for the inbox mine view", async () => {
@@ -2063,7 +2004,6 @@ describe("agent permission routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
       runId: "run-1",
       source: "agent_key",
     });
@@ -2081,7 +2021,7 @@ describe("agent permission routes", () => {
         status: "todo",
       },
     ]);
-    expect(mockIssueService.list).toHaveBeenCalledWith(companyId, {
+    expect(mockIssueService.list).toHaveBeenCalledWith({
       touchedByUserId: "board-user",
       inboxArchivedByUserId: "board-user",
       status: "backlog,todo,in_progress,in_review,blocked,done",
@@ -2109,7 +2049,7 @@ describe("agent permission routes", () => {
         userId: "board-user",
         source: "session",
         isInstanceAdmin: false,
-        companyIds: [companyId],
+        memberships: [{ status: "active", membershipRole: "member" }],
       });
 
       const res = await request(app).get(`/api/agents/${agentId}/configuration`);
@@ -2137,10 +2077,10 @@ describe("agent permission routes", () => {
         userId: "board-user",
         source: "session",
         isInstanceAdmin: false,
-        companyIds: [companyId],
+        memberships: [{ status: "active", membershipRole: "member" }],
       });
 
-      const res = await request(app).get(`/api/companies/${companyId}/agent-configurations`);
+      const res = await request(app).get(`/api/agent-configurations`);
 
       expect(res.status).toBe(200);
       expect(res.body[0].adapterConfig.env).toEqual({
@@ -2172,7 +2112,7 @@ describe("agent permission routes", () => {
         userId: "board-user",
         source: "session",
         isInstanceAdmin: false,
-        companyIds: [companyId],
+        memberships: [{ status: "active", membershipRole: "member" }],
       });
 
       const res = await request(app).get(`/api/agents/${agentId}/config-revisions`);
@@ -2211,7 +2151,6 @@ describe("agent permission routes", () => {
       const app = await createApp({
         type: "agent",
         agentId,
-        companyId,
         runId: "run-1",
         source: "agent_key",
       });
@@ -2221,7 +2160,7 @@ describe("agent permission routes", () => {
       expect(res.status).toBe(403);
       expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
         action: "agent_config:read",
-        resource: { type: "company", companyId },
+        resource: { type: "company" },
       }));
     });
 
@@ -2252,7 +2191,6 @@ describe("agent permission routes", () => {
       const app = await createApp({
         type: "agent",
         agentId,
-        companyId,
         runId: "run-1",
         source: "agent_key",
       });
@@ -2262,31 +2200,8 @@ describe("agent permission routes", () => {
       expect(res.status).toBe(200);
       expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
         action: "agent_config:read",
-        resource: { type: "company", companyId },
+        resource: { type: "company" },
       }));
     });
-  });
-
-  it("rejects heartbeat cancellation outside the caller company scope", async () => {
-    mockHeartbeatService.getRun.mockResolvedValue({
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId: "33333333-3333-4333-8333-333333333333",
-      agentId,
-      status: "running",
-    });
-
-    const app = await createApp({
-      type: "board",
-      userId: "board-user",
-      source: "session",
-      isInstanceAdmin: false,
-      companyIds: [companyId],
-    });
-
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).post("/api/heartbeat-runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel").send({}));
-
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("Heartbeat run not found");
-    expect(mockHeartbeatService.cancelRun).not.toHaveBeenCalled();
   });
 });

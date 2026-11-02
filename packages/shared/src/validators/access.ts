@@ -74,7 +74,6 @@ export const createCliAuthChallengeSchema = z.object({
   command: z.string().min(1).max(240),
   clientName: z.string().max(120).optional().nullable(),
   requestedAccess: boardCliAuthAccessLevelSchema.default("board"),
-  requestedCompanyId: z.string().guid().optional().nullable(),
 });
 
 export type CreateCliAuthChallenge = z.infer<typeof createCliAuthChallengeSchema>;
@@ -88,7 +87,6 @@ export type ResolveCliAuthChallenge = z.infer<typeof resolveCliAuthChallengeSche
 export const createBoardApiKeySchema = z.object({
   name: z.string().trim().min(1).max(120).default("paperclipai cli"),
   expiresAt: z.coerce.date().optional().nullable(),
-  requestedCompanyId: z.string().guid().optional().nullable(),
 });
 
 export type CreateBoardApiKey = z.infer<typeof createBoardApiKeySchema>;

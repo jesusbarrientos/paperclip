@@ -30,7 +30,6 @@ test("testEnvironment accepts config.command when hermesCommand is absent", asyn
     await chmod(cliPath, 0o755);
 
     const result = await testEnvironment({
-      companyId: "company-test",
       adapterType: "hermes_local",
       config: {
         command: cliPath,

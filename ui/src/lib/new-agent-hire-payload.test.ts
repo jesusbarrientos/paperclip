@@ -90,7 +90,6 @@ describe("buildNewAgentHirePayload", () => {
             },
             trustBoundary: {
               mode: "low_trust_review",
-              companyId: "company-1",
               rootIssueId: "issue-root",
             },
           },
@@ -109,7 +108,6 @@ describe("buildNewAgentHirePayload", () => {
           },
           trustBoundary: {
             mode: "low_trust_review",
-            companyId: "company-1",
             rootIssueId: "issue-root",
           },
         },

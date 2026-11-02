@@ -11,7 +11,7 @@ export async function assertSlackBoardWorkAllowed(db: Db, issue: typeof issues.$
   if (issue.status === "cancelled") {
     throw conflict("Restore this task in Paperclip before sending work to Slack");
   }
-  if (await issueTreeControlService(db).getActivePauseHoldGate(issue.companyId, issue.id)) {
+  if (await issueTreeControlService(db).getActivePauseHoldGate(issue.id)) {
     throw conflict("Task is paused. Resume it before sending a message.");
   }
   const readiness = await issueService(db).getDependencyReadiness(issue.id);
@@ -22,7 +22,6 @@ export async function assertSlackBoardWorkAllowed(db: Db, issue: typeof issues.$
     const workspace = await executionWorkspaceService(db).getById(issue.executionWorkspaceId);
     if (
       !workspace ||
-      workspace.companyId !== issue.companyId ||
       isClosedIsolatedExecutionWorkspace(workspace)
     ) {
       throw conflict("Reopen this task's workspace in Paperclip before sending work to Slack");

@@ -3,7 +3,6 @@ import request from "supertest";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const issueId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
 const ownerAgentId = "33333333-3333-4333-8333-333333333333";
 const peerAgentId = "44444444-4444-4444-8444-444444444444";
 const ownerRunId = "55555555-5555-4555-8555-555555555555";
@@ -84,7 +83,6 @@ function registerRouteMocks() {
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: issueId,
-    companyId,
     status: "in_progress",
     priority: "medium",
     projectId: null,
@@ -128,7 +126,6 @@ function boardActor(): Express.Request["actor"] {
     userId: "board-user",
     userName: null,
     userEmail: null,
-    companyIds: [companyId],
     memberships: [],
     isInstanceAdmin: false,
     source: "local_implicit",
@@ -139,7 +136,6 @@ function ownerActor(): Express.Request["actor"] {
   return {
     type: "agent",
     agentId: ownerAgentId,
-    companyId,
     keyId: "key-1",
     runId: ownerRunId,
     source: "agent_key",
@@ -150,7 +146,6 @@ function peerActor(): Express.Request["actor"] {
   return {
     type: "agent",
     agentId: peerAgentId,
-    companyId,
     keyId: "key-2",
     runId: "66666666-6666-4666-8666-666666666666",
     source: "agent_key",
@@ -182,11 +177,11 @@ describe("external object routes", () => {
       explanation: "Denied by test mock",
     }));
     mockAgentService.list.mockResolvedValue([
-      { id: ownerAgentId, companyId, reportsTo: null, permissions: { canCreateAgents: false } },
-      { id: peerAgentId, companyId, reportsTo: null, permissions: { canCreateAgents: false } },
+      { id: ownerAgentId, reportsTo: null, permissions: { canCreateAgents: false } },
+      { id: peerAgentId, reportsTo: null, permissions: { canCreateAgents: false } },
     ]);
     mockExternalObjectsService.getIssueSummary.mockResolvedValue({ total: 1, objects: [] });
-    mockExternalObjectsService.getIssueSummaries.mockImplementation(async (_companyId: string, issueIds: string[]) =>
+    mockExternalObjectsService.getIssueSummaries.mockImplementation(async (issueIds: string[]) =>
       new Map(issueIds.map((id) => [id, { total: 1, objects: [] }])),
     );
     mockExternalObjectsService.listForIssue.mockResolvedValue([]);
@@ -196,17 +191,6 @@ describe("external object routes", () => {
     mockInstanceSettingsService.getExperimental.mockResolvedValue({
       enableExternalObjects: true,
     });
-  });
-
-  it("enforces company access on read routes", async () => {
-    const app = await createApp({ ...ownerActor(), companyId: "other-company" });
-
-    const res = await request(app).get(`/api/issues/${issueId}/external-object-summary`);
-
-    // Uniform 404 so cross-tenant ids are indistinguishable from missing ones.
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("Issue not found");
-    expect(mockExternalObjectsService.getIssueSummary).not.toHaveBeenCalled();
   });
 
   it("allows board users to read issue external object summaries", async () => {
@@ -239,12 +223,12 @@ describe("external object routes", () => {
     const app = await createApp(boardActor());
 
     const res = await request(app)
-      .post(`/api/companies/${companyId}/issues/external-object-summaries`)
+      .post(`/api/issues/external-object-summaries`)
       .send({ issueIds: [issueId] });
 
     expect(res.status).toBe(200);
     expect(res.body.summaries[issueId].total).toBe(1);
-    expect(mockExternalObjectsService.getIssueSummaries).toHaveBeenCalledWith(companyId, [issueId]);
+    expect(mockExternalObjectsService.getIssueSummaries).toHaveBeenCalledWith([issueId]);
   });
 
   it("filters bulk external object summaries through issue read access", async () => {
@@ -255,23 +239,12 @@ describe("external object routes", () => {
     const app = await createApp(ownerActor());
 
     const res = await request(app)
-      .post(`/api/companies/${companyId}/issues/external-object-summaries`)
+      .post(`/api/issues/external-object-summaries`)
       .send({ issueIds: [issueId] });
 
     expect(res.status).toBe(200);
     expect(res.body.summaries).toEqual({});
-    expect(mockExternalObjectsService.getIssueSummaries).toHaveBeenCalledWith(companyId, []);
-  });
-
-  it("enforces company access on bulk external object summaries", async () => {
-    const app = await createApp({ ...ownerActor(), companyId: "other-company" });
-
-    const res = await request(app)
-      .post(`/api/companies/${companyId}/issues/external-object-summaries`)
-      .send({ issueIds: [issueId] });
-
-    expect(res.status).toBe(403);
-    expect(mockExternalObjectsService.getIssueSummaries).not.toHaveBeenCalled();
+    expect(mockExternalObjectsService.getIssueSummaries).toHaveBeenCalledWith([]);
   });
 
   it("requires active checkout ownership for agent manual refresh", async () => {
@@ -296,7 +269,6 @@ describe("external object routes", () => {
     expect(res.status).toBe(200);
     expect(mockIssueService.assertCheckoutOwner).toHaveBeenCalledWith(issueId, ownerAgentId, ownerRunId);
     expect(mockExternalObjectsService.refreshIssueObjects).toHaveBeenCalledWith(issueId, expect.objectContaining({
-      companyId,
       actor: expect.objectContaining({ actorType: "agent", actorId: ownerAgentId }),
     }));
   });

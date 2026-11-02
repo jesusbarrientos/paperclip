@@ -41,13 +41,11 @@ import type { StatusCardView } from "./types";
 
 export function StatusCardDetailDrawer({
   card,
-  companyId,
   open,
   onOpenChange,
   initialTab = "summary",
 }: {
   card: StatusCardView | null;
-  companyId: string | null | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialTab?: string;
@@ -108,12 +106,12 @@ export function StatusCardDetailDrawer({
         : null,
     [card, lifecycle],
   );
-  const draftStream = useSummaryDraftStream(companyId, generatingIssue);
+  const draftStream = useSummaryDraftStream(generatingIssue);
 
   const invalidateCard = async () => {
     if (!card) return;
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(card.companyId, false) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(false) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.detail(card.id) }),
     ]);
   };
@@ -164,7 +162,7 @@ export function StatusCardDetailDrawer({
     onSuccess: async () => {
       if (!card) return;
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(card.companyId, false) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.list(false) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.statusCards.detail(card.id) }),
       ]);
     },
@@ -467,7 +465,6 @@ export function StatusCardDetailDrawer({
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold">Agent</h3>
                 <SummarizerAgentSelect
-                  companyId={card.companyId}
                   value={summarizerAgentId}
                   onChange={setSummarizerAgentId}
                   enabled={open}

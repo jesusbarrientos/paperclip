@@ -74,7 +74,7 @@ function usageError(usage: AiConnectionUsage) {
 
 export function AiConnectionUsagePanel({ account, observation, cachedOnly = false }: { account: AiManagedConnectionSummary; observation?: AiConnectionUsage; cachedOnly?: boolean }) {
   const probe = useMutation({
-    mutationFn: () => aiConnectionsApi.probeUsage(account.companyId, account.id, account.grantId),
+    mutationFn: () => aiConnectionsApi.probeUsage(account.id, account.grantId),
   });
   const supported = supportsAiConnectionUsage(account.provider, account.method);
   const usage = cachedOnly ? observation : probe.isSuccess ? probe.data : undefined;

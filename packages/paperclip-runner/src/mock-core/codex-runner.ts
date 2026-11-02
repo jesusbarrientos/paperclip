@@ -32,7 +32,6 @@ export interface CodexCodexTracerInput {
   message?: NativeUserMessage;
   runId?: string;
   normalizedSessionId?: string;
-  companyId?: string;
   issueId?: string;
   environmentLeaseId?: string;
   runnerInstanceId?: string;
@@ -341,7 +340,6 @@ export async function runCodexCodexTracer(input: CodexCodexTracerInput): Promise
     fixtureName: "codex-safe-codex-task",
     identity: {
       schema: "paperclip.prp.identity.v1",
-      companyId: input.companyId ?? "mock-company",
       issueId: input.issueId ?? "mock-issue",
       runId,
       environmentLeaseId: input.environmentLeaseId ?? "mock-lease",

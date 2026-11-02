@@ -47,7 +47,6 @@ const CORE_EXEC_TEAM_HASH = (await listCatalogTeams()).find((team) => team.id ==
 function agentWithCatalogTeam(originHash: string | null, extra: Record<string, unknown> = {}) {
   return {
     id: `agent-${Math.random().toString(36).slice(2)}`,
-    companyId: "company-1",
     metadata: {
       paperclip: {
         catalogTeam: {
@@ -66,7 +65,6 @@ describe("teamsCatalogService", () => {
     vi.clearAllMocks();
     mockAgentService.getById.mockResolvedValue({
       id: "manager-1",
-      companyId: "company-1",
       name: "Engineering Manager",
     });
     mockCompanyPortabilityService.previewImport.mockResolvedValue({
@@ -104,7 +102,7 @@ describe("teamsCatalogService", () => {
   it("builds an inline portability source with catalog skill keys and target-manager reparenting", async () => {
     const svc = teamsCatalogService({} as any);
 
-    const prepared = await svc.prepareCatalogTeamSource("company-1", "core-exec-team", {
+    const prepared = await svc.prepareCatalogTeamSource("core-exec-team", {
       targetManagerAgentId: "manager-1",
     });
 
@@ -120,7 +118,7 @@ describe("teamsCatalogService", () => {
     "preserves %s role files and canonical skill references through catalog import",
     async (teamRef) => {
       const svc = teamsCatalogService({} as any);
-      const prepared = await svc.prepareCatalogTeamSource("company-1", teamRef);
+      const prepared = await svc.prepareCatalogTeamSource(teamRef);
       expect(prepared.errors).toEqual([]);
       for (const slug of prepared.team.agentSlugs) {
         const filePath = `agents/${slug}/AGENTS.md`;
@@ -138,28 +136,28 @@ describe("teamsCatalogService", () => {
         expect(imported.body, filePath).toBe(original.body);
       }
 
-      await svc.installCatalogTeam("company-1", teamRef);
+      await svc.installCatalogTeam(teamRef);
       const [importInput] = mockCompanyPortabilityService.importBundle.mock.calls.at(-1)!;
       expect(importInput.source.files).toEqual(prepared.source.files);
       const requiredCatalogIds = prepared.skillPreparations
         .filter((skill) => skill.action === "catalog_install_required")
         .map((skill) => skill.catalogSkillId).sort();
-      expect(mockCompanySkillService.installFromCatalog.mock.calls.map((call) => call[1].catalogSkillId).sort())
+      expect(mockCompanySkillService.installFromCatalog.mock.calls.map((call) => call[0].catalogSkillId).sort())
         .toEqual(requiredCatalogIds);
     },
   );
 
-  it("resolves target-manager slug against same-company agents before rendering reparent metadata", async () => {
+  it("resolves target-manager slug against existing agents before rendering reparent metadata", async () => {
     mockAgentService.list.mockResolvedValue([
-      { id: "manager-1", companyId: "company-1", name: "CEO" },
+      { id: "manager-1", name: "CEO" },
     ]);
     const svc = teamsCatalogService({} as any);
 
-    const prepared = await svc.prepareCatalogTeamSource("company-1", "core-exec-team", {
+    const prepared = await svc.prepareCatalogTeamSource("core-exec-team", {
       targetManagerSlug: "ceo",
     });
 
-    expect(mockAgentService.list).toHaveBeenCalledWith("company-1");
+    expect(mockAgentService.list).toHaveBeenCalledWith();
     expect(prepared.source.files[".paperclip.yaml"]).toEqual(expect.stringContaining("reportsToExistingAgentId: \"manager-1\""));
     expect(prepared.source.files[".paperclip.yaml"]).toEqual(expect.stringContaining("reportsToExistingAgentSlug: \"ceo\""));
   });
@@ -167,7 +165,7 @@ describe("teamsCatalogService", () => {
   it("preserves package-declared Paperclip sidecar permissions while adding generated catalog provenance", async () => {
     const svc = teamsCatalogService({} as any);
 
-    const prepared = await svc.prepareCatalogTeamSource("company-1", "product-engineering");
+    const prepared = await svc.prepareCatalogTeamSource("product-engineering");
 
     expect(prepared.source.files[".paperclip.yaml"]).toEqual(expect.stringContaining("permissions:"));
     expect(prepared.source.files[".paperclip.yaml"]).toEqual(expect.stringContaining("canCreateAgents: true"));
@@ -178,7 +176,7 @@ describe("teamsCatalogService", () => {
   it("preserves package sidecar permissions when generated target-manager metadata is merged onto the same root agent", async () => {
     const svc = teamsCatalogService({} as any);
 
-    const prepared = await svc.prepareCatalogTeamSource("company-1", "product-engineering", {
+    const prepared = await svc.prepareCatalogTeamSource("product-engineering", {
       targetManagerAgentId: "manager-1",
     });
 
@@ -194,7 +192,7 @@ describe("teamsCatalogService", () => {
     const svc = teamsCatalogService({} as any);
 
     await expect(
-      svc.prepareCatalogTeamSource("company-1", "core-exec-team", {
+      svc.prepareCatalogTeamSource("core-exec-team", {
         targetManagerSlug: "missing-manager",
       }),
     ).rejects.toMatchObject({ status: 404 });
@@ -203,12 +201,12 @@ describe("teamsCatalogService", () => {
   it("previews through company portability in agent-safe mode", async () => {
     const svc = teamsCatalogService({} as any);
 
-    const preview = await svc.previewCatalogTeamImport("company-1", "content-machine");
+    const preview = await svc.previewCatalogTeamImport("content-machine");
 
     expect(preview.errors).toEqual([]);
     expect(mockCompanyPortabilityService.previewImport).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: { mode: "existing_company", companyId: "company-1" },
+        target: { mode: "existing_company" },
         include: expect.objectContaining({
           company: false,
           agents: true,
@@ -218,14 +216,14 @@ describe("teamsCatalogService", () => {
         }),
         source: expect.objectContaining({ type: "inline" }),
       }),
-      { mode: "agent_safe", sourceCompanyId: "company-1" },
+      { mode: "agent_safe" },
     );
   });
 
   it("forces catalog previews to exclude company metadata even when requested", async () => {
     const svc = teamsCatalogService({} as any);
 
-    await svc.previewCatalogTeamImport("company-1", "content-machine", {
+    await svc.previewCatalogTeamImport("content-machine", {
       include: { company: true, agents: false },
     });
 
@@ -236,7 +234,7 @@ describe("teamsCatalogService", () => {
           agents: false,
         }),
       }),
-      { mode: "agent_safe", sourceCompanyId: "company-1" },
+      { mode: "agent_safe" },
     );
   });
 
@@ -256,7 +254,7 @@ describe("teamsCatalogService", () => {
     });
     const svc = teamsCatalogService({} as any);
 
-    await expect(svc.installCatalogTeam("company-1", "core-exec-team")).rejects.toMatchObject({ status: 422 });
+    await expect(svc.installCatalogTeam("core-exec-team")).rejects.toMatchObject({ status: 422 });
 
     expect(mockCompanySkillService.installFromCatalog).not.toHaveBeenCalled();
     expect(mockCompanyPortabilityService.importBundle).not.toHaveBeenCalled();
@@ -266,7 +264,7 @@ describe("teamsCatalogService", () => {
     mockCompanyPortabilityService.importBundle.mockRejectedValueOnce(new Error("import failed"));
     const svc = teamsCatalogService({} as any);
 
-    await expect(svc.installCatalogTeam("company-1", "core-exec-team")).rejects.toThrow("import failed");
+    await expect(svc.installCatalogTeam("core-exec-team")).rejects.toThrow("import failed");
 
     expect(mockCompanySkillService.installFromCatalog).not.toHaveBeenCalled();
     expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
@@ -276,7 +274,7 @@ describe("teamsCatalogService", () => {
     mockCompanySkillService.installFromCatalog.mockRejectedValueOnce(new Error("catalog unavailable"));
     const svc = teamsCatalogService({} as any);
 
-    const result = await svc.installCatalogTeam("company-1", "core-exec-team");
+    const result = await svc.installCatalogTeam("core-exec-team");
 
     expect(mockCompanyPortabilityService.importBundle).toHaveBeenCalled();
     expect(result.warnings).toEqual(
@@ -289,7 +287,7 @@ describe("teamsCatalogService", () => {
   it("injects safe claude_local adapter defaults for every bundled agent when no overrides are supplied", async () => {
     const svc = teamsCatalogService({} as any);
 
-    await svc.installCatalogTeam("company-1", "core-exec-team");
+    await svc.installCatalogTeam("core-exec-team");
 
     const [importInput] = mockCompanyPortabilityService.importBundle.mock.calls.at(-1)!;
     expect(importInput.adapterOverrides).toEqual({
@@ -305,7 +303,7 @@ describe("teamsCatalogService", () => {
     try {
       const svc = teamsCatalogService({} as any);
 
-      await svc.installCatalogTeam("company-1", "core-exec-team");
+      await svc.installCatalogTeam("core-exec-team");
 
       const [importInput] = mockCompanyPortabilityService.importBundle.mock.calls.at(-1)!;
       expect(importInput.adapterOverrides).toEqual({
@@ -325,13 +323,13 @@ describe("teamsCatalogService", () => {
   it("supplies safe adapter defaults for product-design and product-engineering installs", async () => {
     const svc = teamsCatalogService({} as any);
 
-    await svc.installCatalogTeam("company-1", "product-design");
+    await svc.installCatalogTeam("product-design");
     const [designInput] = mockCompanyPortabilityService.importBundle.mock.calls.at(-1)!;
     expect(designInput.adapterOverrides).toEqual({
       "ux-designer": { adapterType: "claude_local" },
     });
 
-    await svc.installCatalogTeam("company-1", "product-engineering");
+    await svc.installCatalogTeam("product-engineering");
     const [engineeringInput] = mockCompanyPortabilityService.importBundle.mock.calls.at(-1)!;
     expect(engineeringInput.adapterOverrides).toEqual({
       cto: { adapterType: "claude_local" },
@@ -343,7 +341,7 @@ describe("teamsCatalogService", () => {
   it("never sends a forbidden process adapter type from the default catalog path", async () => {
     const svc = teamsCatalogService({} as any);
 
-    await svc.installCatalogTeam("company-1", "core-exec-team");
+    await svc.installCatalogTeam("core-exec-team");
 
     const [importInput] = mockCompanyPortabilityService.importBundle.mock.calls.at(-1)!;
     const adapterTypes = Object.values(importInput.adapterOverrides as Record<string, { adapterType: string }>)
@@ -358,7 +356,7 @@ describe("teamsCatalogService", () => {
     const callerOverrides = {
       cto: { adapterType: "opencode_local", adapterConfig: { model: "anthropic/claude-opus-4" } },
     };
-    await svc.installCatalogTeam("company-1", "core-exec-team", {
+    await svc.installCatalogTeam("core-exec-team", {
       adapterOverrides: callerOverrides,
     });
 
@@ -377,7 +375,7 @@ describe("teamsCatalogService", () => {
   it("omits the default-adapter warning when every agent has an explicit override", async () => {
     const svc = teamsCatalogService({} as any);
 
-    const result = await svc.installCatalogTeam("company-1", "core-exec-team", {
+    const result = await svc.installCatalogTeam("core-exec-team", {
       adapterOverrides: {
         ceo: { adapterType: "opencode_local" },
         cto: { adapterType: "opencode_local" },
@@ -393,7 +391,7 @@ describe("teamsCatalogService", () => {
   it("passes install secretValues through to company portability import", async () => {
     const svc = teamsCatalogService({} as any);
 
-    await svc.installCatalogTeam("company-1", "core-exec-team", {
+    await svc.installCatalogTeam("core-exec-team", {
       secretValues: { "agent:ceo:OPENAI_API_KEY": "sk-imported" },
     });
 
@@ -402,7 +400,7 @@ describe("teamsCatalogService", () => {
         secretValues: { "agent:ceo:OPENAI_API_KEY": "sk-imported" },
       }),
       null,
-      { mode: "agent_safe", sourceCompanyId: "company-1" },
+      { mode: "agent_safe" },
     );
   });
 
@@ -428,13 +426,13 @@ describe("teamsCatalogService", () => {
       mockAgentService.list.mockResolvedValue([
         agentWithCatalogTeam("sha256:stale-hash"),
         agentWithCatalogTeam("sha256:stale-hash"),
-        { id: "no-provenance", companyId: "company-1", metadata: null },
+        { id: "no-provenance", metadata: null },
       ]);
       const svc = teamsCatalogService({} as any);
 
-      const installed = await svc.listInstalledCatalogTeams("company-1");
+      const installed = await svc.listInstalledCatalogTeams();
 
-      expect(mockAgentService.list).toHaveBeenCalledWith("company-1");
+      expect(mockAgentService.list).toHaveBeenCalledWith();
       expect(installed).toEqual([
         expect.objectContaining({
           catalogId: CORE_EXEC_TEAM_ID,
@@ -451,7 +449,7 @@ describe("teamsCatalogService", () => {
       mockAgentService.list.mockResolvedValue([agentWithCatalogTeam(CORE_EXEC_TEAM_HASH)]);
       const svc = teamsCatalogService({} as any);
 
-      const installed = await svc.listInstalledCatalogTeams("company-1");
+      const installed = await svc.listInstalledCatalogTeams();
 
       expect(installed).toHaveLength(1);
       expect(installed[0]).toMatchObject({ present: true, outOfDate: false, agentCount: 1 });
@@ -461,13 +459,12 @@ describe("teamsCatalogService", () => {
       mockAgentService.list.mockResolvedValue([
         {
           id: "removed",
-          companyId: "company-1",
           metadata: { paperclip: { catalogTeam: { catalogId: "paperclipai:bundled:gone:removed", originHash: "sha256:x" } } },
         },
       ]);
       const svc = teamsCatalogService({} as any);
 
-      const installed = await svc.listInstalledCatalogTeams("company-1");
+      const installed = await svc.listInstalledCatalogTeams();
 
       expect(installed).toEqual([
         expect.objectContaining({ present: false, currentContentHash: null, outOfDate: false }),
@@ -475,10 +472,10 @@ describe("teamsCatalogService", () => {
     });
 
     it("returns an empty list when no agents carry catalog-team provenance", async () => {
-      mockAgentService.list.mockResolvedValue([{ id: "a", companyId: "company-1", metadata: {} }]);
+      mockAgentService.list.mockResolvedValue([{ id: "a", metadata: {} }]);
       const svc = teamsCatalogService({} as any);
 
-      expect(await svc.listInstalledCatalogTeams("company-1")).toEqual([]);
+      expect(await svc.listInstalledCatalogTeams()).toEqual([]);
     });
   });
 

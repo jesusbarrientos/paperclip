@@ -8,11 +8,11 @@ Old Overview URLs and saved Overview preferences redirect to Configuration.
 
 ## API and persistence
 
-- `GET /api/companies/:companyId/project-repositories` returns `repositories`,
+- `GET /api/project-repositories` returns `repositories`,
   `connectionCount`, and `failedConnectionCount`. Repository IDs are GitHub's stable
   numeric IDs represented as strings. Results are deduplicated across accessible
   grants and sorted by full name. Connection labels are display provenance only.
-- `POST /api/companies/:companyId/projects` accepts optional `repositoryIds`.
+- `POST /api/projects` accepts optional `repositoryIds`.
   The server resolves new selections through the caller's authorized GitHub grants
   before creating the project and all repository workspaces in a transaction.
   The existing `workspace` input remains supported; it cannot be combined with

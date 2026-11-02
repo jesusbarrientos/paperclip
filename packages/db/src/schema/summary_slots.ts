@@ -1,7 +1,6 @@
 import { index, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { SummarySlotKey, SummarySlotScopeKind, SummarySlotStatus } from "@paperclipai/shared";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { documents } from "./documents.js";
 import { issues } from "./issues.js";
 
@@ -9,7 +8,6 @@ export const summarySlots = pgTable(
   "summary_slots",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     scopeKind: text("scope_kind").$type<SummarySlotScopeKind>().notNull(),
     scopeId: uuid("scope_id"),
     slotKey: text("slot_key").$type<SummarySlotKey>().notNull(),
@@ -27,14 +25,13 @@ export const summarySlots = pgTable(
   },
   (table) => ({
     companyScopeSlotUq: unique("summary_slots_company_scope_slot_uq")
-      .on(table.companyId, table.scopeKind, table.scopeId, table.slotKey)
+      .on(table.scopeKind, table.scopeId, table.slotKey)
       .nullsNotDistinct(),
     documentUq: uniqueIndex("summary_slots_document_uq").on(table.documentId),
-    companyScopeIdx: index("summary_slots_company_scope_idx").on(table.companyId, table.scopeKind, table.scopeId),
+    companyScopeIdx: index("summary_slots_company_scope_idx").on(table.scopeKind, table.scopeId),
     companyGeneratingIssueIdx: index("summary_slots_company_generating_issue_idx").on(
-      table.companyId,
       table.generatingIssueId,
     ),
-    companyUpdatedIdx: index("summary_slots_company_updated_idx").on(table.companyId, table.updatedAt),
+    companyUpdatedIdx: index("summary_slots_company_updated_idx").on(table.updatedAt),
   }),
 );

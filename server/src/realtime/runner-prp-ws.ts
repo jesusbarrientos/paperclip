@@ -18,7 +18,6 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface RegisteredAuthority {
-  readonly companyId: string;
   readonly issueId: string | null;
   readonly agentId: string | null;
   readonly authority: DurablePrpControlPlane;
@@ -43,11 +42,10 @@ const currentLiveAuthorities = new Map<string, CurrentLiveAuthority>();
 let loopbackOrigin: string | null = null;
 
 function liveAuthorityKey(input: {
-  readonly companyId: string;
   readonly issueId: string;
   readonly agentId: string;
 }): string {
-  return JSON.stringify([input.companyId, input.issueId, input.agentId]);
+  return JSON.stringify([input.issueId, input.agentId]);
 }
 
 function rejectUpgrade(
@@ -115,7 +113,6 @@ export function setupRunnerPrpWebSocketServer(
 }
 
 export async function registerRunnerPrpAuthority(input: {
-  readonly companyId: string;
   readonly issueId?: string;
   readonly agentId?: string;
   readonly runId: string;
@@ -124,7 +121,7 @@ export async function registerRunnerPrpAuthority(input: {
   if (loopbackOrigin === null) {
     throw new Error("runner_prp_websocket_server_not_configured");
   }
-  if (!UUID_PATTERN.test(input.runId) || input.companyId.length === 0) {
+  if (!UUID_PATTERN.test(input.runId)) {
     throw new Error("runner_prp_authority_binding_invalid");
   }
   if (registrations.has(input.runId)) {
@@ -132,7 +129,6 @@ export async function registerRunnerPrpAuthority(input: {
   }
   const generation = Symbol(input.runId);
   const registeredAuthority: RegisteredAuthority = {
-    companyId: input.companyId,
     issueId: input.issueId ?? null,
     agentId: input.agentId ?? null,
     authority: input.authority,
@@ -142,7 +138,6 @@ export async function registerRunnerPrpAuthority(input: {
   registrations.set(input.runId, registeredAuthority);
   const currentKey = input.issueId && input.agentId
     ? liveAuthorityKey({
-        companyId: input.companyId,
         issueId: input.issueId,
         agentId: input.agentId,
       })
@@ -173,7 +168,6 @@ export async function registerRunnerPrpAuthority(input: {
 }
 
 export function queueLiveRunnerPrpCommand(input: {
-  companyId: string;
   issueId: string;
   agentId: string;
   type: string;
@@ -242,7 +236,6 @@ export class RunnerPrpRuntimeRequestResolutionError extends Error {
  * the same request fails closed instead of answering the provider twice.
  */
 export function queueRunnerPrpRuntimeRequestResolution(input: {
-  readonly companyId: string;
   readonly runId: string;
   readonly pendingRequest: PendingNativeRuntimeRequest;
   readonly actor: NativeRuntimeRequestResolver;
@@ -251,7 +244,6 @@ export function queueRunnerPrpRuntimeRequestResolution(input: {
   const registration = registrations.get(input.runId);
   if (
     !registration
-    || registration.companyId !== input.companyId
     // Warm attachment briefly registers two routes for the same mutable core.
     // A route is not dispatch authority before or after its exact run epoch.
     || registration.authority.store.state.identity.runId !== input.runId
@@ -262,8 +254,7 @@ export function queueRunnerPrpRuntimeRequestResolution(input: {
   }
   const pending = input.pendingRequest;
   if (
-    pending.companyId !== input.companyId
-    || pending.runId !== input.runId
+    pending.runId !== input.runId
   ) {
     throw new RunnerPrpRuntimeRequestResolutionError(
       "runner_prp_authority_not_active",
@@ -312,10 +303,9 @@ export function queueRunnerPrpRuntimeRequestResolution(input: {
 export const runnerPrpWebSocketInternals = {
   connectPathPrefix: CONNECT_PATH_PREFIX,
   activeRegistration(input: {
-    readonly companyId: string;
     readonly runId: string;
   }): boolean {
-    return registrations.get(input.runId)?.companyId === input.companyId;
+    return registrations.has(input.runId);
   },
   resetForTests(): void {
     registrations.clear();

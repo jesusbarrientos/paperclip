@@ -36,13 +36,13 @@ describe("activity parity commands", () => {
       .mockImplementation(() => Promise.resolve(jsonResponse()));
     vi.stubGlobal("fetch", fetchMock);
 
-    await run(["activity", "list", "--company-id", COMPANY_ID, "--agent-id", "agent-1"]);
-    await run(["activity", "create", "--company-id", COMPANY_ID, "--payload-json", "{}"]);
+    await run(["activity", "list", "--agent-id", "agent-1"]);
+    await run(["activity", "create", "--payload-json", "{}"]);
     await run(["activity", "issue", ISSUE_ID]);
 
     expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/activity?agentId=agent-1`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/activity`],
+      ["GET", `http://localhost:3100/api/activity?agentId=agent-1`],
+      ["POST", `http://localhost:3100/api/activity`],
       ["GET", `http://localhost:3100/api/issues/${ISSUE_ID}/activity`],
     ]);
   });

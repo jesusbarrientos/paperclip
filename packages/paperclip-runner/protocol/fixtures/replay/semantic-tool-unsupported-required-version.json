@@ -5,7 +5,7 @@
   "name": "Unsupported semantic tool envelope version",
   "description": "A required semantic_tool v2 envelope must fail closed in a PRP v1 consumer.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_semantic_v2", "issueId": "issue_semantic_v2", "runId": "run_semantic_v2",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_semantic_v2", "runId": "run_semantic_v2",
     "environmentLeaseId": "lease_semantic_v2", "runnerInstanceId": "runner_semantic_v2", "normalizedSessionId": "session_semantic_v2", "driverSessionId": "driver_semantic_v2"
   },
   "capabilities": {

@@ -16,8 +16,6 @@ if (!support.supported) console.warn(`Skipping lifecycle event database tests: $
 describePostgres("Resource lifecycle events", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
   let db: Db;
-  let companyId: string;
-
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("paperclip-resource-events-");
     db = createDb(database.connectionString);
@@ -26,25 +24,25 @@ describePostgres("Resource lifecycle events", () => {
   beforeEach(async () => {
     vi.stubEnv("PAPERCLIP_MANAGED_CONFIG", undefined);
     vi.stubEnv("PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN", undefined);
-    companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Lifecycle fixture", issuePrefix: `L${companyId.replaceAll("-", "").slice(0, 6)}` });
+    await db.execute(sql`TRUNCATE resource_lifecycle_events, agents, projects, approvals, budget_policies, cost_events, companies CASCADE`);
+    await db.insert(companies).values({ name: "Lifecycle fixture", issuePrefix: "LIFE" });
   });
   afterEach(() => { vi.unstubAllEnvs(); });
 
-  const events = () => db.select().from(resourceLifecycleEvents).where(eq(resourceLifecycleEvents.companyId, companyId));
+  const events = () => db.select().from(resourceLifecycleEvents);
   const createAgent = (status: "idle" | "pending_approval" | "terminated" = "idle", database: Db = db) =>
-    agentService(database).create(companyId, { name: "Lifecycle agent", adapterType: "process", adapterConfig: {}, status });
+    agentService(database).create({ name: "Lifecycle agent", adapterType: "process", adapterConfig: {}, status });
 
   it("records direct and approval-free hires once, including concurrent duplicate submissions", async () => {
     const agent = await createAgent();
-    await Promise.all(Array.from({ length: 5 }, () => recordResourceCreationEvent(db, companyId, "agent", agent.id)));
+    await Promise.all(Array.from({ length: 5 }, () => recordResourceCreationEvent(db, "agent", agent.id)));
     expect(await events()).toEqual([expect.objectContaining({ resourceType: "agent", resourceId: agent.id, action: "create" })]);
   });
 
   it("records pending hires only after approval and ignores repeated approval", async () => {
     const agent = await createAgent("pending_approval");
     expect(await events()).toEqual([]);
-    const approval = await approvalService(db).create(companyId, { type: "hire_agent", status: "pending", payload: { agentId: agent.id } });
+    const approval = await approvalService(db).create({ type: "hire_agent", status: "pending", payload: { agentId: agent.id } });
     await approvalService(db).approve(approval.id, "fixture-board");
     await approvalService(db).approve(approval.id, "fixture-board");
     await agentService(db).activatePendingApproval(agent.id);
@@ -52,16 +50,16 @@ describePostgres("Resource lifecycle events", () => {
   });
 
   it("records legacy approvals that create the agent at approval time", async () => {
-    const approval = await approvalService(db).create(companyId, { type: "hire_agent", status: "pending", payload: { name: "Legacy hire", adapterType: "process" } });
+    const approval = await approvalService(db).create({ type: "hire_agent", status: "pending", payload: { name: "Legacy hire", adapterType: "process" } });
     await approvalService(db).approve(approval.id, "fixture-board");
     const [intent] = await events();
     expect(intent?.resourceType).toBe("agent");
-    expect(await agentService(db).getById(intent!.resourceId)).toMatchObject({ status: "idle", companyId });
+    expect(await agentService(db).getById(intent!.resourceId)).toMatchObject({ status: "idle" });
   });
 
   it("does not allocate for rejected or terminated hires", async () => {
     const agent = await createAgent("pending_approval");
-    const approval = await approvalService(db).create(companyId, { type: "hire_agent", status: "pending", payload: { agentId: agent.id } });
+    const approval = await approvalService(db).create({ type: "hire_agent", status: "pending", payload: { agentId: agent.id } });
     await approvalService(db).reject(approval.id, "fixture-board");
     await createAgent("terminated");
     expect(await events()).toEqual([expect.objectContaining({ action: "terminate", resourceId: agent.id })]);
@@ -70,7 +68,7 @@ describePostgres("Resource lifecycle events", () => {
   it("rolls back hire rejection if termination cannot record its hook, allowing a retry", async () => {
     const agent = await createAgent("pending_approval");
     const service = approvalService(db);
-    const approval = await service.create(companyId, { type: "hire_agent", status: "pending", payload: { agentId: agent.id } });
+    const approval = await service.create({ type: "hire_agent", status: "pending", payload: { agentId: agent.id } });
     await db.execute(sql`ALTER TABLE resource_lifecycle_events ADD CONSTRAINT fixture_reject_hook CHECK (false) NOT VALID`);
     try {
       await expect(service.reject(approval.id, "fixture-board")).rejects.toThrow();
@@ -87,8 +85,8 @@ describePostgres("Resource lifecycle events", () => {
   });
 
   it("records projects with zero or multiple repository workspaces without storing repository data", async () => {
-    const empty = await projectService(db).create(companyId, { name: "Empty project" });
-    const project = await projectService(db).createWithRepositories(companyId, { name: "Repository project" }, [
+    const empty = await projectService(db).create({ name: "Empty project" });
+    const project = await projectService(db).createWithRepositories({ name: "Repository project" }, [
       { id: "1", fullName: "fixture/one", url: "https://github.com/fixture/one", connections: [] },
       { id: "2", fullName: "fixture/two", url: "https://github.com/fixture/two", connections: [] },
     ]);
@@ -96,7 +94,7 @@ describePostgres("Resource lifecycle events", () => {
     const rows = await events();
     expect(rows.map(row => row.resourceId).sort()).toEqual([empty.id, project.id].sort());
     expect(rows.every(row => row.resourceType === "project")).toBe(true);
-    expect(Object.keys(rows[0]).sort()).toEqual(["action", "companyId", "createdAt", "id", "resourceId", "resourceType"]);
+    expect(Object.keys(rows[0]).sort()).toEqual(["action", "createdAt", "id", "resourceId", "resourceType"]);
   });
 
   it("records every pause/resume cycle and termination in resource order, without duplicate hooks", async () => {
@@ -127,12 +125,12 @@ describePostgres("Resource lifecycle events", () => {
   it("records budget pause and resume hooks without replaying repeated budget evaluation", async () => {
     const agent = await createAgent();
     const service = budgetService(db);
-    await db.insert(budgetPolicies).values({ companyId, scopeType: "agent", scopeId: agent.id, metric: "billed_cents", windowKind: "calendar_month_utc", amount: 100, notifyEnabled: false });
-    const [event] = await db.insert(costEvents).values({ companyId, agentId: agent.id, provider: "fixture", model: "fixture", costCents: 150, occurredAt: new Date() }).returning();
+    await db.insert(budgetPolicies).values({ scopeType: "agent", scopeId: agent.id, metric: "billed_cents", windowKind: "calendar_month_utc", amount: 100, notifyEnabled: false });
+    const [event] = await db.insert(costEvents).values({ agentId: agent.id, provider: "fixture", model: "fixture", costCents: 150, occurredAt: new Date() }).returning();
     await service.evaluateCostEvent(event);
     await service.evaluateCostEvent(event);
     expect(await agentService(db).getById(agent.id)).toMatchObject({ status: "paused", pauseReason: "budget" });
-    await service.upsertPolicy(companyId, { scopeType: "agent", scopeId: agent.id, amount: 200 }, "fixture-board");
+    await service.upsertPolicy({ scopeType: "agent", scopeId: agent.id, amount: 200 }, "fixture-board");
     expect(await agentService(db).getById(agent.id)).toMatchObject({ status: "idle", pauseReason: null });
     expect((await events()).sort((a, b) => a.id - b.id).map(row => row.action)).toEqual(["create", "pause", "resume"]);
   });
@@ -163,8 +161,8 @@ describePostgres("Resource lifecycle events", () => {
     const projectId = randomUUID();
     await expect(db.transaction(async tx => {
       const txDb = tx as unknown as Db;
-      await agentService(txDb).create(companyId, { id: agentId, name: "Rolled back agent" });
-      await projectService(txDb).createWithRepositories(companyId, { id: projectId, name: "Rolled back project" }, []);
+      await agentService(txDb).create({ id: agentId, name: "Rolled back agent" });
+      await projectService(txDb).createWithRepositories({ id: projectId, name: "Rolled back project" }, []);
       throw new Error("rollback fixture");
     })).rejects.toThrow("rollback fixture");
     expect(await events()).toEqual([]);
@@ -174,15 +172,15 @@ describePostgres("Resource lifecycle events", () => {
 
   it("fails creation and activation atomically if the intent cannot be persisted", async () => {
     const pending = await createAgent("pending_approval");
-    const approval = await approvalService(db).create(companyId, { type: "hire_agent", status: "pending", payload: { agentId: pending.id } });
+    const approval = await approvalService(db).create({ type: "hire_agent", status: "pending", payload: { agentId: pending.id } });
     await db.execute(sql`ALTER TABLE resource_lifecycle_events ADD CONSTRAINT fixture_reject_intent CHECK (false) NOT VALID`);
     try {
       await expect(createAgent()).rejects.toThrow();
-      await expect(projectService(db).create(companyId, { name: "Rejected project" })).rejects.toThrow();
+      await expect(projectService(db).create({ name: "Rejected project" })).rejects.toThrow();
       await expect(approvalService(db).approve(approval.id, "fixture-board")).rejects.toThrow();
       expect(await approvalService(db).getById(approval.id)).toMatchObject({ status: "pending" });
-      expect(await db.select().from(agents).where(eq(agents.companyId, companyId))).toEqual([expect.objectContaining({ id: pending.id, status: "pending_approval" })]);
-      expect(await db.select().from(projects).where(eq(projects.companyId, companyId))).toEqual([]);
+      expect(await db.select().from(agents)).toEqual([expect.objectContaining({ id: pending.id, status: "pending_approval" })]);
+      expect(await db.select().from(projects)).toEqual([]);
       expect(await events()).toEqual([]);
     } finally {
       await db.execute(sql`ALTER TABLE resource_lifecycle_events DROP CONSTRAINT fixture_reject_intent`);
@@ -194,34 +192,29 @@ describePostgres("Resource lifecycle events", () => {
     vi.stubEnv("PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN", undefined);
     const oldAgentId = randomUUID();
     const oldProjectId = randomUUID();
-    await db.insert(agents).values({ id: oldAgentId, companyId, name: "Existing agent" });
-    await db.insert(projects).values({ id: oldProjectId, companyId, name: "Existing project" });
+    await db.insert(agents).values({ id: oldAgentId, name: "Existing agent" });
+    await db.insert(projects).values({ id: oldProjectId, name: "Existing project" });
     await agentService(db).update(oldAgentId, { name: "Renamed agent" });
     await projectService(db).update(oldProjectId, { name: "Renamed project" });
     expect(await events()).toEqual([expect.objectContaining({ action: "update", resourceId: oldProjectId })]);
     const agent = await createAgent();
-    const project = await projectService(db).create(companyId, { name: "New project" });
+    const project = await projectService(db).create({ name: "New project" });
     expect((await events()).filter(row => row.action === "create").map(row => row.resourceId).sort()).toEqual([agent.id, project.id].sort());
   });
 
-  it("scopes resource identities by company and type", async () => {
+  it("scopes resource identities by type", async () => {
     vi.stubEnv("PAPERCLIP_MANAGED_CONFIG", undefined);
     vi.stubEnv("PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN", "fixture-token");
     const id = randomUUID();
-    await recordResourceCreationEvent(db, companyId, "agent", id);
-    await recordResourceCreationEvent(db, companyId, "project", id);
-    const otherCompanyId = randomUUID();
-    await db.insert(companies).values({ id: otherCompanyId, name: "Other company", issuePrefix: "OTHER" });
-    await recordResourceCreationEvent(db, otherCompanyId, "agent", id);
+    await recordResourceCreationEvent(db, "agent", id);
+    await recordResourceCreationEvent(db, "project", id);
+    await recordResourceCreationEvent(db, "agent", id);
     expect(await events()).toHaveLength(2);
-    expect(await db.select().from(resourceLifecycleEvents).where(eq(resourceLifecycleEvents.companyId, otherCompanyId))).toHaveLength(1);
-    await db.delete(companies).where(eq(companies.id, otherCompanyId));
-    expect(await db.select().from(resourceLifecycleEvents).where(eq(resourceLifecycleEvents.companyId, otherCompanyId))).toEqual([]);
   });
 
   it("captures project and workspace updates, batches repository replacement, and ignores archive-only changes", async () => {
     const service = projectService(db);
-    const project = await service.createWithRepositories(companyId, { name: "Mutable project" }, [
+    const project = await service.createWithRepositories({ name: "Mutable project" }, [
       { id: "1", fullName: "fixture/one", url: "https://github.com/fixture/one", connections: [] },
     ]);
     expect((await events()).map(row => row.action)).toEqual(["create"]);
@@ -244,7 +237,7 @@ describePostgres("Resource lifecycle events", () => {
 
   it("rolls back project and repository mutations when their update record fails", async () => {
     const service = projectService(db);
-    const project = await service.create(companyId, { name: "Retained project" });
+    const project = await service.create({ name: "Retained project" });
     const workspace = await service.createWorkspace(project.id, { repoUrl: "https://github.com/fixture/retained" });
     const before = await events();
     await db.execute(sql`ALTER TABLE resource_lifecycle_events ADD CONSTRAINT fixture_reject_update CHECK (action <> 'update') NOT VALID`);

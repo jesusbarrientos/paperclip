@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { agents, companies, companyMemberships, createDb, principalPermissionGrants } from "@paperclipai/db";
@@ -44,14 +43,9 @@ describeDatabase("new agent configuration defaults", () => {
   });
 
   it("grants standard new agents direct peer configuration, but keeps restricted agents narrow", async () => {
-    const companyId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Agent permission defaults",
-      issuePrefix: `PD${companyId.slice(0, 6).toUpperCase()}`,
-    });
+    await db.insert(companies).values({ name: "Agent permission defaults", issuePrefix: "PD" });
     const create = (name: string, permissions: Record<string, unknown> = {}, metadata?: Record<string, unknown>) =>
-      agentService(db).create(companyId, {
+      agentService(db).create({
         name,
         role: "engineer",
         adapterType: "process",
@@ -90,10 +84,9 @@ describeDatabase("new agent configuration defaults", () => {
 
     for (const permissionKey of expectedNewAgentGrantKeys) {
       if (permissionKey === "tasks:assign_scope" || permissionKey === "inbox:manage") continue; // These grants require a target scope or the responsible-user inbox path.
-      expect(await accessService(db).hasPermission(companyId, "agent", standard.id, permissionKey)).toBe(true);
+      expect(await accessService(db).hasPermission("agent", standard.id, permissionKey)).toBe(true);
     }
     expect(await authorizationService(db).decidePrincipalGrant({
-      companyId,
       principalType: "agent",
       principalId: standard.id,
       action: "tasks:assign",
@@ -101,7 +94,6 @@ describeDatabase("new agent configuration defaults", () => {
       scope: { assigneeAgentId: standard.id },
     })).toMatchObject({ allowed: true });
     expect(await authorizationService(db).decidePrincipalGrant({
-      companyId,
       principalType: "agent",
       principalId: standard.id,
       action: "tasks:assign",
@@ -112,13 +104,13 @@ describeDatabase("new agent configuration defaults", () => {
       "agents:create", "environments:manage", "tools:admin", "users:invite",
       "users:manage_permissions", "pipelines:write", "joins:approve",
     ] as const) {
-      expect(await accessService(db).hasPermission(companyId, "agent", standard.id, permissionKey)).toBe(false);
+      expect(await accessService(db).hasPermission("agent", standard.id, permissionKey)).toBe(false);
     }
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: standard.id, companyId, source: "agent_key" },
+      actor: { type: "agent", agentId: standard.id, source: "agent_key" },
       action: "agent_config:update",
-      resource: { type: "agent", agentId: peer.id, companyId },
+      resource: { type: "agent", agentId: peer.id },
       scope: { requiresChangeGrant: true },
     });
     expect(decision).toMatchObject({ allowed: true, reason: "allow_direct_change" });
@@ -135,23 +127,18 @@ describeDatabase("new agent configuration defaults", () => {
 
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(agents).where(eq(agents.companyId, companyId));
-    await db.delete(companies).where(eq(companies.id, companyId));
+    await db.delete(agents);
+    await db.delete(companies);
   });
 
   it("keeps existing agents and their scoped grants unchanged during ordinary updates", async () => {
-    const companyId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Existing permission defaults",
-      issuePrefix: `PE${companyId.slice(0, 6).toUpperCase()}`,
-    });
+    await db.insert(companies).values({ name: "Existing permission defaults", issuePrefix: "PE" });
     const rows = await db.insert(agents).values([
-      { companyId, name: "Existing", role: "engineer", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
-      { companyId, name: "Scoped", role: "engineer", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
-      { companyId, name: "Restricted", role: "engineer", permissions: { trustPreset: LOW_TRUST_REVIEW_PRESET }, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
-      { companyId, name: "Built in", role: "engineer", metadata: { paperclipBuiltInAgent: { key: "reflection-coach", featureKeys: [] } }, permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
-      { companyId, name: "Pending", role: "engineer", status: "pending_approval", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
+      { name: "Existing", role: "engineer", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
+      { name: "Scoped", role: "engineer", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
+      { name: "Restricted", role: "engineer", permissions: { trustPreset: LOW_TRUST_REVIEW_PRESET }, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
+      { name: "Built in", role: "engineer", metadata: { paperclipBuiltInAgent: { key: "reflection-coach", featureKeys: [] } }, permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
+      { name: "Pending", role: "engineer", status: "pending_approval", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
     ]).returning();
     await db.insert(principalPermissionGrants).values({
       principalType: "agent",
@@ -174,18 +161,13 @@ describeDatabase("new agent configuration defaults", () => {
     expect(grants.find((grant) => grant.principalId === rows[1]!.id)?.scope).toEqual({ agentIds: [rows[0]!.id] });
 
     await db.delete(principalPermissionGrants);
-    await db.delete(agents).where(eq(agents.companyId, companyId));
-    await db.delete(companies).where(eq(companies.id, companyId));
+    await db.delete(agents);
+    await db.delete(companies);
   });
 
   it("adds the default grant when a standard pending hire is approved", async () => {
-    const companyId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Pending permission default",
-      issuePrefix: `PP${companyId.slice(0, 6).toUpperCase()}`,
-    });
-    const pending = await agentService(db).create(companyId, {
+    await db.insert(companies).values({ name: "Pending permission default", issuePrefix: "PP" });
+    const pending = await agentService(db).create({
       name: "Pending hire",
       status: "pending_approval",
       role: "engineer",
@@ -201,27 +183,22 @@ describeDatabase("new agent configuration defaults", () => {
       .map((grant) => grant.permissionKey).sort()).toEqual(expectedNewAgentGrantKeys);
 
     await db.delete(principalPermissionGrants);
-    await db.delete(agents).where(eq(agents.companyId, companyId));
-    await db.delete(companies).where(eq(companies.id, companyId));
+    await db.delete(agents);
+    await db.delete(companies);
   });
 
   it("keeps configuration access when invitation approval replaces a new agent's grants", async () => {
-    const companyId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Invited permission default",
-      issuePrefix: `PI${companyId.slice(0, 6).toUpperCase()}`,
-    });
-    const invited = await agentService(db).create(companyId, {
+    await db.insert(companies).values({ name: "Invited permission default", issuePrefix: "PI" });
+    const invited = await agentService(db).create({
       name: "Invited agent",
       role: "engineer",
       adapterType: "process",
       adapterConfig: {},
       runtimeConfig: {},
     });
-    await accessService(db).ensureMembership(companyId, "agent", invited.id, "member", "active");
+    await accessService(db).ensureMembership("agent", invited.id, "member", "active");
     await accessService(db).setPrincipalGrants(
-      companyId, "agent", invited.id, agentJoinGrantsFromDefaults(null, invited.id), null,
+      "agent", invited.id, agentJoinGrantsFromDefaults(null, invited.id), null,
     );
     const grants = await db.select().from(principalPermissionGrants)
       .where(eq(principalPermissionGrants.principalId, invited.id));
@@ -229,7 +206,7 @@ describeDatabase("new agent configuration defaults", () => {
 
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(agents).where(eq(agents.companyId, companyId));
-    await db.delete(companies).where(eq(companies.id, companyId));
+    await db.delete(agents);
+    await db.delete(companies);
   });
 });

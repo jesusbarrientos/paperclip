@@ -22,15 +22,15 @@ function issue(id: string): Issue {
 describe("inboxArchiveCache", () => {
   afterEach(() => {
     vi.useRealTimers();
-    for (const issueId of getLocalInboxArchiveIssueIds("company-1")) {
-      clearLocalInboxArchive("company-1", issueId);
+    for (const issueId of getLocalInboxArchiveIssueIds()) {
+      clearLocalInboxArchive(issueId);
     }
   });
 
   it("restores only the failed archive during overlapping optimistic removals", () => {
     const companyId = "company-1";
     const queryClient = new QueryClient();
-    const queryKey = [...queryKeys.issues.listMineByMe(companyId), "with-routine-executions"] as const;
+    const queryKey = [...queryKeys.issues.listMineByMe(), "with-routine-executions"] as const;
 
     queryClient.setQueryData<Issue[]>(queryKey, [
       issue("issue-a"),
@@ -38,11 +38,11 @@ describe("inboxArchiveCache", () => {
       issue("issue-c"),
     ]);
 
-    const archiveASnapshot = snapshotInboxIssueCaches(queryClient, companyId);
-    removeIssueFromInboxCaches(queryClient, companyId, "issue-a");
+    const archiveASnapshot = snapshotInboxIssueCaches(queryClient);
+    removeIssueFromInboxCaches(queryClient, "issue-a");
 
-    const archiveBSnapshot = snapshotInboxIssueCaches(queryClient, companyId);
-    removeIssueFromInboxCaches(queryClient, companyId, "issue-b");
+    const archiveBSnapshot = snapshotInboxIssueCaches(queryClient);
+    removeIssueFromInboxCaches(queryClient, "issue-b");
 
     restoreIssueToInboxCaches(queryClient, archiveASnapshot, "issue-a");
 
@@ -64,38 +64,38 @@ describe("inboxArchiveCache", () => {
     vi.useFakeTimers();
     const issues = [issue("issue-a"), issue("issue-b")];
 
-    beginLocalInboxArchive("company-1", "issue-a");
-    expect(filterLocalInboxArchivedIssues("company-1", issues)).toEqual([issue("issue-b")]);
+    beginLocalInboxArchive("issue-a");
+    expect(filterLocalInboxArchivedIssues(issues)).toEqual([issue("issue-b")]);
 
-    confirmLocalInboxArchive("company-1", "issue-a");
+    confirmLocalInboxArchive("issue-a");
     vi.advanceTimersByTime(4_999);
-    expect(filterLocalInboxArchivedIssues("company-1", issues)).toEqual([issue("issue-b")]);
+    expect(filterLocalInboxArchivedIssues(issues)).toEqual([issue("issue-b")]);
 
     vi.advanceTimersByTime(1);
-    expect(filterLocalInboxArchivedIssues("company-1", issues)).toEqual(issues);
+    expect(filterLocalInboxArchivedIssues(issues)).toEqual(issues);
   });
 
   it("does not expire an in-flight archive before post-settle bounding starts", () => {
     vi.useFakeTimers();
-    beginLocalInboxArchive("company-1", "issue-a");
+    beginLocalInboxArchive("issue-a");
 
     vi.advanceTimersByTime(30_000);
-    expect(getLocalInboxArchiveIssueIds("company-1").has("issue-a")).toBe(true);
+    expect(getLocalInboxArchiveIssueIds().has("issue-a")).toBe(true);
 
-    boundLocalInboxArchive("company-1", "issue-a");
+    boundLocalInboxArchive("issue-a");
     vi.advanceTimersByTime(29_999);
-    expect(getLocalInboxArchiveIssueIds("company-1").has("issue-a")).toBe(true);
+    expect(getLocalInboxArchiveIssueIds().has("issue-a")).toBe(true);
 
     vi.advanceTimersByTime(1);
-    expect(getLocalInboxArchiveIssueIds("company-1").has("issue-a")).toBe(false);
+    expect(getLocalInboxArchiveIssueIds().has("issue-a")).toBe(false);
   });
 
   it("distinguishes present, absent, and unavailable active inbox data", () => {
     const companyId = "company-1";
     const queryClient = new QueryClient();
-    const queryKey = [...queryKeys.issues.listMineByMe(companyId), "with-routine-executions"] as const;
+    const queryKey = [...queryKeys.issues.listMineByMe(), "with-routine-executions"] as const;
 
-    expect(getIssuePresenceInActiveInboxCaches(queryClient, companyId, "issue-a")).toBe("unknown");
+    expect(getIssuePresenceInActiveInboxCaches(queryClient, "issue-a")).toBe("unknown");
 
     queryClient.setQueryData<Issue[]>(queryKey, [issue("issue-a")]);
     const observer = new QueryObserver<Issue[]>(queryClient, {
@@ -104,9 +104,9 @@ describe("inboxArchiveCache", () => {
     });
     const unsubscribe = observer.subscribe(() => undefined);
 
-    expect(getIssuePresenceInActiveInboxCaches(queryClient, companyId, "issue-a")).toBe("present");
+    expect(getIssuePresenceInActiveInboxCaches(queryClient, "issue-a")).toBe("present");
     queryClient.setQueryData<Issue[]>(queryKey, [issue("issue-b")]);
-    expect(getIssuePresenceInActiveInboxCaches(queryClient, companyId, "issue-a")).toBe("absent");
+    expect(getIssuePresenceInActiveInboxCaches(queryClient, "issue-a")).toBe("absent");
 
     unsubscribe();
   });

@@ -105,7 +105,7 @@ describe("InstanceGeneralSettings sign-out", () => {
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     await renderPage(SELF_HOSTED_HEALTH);
     queryClient.setQueryData(queryKeys.auth.session, { session: { id: "session-1" } });
-    queryClient.setQueryData(queryKeys.companies.all, {
+    queryClient.setQueryData(queryKeys.organization, {
       companies: [{ id: "company-a", name: "Account A Co" }],
       unauthorized: false,
     });
@@ -118,7 +118,7 @@ describe("InstanceGeneralSettings sign-out", () => {
     await vi.waitFor(() =>
       expect(queryClient.getQueryData(queryKeys.auth.session)).toBeUndefined(),
     );
-    expect(queryClient.getQueryData(queryKeys.companies.all)).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.organization)).toBeUndefined();
     // Health describes the instance, so it is refreshed rather than dropped.
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.health });
     expect(queryClient.getQueryData(queryKeys.health)).toEqual(SELF_HOSTED_HEALTH);

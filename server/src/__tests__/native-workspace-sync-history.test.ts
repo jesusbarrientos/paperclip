@@ -86,7 +86,7 @@ describe("native warm workspace Git history", () => {
         remoteCwd: remote, runner, timeoutMs: 30_000,
         sandboxLeaseAcquisition: { outcome: "created", providerLeaseId: "sandbox" },
       };
-      const input = { db: db as unknown as Db, companyId: "company", workspaceId: "workspace", workspaceLocalDir: host, lease, target };
+      const input = { db: db as unknown as Db, workspaceId: "workspace", workspaceLocalDir: host, lease, target };
       const first = (await prepareNativeWorkspaceSync({ ...input, runId: "first" }))!;
       expect(first.mode).toBe("host_current");
       await first.restoreWorkspace();

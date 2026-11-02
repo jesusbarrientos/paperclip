@@ -47,7 +47,6 @@ function createRecorderDouble() {
       });
       return {
         id: `op-${operations.length}`,
-        companyId: "company-1",
         executionWorkspaceId: null,
         heartbeatRunId: null,
         issueId: null,

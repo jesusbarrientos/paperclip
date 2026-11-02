@@ -6,7 +6,6 @@
   "description": "The driver reports an item and turn failure before the run terminalizes.",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_replay",
     "issueId": "issue_replay_failed",
     "runId": "run_replay_failed",
     "environmentLeaseId": "lease_replay_failed",

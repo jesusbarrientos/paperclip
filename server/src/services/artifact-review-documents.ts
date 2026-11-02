@@ -24,11 +24,11 @@ import { documentService, issueDocumentSelect, mapIssueDocumentRow } from "./doc
 
 export type EnsureArtifactReviewWorkProduct = Pick<
   IssueWorkProduct,
-  "id" | "companyId" | "issueId" | "type" | "provider" | "metadata" | "title" | "createdByRunId" | "sourceTrust"
+  "id" | "issueId" | "type" | "provider" | "metadata" | "title" | "createdByRunId" | "sourceTrust"
 >;
 
 export interface EnsureArtifactReviewDocumentInput {
-  issue: { id: string; companyId: string };
+  issue: { id: string; };
   workProduct: EnsureArtifactReviewWorkProduct;
 }
 
@@ -72,8 +72,7 @@ export function artifactReviewDocumentService(db: Db, storage: StorageService) {
         .from(documentRevisions)
         .where(and(
           eq(documentRevisions.id, document.latestRevisionId),
-          eq(documentRevisions.documentId, document.id),
-          eq(documentRevisions.companyId, document.companyId),
+          eq(documentRevisions.documentId, document.id)
         ))
         .then((rows) => rows[0] ?? null)
       : null;
@@ -81,13 +80,12 @@ export function artifactReviewDocumentService(db: Db, storage: StorageService) {
   };
 
   const readMarkdownAttachmentBody = async (
-    issue: { id: string; companyId: string },
+    issue: { id: string; },
     metadata: AttachmentArtifactWorkProductMetadata,
   ) => {
     const attachment = await db
       .select({
         id: issueAttachments.id,
-        companyId: issueAttachments.companyId,
         issueId: issueAttachments.issueId,
         objectKey: assets.objectKey,
         contentType: assets.contentType,
@@ -103,7 +101,7 @@ export function artifactReviewDocumentService(db: Db, storage: StorageService) {
     // Unknown and cross-scope attachment ids are deliberately
     // indistinguishable: canonical metadata must reference an attachment on
     // the same issue and company.
-    if (!attachment || attachment.companyId !== issue.companyId || attachment.issueId !== issue.id) {
+    if (!attachment || attachment.issueId !== issue.id) {
       throw unprocessable("Work product attachment must reference an attachment on the same issue", {
         code: "invalid_attachment_artifact_metadata",
         attachmentId: metadata.attachmentId,
@@ -123,7 +121,7 @@ export function artifactReviewDocumentService(db: Db, storage: StorageService) {
       });
     }
 
-    const object = await storage.getObject(attachment.companyId, attachment.objectKey);
+    const object = await storage.getObject(attachment.objectKey);
     const chunks: Buffer[] = [];
     let total = 0;
     for await (const chunk of object.stream) {
@@ -158,7 +156,7 @@ export function artifactReviewDocumentService(db: Db, storage: StorageService) {
       input: EnsureArtifactReviewDocumentInput,
     ): Promise<EnsureArtifactReviewDocumentResult> => {
       const { issue, workProduct } = input;
-      if (workProduct.issueId !== issue.id || workProduct.companyId !== issue.companyId) {
+      if (workProduct.issueId !== issue.id) {
         throw notFound("Work product not found");
       }
       const metadata = getAttachmentArtifactWorkProductMetadata(workProduct);

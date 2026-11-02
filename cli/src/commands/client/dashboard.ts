@@ -10,7 +10,6 @@ import {
 } from "./common.js";
 
 interface DashboardGetOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 export function registerDashboardCommands(program: Command): void {
@@ -19,17 +18,15 @@ export function registerDashboardCommands(program: Command): void {
   addCommonClientOptions(
     dashboard
       .command("get")
-      .description("Get dashboard summary for a company")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .description("Get dashboard summary")
       .action(async (opts: DashboardGetOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const row = await ctx.api.get<DashboardSummary>(apiPath`/api/companies/${ctx.companyId}/dashboard`);
+          const ctx = resolveCommandContext(opts);
+          const row = await ctx.api.get<DashboardSummary>(apiPath`/api/dashboard`);
           printOutput(row, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }

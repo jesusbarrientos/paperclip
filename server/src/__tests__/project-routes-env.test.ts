@@ -97,7 +97,6 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -111,7 +110,6 @@ async function createApp() {
 function buildProject(overrides: Record<string, unknown> = {}) {
   return {
     id: "project-1",
-    companyId: "company-1",
     urlKey: "project-1",
     goalId: null,
     goalIds: [],
@@ -167,7 +165,7 @@ describe("project env routes", () => {
     mockProjectService.createWorkspace.mockResolvedValue(null);
     mockProjectService.listWorkspaces.mockResolvedValue([]);
     mockEnvironmentService.getById.mockReset();
-    mockSecretService.normalizeEnvBindingsForPersistence.mockImplementation(async (_companyId, env) => env);
+    mockSecretService.normalizeEnvBindingsForPersistence.mockImplementation(async (env) => env);
   });
 
   it("normalizes env bindings on create and logs only env keys", async () => {
@@ -183,7 +181,7 @@ describe("project env routes", () => {
 
     const app = await createApp();
     const res = await request(app)
-      .post("/api/companies/company-1/projects")
+      .post("/api/projects")
       .send({
         name: "Project",
         env: normalizedEnv,
@@ -191,12 +189,10 @@ describe("project env routes", () => {
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
     expect(mockSecretService.normalizeEnvBindingsForPersistence).toHaveBeenCalledWith(
-      "company-1",
       normalizedEnv,
       expect.objectContaining({ fieldPath: "env" }),
     );
     expect(mockProjectService.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ env: normalizedEnv }),
     );
     expect(mockLogActivity).toHaveBeenCalledWith(

@@ -26,7 +26,6 @@ import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { usePanel } from "../context/PanelContext";
 import { useSidebar } from "../context/SidebarContext";
-import { useCompany } from "../context/CompanyContext";
 import { useToastActions } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -759,13 +758,11 @@ function WorkspaceOperationsSection({
 }
 
 export function AgentDetail() {
-  const { companyPrefix, agentId, tab: urlTab, runId: urlRunId } = useParams<{
-    companyPrefix?: string;
+  const { agentId, tab: urlTab, runId: urlRunId } = useParams<{
     agentId: string;
     tab?: string;
     runId?: string;
   }>();
-  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { closePanel } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -797,24 +794,17 @@ export function AgentDetail() {
   const cancelConfigActionRef = useRef<(() => void) | null>(null);
   const { isMobile } = useSidebar();
   const routeAgentRef = agentId ?? "";
-  const routeCompanyId = useMemo(() => {
-    if (!companyPrefix) return null;
-    const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix)?.id ?? null;
-  }, [companies, companyPrefix]);
-  const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
-  const canFetchAgent = routeAgentRef.length > 0 && (isUuidLike(routeAgentRef) || Boolean(lookupCompanyId));
+  const canFetchAgent = routeAgentRef.length > 0;
   const setSaveConfigAction = useCallback((fn: (() => void) | null) => { saveConfigActionRef.current = fn; }, []);
   const setCancelConfigAction = useCallback((fn: (() => void) | null) => { cancelConfigActionRef.current = fn; }, []);
   const prepareAgentNavigation = useCallback(() => {
     return confirmAgentConfigNavigation(configDirty);
   }, [configDirty]);
   const { data: agent, isLoading, error } = useQuery<AgentDetailRecord>({
-    queryKey: [...queryKeys.agents.detail(routeAgentRef), lookupCompanyId ?? null],
-    queryFn: () => agentsApi.get(routeAgentRef, lookupCompanyId),
+    queryKey: queryKeys.agents.detail(routeAgentRef),
+    queryFn: () => agentsApi.get(routeAgentRef),
     enabled: canFetchAgent,
   });
-  const resolvedCompanyId = agent?.companyId ?? selectedCompanyId;
   const canonicalAgentRef = agent ? agentRouteRef(agent) : routeAgentRef;
   const handleLegacyTabChange = useCallback((next: string) => {
     if (!prepareAgentNavigation()) return;
@@ -830,8 +820,8 @@ export function AgentDetail() {
   const canUseProviderTrace =
     boardAccess?.source === "local_implicit" ||
     boardAccess?.isInstanceAdmin === true;
-  const membershipsQuery = useResourceMemberships(resolvedCompanyId);
-  const membershipMutation = useResourceMembershipMutation(resolvedCompanyId);
+  const membershipsQuery = useResourceMemberships();
+  const membershipMutation = useResourceMembershipMutation();
   const agentMembershipState = resolvedAgentId
     ? resourceMembershipState(membershipsQuery.data, "agent", resolvedAgentId)
     : "joined";
@@ -839,13 +829,12 @@ export function AgentDetail() {
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
-    enabled: !!resolvedCompanyId,
   });
   const builtInAgentsEnabled = experimentalSettings?.enableBuiltInAgents === true;
   const { data: builtInStates } = useQuery({
-    queryKey: queryKeys.builtInAgents.list(resolvedCompanyId!),
-    queryFn: () => builtInAgentsApi.list(resolvedCompanyId!),
-    enabled: !!resolvedCompanyId && builtInAgentsEnabled,
+    queryKey: queryKeys.builtInAgents.list(),
+    queryFn: () => builtInAgentsApi.list(),
+    enabled: builtInAgentsEnabled,
   });
   const builtInState = builtInAgentsEnabled
     ? builtInStates?.find((entry) => entry.agentId === resolvedAgentId) ?? null
@@ -856,22 +845,22 @@ export function AgentDetail() {
         .join(", ")
     : "";
   const invalidateBuiltIn = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.builtInAgents.list(resolvedCompanyId!) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.builtInAgents.list() });
     if (resolvedAgentId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(resolvedAgentId) });
     }
     queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
-  }, [queryClient, resolvedCompanyId, resolvedAgentId, routeAgentRef]);
+  }, [queryClient, resolvedAgentId, routeAgentRef]);
 
   const resetBuiltIn = useMutation({
-    mutationFn: () => builtInAgentsApi.reset(resolvedCompanyId!, builtInState!.definition.key),
+    mutationFn: () => builtInAgentsApi.reset(builtInState!.definition.key),
     onSuccess: invalidateBuiltIn,
   });
 
   const [showBuiltInConfigure, setShowBuiltInConfigure] = useState(false);
   const resetBuiltInResource = useMutation({
     mutationFn: (kind: BuiltInManagedResourceKind) =>
-      builtInAgentsApi.reset(resolvedCompanyId!, builtInState!.definition.key, [kind]),
+      builtInAgentsApi.reset(builtInState!.definition.key, [kind]),
     onSuccess: invalidateBuiltIn,
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "Failed to update bundle resource");
@@ -879,7 +868,7 @@ export function AgentDetail() {
   });
   const runBuiltInRoutine = useMutation({
     mutationFn: (routineKey: string) =>
-      builtInAgentsApi.runRoutine(resolvedCompanyId!, builtInState!.definition.key, routineKey),
+      builtInAgentsApi.runRoutine(builtInState!.definition.key, routineKey),
     onSuccess: invalidateBuiltIn,
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "Failed to run built-in routine");
@@ -887,7 +876,7 @@ export function AgentDetail() {
   });
   const enableBuiltInSchedule = useMutation({
     mutationFn: (routineKey: string) =>
-      builtInAgentsApi.enableRoutineSchedule(resolvedCompanyId!, builtInState!.definition.key, routineKey),
+      builtInAgentsApi.enableRoutineSchedule(builtInState!.definition.key, routineKey),
     onSuccess: invalidateBuiltIn,
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "Failed to enable routine schedule");
@@ -895,7 +884,7 @@ export function AgentDetail() {
   });
   const disableBuiltInSchedule = useMutation({
     mutationFn: (routineKey: string) =>
-      builtInAgentsApi.disableRoutineSchedule(resolvedCompanyId!, builtInState!.definition.key, routineKey),
+      builtInAgentsApi.disableRoutineSchedule(builtInState!.definition.key, routineKey),
     onSuccess: invalidateBuiltIn,
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "Failed to disable routine schedule");
@@ -912,38 +901,38 @@ export function AgentDetail() {
 
   const { data: runtimeState } = useQuery({
     queryKey: queryKeys.agents.runtimeState(resolvedAgentId ?? routeAgentRef),
-    queryFn: () => agentsApi.runtimeState(resolvedAgentId!, resolvedCompanyId ?? undefined),
+    queryFn: () => agentsApi.runtimeState(resolvedAgentId!),
     enabled: Boolean(resolvedAgentId) && needsOverviewData,
   });
 
   const { data: heartbeats } = useQuery({
-    queryKey: queryKeys.heartbeats(resolvedCompanyId!, agent?.id ?? undefined),
-    queryFn: () => heartbeatsApi.list(resolvedCompanyId!, agent?.id ?? undefined),
-    enabled: !!resolvedCompanyId && !!agent?.id && shouldLoadHeartbeats,
+    queryKey: queryKeys.heartbeats(agent?.id ?? undefined),
+    queryFn: () => heartbeatsApi.list(agent?.id ?? undefined),
+    enabled: !!agent?.id && shouldLoadHeartbeats,
   });
 
   const { data: allIssues } = useQuery({
-    queryKey: [...queryKeys.issues.list(resolvedCompanyId!), "participant-agent", resolvedAgentId ?? "__none__"],
-    queryFn: () => issuesApi.list(resolvedCompanyId!, { participantAgentId: resolvedAgentId! }),
-    enabled: !!resolvedCompanyId && !!resolvedAgentId && needsOverviewData,
+    queryKey: [...queryKeys.issues.list(), "participant-agent", resolvedAgentId ?? "__none__"],
+    queryFn: () => issuesApi.list({ participantAgentId: resolvedAgentId! }),
+    enabled: !!resolvedAgentId && needsOverviewData,
   });
 
   const { data: allAgents } = useQuery({
-    queryKey: queryKeys.agents.list(resolvedCompanyId!),
-    queryFn: () => agentsApi.list(resolvedCompanyId!),
-    enabled: !!resolvedCompanyId && needsOverviewData,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
+    enabled: needsOverviewData,
   });
 
   const { data: skillSnapshot } = useQuery({
     queryKey: queryKeys.agents.skills(resolvedAgentId ?? "__none__"),
-    queryFn: () => agentsApi.skills(resolvedAgentId!, resolvedCompanyId ?? undefined),
-    enabled: Boolean(resolvedCompanyId && resolvedAgentId && needsOverviewData),
+    queryFn: () => agentsApi.skills(resolvedAgentId!),
+    enabled: Boolean(resolvedAgentId && needsOverviewData),
   });
 
   const { data: overviewCompanySkills } = useQuery({
-    queryKey: queryKeys.companySkills.list(resolvedCompanyId ?? "__none__"),
-    queryFn: () => companySkillsApi.list(resolvedCompanyId!),
-    enabled: Boolean(resolvedCompanyId && needsOverviewData),
+    queryKey: queryKeys.companySkills.list(),
+    queryFn: () => companySkillsApi.list(),
+    enabled: Boolean(needsOverviewData),
   });
 
   const assignedIssues = useMemo(
@@ -977,10 +966,6 @@ export function AgentDetail() {
     }
   }, [agent, routeAgentRef, canonicalAgentRef, urlRunId, urlTab, activeView, legacyAuditSection, navigate]);
 
-  useEffect(() => {
-    if (!agent?.companyId || agent.companyId === selectedCompanyId) return;
-    setSelectedCompanyId(agent.companyId, { source: "route_sync" });
-  }, [agent?.companyId, selectedCompanyId, setSelectedCompanyId]);
 
   // Invoke / pause / resume / terminate / duplicate / reset live in the shared
   // AgentActionButtons component. The detail header keeps only "approve" here,
@@ -989,7 +974,7 @@ export function AgentDetail() {
     mutationFn: async (action: "approve") => {
       if (!agentLookupRef) return Promise.reject(new Error("No agent reference"));
       if (action === "approve") {
-        return agentsApi.approve(agentLookupRef, resolvedCompanyId ?? undefined);
+        return agentsApi.approve(agentLookupRef);
       }
     },
     onSuccess: () => {
@@ -998,11 +983,9 @@ export function AgentDetail() {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.runtimeState(agentLookupRef) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.taskSessions(agentLookupRef) });
-      if (resolvedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
-        if (agent?.id) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(resolvedCompanyId, agent.id) });
-        }
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+      if (agent?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(agent.id) });
       }
     },
     onError: (err) => {
@@ -1011,26 +994,22 @@ export function AgentDetail() {
   });
 
   const updateIcon = useMutation({
-    mutationFn: (icon: string) => agentsApi.update(agentLookupRef, { icon }, resolvedCompanyId ?? undefined),
+    mutationFn: (icon: string) => agentsApi.update(agentLookupRef, { icon }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
-      if (resolvedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
-      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
     },
   });
 
   const updatePermissions = useMutation({
     mutationFn: (permissions: AgentPermissionUpdate) =>
-      agentsApi.updatePermissions(agentLookupRef, permissions, resolvedCompanyId ?? undefined),
+      agentsApi.updatePermissions(agentLookupRef, permissions),
     onSuccess: () => {
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
-      if (resolvedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
-      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : "Failed to update permissions");
@@ -1272,7 +1251,6 @@ export function AgentDetail() {
           />
           <AgentActionButtons
             agent={agent}
-            companyId={resolvedCompanyId}
             assignLabel="Assign Task"
             showStatus={false}
             canRunWithProviderTrace={canUseProviderTrace}
@@ -1350,9 +1328,8 @@ export function AgentDetail() {
         />
       )}
 
-      {builtInState && resolvedCompanyId && (
+      {builtInState && (
         <ConfigureBuiltInAgentModal
-          companyId={resolvedCompanyId}
           state={builtInState}
           open={showBuiltInConfigure}
           onOpenChange={setShowBuiltInConfigure}
@@ -1362,7 +1339,6 @@ export function AgentDetail() {
           }}
         />
       )}
-
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
       {isPendingApproval && (
@@ -1399,14 +1375,13 @@ export function AgentDetail() {
       {activeView === "instructions" && (
         <div><PromptsTab
           agent={agent}
-          companyId={resolvedCompanyId ?? undefined}
           showSaveNotice={false}
           onDirtyChange={setConfigDirty}
           onSaveActionChange={setSaveConfigAction}
           onCancelActionChange={setCancelConfigAction}
           onSavingChange={setConfigSaving}
         />
-        {resolvedCompanyId && <AgentConnectionInstructions companyId={resolvedCompanyId} agentId={agent.id} />}
+        {<AgentConnectionInstructions agentId={agent.id} />}
         </div>
       )}
 
@@ -1414,7 +1389,6 @@ export function AgentDetail() {
         <div>
           <ConfigurationTab
             agent={agent}
-            companyId={resolvedCompanyId ?? undefined}
             onDirtyChange={setConfigDirty}
             onSaveActionChange={setSaveConfigAction}
             onCancelActionChange={setCancelConfigAction}
@@ -1432,7 +1406,6 @@ export function AgentDetail() {
         <div>
           <ConfigurationTab
             agent={agent}
-            companyId={resolvedCompanyId ?? undefined}
             onDirtyChange={setConfigDirty}
             onSaveActionChange={setSaveConfigAction}
             onCancelActionChange={setCancelConfigAction}
@@ -1446,23 +1419,21 @@ export function AgentDetail() {
       {activeView === "skills" && (
         <AgentSkillsTab
           agent={agent}
-          companyId={resolvedCompanyId ?? undefined}
         />
       )}
 
-      {activeView === "tools" && resolvedCompanyId && (
-        <AgentToolsTab agent={agent} companyId={resolvedCompanyId} />
+      {activeView === "tools" && (
+        <AgentToolsTab agent={agent} />
       )}
 
-      {activeView === "channels" && resolvedCompanyId && (
-        <AgentChannelsPanel agentId={agent.id} companyId={resolvedCompanyId} />
+      {activeView === "channels" && (
+        <AgentChannelsPanel agentId={agent.id} />
       )}
 
       {activeView === "permissions" && (
         <div>
           <ConfigurationTab
             agent={agent}
-            companyId={resolvedCompanyId ?? undefined}
             onDirtyChange={setConfigDirty}
             onSaveActionChange={setSaveConfigAction}
             onCancelActionChange={setCancelConfigAction}
@@ -1475,18 +1446,17 @@ export function AgentDetail() {
 
       {activeView === "api-keys" && (
         <div className="max-w-3xl">
-          <KeysTab agentId={agent.id} companyId={resolvedCompanyId ?? undefined} />
+          <KeysTab agentId={agent.id} />
         </div>
       )}
 
       {activeView === "revisions" && (
-        <AgentRevisionsTab agent={agent} companyId={resolvedCompanyId ?? undefined} />
+        <AgentRevisionsTab agent={agent} />
       )}
 
       {activeView === "run-detail" && (
         <RunsTab
           runs={heartbeats ?? []}
-          companyId={resolvedCompanyId!}
           agentId={agent.id}
           agentRouteId={canonicalAgentRef}
           selectedRunId={urlRunId ?? null}
@@ -1870,21 +1840,19 @@ export function syncAgentRouteAfterRename(
 
 export function AgentRevisionsTab({
   agent,
-  companyId,
 }: {
   agent: AgentDetailRecord;
-  companyId?: string;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const { data: configRevisions } = useQuery({
     queryKey: queryKeys.agents.configRevisions(agent.id),
-    queryFn: () => agentsApi.listConfigRevisions(agent.id, companyId),
+    queryFn: () => agentsApi.listConfigRevisions(agent.id),
   });
 
   const rollbackConfig = useMutation({
-    mutationFn: (revisionId: string) => agentsApi.rollbackConfigRevision(agent.id, revisionId, companyId),
+    mutationFn: (revisionId: string) => agentsApi.rollbackConfigRevision(agent.id, revisionId),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.configRevisions(agent.id) });
@@ -1938,7 +1906,6 @@ export function AgentRevisionsTab({
 
 export function ConfigurationTab({
   agent,
-  companyId,
   onDirtyChange,
   onSaveActionChange,
   onCancelActionChange,
@@ -1950,7 +1917,6 @@ export function ConfigurationTab({
   canConfigureProviderTrace = false,
 }: {
   agent: AgentDetailRecord;
-  companyId?: string;
   onDirtyChange: (dirty: boolean) => void;
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
@@ -1970,39 +1936,34 @@ export function ConfigurationTab({
 
   const catalogProvider = agent.adapterType === "paperclip_runner" ? String(agent.adapterConfig.provider ?? "codex") : undefined;
   const { data: adapterModels } = useQuery({
-    queryKey:
-      companyId
-        ? queryKeys.agents.adapterModels(companyId, agent.adapterType, null, catalogProvider)
-        : ["agents", "none", "adapter-models", agent.adapterType],
-    queryFn: () => agentsApi.adapterModels(companyId!, agent.adapterType, { provider: catalogProvider }),
-    enabled: Boolean(companyId) && content === "runtime",
+    queryKey: queryKeys.agents.adapterModels(agent.adapterType, null, catalogProvider),
+    queryFn: () => agentsApi.adapterModels(agent.adapterType, { provider: catalogProvider }),
+    enabled: content === "runtime",
   });
 
   const lowTrustSelected = getTrustPreset(agent.permissions) === "low_trust_review";
 
   const { data: boundaryProjects, isLoading: boundaryProjectsLoading } = useQuery({
-    queryKey: companyId ? queryKeys.projects.list(companyId) : ["projects", "__low-trust-disabled"],
-    queryFn: () => projectsApi.list(companyId!),
-    enabled: Boolean(companyId && lowTrustSelected) && content === "permissions",
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
+    enabled: lowTrustSelected && content === "permissions",
   });
 
   const { data: boundaryIssues, isLoading: boundaryIssuesLoading } = useQuery({
-    queryKey: companyId
-      ? [...queryKeys.issues.list(companyId), "low-trust-boundary-candidates"]
-      : ["issues", "__low-trust-disabled"],
-    queryFn: () => issuesApi.list(companyId!, { limit: 100, sortField: "updated", sortDir: "desc" }),
-    enabled: Boolean(companyId && lowTrustSelected) && content === "permissions",
+    queryKey: [...queryKeys.issues.list(), "low-trust-boundary-candidates"],
+    queryFn: () => issuesApi.list({ limit: 100, sortField: "updated", sortDir: "desc" }),
+    enabled: lowTrustSelected && content === "permissions",
   });
 
   const updateAgent = useMutation({
-    mutationFn: (data: Record<string, unknown>) => agentsApi.update(agent.id, data, companyId),
+    mutationFn: (data: Record<string, unknown>) => agentsApi.update(agent.id, data),
     onMutate: () => {
       setAwaitingRefreshAfterSave(true);
     },
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.configRevisions(agent.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(agent.companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
       if (!syncAgentRouteAfterRename(queryClient, navigate, agent, updated, urlTab ?? content)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.urlKey) });
       }
@@ -2078,11 +2039,9 @@ export function ConfigurationTab({
         canConfigureProviderTrace={canConfigureProviderTrace}
       /> : null}
 
-
       {content === "permissions" ? <TrustPresetSection
         permissions={agent.permissions}
         disabled={updatePermissions.isPending}
-        companyId={companyId}
         projectCandidates={(boundaryProjects ?? []).map((project) => ({
           id: project.id,
           label: project.name,
@@ -2172,7 +2131,6 @@ export function ConfigurationTab({
 
 export function PromptsTab({
   agent,
-  companyId,
   onDirtyChange,
   onSaveActionChange,
   onCancelActionChange,
@@ -2181,14 +2139,12 @@ export function PromptsTab({
 }: {
   showSaveNotice?: boolean;
   agent: Agent;
-  companyId?: string;
   onDirtyChange: (dirty: boolean) => void;
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
   onSavingChange: (saving: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
   const { isMobile } = useSidebar();
   const [selectedFile, setSelectedFileState] = useState<string>("AGENTS.md");
   const [instructionMode, setInstructionMode] = useState<"read" | "edit" | "raw">("read");
@@ -2256,8 +2212,8 @@ export function PromptsTab({
 
   const { data: bundle, isLoading: bundleLoading } = useQuery({
     queryKey: queryKeys.agents.instructionsBundle(agent.id),
-    queryFn: () => agentsApi.instructionsBundle(agent.id, companyId),
-    enabled: Boolean(companyId && isLocal),
+    queryFn: () => agentsApi.instructionsBundle(agent.id),
+    enabled: isLocal,
     refetchInterval: draft === null ? 5000 : false,
   });
 
@@ -2294,15 +2250,15 @@ export function PromptsTab({
 
   const { data: selectedFileDetail, isLoading: fileLoading, error: fileError } = useQuery({
     queryKey: queryKeys.agents.instructionsFile(agent.id, selectedOrEntryFile),
-    queryFn: () => agentsApi.instructionsFile(agent.id, selectedOrEntryFile, companyId),
-    enabled: Boolean(companyId && isLocal && selectedFileExists),
+    queryFn: () => agentsApi.instructionsFile(agent.id, selectedOrEntryFile),
+    enabled: Boolean(isLocal && selectedFileExists),
     refetchInterval: draft === null ? 5000 : false,
   });
 
   const candidates = useQuery({
     queryKey: queryKeys.agents.instructionCandidates(agent.id),
-    queryFn: () => agentsApi.instructionCandidates(agent.id, companyId),
-    enabled: Boolean(companyId && isLocal && currentMode === "managed"),
+    queryFn: () => agentsApi.instructionCandidates(agent.id),
+    enabled: Boolean(isLocal && currentMode === "managed"),
   });
   // Whole-folder failures belong to their run's diagnostics. They have no
   // preserved edits to resolve and do not describe the current saved files.
@@ -2310,7 +2266,7 @@ export function PromptsTab({
   const loadCandidate = useMutation({
     mutationFn: async (candidate: AgentInstructionCandidate) => {
       if (candidate.content === null) throw new Error("These instruction edits have not been retrieved yet.");
-      const file = await agentsApi.instructionsFile(agent.id, candidate.entryFile, companyId).catch((error) => {
+      const file = await agentsApi.instructionsFile(agent.id, candidate.entryFile).catch((error) => {
         if (error instanceof ApiError && error.status === 404 && candidate.baseRevisionId === null) return null;
         throw error;
       });
@@ -2328,7 +2284,7 @@ export function PromptsTab({
   });
   const resolveCandidate = useMutation({
     mutationFn: async (data: { runId: string; content: string; baseRevisionId: string | null }) => ({
-      file: await agentsApi.resolveInstructionCandidate(agent.id, data.runId, { content: data.content, baseRevisionId: data.baseRevisionId }, companyId),
+      file: await agentsApi.resolveInstructionCandidate(agent.id, data.runId, { content: data.content, baseRevisionId: data.baseRevisionId }),
       agentId: agent.id,
     }),
     onSuccess: ({ file, agentId: requestedAgentId }) => {
@@ -2345,7 +2301,7 @@ export function PromptsTab({
 
   const refreshCandidateBase = useMutation({
     mutationFn: async () => ({
-      file: await agentsApi.instructionsFile(agent.id, selectedOrEntryFile, companyId),
+      file: await agentsApi.instructionsFile(agent.id, selectedOrEntryFile),
       agentId: agent.id, runId: candidateRunId,
     }),
     onSuccess: ({ file, agentId: requestedAgentId, runId }) => {
@@ -2362,7 +2318,7 @@ export function PromptsTab({
       rootPath?: string | null;
       entryFile?: string;
       clearLegacyPromptTemplate?: boolean;
-    }) => agentsApi.updateInstructionsBundle(agent.id, data, companyId),
+    }) => agentsApi.updateInstructionsBundle(agent.id, data),
     onMutate: () => {
       editorInteractedRef.current = false;
     },
@@ -2377,7 +2333,7 @@ export function PromptsTab({
 
   const saveFile = useMutation({
     mutationFn: (data: { path: string; content: string; baseRevisionId?: string | null; baseHash?: string | null; clearLegacyPromptTemplate?: boolean }) =>
-      agentsApi.saveInstructionsFile(agent.id, data, companyId),
+      agentsApi.saveInstructionsFile(agent.id, data),
     onMutate: () => {
       editorInteractedRef.current = false;
     },
@@ -2405,7 +2361,7 @@ export function PromptsTab({
   });
 
   const deleteFile = useMutation({
-    mutationFn: (relativePath: string) => agentsApi.deleteInstructionsFile(agent.id, relativePath, companyId, bundle?.files.find(file => file.path === relativePath)?.contentHash),
+    mutationFn: (relativePath: string) => agentsApi.deleteInstructionsFile(agent.id, relativePath, bundle?.files.find(file => file.path === relativePath)?.contentHash),
     onMutate: () => {
       editorInteractedRef.current = false;
       setAwaitingRefresh(true);
@@ -2421,8 +2377,7 @@ export function PromptsTab({
 
   const uploadMarkdownImage = useMutation({
     mutationFn: async ({ file, namespace }: { file: File; namespace: string }) => {
-      if (!selectedCompanyId) throw new Error("Select an organization to upload images");
-      return assetsApi.uploadImage(selectedCompanyId, file, namespace);
+      return assetsApi.uploadImage(file, namespace);
     },
   });
 
@@ -3077,7 +3032,7 @@ export function PromptsTab({
           {(saveFile.error || fileError || updateBundle.error) && <p role="alert" className="text-sm text-destructive">{(saveFile.error ?? fileError ?? updateBundle.error)?.message} Your unsaved edits are retained.</p>}
           {selectedFileDetail?.receipt?.materialization === "pending" && <p role="status" className="text-sm text-muted-foreground">Revision saved. The instruction file still needs to be rebuilt from the saved revision.</p>}
           {selectedFileDetail?.revision && currentMode === "managed" && bundle?.persistence !== "agent_files" && <InstructionHistory
-            key={selectedOrEntryFile} agentId={agent.id} companyId={companyId} path={selectedOrEntryFile}
+            key={selectedOrEntryFile} agentId={agent.id} path={selectedOrEntryFile}
             currentRevisionId={selectedFileDetail.revision.id} disabled={isDirty || isSaving}
             onRestored={(file) => {
               setDraft(null);
@@ -3090,7 +3045,7 @@ export function PromptsTab({
           {selectedFileDetail?.binary ? (
             <div className="space-y-3 rounded-md border border-border p-4">
               <p className="text-sm text-muted-foreground">This file is preserved with the agent directory. Download it to view its contents.</p>
-              <a className="text-sm text-primary underline" href={agentsApi.downloadInstructionsFile(agent.id, selectedOrEntryFile, companyId)} download>Download {selectedOrEntryFile}</a>
+              <a className="text-sm text-primary underline" href={agentsApi.downloadInstructionsFile(agent.id, selectedOrEntryFile)} download>Download {selectedOrEntryFile}</a>
             </div>
           ) : selectedFileExists && fileLoading && !selectedFileDetail ? (
             <PromptEditorSkeleton />
@@ -3272,7 +3227,6 @@ function RunListItem({ run, isSelected, agentId }: { run: HeartbeatRun; isSelect
 
 function RunsTab({
   runs,
-  companyId,
   agentId,
   agentRouteId,
   selectedRunId,
@@ -3280,7 +3234,6 @@ function RunsTab({
   adapterConfig,
 }: {
   runs: HeartbeatRun[];
-  companyId: string;
   agentId: string;
   agentRouteId: string;
   selectedRunId: string | null;
@@ -3395,8 +3348,8 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
   const paperclipDeveloperMode =
     experimentalSettings?.enablePaperclipDeveloperMode === true;
   const { data: providerTraceRows } = useQuery({
-    queryKey: queryKeys.providerTraceMetadata(run.companyId, [run.id]),
-    queryFn: () => heartbeatsApi.providerTraceMetadata(run.companyId, [run.id]),
+    queryKey: queryKeys.providerTraceMetadata([run.id]),
+    queryFn: () => heartbeatsApi.providerTraceMetadata([run.id]),
     enabled: canUseProviderTrace,
     retry: false,
     refetchInterval:
@@ -3405,9 +3358,9 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
   const providerTraceMetadata = providerTraceRows?.[0] ?? null;
   const metrics = runMetrics(run);
   const { data: userDirectory } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(run.companyId),
-    queryFn: () => accessApi.listUserDirectory(run.companyId),
-    enabled: Boolean(run.companyId && run.responsibleUserId),
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
+    enabled: Boolean(run.responsibleUserId),
     retry: false,
   });
   const responsibleUserName = useMemo(() => {
@@ -3429,7 +3382,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
   const cancelRun = useMutation({
     mutationFn: () => heartbeatsApi.cancel(run.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.agentId) });
     },
   });
   const canResumeLostRun = run.errorCode === "process_lost" && run.status === "failed";
@@ -3456,14 +3409,14 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
         triggerDetail: "manual",
         reason: "resume_process_lost_run",
         payload: resumePayload,
-      }, run.companyId);
+      });
       if (!("id" in result)) {
         throw new Error(result.message ?? "Resume request was skipped.");
       }
       return result;
     },
     onSuccess: (resumedRun) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.agentId) });
       navigate(`/agents/${agentRouteId}/runs/${resumedRun.id}`);
     },
   });
@@ -3484,10 +3437,10 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
   }, [run.contextSnapshot]);
   const retryRun = useMutation({
     mutationFn: async () => {
-      return agentsApi.retryFailedRun(run.agentId, run.id, run.companyId);
+      return agentsApi.retryFailedRun(run.agentId, run.id);
     },
     onSuccess: (newRun) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.agentId) });
       if (newRun.runId)
         navigate(`/agents/${agentRouteId}/runs/${newRun.runId}`);
       else if (newRun.issueId) navigate(`/issues/${newRun.issueId}`);
@@ -3502,7 +3455,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
         reason: "rerun_with_provider_trace",
         payload: retryPayload,
         debug: { providerTrace: "raw" },
-      }, run.companyId);
+      });
       if (!("id" in result)) {
         throw new Error(result.message ?? "Trace re-run was skipped.");
       }
@@ -3510,7 +3463,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
     },
     onSuccess: (newRun) => {
       setInspectorOpen(false);
-      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.agentId) });
       navigate(`/agents/${agentRouteId}/runs/${newRun.id}`);
     },
   });
@@ -3527,7 +3480,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
   const clearSessionsForTouchedIssues = useMutation({
     mutationFn: async () => {
       if (touchedIssueIds.length === 0) return 0;
-      await Promise.all(touchedIssueIds.map((issueId) => agentsApi.resetSession(run.agentId, issueId, run.companyId)));
+      await Promise.all(touchedIssueIds.map((issueId) => agentsApi.resetSession(run.agentId, issueId)));
       return touchedIssueIds.length;
     },
     onSuccess: () => {
@@ -3538,7 +3491,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
   });
 
   const runClaudeLogin = useMutation({
-    mutationFn: () => agentsApi.loginWithClaude(run.agentId, run.companyId),
+    mutationFn: () => agentsApi.loginWithClaude(run.agentId),
     onSuccess: (data) => {
       setClaudeLoginResult(data);
     },
@@ -4270,7 +4223,7 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
     const connect = () => {
       if (closed) return;
       const url = buildSameOriginWebSocketUrl(
-        `/api/companies/${encodeURIComponent(run.companyId)}/events/ws`,
+        `/api/events/ws`,
       );
       socket = tryCreateWebSocket(url);
       if (!socket) {
@@ -4293,7 +4246,6 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
           return;
         }
 
-        if (event.companyId !== run.companyId) return;
         const payload = asRecord(event.payload);
         const eventRunId = asNonEmptyString(payload?.runId);
         if (!payload || eventRunId !== run.id) return;
@@ -4336,7 +4288,6 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
 
         const liveEvent: HeartbeatRunEvent = {
           id: seq,
-          companyId: run.companyId,
           runId: run.id,
           agentId: run.agentId,
           seq,
@@ -4379,7 +4330,7 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
         socket.close(1000, "run_detail_unmount");
       }
     };
-  }, [visible, isLive, run.companyId, run.id, run.agentId]);
+  }, [visible, isLive, run.id, run.agentId]);
 
   const censorUsernameInLogs = useQuery({
     queryKey: queryKeys.instance.generalSettings,
@@ -4407,9 +4358,9 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
     [adapter, censorUsernameInLogs, logLines, parserTick],
   );
   const toolDecisionLookup = useQuery({
-    queryKey: queryKeys.tools.runDecisions(run.companyId, run.id),
-    queryFn: () => toolsApi.getRunDecisionLookup(run.companyId, run.id),
-    enabled: Boolean(run.companyId && run.id),
+    queryKey: queryKeys.tools.runDecisions(run.id),
+    queryFn: () => toolsApi.getRunDecisionLookup(run.id),
+    enabled: Boolean(run.id),
     refetchInterval: isLive ? 3000 : false,
     staleTime: isLive ? 1000 : 30_000,
   });
@@ -4605,7 +4556,7 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
 
 /* ---- Keys Tab ---- */
 
-export function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }) {
+export function KeysTab({ agentId }: { agentId: string }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const [newKeyName, setNewKeyName] = useState("");
@@ -4615,11 +4566,11 @@ export function KeysTab({ agentId, companyId }: { agentId: string; companyId?: s
 
   const { data: keys, isLoading } = useQuery({
     queryKey: queryKeys.agents.keys(agentId),
-    queryFn: () => agentsApi.listKeys(agentId, companyId),
+    queryFn: () => agentsApi.listKeys(agentId),
   });
 
   const createKey = useMutation({
-    mutationFn: () => agentsApi.createKey(agentId, newKeyName.trim() || "Default", companyId),
+    mutationFn: () => agentsApi.createKey(agentId, newKeyName.trim() || "Default"),
     onSuccess: (data) => {
       setNewToken(data.token);
       setTokenVisible(true);
@@ -4629,7 +4580,7 @@ export function KeysTab({ agentId, companyId }: { agentId: string; companyId?: s
   });
 
   const revokeKey = useMutation({
-    mutationFn: (keyId: string) => agentsApi.revokeKey(agentId, keyId, companyId),
+    mutationFn: (keyId: string) => agentsApi.revokeKey(agentId, keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.keys(agentId) });
     },

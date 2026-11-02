@@ -72,22 +72,20 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     return app;
   }
 
-  function boardActor(companyId: string, source: "session" | "local_implicit" = "session"): Express.Request["actor"] {
+  function boardActor(source: "session" | "local_implicit" = "session"): Express.Request["actor"] {
     return {
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
-      memberships: [{ companyId, membershipRole: "admin", status: "active" }],
+      memberships: [{ membershipRole: "admin", status: "active" }],
       isInstanceAdmin: false,
       source,
     };
   }
 
-  function agentActor(companyId: string, agentId: string): Express.Request["actor"] {
+  function agentActor(agentId: string): Express.Request["actor"] {
     return {
       type: "agent",
       agentId,
-      companyId,
       runId: randomUUID(),
       source: "agent_jwt",
     };
@@ -116,7 +114,6 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: input.agentStatus ?? "active",
@@ -132,7 +129,6 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -149,7 +145,6 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     });
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
       agentId,
       source: "automation",
       triggerDetail: "system",
@@ -163,7 +158,6 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: retryRunId,
-      companyId,
       agentId,
       invocationSource: "automation",
       triggerDetail: "system",
@@ -190,7 +184,6 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
       .where(eq(agentWakeupRequests.id, wakeupRequestId));
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Retryable issue",
       status: input.issueStatus ?? "in_progress",
       priority: "medium",
@@ -202,13 +195,13 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
       identifier: `${issuePrefix}-1`,
     });
 
-    return { companyId, agentId, issueId, sourceRunId, retryRunId, scheduledRetryAt };
+    return { agentId, issueId, sourceRunId, retryRunId, scheduledRetryAt };
   }
 
   it("surfaces the current scheduled retry in the issue read model", async () => {
-    const { companyId, issueId, agentId, sourceRunId, retryRunId, scheduledRetryAt } = await seedIssueWithRetry();
+    const { issueId, agentId, sourceRunId, retryRunId, scheduledRetryAt } = await seedIssueWithRetry();
 
-    const res = await request(createApp(boardActor(companyId, "local_implicit"))).get(`/api/issues/${issueId}`);
+    const res = await request(createApp(boardActor("local_implicit"))).get(`/api/issues/${issueId}`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.scheduledRetry).toMatchObject({
@@ -226,9 +219,9 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   it.each(["queued", "running"] as const)(
     "surfaces a %s retry with its real live status",
     async (retryStatus) => {
-      const { companyId, issueId, retryRunId } = await seedIssueWithRetry({ retryStatus });
+      const { issueId, retryRunId } = await seedIssueWithRetry({ retryStatus });
 
-      const res = await request(createApp(boardActor(companyId, "local_implicit"))).get(`/api/issues/${issueId}`);
+      const res = await request(createApp(boardActor("local_implicit"))).get(`/api/issues/${issueId}`);
 
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       expect(res.body.scheduledRetry).toMatchObject({
@@ -240,23 +233,21 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   );
 
   it("includes a blocker's live retry in relation summaries", async () => {
-    const { companyId, issueId: blockerId, retryRunId } = await seedIssueWithRetry({ retryStatus: "running" });
+    const { issueId: blockerId, retryRunId } = await seedIssueWithRetry({ retryStatus: "running" });
     const blockedId = randomUUID();
     await db.insert(issues).values({
       id: blockedId,
-      companyId,
       title: "Waiting for recovery",
       status: "blocked",
       priority: "medium",
     });
     await db.insert(issueRelations).values({
-      companyId,
       issueId: blockerId,
       relatedIssueId: blockedId,
       type: "blocks",
     });
 
-    const res = await request(createApp(boardActor(companyId, "local_implicit"))).get(`/api/issues/${blockedId}`);
+    const res = await request(createApp(boardActor("local_implicit"))).get(`/api/issues/${blockedId}`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.blockedBy).toHaveLength(1);
@@ -271,8 +262,8 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   });
 
   it("promotes the existing scheduled retry and treats duplicate clicks as idempotent", async () => {
-    const { companyId, issueId, retryRunId } = await seedIssueWithRetry();
-    const app = createApp(boardActor(companyId));
+    const { issueId, retryRunId } = await seedIssueWithRetry();
+    const app = createApp(boardActor());
 
     const first = await request(app).post(`/api/issues/${issueId}/scheduled-retry/retry-now`).send({});
 
@@ -299,7 +290,7 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     const retryRuns = await db
       .select({ id: heartbeatRuns.id, status: heartbeatRuns.status })
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.retryOfRunId, first.body.scheduledRetry.retryOfRunId), eq(heartbeatRuns.companyId, companyId)));
+      .where(eq(heartbeatRuns.retryOfRunId, first.body.scheduledRetry.retryOfRunId));
     expect(retryRuns).toHaveLength(1);
     expect(retryRuns[0]).toMatchObject({ id: retryRunId, status: "queued" });
   });
@@ -315,7 +306,6 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "No retry",
       status: "todo",
       priority: "medium",
@@ -323,7 +313,7 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
       identifier: "NONE-1",
     });
 
-    const res = await request(createApp(boardActor(companyId)))
+    const res = await request(createApp(boardActor()))
       .post(`/api/issues/${issueId}/scheduled-retry/retry-now`)
       .send({});
 
@@ -335,9 +325,9 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   });
 
   it("reports already-promoted retries without creating another run", async () => {
-    const { companyId, issueId, retryRunId } = await seedIssueWithRetry({ retryStatus: "queued" });
+    const { issueId, retryRunId } = await seedIssueWithRetry({ retryStatus: "queued" });
 
-    const res = await request(createApp(boardActor(companyId)))
+    const res = await request(createApp(boardActor()))
       .post(`/api/issues/${issueId}/scheduled-retry/retry-now`)
       .send({});
 
@@ -352,9 +342,9 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   });
 
   it("uses normal promotion gates and records gate-suppressed retries", async () => {
-    const { companyId, issueId, retryRunId } = await seedIssueWithRetry({ agentStatus: "paused" });
+    const { issueId, retryRunId } = await seedIssueWithRetry({ agentStatus: "paused" });
 
-    const res = await request(createApp(boardActor(companyId)))
+    const res = await request(createApp(boardActor()))
       .post(`/api/issues/${issueId}/scheduled-retry/retry-now`)
       .send({});
 
@@ -386,23 +376,12 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   });
 
   it("requires board access for retry-now", async () => {
-    const { companyId, agentId, issueId } = await seedIssueWithRetry();
+    const { agentId, issueId } = await seedIssueWithRetry();
 
-    const res = await request(createApp(agentActor(companyId, agentId)))
+    const res = await request(createApp(agentActor(agentId)))
       .post(`/api/issues/${issueId}/scheduled-retry/retry-now`)
       .send({});
 
     expect(res.status).toBe(403);
   });
-
-  it("enforces company scoping for retry-now with a uniform 404", async () => {
-    const { issueId } = await seedIssueWithRetry();
-
-    const res = await request(createApp(boardActor(randomUUID())))
-      .post(`/api/issues/${issueId}/scheduled-retry/retry-now`)
-      .send({});
-
-    expect(res.status).toBe(404);
-  });
-
 });

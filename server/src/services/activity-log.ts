@@ -52,7 +52,6 @@ export function publishPluginDomainEvent(event: PluginEvent): void {
 }
 
 export interface LogActivityInput {
-  companyId: string;
   actorType: "agent" | "user" | "system" | "plugin";
   actorId: string;
   action: string;
@@ -67,7 +66,6 @@ export interface LogActivityInput {
 }
 
 export interface ActivityPublication {
-  companyId: string;
   payload: Record<string, unknown>;
   pluginEvent: PluginEvent | null;
 }
@@ -101,7 +99,7 @@ export async function resolveResponsibleUserIdForActivity(db: Db, input: LogActi
     const run = await db
       .select({ responsibleUserId: heartbeatRuns.responsibleUserId })
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.companyId, input.companyId), eq(heartbeatRuns.id, runId)))
+      .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
     const runResponsibleUserId = readNonEmptyString(run?.responsibleUserId);
     if (runResponsibleUserId) return runResponsibleUserId;
@@ -117,7 +115,7 @@ export async function resolveResponsibleUserIdForActivity(db: Db, input: LogActi
         createdByUserId: issues.createdByUserId,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, input.companyId), eq(issues.id, issueId)))
+      .where(eq(issues.id, issueId))
       .then((rows) => rows[0] ?? null);
     const issueResponsibleUserId = readNonEmptyString(issue?.responsibleUserId)
       ?? readNonEmptyString(issue?.createdByUserId);
@@ -142,14 +140,13 @@ export async function resolveResponsibleUserIdForActivity(db: Db, input: LogActi
   const company = await db
     .select({ defaultResponsibleUserId: companies.defaultResponsibleUserId })
     .from(companies)
-    .where(eq(companies.id, input.companyId))
+    .limit(1)
     .then((rows) => rows[0] ?? null);
   return readNonEmptyString(company?.defaultResponsibleUserId);
 }
 
 export function publishActivity(publication: ActivityPublication) {
   publishLiveEvent({
-    companyId: publication.companyId,
     type: "activity.logged",
     payload: publication.payload,
   });
@@ -160,7 +157,6 @@ export async function persistActivity(db: Db, input: LogActivityInput) {
   const redactedDetails = await redactActivityDetails(db, input.details ?? null);
   const responsibleUserId = await resolveResponsibleUserIdForActivity(db, input);
   const [activity] = await db.insert(activityLog).values({
-    companyId: input.companyId,
     actorType: input.actorType,
     actorId: input.actorId,
     action: input.action,
@@ -193,7 +189,6 @@ export async function persistActivity(db: Db, input: LogActivityInput) {
         actorType: input.actorType,
         entityId: input.entityId,
         entityType: input.entityType,
-        companyId: input.companyId,
         payload: {
           ...redactedDetails,
           agentId: input.agentId ?? null,
@@ -206,7 +201,6 @@ export async function persistActivity(db: Db, input: LogActivityInput) {
   return {
     activity,
     publication: {
-      companyId: input.companyId,
       payload,
       pluginEvent,
     } satisfies ActivityPublication,

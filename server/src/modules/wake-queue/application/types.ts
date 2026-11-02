@@ -2,7 +2,6 @@ import type { ReleaseRecoveryBlockedNoticeKind } from "../domain/policy.js";
 
 export type RunSummary = {
   id: string;
-  companyId: string;
   agentId: string;
   invocationSource: string;
   triggerDetail: string | null;
@@ -11,7 +10,6 @@ export type RunSummary = {
 
 export type RunSnapshot = {
   id: string;
-  companyId: string;
   agentId: string;
   status: string;
   runtimeMode: string | null;
@@ -30,7 +28,6 @@ export type IssueSnapshot = {
   conversationUserId?: string | null;
   conversationState?: string | null;
   id: string;
-  companyId: string;
   identifier: string;
   status: string;
   assigneeAgentId: string | null;
@@ -49,7 +46,6 @@ export type IssueSnapshot = {
 
 export type InvokableAgentSnapshot = {
   id: string;
-  companyId: string;
   name: string | null;
   invokable: boolean;
 };
@@ -63,7 +59,6 @@ export type RunQueuedEffect = {
 /** An issue reopened from done/cancelled because a live deferred comment wake promoted on it. */
 export type IssueReopenedEffect = {
   kind: "issue_reopened";
-  companyId: string;
   agentId: string;
   runId: string;
   issueId: string;
@@ -74,7 +69,6 @@ export type IssueReopenedEffect = {
 /** Explicit post-commit work a caller applies only after the release transaction commits. */
 export type PostCommitEffect = RunQueuedEffect | IssueReopenedEffect | {
   kind: "conversation_retry_requested";
-  companyId: string;
   runId: string;
   reviewParticipant: boolean;
 };

@@ -159,7 +159,6 @@ async function main() {
     const fresh = await post("/api/capability/ui/cleanroom/session", { sessionId: opened.sessionId });
     assertions.newChatRotatesIdentity =
       fresh.sessionId !== opened.sessionId &&
-      fresh.identity.companyId !== opened.identity.companyId &&
       fresh.identity.taskId !== opened.identity.taskId &&
       fresh.view.turns.length === 0;
     const retired = await jar.fetch("/api/capability/ui/message", {

@@ -39,7 +39,7 @@ export function runtimeSkillCacheSpec(managedRoot: string, skill: CompanySkill):
   // must reread its files rather than reuse an immutable revision fingerprint.
   if (skill.sourceType === "local_path") return null;
   const fingerprint = digest(JSON.stringify({
-    format: FORMAT, companyId: skill.companyId, skillId: skill.id,
+    format: FORMAT, skillId: skill.id,
     sourceType: skill.sourceType, sourceLocator: skill.sourceLocator, sourceRef: skill.sourceRef,
     // These are the only metadata fields used by the source reader. slug is its fallback directory.
     source: { owner: metadata.owner, repo: metadata.repo, hostname: metadata.hostname,

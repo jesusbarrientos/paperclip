@@ -27,14 +27,13 @@ import { USE_SOURCE_EXIT, decideGrokAuthMerge } from "./grok-auth-merge-decision
 // untouched when a DIFFERENT account already occupies it, and for the SAME
 // account runs the shared freshness predicate (`grok-auth-merge-decision.ts`)
 // so it replaces the existing credential only when the login is strictly
-// newer. The helper never writes the instance-global home, only the
-// company-scoped one.
+// newer.
 //
 // The comparison-and-install step runs under `withDirectoryMergeLock` on the
-// company Grok home, the same lock `copyBackGrokAuth` (see
+// managed Grok home, the same lock `copyBackGrokAuth` (see
 // `grok-auth-copyback.ts`) takes on the same directory at teardown. Both
 // resolve the lock key from the directory's canonical real path, so a
-// promotion and a teardown copy-back for the same company can never
+// promotion and a teardown copy-back can never
 // interleave their read-decide-write sections.
 //
 // The helper treats the whole credential value as a secret: it never logs a
@@ -142,14 +141,14 @@ export function assertUsableGrokAuthShape(authBytes: Buffer): GrokAuthPayload {
 /**
  * The promotion outcome.
  *
- * - `promoted`: the helper wrote the company home, either seeding an empty home
+ * - `promoted`: the helper wrote the managed home, either seeding an empty home
  *   or installing a strictly-newer same-account credential.
- * - `kept`: the login carried the SAME account as the company home, and the
+ * - `kept`: the login carried the SAME account as the managed home, and the
  *   home already held a same-identity credential that is not older than the
  *   one this login produced (a tie, or the home credential is newer), so the
  *   helper kept the home. This IS a successful authentication: a later run
  *   vends and uses the same account.
- * - `kept_foreign_identity`: the company home is occupied and this step could
+ * - `kept_foreign_identity`: the managed home is occupied and this step could
  *   not confirm it holds the same account — either a DIFFERENT account already
  *   occupies it, or the existing file is present but this step cannot read it
  *   as a usable Grok credential (an unreadable or unparseable file fails
@@ -159,7 +158,7 @@ export function assertUsableGrokAuthShape(authBytes: Buffer): GrokAuthPayload {
  * - `not_sole_owner`: the sole-active-owner gate rejected the write. Nothing
  *   was written.
  * - `background_skipped`: the user-initiated gate rejected the write (an
- *   automatic background path never seeds a company slot). Nothing was written.
+ *   automatic background path never seeds the managed slot). Nothing was written.
  */
 export type PromoteGrokDeviceLoginCredentialOutcome =
   | "promoted"
@@ -171,11 +170,9 @@ export type PromoteGrokDeviceLoginCredentialOutcome =
 export interface PromoteGrokDeviceLoginCredentialInput {
   /** The exact staged credential bytes the login sandbox produced. */
   authBytes: Buffer;
-  /** The company that owns this login. It must be a single safe path segment. */
-  companyId: string;
   /**
    * True when a user started this login. Only a user-initiated login seeds the
-   * company slot; an automatic background path never seeds it.
+   * managed slot; an automatic background path never seeds it.
    */
   userInitiated: boolean;
   /**
@@ -188,29 +185,12 @@ export interface PromoteGrokDeviceLoginCredentialInput {
   ) => Promise<CredentialReadinessResult> | CredentialReadinessResult;
   /**
    * Resolves true only while this session still holds the sole active claim on
-   * `(company_id, adapter_type)`. The helper writes only when it resolves true.
+   * the adapter type. The helper writes only when it resolves true.
    */
   isSoleActiveOwner: () => Promise<boolean> | boolean;
   /** A non-leaking progress sink. It receives only fixed status lines. */
   log: (line: string) => void | Promise<void>;
   env?: NodeJS.ProcessEnv;
-}
-
-/** Rejects an empty or unsafe `companyId`, so a promotion can never resolve the
- *  instance-global home (`resolveManagedGrokHomeDir` with no `companyId`) or
- *  escape the company tree. */
-function requireSafeCompanyId(companyId: string): string {
-  const trimmed = typeof companyId === "string" ? companyId.trim() : "";
-  if (trimmed.length === 0) {
-    throw new Error("grok device-login promotion: companyId is empty");
-  }
-  if (trimmed === "." || trimmed === "..") {
-    throw new Error("grok device-login promotion: companyId is a relative path segment");
-  }
-  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
-    throw new Error("grok device-login promotion: companyId contains a path separator");
-  }
-  return trimmed;
 }
 
 /**
@@ -316,7 +296,7 @@ async function writeSameIdentityCredentialIfFresher(
 }
 
 /**
- * Promotes a Grok device-login credential into the company scope. The order is
+ * Promotes a Grok device-login credential into the managed home. The order is
  * fixed: readiness check, credential validation, the user-initiated gate, the
  * sole-active-owner gate, then the write. The readiness check and the write run
  * while the caller still holds the active claim, so a second session cannot
@@ -327,7 +307,6 @@ export async function promoteGrokDeviceLoginCredential(
 ): Promise<PromoteGrokDeviceLoginCredentialOutcome> {
   const { authBytes, userInitiated, checkReadiness, isSoleActiveOwner, log } = input;
   const env = input.env ?? process.env;
-  const companyId = requireSafeCompanyId(input.companyId);
 
   // 1. Independent readiness check on the exact staged credential. A non-ready
   //    result rejects the promotion before any validation or write.
@@ -340,10 +319,10 @@ export async function promoteGrokDeviceLoginCredential(
   //    usable `key` and `refresh_token` in its value.
   const payload = assertUsableGrokAuthShape(authBytes);
 
-  // 3. Only a user-initiated login seeds the company slot.
+  // 3. Only a user-initiated login seeds the managed slot.
   if (!userInitiated) {
     await log(
-      "[paperclip] Grok device-login promotion: skipped (an automatic background login never seeds a company slot).",
+      "[paperclip] Grok device-login promotion: skipped (an automatic background login never seeds the managed slot).",
     );
     return "background_skipped";
   }
@@ -362,7 +341,7 @@ export async function promoteGrokDeviceLoginCredential(
   //    or a non-Grok payload — is treated as a foreign identity, so the
   //    promotion fails closed and writes nothing.
   //
-  // 6. Write the company credential home. `mkdir` applies `mode` only when it
+  // 6. Write the managed credential home. `mkdir` applies `mode` only when it
   //    creates the directory, so an explicit `chmod` follows it. This keeps
   //    the directory mode exact both for a new home and for a home that
   //    already existed at a broader mode. An empty home is always seeded. A
@@ -374,48 +353,48 @@ export async function promoteGrokDeviceLoginCredential(
   //    write is atomic: it stages the bytes into a private temporary file in
   //    the same directory, then renames that file over `auth.json`.
   //
-  // Steps 5 and 6 run under `withDirectoryMergeLock` on the company home, the
+  // Steps 5 and 6 run under `withDirectoryMergeLock` on the managed home, the
   // same lock the teardown copy-back takes on the same directory (see
   // `grok-auth-copyback.ts`). The directory must exist before the lock can
   // resolve a canonical real path, so `mkdir` runs once, up front, at the
   // final private mode; a home that already exists keeps its current mode
   // until the write path below re-asserts it.
-  const companyHome = resolveManagedGrokHomeDir(env, companyId);
-  await mkdir(companyHome, { recursive: true, mode: PRIVATE_DIR_MODE });
+  const managedHome = resolveManagedGrokHomeDir(env);
+  await mkdir(managedHome, { recursive: true, mode: PRIVATE_DIR_MODE });
   return await withDirectoryMergeLock(
-    companyHome,
-    async (canonicalCompanyHome) => {
-      const authPath = path.join(canonicalCompanyHome, AUTH_FILE_NAME);
+    managedHome,
+    async (canonicalManagedHome) => {
+      const authPath = path.join(canonicalManagedHome, AUTH_FILE_NAME);
       const existingState = await readExistingHomeState(authPath);
       if (existingState.kind === "unreadable") {
         await log(
-          "[paperclip] Grok device-login promotion: kept the company credential home (the existing file is present but this step cannot read it as a usable Grok credential).",
+          "[paperclip] Grok device-login promotion: kept the managed credential home (the existing file is present but this step cannot read it as a usable Grok credential).",
         );
         return "kept_foreign_identity";
       }
       if (existingState.kind === "identity" && existingState.identityKey !== payload.identityKey) {
         await log(
-          "[paperclip] Grok device-login promotion: kept the company credential home (the login is a different account than the one already set for this company).",
+          "[paperclip] Grok device-login promotion: kept the managed credential home (the login is a different account than the one already set for this organization).",
         );
         return "kept_foreign_identity";
       }
 
-      await chmod(canonicalCompanyHome, PRIVATE_DIR_MODE);
+      await chmod(canonicalManagedHome, PRIVATE_DIR_MODE);
 
       if (existingState.kind === "identity") {
         const wrote = await writeSameIdentityCredentialIfFresher(authBytes, authPath);
         if (!wrote) {
           await log(
-            "[paperclip] Grok device-login promotion: kept the company credential home (the existing same-identity credential is not older than the device-login credential).",
+            "[paperclip] Grok device-login promotion: kept the managed credential home (the existing same-identity credential is not older than the device-login credential).",
           );
           return "kept";
         }
-        await log("[paperclip] Grok device-login promotion: wrote the company credential home at mode 0600.");
+        await log("[paperclip] Grok device-login promotion: wrote the managed credential home at mode 0600.");
         return "promoted";
       }
 
       await writeAuthFileAtomically(authPath, authBytes);
-      await log("[paperclip] Grok device-login promotion: wrote the company credential home at mode 0600.");
+      await log("[paperclip] Grok device-login promotion: wrote the managed credential home at mode 0600.");
       return "promoted";
     },
     env,

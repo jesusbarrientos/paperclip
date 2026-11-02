@@ -14,7 +14,6 @@ import {
   ExternalLink,
   Mail,
 } from "lucide-react";
-import { useCompany } from "@/context/CompanyContext";
 import { useNavigate, useSearchParams, Link } from "@/lib/router";
 import { agentsApi } from "@/api/agents";
 import { issuesApi } from "@/api/issues";
@@ -83,19 +82,17 @@ function readEmailSetupDraft(key: string): Partial<EmailSetupDraft> {
 }
 
 export function EmailEndpointSetup() {
-  const { selectedCompanyId } = useCompany();
   const [params] = useSearchParams();
-  if (!selectedCompanyId) return <p role="status" className="p-6 text-sm text-muted-foreground">Loading email setup…</p>;
-  return <EmailEndpointSetupForm key={`${selectedCompanyId}:${params.get("resume") ?? params.get("setupId") ?? params.get("connectionId") ?? "new"}:${params.get("agentId") ?? "choose"}`} companyId={selectedCompanyId} />;
+  return <EmailEndpointSetupForm key={`${params.get("resume") ?? params.get("setupId") ?? params.get("connectionId") ?? "new"}:${params.get("agentId") ?? "choose"}`} />;
 }
 
-function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
+function EmailEndpointSetupForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const cache = useQueryClient();
   const resumeId = params.get("resume");
   const setupId = params.get("setupId");
-  const draftKey = `paperclip.agentmail-setup:${companyId}:${resumeId ?? setupId ?? params.get("connectionId") ?? "new"}:${params.get("agentId") ?? "choose"}`;
+  const draftKey = `paperclip.agentmail-setup:${resumeId ?? setupId ?? params.get("connectionId") ?? "new"}:${params.get("agentId") ?? "choose"}`;
   const [draft] = useState(() => {
     const saved = readEmailSetupDraft(draftKey);
     // A Finish setup link always names its original inbox, including when an
@@ -121,34 +118,33 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
   const [permissions, setPermissions] = useState<Partial<AgentPermissions>>({});
   const suggestedUsername = useRef(false);
   useEffect(() => {
-    if (!companyId) return;
     // Save progress, never the API key. The same request ID resumes partial setup.
     try {
       if (step === 2) sessionStorage.removeItem(draftKey);
       else sessionStorage.setItem(draftKey, JSON.stringify({ connectionId, step, agentId,
         requestId, addressMode, inboxId, username, domain, domainSelected, takenAddresses, mode, allowInboxKey, selectedCredentialId }));
     } catch { /* Setup remains usable when browser storage is unavailable. */ }
-  }, [companyId, draftKey, connectionId, step, agentId, requestId, addressMode, inboxId, username, domain, domainSelected, takenAddresses, mode, allowInboxKey, selectedCredentialId]);
-  const agents = useQuery({ queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId), enabled: !!companyId });
-  const projects = useQuery({ queryKey: queryKeys.projects.list(companyId),
-    queryFn: () => projectsApi.list(companyId), enabled: !!companyId && trustOpen });
-  const boundaryIssues = useQuery({ queryKey: ["email-boundary-issues", companyId],
-    queryFn: () => issuesApi.list(companyId), enabled: !!companyId && trustOpen });
+  }, [draftKey, connectionId, step, agentId, requestId, addressMode, inboxId, username, domain, domainSelected, takenAddresses, mode, allowInboxKey, selectedCredentialId]);
+  const agents = useQuery({ queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list() });
+  const projects = useQuery({ queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(), enabled: trustOpen });
+  const boundaryIssues = useQuery({ queryKey: ["email-boundary-issues"],
+    queryFn: () => issuesApi.list(), enabled: trustOpen });
   const chosen = agents.data?.find(a => a.id === agentId);
   const lowTrust = getTrustPreset(chosen?.permissions) === "low_trust_review";
   const scoped = lowTrustBoundaryHasScope(getLowTrustBoundary(chosen?.permissions));
-  const inspected = useQuery({ queryKey: ["email-credential-inspect", companyId, connectionId],
-    queryFn: () => emailApi.inspectSaved(companyId, connectionId),
-    enabled: !!companyId && !!connectionId, retry: false });
-  const inboxes = useQuery({ queryKey: ["email-inboxes", companyId],
-    queryFn: () => emailApi.list(companyId), enabled: !!companyId });
+  const inspected = useQuery({ queryKey: ["email-credential-inspect", connectionId],
+    queryFn: () => emailApi.inspectSaved(connectionId),
+    enabled: !!connectionId, retry: false });
+  const inboxes = useQuery({ queryKey: ["email-inboxes"],
+    queryFn: () => emailApi.list() });
   // A provider failure can leave an inbox allocated under this request. Resume
   // that exact endpoint; its agent and address are already fixed server-side.
   const pendingEndpoint = inboxes.data?.find(i => i.id === requestId && i.status !== "archived");
   const pendingAddress = pendingEndpoint?.address;
   const resumeAccount = useQuery({
-    queryKey: ["email-resume-account", companyId, pendingEndpoint?.connectionId],
+    queryKey: ["email-resume-account", pendingEndpoint?.connectionId],
     queryFn: () => toolsApi.getConnection(pendingEndpoint!.connectionId),
     enabled: !!resumeId && requestId === resumeId && !!pendingEndpoint && !connectionId,
     retry: false,
@@ -193,8 +189,8 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
     mutationFn: async () => {
       if (pendingAddress) return true;
       const details = selectedCredentialId
-        ? await emailApi.inspectSaved(companyId, selectedCredentialId)
-        : await emailApi.inspect(companyId, apiKey.trim());
+        ? await emailApi.inspectSaved(selectedCredentialId)
+        : await emailApi.inspect(apiKey.trim());
       if (details.scope.scope_type === "inbox" && !allowInboxKey) {
         setRestrictedInbox(details.inboxes[0]?.inbox_id ?? "this inbox");
         return false;
@@ -203,24 +199,24 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
       const nextRequestId = changingAccount ? crypto.randomUUID() : requestId;
       let id = selectedCredentialId;
       if (!id) {
-        const result = await emailApi.connect(companyId, {
+        const result = await emailApi.connect({
           apiKey: apiKey.trim(), grantKind: "organization", allAgents: false,
           agentIds: [agentId], idempotencyKey: nextRequestId,
         });
         id = result.id;
       }
-      cache.setQueryData(["email-credential-inspect", companyId, id], details);
+      cache.setQueryData(["email-credential-inspect", id], details);
       setSelectedCredentialId(id);
       setApiKey("");
-      void cache.invalidateQueries({ queryKey: ["email-credentials", companyId] });
-      void cache.invalidateQueries({ queryKey: queryKeys.tools.connections(companyId) });
+      void cache.invalidateQueries({ queryKey: ["email-credentials"] });
+      void cache.invalidateQueries({ queryKey: queryKeys.tools.connections() });
       if (changingAccount) {
         // Save the replacement credential before retiring the original draft.
         // A failed save/cleanup leaves the original URL recoverable; a completed
         // switch gets its own URL so refreshing cannot revive an archived draft.
         if (pendingEndpoint) {
           await emailApi.control(pendingEndpoint.id, "remove");
-          await cache.invalidateQueries({ queryKey: ["email-inboxes", companyId] });
+          await cache.invalidateQueries({ queryKey: ["email-inboxes"] });
         }
         openDraft({
           connectionId: id, selectedCredentialId: id, agentId, step: 1,
@@ -255,14 +251,14 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
       canCreateAgents: permissions.canCreateAgents ?? false,
       canCreateSkills: permissions.canCreateSkills ?? true,
       canAssignTasks: agentDetail.data?.access?.canAssignTasks ?? false,
-    }, companyId),
+    }),
     onSuccess: () => {
       setTrustOpen(false);
-      void cache.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+      void cache.invalidateQueries({ queryKey: queryKeys.agents.list() });
     },
   });
   const setup = useMutation({
-    mutationFn: () => emailApi.setup(companyId, {
+    mutationFn: () => emailApi.setup({
       assignedAgentId: agentId, credentialConnectionId: connectionId,
       ...(pendingAddress ? { inboxId: pendingAddress } : addressMode === "existing" ? { inboxId } : { username, domain }),
       receiveMode: mode, idempotencyKey: requestId,
@@ -271,12 +267,12 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
       if (error instanceof ApiError && (error.body as { code?: string } | null)?.code === "agentmail_address_taken") {
         setTakenAddresses(previous => [...new Set([...previous, `${username}@${domain}`.toLowerCase()])].slice(-20));
       }
-      await cache.invalidateQueries({ queryKey: ["email-inboxes", companyId] });
+      await cache.invalidateQueries({ queryKey: ["email-inboxes"] });
     },
     onSuccess: () => {
-      void cache.invalidateQueries({ queryKey: ["email-inboxes", companyId] });
-      void cache.invalidateQueries({ queryKey: queryKeys.chatEndpoints.list(companyId) });
-      void cache.invalidateQueries({ queryKey: queryKeys.tools.connections(companyId) });
+      void cache.invalidateQueries({ queryKey: ["email-inboxes"] });
+      void cache.invalidateQueries({ queryKey: queryKeys.chatEndpoints.list() });
+      void cache.invalidateQueries({ queryKey: queryKeys.tools.connections() });
       void cache.invalidateQueries({ queryKey: queryKeys.tools.connectionInstalls(connectionId) });
       setStep(2);
     },
@@ -286,7 +282,7 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
   const checkingNewAddress = step === 1 && addressMode === "new" && !pendingAddress && !scopedKey;
   const knownAddress = checkingNewAddress && knownAddresses.has(address.toLowerCase());
   const validUsername = /^[a-z0-9][a-z0-9._-]*$/.test(username) && username.length <= 64;
-  const addressCheck = useEmailAddressCheck(companyId, connectionId, username, domain,
+  const addressCheck = useEmailAddressCheck(connectionId, username, domain,
     checkingNewAddress && validUsername && !!inspected.data && !knownAddress);
   const addressTaken = knownAddress || addressCheck.result?.status === "taken";
   const suggestions = checkingNewAddress && validUsername && (addressTaken || addressCheck.result?.status === "unknown")
@@ -307,7 +303,7 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
   const cancel = () => { try { sessionStorage.removeItem(draftKey); } catch {} navigate("/apps"); };
   function openDraft(nextDraft: EmailSetupDraft & { requestId: string; connectionId: string }) {
     try {
-      sessionStorage.setItem(`paperclip.agentmail-setup:${companyId}:${nextDraft.requestId}:${agentId}`, JSON.stringify(nextDraft));
+      sessionStorage.setItem(`paperclip.agentmail-setup:${nextDraft.requestId}:${agentId}`, JSON.stringify(nextDraft));
     } catch { /* The new link still restores the agent and saved account. */ }
     navigate(`/apps/chat/connect?${new URLSearchParams({ provider: "agentmail", purpose: "chat", setupId: nextDraft.requestId, agentId, connectionId: nextDraft.connectionId })}`);
   }
@@ -343,7 +339,7 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
           agents={(agents.data ?? []).filter(a => !["terminated", "pending_approval"].includes(a.status))}
           onChange={id => { setAgentId(id); setUsername((agents.data?.find(a => a.id === id)?.name ?? "").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 64)); }} />
       </div>
-      {!pendingAddress && <AgentMailCredentialField companyId={companyId} connectionId={selectedCredentialId}
+      {!pendingAddress && <AgentMailCredentialField connectionId={selectedCredentialId}
         onConnectionChange={selectCredential} value={apiKey} onChange={value => { setApiKey(value); connect.reset(); }} disabled={busy} />}
       {restrictedInbox && <div className="space-y-2 text-sm">
         <p className="text-muted-foreground">That key only connects {restrictedInbox}. Choose a saved account key or enter one to create a new address.</p>
@@ -457,7 +453,6 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
           <TrustPresetSection
             permissions={permissions}
             onChange={setPermissions}
-            companyId={companyId}
             projectCandidates={(projects.data ?? []).map((p) => ({
               id: p.id,
               label: p.name,
@@ -501,22 +496,20 @@ function EmailEndpointSetupForm({ companyId }: { companyId: string }) {
 }
 
 export function EmailConnectionInboxes({
-  companyId,
   connectionId,
   canConfigure,
 }: {
-  companyId: string;
   connectionId: string;
   canConfigure: boolean;
 }) {
   const query = useQuery({
-    queryKey: ["email-inboxes", companyId],
-    queryFn: () => emailApi.list(companyId),
+    queryKey: ["email-inboxes"],
+    queryFn: () => emailApi.list(),
     refetchInterval: 10_000,
   });
   const connections = useQuery({
-    queryKey: queryKeys.tools.connections(companyId),
-    queryFn: () => toolsApi.listConnections(companyId),
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
   const children = new Set(
     connections.data?.connections
@@ -576,17 +569,15 @@ export function EmailConnectionInboxes({
 }
 export function EmailEndpointSettings({
   endpointId,
-  companyId,
   assignedAgentName,
 }: {
   endpointId: string;
-  companyId: string;
   assignedAgentName: string;
 }) {
   const cache = useQueryClient();
   const query = useQuery({
-    queryKey: ["email-inboxes", companyId],
-    queryFn: () => emailApi.list(companyId),
+    queryKey: ["email-inboxes"],
+    queryFn: () => emailApi.list(),
     refetchInterval: 10_000,
   });
   const inbox = query.data?.find(
@@ -612,7 +603,7 @@ export function EmailEndpointSettings({
       setReplacementKey("");
     },
     onSettled: () => {
-      void cache.invalidateQueries({ queryKey: ["email-inboxes", companyId] });
+      void cache.invalidateQueries({ queryKey: ["email-inboxes"] });
     },
   });
   const control = useMutation({
@@ -620,7 +611,7 @@ export function EmailEndpointSettings({
       emailApi.control(endpointId, action),
     onSuccess: (result) => {
       setRemoved(result.status === "archived");
-      void cache.invalidateQueries({ queryKey: ["email-inboxes", companyId] });
+      void cache.invalidateQueries({ queryKey: ["email-inboxes"] });
     },
   });
   if (removed)

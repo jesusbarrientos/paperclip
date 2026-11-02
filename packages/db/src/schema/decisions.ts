@@ -13,7 +13,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { activityLog } from "./activity_log.js";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 
@@ -21,7 +20,6 @@ export const decisionBundles = pgTable(
   "decision_bundles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     title: text("title").notNull(),
     summary: text("summary").notNull(),
     originAgentId: uuid("origin_agent_id").notNull().references(() => agents.id),
@@ -30,7 +28,7 @@ export const decisionBundles = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyCreatedAtIdx: index("decision_bundles_company_created_at_idx").on(table.companyId, table.createdAt),
+    companyCreatedAtIdx: index("decision_bundles_company_created_at_idx").on(table.createdAt),
   }),
 );
 
@@ -38,7 +36,6 @@ export const decisions = pgTable(
   "decisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     bundleId: uuid("bundle_id").references(() => decisionBundles.id, { onDelete: "set null" }),
     originAgentId: uuid("origin_agent_id").notNull().references(() => agents.id),
     originIssueId: uuid("origin_issue_id").notNull().references(() => issues.id),
@@ -65,14 +62,13 @@ export const decisions = pgTable(
   },
   (table) => ({
     companyStatusExpiresAtIdx: index("decisions_company_status_expires_at_idx").on(
-      table.companyId,
       table.status,
       table.expiresAt,
     ),
     bundleIdx: index("decisions_bundle_idx").on(table.bundleId),
     originIssueIdx: index("decisions_origin_issue_idx").on(table.originIssueId),
     companyIdempotencyUq: uniqueIndex("decisions_company_idempotency_uq")
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(sql`${table.idempotencyKey} IS NOT NULL`),
   }),
 );
@@ -81,8 +77,7 @@ export const decisionTargetIssues = pgTable(
   "decision_target_issues",
   {
     decisionId: uuid("decision_id").notNull().references(() => decisions.id, { onDelete: "cascade" }),
-    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
+    issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" })
   },
   (table) => ({
     pk: primaryKey({ columns: [table.decisionId, table.issueId] }),

@@ -118,9 +118,8 @@ describeEmbeddedPostgres("pipeline routes", () => {
     return company!;
   }
 
-  async function seedAutomationAgent(companyId: string) {
+  async function seedAutomationAgent() {
     const [agent] = await db.insert(agents).values({
-      companyId,
       name: "Pipeline Automator",
       role: "engineer",
       adapterType: "codex_local",
@@ -131,20 +130,18 @@ describeEmbeddedPostgres("pipeline routes", () => {
     return agent!;
   }
 
-  async function seedProjectWorkspaceFixture(companyId: string, name = "Automation") {
+  async function seedProjectWorkspaceFixture(name = "Automation") {
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: `${name} project`,
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: `${name} workspace`,
       isPrimary: true,
@@ -152,7 +149,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       projectWorkspaceId,
       mode: "isolated_workspace",
@@ -177,7 +173,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const http = request(app(boardActor));
 
     const createdPipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "content",
         name: "Content",
@@ -198,7 +194,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const pipelineId = createdPipeline.body.id;
     const stageId = createdPipeline.body.stages[0].id;
 
-    await http.get(`/api/companies/${company.id}/pipelines`).expect(200);
+    await http.get(`/api/pipelines`).expect(200);
     await http.get(`/api/pipelines/${pipelineId}`).expect(200);
     await http.patch(`/api/pipelines/${pipelineId}`).send({ name: "Content Ops", enforceTransitions: true }).expect(200);
     const qaStage = await http
@@ -242,7 +238,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
       .send({ suggestionId: suggestion.body.suggestion.id, resolution: "accept", expectedVersion: 2 })
       .expect(200);
     await http.get(`/api/cases/${caseId}/events`).expect(200);
-    await http.get(`/api/companies/${company.id}/review-cases`).expect(200);
+    await http.get(`/api/review-cases`).expect(200);
     await http.post(`/api/cases/${caseId}/review`).send({ decision: "approve", expectedVersion: 3 }).expect(200);
 
     const reviewCase = await http
@@ -254,7 +250,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
       .send({ toStageKey: "review", expectedVersion: 1 })
       .expect(200);
     await http
-      .post(`/api/companies/${company.id}/review-cases/bulk`)
+      .post(`/api/review-cases/bulk`)
       .send({ items: [{ caseId: reviewCase.body.case.id, decision: "reject", reason: "Not useful", expectedVersion: 2 }] })
       .expect(200);
 
@@ -277,7 +273,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
       .send({ issueId: ingested.body.case.id, role: "work" });
     expect(linkedIssue.status).toBe(404);
     const manualIssue = await db.insert(issues).values({
-      companyId: company.id,
       title: "Manual work issue",
       status: "todo",
       priority: "medium",
@@ -291,9 +286,8 @@ describeEmbeddedPostgres("pipeline routes", () => {
     expect(issueDetail.body.linkedCases[0].id).toBe(blocked.body.case.id);
     await http.delete(`/api/cases/${blocked.body.case.id}/issue-links/${workLink.body.id}`).expect(200);
 
-    const [routine] = await db.insert(routines).values({ companyId: company.id, title: "Routine" }).returning();
+    const [routine] = await db.insert(routines).values({ title: "Routine" }).returning();
     await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
       caseId: blocked.body.case.id,
       automationId: "retry-me",
       triggeringEventId: randomUUID(),
@@ -310,7 +304,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({ key: "workspace-patch", name: "Workspace patch" })
       .expect(201);
     const created = await http
@@ -339,7 +333,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({ key: "hidden-children", name: "Hidden children" })
       .expect(201);
     const parent = await http
@@ -369,7 +363,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("writes an audit event when an agent removes a case issue link", async () => {
     const company = await seedCompany();
     const [agent] = await db.insert(agents).values({
-      companyId: company.id,
       name: "Pipeline Agent",
       role: "engineer",
       adapterType: "codex_local",
@@ -390,18 +383,16 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const agentActor: Express.Request["actor"] = {
       type: "agent",
       agentId: agent!.id,
-      companyId: company.id,
       runId,
       source: "agent_key",
     };
     const http = request(app(agentActor));
-    const pipeline = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "unlink", name: "Unlink audit" }).expect(201);
+    const pipeline = await http.post(`/api/pipelines`).send({ key: "unlink", name: "Unlink audit" }).expect(201);
     const created = await http
       .post(`/api/pipelines/${pipeline.body.id}/cases`)
       .send({ caseKey: "unlink", title: "Unlink audit" })
       .expect(201);
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       title: "Linked work",
       status: "todo",
       priority: "medium",
@@ -430,11 +421,9 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
     const [routine] = await db.insert(routines).values({
-      companyId: company.id,
       title: "Break down feature",
     }).returning();
     const [sourcePipeline] = await db.insert(pipelines).values({
-      companyId: company.id,
       key: "features",
       name: "Features",
     }).returning();
@@ -447,7 +436,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
       config: { onEnter: { type: "run_routine", id: "build-content", routineId: routine!.id } },
     }).returning();
     const [targetPipeline] = await db.insert(pipelines).values({
-      companyId: company.id,
       key: "content",
       name: "Content",
     }).returning();
@@ -460,7 +448,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
       config: {},
     }).returning();
     const [sourceCase] = await db.insert(pipelineCases).values({
-      companyId: company.id,
       pipelineId: sourcePipeline!.id,
       stageId: sourceStage!.id,
       caseKey: "checkboxes",
@@ -468,7 +455,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
       fields: {},
     }).returning();
     const [execution] = await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
       caseId: sourceCase!.id,
       automationId: "build-content",
       triggeringEventId: randomUUID(),
@@ -476,7 +462,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
       status: "succeeded",
     }).returning();
     const [childCase] = await db.insert(pipelineCases).values({
-      companyId: company.id,
       pipelineId: targetPipeline!.id,
       stageId: targetStage!.id,
       caseKey: "api-how-to",
@@ -523,13 +508,13 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("carries route-saved stage automation workspace context into detail responses and execution issues", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const agent = await seedAutomationAgent(company.id);
+    const agent = await seedAutomationAgent();
     const { projectId, projectWorkspaceId, executionWorkspaceId } =
-      await seedProjectWorkspaceFixture(company.id, "Route automation");
+      await seedProjectWorkspaceFixture("Route automation");
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
 
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "route-workspace-automation",
         name: "Route workspace automation",
@@ -600,13 +585,13 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("fails automation execution when the selected project workspace belongs to a different project", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const agent = await seedAutomationAgent(company.id);
-    const source = await seedProjectWorkspaceFixture(company.id, "Source project");
-    const mismatched = await seedProjectWorkspaceFixture(company.id, "Mismatched project");
+    const agent = await seedAutomationAgent();
+    const source = await seedProjectWorkspaceFixture("Source project");
+    const mismatched = await seedProjectWorkspaceFixture("Mismatched project");
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
 
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "mismatched-workspace-automation",
         name: "Mismatched workspace automation",
@@ -650,10 +635,10 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("keeps legacy stage automation with only assignee and instructions compatible", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const agent = await seedAutomationAgent(company.id);
+    const agent = await seedAutomationAgent();
 
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "legacy-automation",
         name: "Legacy automation",
@@ -726,7 +711,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("paginates and caps case event responses", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const pipeline = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "event-cap", name: "Event cap" }).expect(201);
+    const pipeline = await http.post(`/api/pipelines`).send({ key: "event-cap", name: "Event cap" }).expect(201);
     const created = await http
       .post(`/api/pipelines/${pipeline.body.id}/cases`)
       .send({ caseKey: "event-cap", title: "Event cap" })
@@ -736,7 +721,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
 
     await db.insert(pipelineCaseEvents).values(
       Array.from({ length: PIPELINE_CASE_EVENTS_MAX_LIMIT + 25 }, (_, index) => ({
-        companyId: company.id,
         caseId,
         type: "updated",
         actorType: "user",
@@ -775,7 +759,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("returns a bounded context-pack event tail for large histories", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const pipeline = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "context-tail", name: "Context tail" }).expect(201);
+    const pipeline = await http.post(`/api/pipelines`).send({ key: "context-tail", name: "Context tail" }).expect(201);
     const created = await http
       .post(`/api/pipelines/${pipeline.body.id}/cases`)
       .send({ caseKey: "context-tail", title: "Context tail" })
@@ -786,7 +770,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
 
     await db.insert(pipelineCaseEvents).values(
       Array.from({ length: eventCount }, (_, index) => ({
-        companyId: company.id,
         caseId,
         type: "updated",
         actorType: "user",
@@ -807,120 +790,16 @@ describeEmbeddedPostgres("pipeline routes", () => {
     );
   });
 
-  it("returns 404 for cross-company pipeline route classes", async () => {
-    const company = await seedCompany();
-    const ownerHttp = request(app(boardActor));
-    const pipeline = await ownerHttp
-      .post(`/api/companies/${company.id}/pipelines`)
-      .send({
-        key: "cross-company",
-        name: "Cross-company",
-        stages: [
-          { key: "intake", name: "Intake", kind: "open", position: 100 },
-          { key: "review", name: "Review", kind: "review", position: 200, config: { approveToStageKey: "done", rejectToStageKey: "cancelled" } },
-          { key: "done", name: "Done", kind: "done", position: 900 },
-          { key: "cancelled", name: "Cancelled", kind: "cancelled", position: 1000 },
-        ],
-      })
-      .expect(201);
-    await ownerHttp.put(`/api/pipelines/${pipeline.body.id}/documents/guidance`).send({ body: "Use the rubric." }).expect(200);
-    const createdCase = await ownerHttp
-      .post(`/api/pipelines/${pipeline.body.id}/cases`)
-      .send({ caseKey: "cross-company", title: "Cross-company case" })
-      .expect(201);
-    const caseId = createdCase.body.case.id as string;
-    await ownerHttp.post(`/api/cases/${caseId}/transition`).send({ toStageKey: "review", expectedVersion: 1 }).expect(200);
-    const [manualIssue] = await db.insert(issues).values({
-      companyId: company.id,
-      title: "Manual work issue",
-      status: "todo",
-      priority: "medium",
-    }).returning();
-    const issueLink = await ownerHttp
-      .post(`/api/cases/${caseId}/issue-links`)
-      .send({ issueId: manualIssue!.id, role: "work" })
-      .expect(201);
-    const [routine] = await db.insert(routines).values({ companyId: company.id, title: "Routine" }).returning();
-    await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
-      caseId,
-      automationId: "retry-me",
-      triggeringEventId: randomUUID(),
-      routineId: routine!.id,
-      status: "failed",
-      error: "boom",
-    });
-    const otherAgent: Express.Request["actor"] = {
-      type: "agent",
-      agentId: randomUUID(),
-      companyId: randomUUID(),
-      runId: randomUUID(),
-      source: "agent_key",
-    };
-    const wrongCompanyHttp = request(app(otherAgent));
-    const routes = [
-      { name: "pipeline detail", method: "get", path: `/api/pipelines/${pipeline.body.id}` },
-      { name: "case detail", method: "get", path: `/api/cases/${caseId}` },
-      { name: "review inbox", method: "get", path: `/api/companies/${company.id}/review-cases` },
-      {
-        name: "review bulk mutation",
-        method: "post",
-        path: `/api/companies/${company.id}/review-cases/bulk`,
-        body: { items: [{ caseId, decision: "approve", expectedVersion: 2 }] },
-      },
-      {
-        name: "review detail mutation",
-        method: "post",
-        path: `/api/cases/${caseId}/review`,
-        body: { decision: "approve", expectedVersion: 2 },
-      },
-      { name: "document read", method: "get", path: `/api/pipelines/${pipeline.body.id}/documents/guidance` },
-      {
-        name: "document write",
-        method: "put",
-        path: `/api/pipelines/${pipeline.body.id}/documents/guidance`,
-        body: { body: "wrong-company update" },
-      },
-      {
-        name: "issue-link create mutation",
-        method: "post",
-        path: `/api/cases/${caseId}/issue-links`,
-        body: { issueId: manualIssue!.id, role: "work" },
-      },
-      {
-        name: "issue-link delete mutation",
-        method: "delete",
-        path: `/api/cases/${caseId}/issue-links/${issueLink.body.id}`,
-      },
-      {
-        name: "automation retry mutation",
-        method: "post",
-        path: `/api/cases/${caseId}/automations/retry-me/retry`,
-      },
-      { name: "case events", method: "get", path: `/api/cases/${caseId}/events` },
-      { name: "case rollup", method: "get", path: `/api/cases/${caseId}/rollup` },
-      { name: "case context-pack", method: "get", path: `/api/cases/${caseId}/context-pack` },
-    ] as const;
-
-    for (const route of routes) {
-      let requestBuilder = wrongCompanyHttp[route.method](route.path);
-      if ("body" in route) requestBuilder = requestBuilder.send(route.body);
-      const res = await requestBuilder;
-      expect(res.status, route.name).toBe(404);
-    }
-  });
-
   it("rejects agent mutations without a run id", async () => {
     const company = await seedCompany();
     const agentActor: Express.Request["actor"] = {
       type: "agent",
       agentId: randomUUID(),
-      companyId: company.id,
       source: "agent_key",
     };
 
     const res = await request(app(agentActor))
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({ key: "agent", name: "Agent pipeline" });
 
     expect(res.status).toBe(422);
@@ -931,7 +810,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
     const pipelineRes = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "review-authz",
         name: "Review authz",
@@ -949,7 +828,6 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const agentActor: Express.Request["actor"] = {
       type: "agent",
       agentId: randomUUID(),
-      companyId: company.id,
       runId: randomUUID(),
       source: "agent_key",
     };
@@ -966,7 +844,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const http = request(app(boardActor));
 
     await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "bad-review",
         name: "Bad review",
@@ -979,12 +857,12 @@ describeEmbeddedPostgres("pipeline routes", () => {
       })
       .expect(422);
 
-    const pipeline = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "valid-review", name: "Valid review" }).expect(201);
+    const pipeline = await http.post(`/api/pipelines`).send({ key: "valid-review", name: "Valid review" }).expect(201);
     const intake = pipeline.body.stages.find((stage: { key: string }) => stage.key === "intake");
     await http.patch(`/api/pipelines/${pipeline.body.id}/stages/${intake.id}`).send({ kind: "review" }).expect(422);
 
     await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "bad-request-changes-target",
         name: "Bad request changes target",
@@ -1011,7 +889,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("applies review decisions atomically with edits and stores reject reasons verbatim", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const pipeline = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "review-decisions", name: "Review decisions" }).expect(201);
+    const pipeline = await http.post(`/api/pipelines`).send({ key: "review-decisions", name: "Review decisions" }).expect(201);
 
     const approved = await http
       .post(`/api/pipelines/${pipeline.body.id}/cases`)
@@ -1057,7 +935,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "review-request-changes",
         name: "Review request changes",
@@ -1103,7 +981,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     expect(reviewEvent.payload.reason).toBe("Tighten the framing");
 
     const defaultPipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({ key: "review-request-changes-missing", name: "Review request changes missing" })
       .expect(201);
     const missingConfigCase = await http
@@ -1118,7 +996,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     expect(missingConfig.body.code).toBe("validation");
 
     const optionalRejectReasonPipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "review-optional-reject-reason",
         name: "Review optional reject reason",
@@ -1163,8 +1041,8 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("aggregates the review inbox across pipelines with parent and review config context", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const first = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "inbox-a", name: "Inbox A" }).expect(201);
-    const second = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "inbox-b", name: "Inbox B" }).expect(201);
+    const first = await http.post(`/api/pipelines`).send({ key: "inbox-a", name: "Inbox A" }).expect(201);
+    const second = await http.post(`/api/pipelines`).send({ key: "inbox-b", name: "Inbox B" }).expect(201);
 
     const parent = await http
       .post(`/api/pipelines/${first.body.id}/cases`)
@@ -1188,7 +1066,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
       .expect(201);
     await http.post(`/api/cases/${notReview.body.case.id}/transition`).send({ toStageKey: "done", expectedVersion: 1 }).expect(200);
 
-    const inbox = await http.get(`/api/companies/${company.id}/review-cases`).expect(200);
+    const inbox = await http.get(`/api/review-cases`).expect(200);
     expect(inbox.body).toHaveLength(2);
     expect(inbox.body.map((row: { pipeline: { key: string } }) => row.pipeline.key).sort()).toEqual(["inbox-a", "inbox-b"]);
     const childRow = inbox.body.find((row: { case: { id: string } }) => row.case.id === child.body.case.id);
@@ -1205,7 +1083,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
     const pipeline = await http
-      .post(`/api/companies/${company.id}/pipelines`)
+      .post(`/api/pipelines`)
       .send({
         key: "bulk-review",
         name: "Bulk review",
@@ -1242,7 +1120,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     }
 
     const bulk = await http
-      .post(`/api/companies/${company.id}/review-cases/bulk`)
+      .post(`/api/review-cases/bulk`)
       .send({
         items: caseIds.map((caseId, index) => index === 3
           ? { caseId, decision: "request_changes", reason: "Revise this item", expectedVersion: 2 }
@@ -1261,7 +1139,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
   it("returns conflict bodies with code, current version, and stage", async () => {
     const company = await seedCompany();
     const http = request(app(boardActor));
-    const pipelineRes = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "conflict", name: "Conflict" }).expect(201);
+    const pipelineRes = await http.post(`/api/pipelines`).send({ key: "conflict", name: "Conflict" }).expect(201);
     const caseRes = await http.post(`/api/pipelines/${pipelineRes.body.id}/cases`).send({ caseKey: "conflict", title: "Conflict" }).expect(201);
     await http.patch(`/api/cases/${caseRes.body.case.id}`).send({ title: "Updated", expectedVersion: 1 }).expect(200);
 

@@ -9,16 +9,12 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 
 export const agentWakeupRequests = pgTable(
   "agent_wakeup_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id),
     agentId: uuid("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -48,10 +44,10 @@ export const agentWakeupRequests = pgTable(
   (table) => ({
     companyAgentStatusIdx: index(
       "agent_wakeup_requests_company_agent_status_idx",
-    ).on(table.companyId, table.agentId, table.status),
+    ).on(table.agentId, table.status),
     companyRequestedIdx: index(
       "agent_wakeup_requests_company_requested_idx",
-    ).on(table.companyId, table.requestedAt),
+    ).on(table.requestedAt),
     agentRequestedIdx: index("agent_wakeup_requests_agent_requested_idx").on(
       table.agentId,
       table.requestedAt,
@@ -59,33 +55,32 @@ export const agentWakeupRequests = pgTable(
     reviewPathRecoveryIdempotencyUq: uniqueIndex(
       "agent_wakeup_requests_review_path_recovery_idempotency_uq",
     )
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(
         sql`${table.idempotencyKey} LIKE 'issue_review_path_lost:%' AND ${table.status} <> 'skipped'`,
       ),
     dispositionRepairIdempotencyUq: uniqueIndex(
       "agent_wakeup_requests_disposition_repair_idempotency_uq",
     )
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(
         sql`${table.idempotencyKey} LIKE 'issue_disposition_repair:%' AND ${table.status} <> 'skipped'`,
       ),
     questionResponseDeliveryIdempotencyUq: uniqueIndex(
       "agent_wakeup_requests_question_response_delivery_idempotency_uq",
     )
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(sql`(${table.idempotencyKey} LIKE 'question-response:%' OR ${table.idempotencyKey} LIKE 'interaction:%') AND ${table.status} NOT IN ('skipped', 'failed', 'cancelled')`),
     connectionIntentDeliveryIdempotencyUq: uniqueIndex("agent_wakeup_requests_connection_intent_delivery_idempotency_uq")
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(sql`${table.idempotencyKey} LIKE 'connection-intent:%' AND ${table.status} NOT IN ('skipped', 'failed', 'cancelled')`),
     toolActionDeliveryIdempotencyUq: uniqueIndex("agent_wakeup_requests_tool_action_delivery_uq")
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(sql`${table.idempotencyKey} LIKE 'tool-action-response:%' AND ${table.status} NOT IN ('skipped', 'failed', 'cancelled')`),
     chatCompletionIdempotencyUq: uniqueIndex("agent_wakeup_requests_chat_completion_uq")
-      .on(table.companyId, table.idempotencyKey)
+      .on(table.idempotencyKey)
       .where(sql`${table.idempotencyKey} LIKE 'chat-completion:%'`),
     companyPayloadIssueIdx: index("agent_wakeup_requests_company_payload_issue_idx").on(
-      table.companyId,
       sql`(${table.payload} ->> 'issueId')`,
     ),
   }),

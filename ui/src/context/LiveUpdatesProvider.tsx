@@ -34,9 +34,8 @@ import type { ActiveRunForIssue, LiveRunForIssue } from "../api/heartbeats";
 import type { CompanyUserDirectoryResponse } from "../api/access";
 import { issuesApi } from "../api/issues";
 import { authApi } from "../api/auth";
-import type { CompanyListResult } from "../api/companies-query";
 import { healthApi } from "../api/health";
-import { useCompany } from "./CompanyContext";
+import { useOrganization } from "./OrganizationContext";
 import type { ToastInput } from "./ToastContext";
 import { useToastActions } from "./ToastContext";
 import { upsertIssueCommentInPages } from "../lib/optimistic-issue-comments";
@@ -45,7 +44,6 @@ import {
   removeLiveRunById,
 } from "../lib/optimistic-issue-runs";
 import { queryKeys } from "../lib/queryKeys";
-import { extractCompanyPrefixFromPath, toCompanyRelativePath } from "../lib/company-routes";
 import { useLocation } from "../lib/router";
 import { agentRouteRef } from "../lib/utils";
 import { buildSameOriginWebSocketUrl } from "../lib/websocket-url";
@@ -87,10 +85,8 @@ const LiveEventSubscriptionContext =
 
 function dispatchLiveEventToSubscribers(
   subscribers: Set<CompanyLiveEventHandler>,
-  expectedCompanyId: string,
   event: LiveEvent,
 ) {
-  if (event.companyId !== expectedCompanyId) return;
   // Snapshot so a handler that (un)subscribes mid-dispatch can't mutate the set
   // we're iterating.
   for (const handler of Array.from(subscribers)) {
@@ -140,11 +136,10 @@ function shortId(value: string) {
 
 function resolveAgentName(
   queryClient: QueryClient,
-  companyId: string,
   agentId: string,
 ): string | null {
   const agents = queryClient.getQueryData<Agent[]>(
-    queryKeys.agents.list(companyId),
+    queryKeys.agents.list(),
   );
   const listedAgent = agents?.find((a) => a.id === agentId);
   if (listedAgent?.name) return listedAgent.name;
@@ -156,11 +151,10 @@ function resolveAgentName(
 
 function resolveUserName(
   queryClient: QueryClient,
-  companyId: string,
   userId: string,
 ): string | null {
   const directory = queryClient.getQueryData<CompanyUserDirectoryResponse>(
-    queryKeys.access.companyUserDirectory(companyId),
+    queryKeys.access.companyUserDirectory(),
   );
   if (!directory) return null;
   const entry = directory.users.find((u) => u.principalId === userId);
@@ -174,19 +168,18 @@ function truncate(text: string, max: number): string {
 
 function resolveActorLabel(
   queryClient: QueryClient,
-  companyId: string,
   actorType: string | null,
   actorId: string | null,
 ): string {
   if (actorType === "agent" && actorId) {
     return (
-      resolveAgentName(queryClient, companyId, actorId) ??
+      resolveAgentName(queryClient, actorId) ??
       `Agent ${shortId(actorId)}`
     );
   }
   if (actorType === "system") return "System";
   if (actorType === "user" && actorId) {
-    return resolveUserName(queryClient, companyId, actorId) ?? "Board";
+    return resolveUserName(queryClient, actorId) ?? "Board";
   }
   return "Someone";
 }
@@ -214,7 +207,6 @@ interface VisibleIssueRouteContext {
 
 function resolveIssueQueryRefs(
   queryClient: QueryClient,
-  companyId: string,
   issueId: string,
   details: Record<string, unknown> | null,
 ): string[] {
@@ -223,7 +215,7 @@ function resolveIssueQueryRefs(
     queryKeys.issues.detail(issueId),
   );
   const listIssues = queryClient.getQueryData<Issue[]>(
-    queryKeys.issues.list(companyId),
+    queryKeys.issues.list(),
   );
   const detailsIdentifier =
     readString(details?.identifier) ?? readString(details?.issueIdentifier);
@@ -248,13 +240,11 @@ function resolveIssueQueryRefs(
 
 function resolveIssueToastContext(
   queryClient: QueryClient,
-  companyId: string,
   issueId: string,
   details: Record<string, unknown> | null,
 ): IssueToastContext {
   const issueRefs = resolveIssueQueryRefs(
     queryClient,
-    companyId,
     issueId,
     details,
   );
@@ -262,7 +252,7 @@ function resolveIssueToastContext(
     .map((ref) => queryClient.getQueryData<Issue>(queryKeys.issues.detail(ref)))
     .find((issue): issue is Issue => !!issue);
   const listIssue = queryClient
-    .getQueryData<Issue[]>(queryKeys.issues.list(companyId))
+    .getQueryData<Issue[]>(queryKeys.issues.list())
     ?.find((issue) =>
       issueRefs.some((ref) => issue.id === ref || issue.identifier === ref),
     );
@@ -301,22 +291,17 @@ function resolveVisibleIssueRouteContext(
   const isForegrounded = options?.isForegrounded ?? isPageForegrounded();
   if (!isForegrounded) return null;
 
-  const relativePath = toCompanyRelativePath(pathname);
-  const segments = relativePath.split("/").filter(Boolean);
+  const segments = pathname.split("/").filter(Boolean);
   if (!["issues", "chats"].includes(segments[0]) || !segments[1]) return null;
 
   let issueRef = decodeURIComponent(segments[1]);
   if (segments[0] === "chats") {
     const session = queryClient.getQueryData<Awaited<ReturnType<typeof authApi.getSession>>>(queryKeys.auth.session);
     const userId = session?.user?.id ?? session?.session?.userId ?? null;
-    const companyPrefix = extractCompanyPrefixFromPath(pathname);
-    const company = queryClient.getQueryData<CompanyListResult>(queryKeys.companies.list(userId))
-      ?.companies.find(item => item.issuePrefix.toUpperCase() === companyPrefix?.toUpperCase());
-    if (!company) return null;
-    const agent = queryClient.getQueryData<Agent[]>(queryKeys.agents.list(company.id))
+    const agent = queryClient.getQueryData<Agent[]>(queryKeys.agents.list())
       ?.find(item => item.id === issueRef || agentRouteRef(item) === issueRef);
     if (!agent) return null;
-    const conversation = queryClient.getQueryData<Issue | null>(queryKeys.agentChats.detail(company.id, userId, agent.id));
+    const conversation = queryClient.getQueryData<Issue | null>(queryKeys.agentChats.detail(userId, agent.id));
     if (!conversation) return null;
     issueRef = conversation.id;
   }
@@ -356,10 +341,10 @@ function resolveVisibleIssueRouteContext(
   const subtreeIssueRefs = new Set(issueRefs);
   const subtreeAgentIds = new Set<string>();
   const subtreeRunIds = new Set(runIds);
-  if (issue?.companyId && issue.id) {
+  if (issue?.id) {
     const descendants =
       queryClient.getQueryData<Issue[]>(
-        queryKeys.issues.listByDescendantRoot(issue.companyId, issue.id),
+        queryKeys.issues.listByDescendantRoot(issue.id),
       ) ?? [];
     for (const descendant of descendants) {
       subtreeIssueRefs.add(descendant.id);
@@ -376,10 +361,10 @@ function resolveVisibleIssueRouteContext(
     }
   }
 
-  if (issue?.companyId) {
+  if (issue) {
     const companyRuns =
       queryClient.getQueryData<LiveRunForIssue[]>(
-        queryKeys.liveRuns(issue.companyId),
+        queryKeys.liveRuns(),
       ) ?? [];
     for (const run of companyRuns) {
       if (run.issueId && subtreeIssueRefs.has(run.issueId))
@@ -445,7 +430,7 @@ function shouldSuppressRunStatusToastForVisibleIssue(
   options?: VisibleRouteOptions,
 ): boolean {
   if (!(options?.isForegrounded ?? isPageForegrounded())) return false;
-  const visibleRunId = toCompanyRelativePath(pathname).match(
+  const visibleRunId = pathname.match(
     /^\/agents\/[^/]+\/runs\/([^/]+)/,
   )?.[1];
   if (
@@ -641,14 +626,13 @@ function readRunLiveStatusPatchFromPayload(
 
 function applyRunLiveStatusPatchToCaches(
   queryClient: QueryClient,
-  companyId: string,
   pathname: string,
   patch: RunLiveStatusPatch,
   options?: VisibleRouteOptions,
 ): boolean {
   let changed = false;
   queryClient.setQueryData(
-    queryKeys.liveRuns(companyId),
+    queryKeys.liveRuns(),
     (current: LiveRunForIssue[] | undefined) => {
       const nextRuns = applyRunLiveStatusPatchToArray(current, patch);
       if (nextRuns !== current) changed = true;
@@ -660,7 +644,6 @@ function applyRunLiveStatusPatchToCaches(
   if (patch.issueId) {
     for (const ref of resolveIssueQueryRefs(
       queryClient,
-      companyId,
       patch.issueId,
       null,
     )) {
@@ -912,7 +895,6 @@ function describeIssueUpdate(
 
 function buildActivityToast(
   queryClient: QueryClient,
-  companyId: string,
   payload: Record<string, unknown>,
   currentActor: { userId: string | null; agentId: string | null },
 ): ToastInput | null {
@@ -934,11 +916,10 @@ function buildActivityToast(
 
   const issue = resolveIssueToastContext(
     queryClient,
-    companyId,
     entityId,
     details,
   );
-  const actor = resolveActorLabel(queryClient, companyId, actorType, actorId);
+  const actor = resolveActorLabel(queryClient, actorType, actorId);
   const isSelfActivity =
     (actorType === "user" &&
       !!currentActor.userId &&
@@ -1041,7 +1022,6 @@ function buildAgentStatusToast(
   payload: Record<string, unknown>,
   nameOf: (id: string) => string | null,
   queryClient: QueryClient,
-  companyId: string,
 ): ToastInput | null {
   const agentId = readString(payload.agentId);
   const status = readString(payload.status);
@@ -1052,7 +1032,7 @@ function buildAgentStatusToast(
   const title = status === "running" ? `${name} started` : `${name} errored`;
 
   const agents = queryClient.getQueryData<Agent[]>(
-    queryKeys.agents.list(companyId),
+    queryKeys.agents.list(),
   );
   const agent = agents?.find((a) => a.id === agentId);
   const body = agent?.title ?? undefined;
@@ -1141,7 +1121,6 @@ function buildRunStatusToast(
  */
 function applyRunLifecycleToCompanyLiveRuns(
   queryClient: QueryClient,
-  companyId: string,
   payload: Record<string, unknown>,
 ): boolean {
   const runId = readString(payload.runId);
@@ -1183,7 +1162,7 @@ function applyRunLifecycleToCompanyLiveRuns(
 
   if (TERMINAL_RUN_STATUSES.has(status)) {
     queryClient.setQueryData(
-      queryKeys.liveRuns(companyId),
+      queryKeys.liveRuns(),
       (current: LiveRunForIssue[] | undefined) =>
         removeRunFromList(current, runId),
     );
@@ -1195,7 +1174,7 @@ function applyRunLifecycleToCompanyLiveRuns(
 
   let present = false;
   queryClient.setQueryData(
-    queryKeys.liveRuns(companyId),
+    queryKeys.liveRuns(),
     (current: LiveRunForIssue[] | undefined) => {
       const result = patchRunStatusInList(current, runId, status);
       present = result.present;
@@ -1207,17 +1186,16 @@ function applyRunLifecycleToCompanyLiveRuns(
 
 function invalidateHeartbeatQueries(
   queryClient: ReturnType<typeof useQueryClient>,
-  companyId: string,
   payload: Record<string, unknown>,
 ) {
-  // Note: liveRuns(companyId) is intentionally NOT invalidated here — it is
+  // Note: liveRuns() is intentionally NOT invalidated here — it is
   // event-sourced via applyRunLifecycleToCompanyLiveRuns in the caller.
-  queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(companyId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(companyId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.costs(companyId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.costs() });
   queryClient.invalidateQueries({
-    queryKey: queryKeys.sidebarBadges(companyId),
+    queryKey: queryKeys.sidebarBadges(),
   });
 
   const agentId = readString(payload.agentId);
@@ -1226,7 +1204,7 @@ function invalidateHeartbeatQueries(
       queryKey: queryKeys.agents.detail(agentId),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.heartbeats(companyId, agentId),
+      queryKey: queryKeys.heartbeats(agentId),
     });
   }
   const runId = readString(payload.runId);
@@ -1237,7 +1215,6 @@ function invalidateHeartbeatQueries(
 
 function invalidateHeartbeatProgressQueries(
   queryClient: ReturnType<typeof useQueryClient>,
-  _companyId: string,
   payload: Record<string, unknown>,
 ) {
   const agentId = readString(payload.agentId);
@@ -1250,15 +1227,14 @@ function invalidateHeartbeatProgressQueries(
 
 function invalidateActivityQueries(
   queryClient: ReturnType<typeof useQueryClient>,
-  companyId: string,
   payload: Record<string, unknown>,
   currentActor: { userId: string | null; agentId: string | null },
   options?: { pathname?: string; isForegrounded?: boolean },
 ) {
-  queryClient.invalidateQueries({ queryKey: queryKeys.activity(companyId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(companyId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.activity() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() });
   queryClient.invalidateQueries({
-    queryKey: queryKeys.sidebarBadges(companyId),
+    queryKey: queryKeys.sidebarBadges(),
   });
 
   const entityType = readString(payload.entityType);
@@ -1276,20 +1252,20 @@ function invalidateActivityQueries(
       actorId === currentActor.agentId);
 
   if (action?.startsWith("ai_connection.") || action?.startsWith("connection_grant.")) {
-    queryClient.invalidateQueries({ queryKey: ["ai-connections", companyId] });
+    queryClient.invalidateQueries({ queryKey: ["ai-connections"] });
   }
 
   if (action?.startsWith("resource_membership.")) {
     const targetUserId = readString(details?.userId);
     if (!targetUserId || targetUserId === currentActor.userId) {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.resourceMemberships.mine(companyId),
+        queryKey: queryKeys.resourceMemberships.mine(),
       });
     }
   }
 
   if (entityType === "issue") {
-    const chatListKey = queryKeys.agentChats.list(companyId, currentActor.userId);
+    const chatListKey = queryKeys.agentChats.list(currentActor.userId);
     const knownChat = entityId && queryClient.getQueryData<Issue[]>(chatListKey)?.some(chat => chat.id === entityId);
     if (knownChat || action === "issue.conversation_opened" && ownActorActivity) {
       queryClient.invalidateQueries({ queryKey: chatListKey });
@@ -1299,16 +1275,16 @@ function invalidateActivityQueries(
       queryClient.invalidateQueries({ queryKey: ["issues", "tree-control-state"] });
     }
     queryClient.invalidateQueries({
-      queryKey: queryKeys.issues.list(companyId),
+      queryKey: queryKeys.issues.list(),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.issues.listMineByMe(companyId),
+      queryKey: queryKeys.issues.listMineByMe(),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.issues.listTouchedByMe(companyId),
+      queryKey: queryKeys.issues.listTouchedByMe(),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.issues.listUnreadTouchedByMe(companyId),
+      queryKey: queryKeys.issues.listUnreadTouchedByMe(),
     });
     if (entityId) {
       const selfCommentActivity =
@@ -1339,7 +1315,6 @@ function invalidateActivityQueries(
         );
       const issueRefs = resolveIssueQueryRefs(
         queryClient,
-        companyId,
         entityId,
         details,
       );
@@ -1419,13 +1394,13 @@ function invalidateActivityQueries(
             queryKey: queryKeys.issues.interactions(ref),
           });
           queryClient.invalidateQueries({
-            queryKey: queryKeys.tools.actionRequests(companyId, "pending"),
+            queryKey: queryKeys.tools.actionRequests("pending"),
           });
           queryClient.invalidateQueries({
-            queryKey: queryKeys.apps.attention(companyId),
+            queryKey: queryKeys.apps.attention(),
           });
           queryClient.invalidateQueries({
-            queryKey: queryKeys.tools.trustRules(companyId),
+            queryKey: queryKeys.tools.trustRules(),
           });
         }
       }
@@ -1435,15 +1410,15 @@ function invalidateActivityQueries(
 
   if (entityType === "agent") {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.agents.list(companyId),
+      queryKey: queryKeys.agents.list(),
     });
-    queryClient.invalidateQueries({ queryKey: queryKeys.org(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.org() });
     if (entityId) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.detail(entityId),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.heartbeats(companyId, entityId),
+        queryKey: queryKeys.heartbeats(entityId),
       });
     }
     return;
@@ -1452,7 +1427,7 @@ function invalidateActivityQueries(
   if (entityType === "project") {
     const sourceIssueId = readString((payload.details as Record<string, unknown> | undefined)?.sourceIssueId);
     if (sourceIssueId) queryClient.invalidateQueries({ queryKey: queryKeys.issues.activity(sourceIssueId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });
     if (entityId) queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(entityId) });
     return;
   }
@@ -1460,14 +1435,14 @@ function invalidateActivityQueries(
   if (entityType === "company_skill") {
     const sourceIssueId = readString((payload.details as Record<string, unknown> | undefined)?.sourceIssueId);
     if (sourceIssueId) queryClient.invalidateQueries({ queryKey: queryKeys.issues.activity(sourceIssueId) });
-    if (entityId) queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(companyId, entityId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
+    if (entityId) queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(entityId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list() });
     return;
   }
 
   if (entityType === "goal") {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.goals.list(companyId),
+      queryKey: queryKeys.goals.list(),
     });
     if (entityId)
       queryClient.invalidateQueries({
@@ -1478,25 +1453,25 @@ function invalidateActivityQueries(
 
   if (entityType === "approval") {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.approvals.list(companyId),
+      queryKey: queryKeys.approvals.list(),
     });
     return;
   }
 
   if (entityType === "join_request") {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.access.joinRequests(companyId),
+      queryKey: queryKeys.access.joinRequests(),
     });
     return;
   }
 
   if (entityType === "cost_event") {
-    queryClient.invalidateQueries({ queryKey: queryKeys.costs(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.costs() });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.usageByProvider(companyId),
+      queryKey: queryKeys.usageByProvider(),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.usageWindowSpend(companyId),
+      queryKey: queryKeys.usageWindowSpend(),
     });
     // usageQuotaWindows is intentionally excluded: quota windows come from external provider
     // apis on a 5-minute poll and do not change in response to cost events logged by agents
@@ -1532,7 +1507,7 @@ function invalidateActivityQueries(
 
   if (entityType === "case") {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.cases.list(companyId),
+      queryKey: queryKeys.cases.list(),
     });
     if (entityId) {
       queryClient.invalidateQueries({
@@ -1568,7 +1543,6 @@ function invalidateActivityQueries(
     if (scopeKind && slotKey) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.summarySlots.detail(
-          companyId,
           scopeKind,
           slotKey,
           scopeId,
@@ -1576,7 +1550,6 @@ function invalidateActivityQueries(
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.summarySlots.revisions(
-          companyId,
           scopeKind,
           slotKey,
           scopeId,
@@ -1587,7 +1560,7 @@ function invalidateActivityQueries(
   }
 
   if (entityType === "company") {
-    queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+    queryClient.invalidateQueries({ queryKey: queryKeys.organization });
   }
 }
 
@@ -1602,7 +1575,7 @@ function observeRunOutcome(gate: ToastGate, event: LiveEvent): boolean {
   const runId = readString(payload.runId);
   const status = readString(payload.status);
   if (!runId || !status || !TERMINAL_RUN_STATUSES.has(status)) return false;
-  const key = `${event.companyId}:${runId}:${status}`;
+  const key = `${runId}:${status}`;
   const observed = gate.observedRunOutcomes.has(key);
   // Refresh insertion order so repeated deliveries stay remembered even in a
   // busy company. Remember suppressed outcomes too (visible task/reconnect).
@@ -1651,17 +1624,15 @@ function gatedPushToast(
 
 function handleLiveEvent(
   queryClient: QueryClient,
-  expectedCompanyId: string,
   pathname: string,
   event: LiveEvent,
   pushToast: (toast: ToastInput) => string | null,
   gate: ToastGate,
   currentActor: { userId: string | null; agentId: string | null },
 ) {
-  if (event.companyId !== expectedCompanyId) return;
 
   const nameOf = (id: string) =>
-    resolveAgentName(queryClient, expectedCompanyId, id);
+    resolveAgentName(queryClient, id);
   const payload = event.payload ?? {};
   // Resolve membership before terminal lifecycle patches remove live-run rows.
   const suppressRunToast =
@@ -1676,7 +1647,6 @@ function handleLiveEvent(
   if (liveStatusPatch) {
     applyRunLiveStatusPatchToCaches(
       queryClient,
-      expectedCompanyId,
       pathname,
       liveStatusPatch,
     );
@@ -1691,14 +1661,13 @@ function handleLiveEvent(
   ) {
     const liveRunsPatched = applyRunLifecycleToCompanyLiveRuns(
       queryClient,
-      expectedCompanyId,
       payload,
     );
-    invalidateHeartbeatQueries(queryClient, expectedCompanyId, payload);
+    invalidateHeartbeatQueries(queryClient, payload);
     if (!liveRunsPatched) {
       // A new run we couldn't reconstruct from the event — refetch once to add it.
       queryClient.invalidateQueries({
-        queryKey: queryKeys.liveRuns(expectedCompanyId),
+        queryKey: queryKeys.liveRuns(),
       });
     }
     invalidateVisibleIssueRunQueries(queryClient, pathname, payload);
@@ -1712,7 +1681,7 @@ function handleLiveEvent(
   }
 
   if (event.type === "heartbeat.run.progress") {
-    invalidateHeartbeatProgressQueries(queryClient, expectedCompanyId, payload);
+    invalidateHeartbeatProgressQueries(queryClient, payload);
     invalidateVisibleIssueRunQueries(queryClient, pathname, payload);
     return;
   }
@@ -1723,13 +1692,13 @@ function handleLiveEvent(
 
   if (event.type === "agent.status") {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.agents.list(expectedCompanyId),
+      queryKey: queryKeys.agents.list(),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.dashboard(expectedCompanyId),
+      queryKey: queryKeys.dashboard(),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.org(expectedCompanyId),
+      queryKey: queryKeys.org(),
     });
     const agentId = readString(payload.agentId);
     if (agentId)
@@ -1740,7 +1709,6 @@ function handleLiveEvent(
       payload,
       nameOf,
       queryClient,
-      expectedCompanyId,
     );
     if (
       toast &&
@@ -1758,7 +1726,6 @@ function handleLiveEvent(
   if (event.type === "activity.logged") {
     invalidateActivityQueries(
       queryClient,
-      expectedCompanyId,
       payload,
       currentActor,
       { pathname },
@@ -1772,7 +1739,6 @@ function handleLiveEvent(
     const toast =
       buildActivityToast(
         queryClient,
-        expectedCompanyId,
         payload,
         currentActor,
       ) ?? buildJoinRequestToast(payload);
@@ -1787,15 +1753,6 @@ function handleLiveEvent(
       gatedPushToast(gate, pushToast, `activity:${action ?? "unknown"}`, toast);
     }
   }
-}
-
-function resolveLiveCompanyId(
-  selectedCompanyId: string | null,
-  selectedCompanyLiveId: string | null,
-): string | null {
-  return selectedCompanyId && selectedCompanyId === selectedCompanyLiveId
-    ? selectedCompanyId
-    : null;
 }
 
 function resetSocketHandlers(target: LiveUpdatesSocketLike) {
@@ -1845,7 +1802,6 @@ export const __liveUpdatesTestUtils = {
   invalidateHeartbeatProgressQueries,
   invalidateVisibleIssueRunQueries,
   readRunLiveStatusPatchFromPayload,
-  resolveLiveCompanyId,
   canUseLiveSession,
   shouldDeferIssueRefetchForVisibleAgentActivity,
   shouldDeferVisibleIssueCommentActivity,
@@ -1861,7 +1817,7 @@ function canUseLiveSession(sessionStatus: string, hasSession: boolean, deploymen
 export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
   const { visible } = usePageVisibility();
   const wasHidden = useRef(!visible);
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { organization } = useOrganization();
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const location = useLocation();
@@ -1879,8 +1835,8 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
   const { data: health } = useQuery({ queryKey: queryKeys.health, queryFn: healthApi.get });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const socketAuthKey = session?.session?.id ?? currentUserId ?? "signed_out";
-  const liveCompanyId = resolveLiveCompanyId(selectedCompanyId, selectedCompany?.id ?? null);
-  const canConnectSocket = canUseLiveSession(sessionStatus, session != null, health?.deploymentMode) && liveCompanyId !== null;
+  const canConnectSocket =
+    canUseLiveSession(sessionStatus, session != null, health?.deploymentMode) && organization !== null;
   const currentActorRef = useRef<{ userId: string | null; agentId: string | null }>({
     userId: currentUserId,
     agentId: null,
@@ -1927,7 +1883,7 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       invalidationBatcher.dispose();
       return;
     }
-    if (!canConnectSocket || !liveCompanyId) return;
+    if (!canConnectSocket) return;
     if (wasHidden.current) {
       wasHidden.current = false;
       // Reconcile events missed while hidden, including completed runs/issues.
@@ -1978,7 +1934,7 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     const connect = () => {
       if (closed) return;
       const url = buildSameOriginWebSocketUrl(
-        `/api/companies/${encodeURIComponent(liveCompanyId)}/events/ws`,
+        `/api/events/ws`,
       );
       const nextSocket = tryCreateWebSocket(url);
       if (!nextSocket) {
@@ -2012,7 +1968,6 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
           const parsed = JSON.parse(raw) as LiveEvent;
           handleLiveEvent(
             coalescingClient,
-            liveCompanyId,
             pathnameRef.current,
             parsed,
             pushToast,
@@ -2026,7 +1981,6 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
           // handling so any reader sees fresh query data.
           dispatchLiveEventToSubscribers(
             subscribersRef.current,
-            liveCompanyId,
             parsed,
           );
         } catch {
@@ -2067,7 +2021,6 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     invalidationBatcher,
     queryClient,
     coalescingClient,
-    liveCompanyId,
     pushToast,
     canConnectSocket,
     socketAuthKey,

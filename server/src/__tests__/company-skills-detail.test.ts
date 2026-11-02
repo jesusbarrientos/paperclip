@@ -99,22 +99,19 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
   }
 
   it("reports attached agents without probing adapter runtime skill state", async () => {
-    const companyId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/reflection-coach`;
+    const skillKey = "company/reflection-coach";
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reflection-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Reflection Coach\n", "utf8");
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "TSKD",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companySkills).values({
       id: skillId,
-      companyId,
       key: skillKey,
       slug: "reflection-coach",
       name: "Reflection Coach",
@@ -129,7 +126,6 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     });
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
       name: "Reviewer",
       role: "engineer",
       adapterType: "codex_local",
@@ -141,7 +137,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     });
 
     const detail = await Promise.race([
-      svc.detail(companyId, skillId),
+      svc.detail(skillId),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("skill detail timed out")), 1_000)),
     ]);
 
@@ -156,23 +152,20 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
   });
 
   it("uses explicit company skill column selections when resolving detail usage", async () => {
-    const companyId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/reflection-coach`;
+    const skillKey = "company/reflection-coach";
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reflection-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Reflection Coach\n", "utf8");
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "TSKD",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companySkills).values([
       {
         id: skillId,
-        companyId,
         key: skillKey,
         slug: "reflection-coach",
         name: "Reflection Coach",
@@ -187,8 +180,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
       },
       {
         id: randomUUID(),
-        companyId,
-        key: `company/${companyId}/large-reference-skill`,
+        key: "company/large-reference-skill",
         slug: "large-reference-skill",
         name: "Large Reference Skill",
         description: null,
@@ -203,7 +195,6 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     ]);
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
       name: "Reviewer",
       role: "engineer",
       adapterType: "codex_local",
@@ -217,7 +208,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     const tracked = createTrackedDb(db);
     const trackedSvc = companySkillService(tracked.db);
     const detail = await Promise.race([
-      trackedSvc.detail(companyId, skillId),
+      trackedSvc.detail(skillId),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("skill detail timed out")), 1_000)),
     ]);
 

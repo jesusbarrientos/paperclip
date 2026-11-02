@@ -5,7 +5,6 @@ import { agentsApi } from "../api/agents";
 /** ACP readiness checks do not authenticate a provider. Verify credentials with
  * the adapter's existing read-only CLI hello probe before calling setup connected. */
 export async function testAgentSetup(input: {
-  companyId: string;
   agentId?: string;
   adapterType: string;
   providerAdapter: string;
@@ -22,7 +21,6 @@ export async function testAgentSetup(input: {
     environmentId: input.environmentId,
   };
   const runtime = await agentsApi.testEnvironment(
-    input.companyId,
     input.adapterType,
     payload,
   );
@@ -37,7 +35,6 @@ export async function testAgentSetup(input: {
   )
     return runtime;
   const provider = await agentsApi.testEnvironment(
-    input.companyId,
     input.providerAdapter,
     {
       ...payload,

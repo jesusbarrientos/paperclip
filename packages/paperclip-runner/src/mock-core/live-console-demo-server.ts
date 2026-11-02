@@ -861,7 +861,6 @@ export class LiveConsoleDemoServer {
       fixtureName: "live-console-demo",
       identity: {
         schema: "paperclip.prp.identity.v1" as const,
-        companyId: "package-local-demo",
         issueId: "live-console-demo",
         runId: entry.runId,
         environmentLeaseId: "package-local",

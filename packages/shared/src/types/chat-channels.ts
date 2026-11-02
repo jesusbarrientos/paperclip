@@ -227,7 +227,6 @@ export interface ChatEndpoint {
   /** Additional presentation instructions captured only for newly created tasks. */
   communicationInstructions?: string;
   id: string;
-  companyId: string;
   connectionId: string;
   /** Older clients omit these fields; defaults are automatic/restricted. */
   publicationMode?: ChannelPublicationMode;
@@ -263,7 +262,6 @@ export interface ChatEndpoint {
 
 export interface ChatEndpointResource {
   id: string;
-  companyId: string;
   endpointId: string;
   type: string;
   providerResourceId: string;
@@ -280,7 +278,6 @@ export interface ChatEndpointResource {
 
 export interface ChatExternalPrincipal {
   id: string;
-  companyId: string;
   provider: ChatProvider;
   providerAccountId: string;
   externalId: string;
@@ -294,7 +291,6 @@ export interface ChatExternalPrincipal {
 
 export interface ChatIdentityLink {
   id: string;
-  companyId: string;
   endpointId: string;
   principalId: string;
   /** Latest discovery-only connect command received by this endpoint. */
@@ -311,7 +307,6 @@ export interface ChatIdentityLink {
 
 export interface ChatConversation {
   id: string;
-  companyId: string;
   endpointId: string;
   resourceId?: string | null;
   issueId: string;
@@ -332,7 +327,6 @@ export interface ChatConversation {
 
 export interface ChatDelivery {
   id: string;
-  companyId: string;
   endpointId: string;
   conversationId?: string | null;
   principalId?: string | null;
@@ -401,7 +395,6 @@ export interface SafeChatPublicationPayload {
 
 export interface ChatPublication {
   id: string;
-  companyId: string;
   endpointId: string;
   conversationId: string;
   issueId: string;

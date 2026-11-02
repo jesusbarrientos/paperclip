@@ -31,13 +31,12 @@ function createSearchResponse(query: CompanySearchQuery): CompanySearchResponse 
 
 describe("company search route rate limiting", () => {
   it("rejects repeated same-actor search calls before invoking search", async () => {
-    const search = vi.fn(async (_companyId: string, query: CompanySearchQuery) => createSearchResponse(query));
+    const search = vi.fn(async (query: CompanySearchQuery) => createSearchResponse(query));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
@@ -52,8 +51,8 @@ describe("company search route rate limiting", () => {
       }),
     }));
 
-    await request(app).get("/api/companies/company-1/search?q=wizard").expect(200);
-    const limited = await request(app).get("/api/companies/company-1/search?q=wizard").expect(429);
+    await request(app).get("/api/search?q=wizard").expect(200);
+    const limited = await request(app).get("/api/search?q=wizard").expect(429);
 
     expect(search).toHaveBeenCalledTimes(1);
     expect(limited.body).toMatchObject({
@@ -63,13 +62,12 @@ describe("company search route rate limiting", () => {
     expect(limited.headers["retry-after"]).toBe("60");
   });
   it("resolves assigneeUserId=me for board actors before invoking search", async () => {
-    const search = vi.fn(async (_companyId: string, query: CompanySearchQuery) => createSearchResponse(query));
+    const search = vi.fn(async (query: CompanySearchQuery) => createSearchResponse(query));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
@@ -84,20 +82,19 @@ describe("company search route rate limiting", () => {
       }),
     }));
 
-    await request(app).get("/api/companies/company-1/search?q=wizard&assigneeUserId=me").expect(200);
+    await request(app).get("/api/search?q=wizard&assigneeUserId=me").expect(200);
 
     expect(search).toHaveBeenCalledTimes(1);
-    expect(search.mock.calls[0]?.[1].assigneeUserId).toBe("user-1");
+    expect(search.mock.calls[0]?.[0].assigneeUserId).toBe("user-1");
   });
 
   it("rejects invalid filter and sort params before invoking search", async () => {
-    const search = vi.fn(async (_companyId: string, query: CompanySearchQuery) => createSearchResponse(query));
+    const search = vi.fn(async (query: CompanySearchQuery) => createSearchResponse(query));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
@@ -112,8 +109,8 @@ describe("company search route rate limiting", () => {
       }),
     }));
 
-    await request(app).get("/api/companies/company-1/search?q=wizard&sort=nope").expect(400);
-    await request(app).get("/api/companies/company-1/search?q=wizard&assigneeAgentId=nope").expect(400);
+    await request(app).get("/api/search?q=wizard&sort=nope").expect(400);
+    await request(app).get("/api/search?q=wizard&assigneeAgentId=nope").expect(400);
 
     expect(search).not.toHaveBeenCalled();
   });

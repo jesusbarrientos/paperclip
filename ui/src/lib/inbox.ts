@@ -179,31 +179,21 @@ function normalizeInboxApprovalFilter(value: unknown): InboxApprovalFilter {
   return value === "actionable" || value === "resolved" ? value : "all";
 }
 
-function getInboxFilterPreferencesStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${INBOX_FILTER_PREFERENCES_KEY_PREFIX}:${companyId}`;
+function getInboxFilterPreferencesStorageKey(): string {
+  return INBOX_FILTER_PREFERENCES_KEY_PREFIX;
 }
 
-function getInboxCollapsedGroupsStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${INBOX_COLLAPSED_GROUPS_KEY_PREFIX}:${companyId}`;
+function getInboxCollapsedGroupsStorageKey(): string {
+  return INBOX_COLLAPSED_GROUPS_KEY_PREFIX;
 }
 
-function getInboxCollapsedParentsStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${INBOX_COLLAPSED_PARENTS_KEY_PREFIX}:${companyId}`;
+function getInboxCollapsedParentsStorageKey(): string {
+  return INBOX_COLLAPSED_PARENTS_KEY_PREFIX;
 }
 
 export function loadInboxFilterPreferences(
-  companyId: string | null | undefined,
 ): InboxFilterPreferences {
-  const storageKey = getInboxFilterPreferencesStorageKey(companyId);
-  if (!storageKey) {
-    return {
-      ...defaultInboxFilterPreferences,
-      issueFilters: { ...defaultIssueFilterState },
-    };
-  }
+  const storageKey = getInboxFilterPreferencesStorageKey();
 
   try {
     const raw = localStorage.getItem(storageKey);
@@ -228,11 +218,9 @@ export function loadInboxFilterPreferences(
 }
 
 export function saveInboxFilterPreferences(
-  companyId: string | null | undefined,
   preferences: InboxFilterPreferences,
 ) {
-  const storageKey = getInboxFilterPreferencesStorageKey(companyId);
-  if (!storageKey) return;
+  const storageKey = getInboxFilterPreferencesStorageKey();
 
   try {
     localStorage.setItem(
@@ -249,10 +237,8 @@ export function saveInboxFilterPreferences(
 }
 
 export function loadCollapsedInboxGroupKeys(
-  companyId: string | null | undefined,
 ): Set<string> {
-  const storageKey = getInboxCollapsedGroupsStorageKey(companyId);
-  if (!storageKey) return new Set();
+  const storageKey = getInboxCollapsedGroupsStorageKey();
 
   try {
     const raw = localStorage.getItem(storageKey);
@@ -265,11 +251,9 @@ export function loadCollapsedInboxGroupKeys(
 }
 
 export function saveCollapsedInboxGroupKeys(
-  companyId: string | null | undefined,
   groupKeys: ReadonlySet<string>,
 ) {
-  const storageKey = getInboxCollapsedGroupsStorageKey(companyId);
-  if (!storageKey) return;
+  const storageKey = getInboxCollapsedGroupsStorageKey();
 
   try {
     localStorage.setItem(storageKey, JSON.stringify([...groupKeys]));
@@ -279,10 +263,8 @@ export function saveCollapsedInboxGroupKeys(
 }
 
 export function loadCollapsedInboxParentIds(
-  companyId: string | null | undefined,
 ): Set<string> {
-  const storageKey = getInboxCollapsedParentsStorageKey(companyId);
-  if (!storageKey) return new Set();
+  const storageKey = getInboxCollapsedParentsStorageKey();
 
   try {
     const raw = localStorage.getItem(storageKey);
@@ -295,11 +277,9 @@ export function loadCollapsedInboxParentIds(
 }
 
 export function saveCollapsedInboxParentIds(
-  companyId: string | null | undefined,
   parentIds: ReadonlySet<string>,
 ) {
-  const storageKey = getInboxCollapsedParentsStorageKey(companyId);
-  if (!storageKey) return;
+  const storageKey = getInboxCollapsedParentsStorageKey();
 
   try {
     localStorage.setItem(storageKey, JSON.stringify([...parentIds]));

@@ -3,7 +3,7 @@ import { Wrench } from "lucide-react";
 import { Link, Navigate, useParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { ProfilesIndex } from "./profiles/ProfilesIndex";
 import { GatewaysTab } from "./GatewaysTab";
 import { PasteConfigTab } from "./PasteConfigTab";
@@ -16,22 +16,22 @@ import {
   type ToolTabKey,
 } from "./tool-tabs";
 
-function renderTab(tab: ToolTabKey, companyId: string) {
+function renderTab(tab: ToolTabKey) {
   switch (tab) {
     case "profiles":
-      return <ProfilesIndex companyId={companyId} />;
+      return <ProfilesIndex />;
     case "gateways":
-      return <GatewaysTab companyId={companyId} />;
+      return <GatewaysTab />;
     case "smoke-lab":
-      return <SmokeLabTab companyId={companyId} />;
+      return <SmokeLabTab />;
     case "paste-config":
     default:
-      return <PasteConfigTab companyId={companyId} />;
+      return <PasteConfigTab />;
   }
 }
 
 export function ToolsAccess() {
-  const { selectedCompany, selectedCompanyId } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const params = useParams<{ tab?: string }>();
   const activeTab = (TOOL_TABS.find((t) => t.key === params.tab)?.key ?? "paste-config") as ToolTabKey;
@@ -40,7 +40,7 @@ export function ToolsAccess() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
+      { label: organization?.name ?? "Organization", href: "/dashboard" },
       { label: "Apps", href: "/apps" },
       ...(advanced
         ? [{ label: "Advanced setup" }]
@@ -50,11 +50,8 @@ export function ToolsAccess() {
           ]),
     ]);
     return () => setBreadcrumbs([]);
-  }, [setBreadcrumbs, selectedCompany?.name, advanced, tabLabel]);
+  }, [setBreadcrumbs, organization?.name, advanced, tabLabel]);
 
-  if (!selectedCompanyId) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an organization to open advanced setup.</div>;
-  }
 
   if (params.tab === "run-your-own") {
     return <Navigate to="/apps" replace />;
@@ -118,7 +115,7 @@ export function ToolsAccess() {
           ))}
         </nav>
 
-        <div className="min-h-(--sz-300px)">{renderTab(activeTab, selectedCompanyId)}</div>
+        <div className="min-h-(--sz-300px)">{renderTab(activeTab)}</div>
 
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Wrench className="h-3.5 w-3.5" />
@@ -131,5 +128,5 @@ export function ToolsAccess() {
     );
   }
 
-  return <div className="max-w-5xl">{renderTab(activeTab, selectedCompanyId)}</div>;
+  return <div className="max-w-5xl">{renderTab(activeTab)}</div>;
 }

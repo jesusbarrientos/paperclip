@@ -43,9 +43,9 @@ import type { LoginPtyWorkerManagerLike } from "./setup-token-transport-binding.
 
 // The login-session service. It creates a login session, acquires a fresh
 // sandbox lease, runs `codex login --device-auth` through the runner, and owns
-// the sandbox delete. The service holds the company credential slot through the
-// whole flow, so a second start for the same company and adapter cannot run at
-// the same time.
+// the sandbox delete. The service holds the credential slot through the whole
+// flow, so a second start for the same owner and adapter cannot run at the same
+// time.
 //
 // Security: the service records no secret data. An activity record carries no
 // URL, no code, no credential, no account identifier, and no lease identifier.
@@ -129,7 +129,6 @@ export interface LoginSessionLease {
 }
 
 export interface AcquireLoginLeaseInput {
-  companyId: string;
   environmentId: string;
   adapterType: AgentAdapterType;
   sessionId: string;
@@ -147,7 +146,6 @@ export interface LoginSessionRuntime {
  *  the company slot and the sole-active-owner check for this exact session. */
 export interface CredentialPromotionContext {
   sessionId: string;
-  companyId: string;
   startedByUserId: string;
   adapterType: AgentAdapterType;
 }
@@ -199,7 +197,6 @@ export type LoginSessionActivityPhase =
  */
 export interface LoginSessionActivityEvent {
   sessionId: string;
-  companyId: string;
   environmentId: string;
   adapterType: AgentAdapterType;
   phase: LoginSessionActivityPhase;
@@ -209,7 +206,6 @@ export type LoginSessionActivityRecorder = (event: LoginSessionActivityEvent) =>
 
 export interface StartDeviceLoginInput {
   aiConnection?: import("@paperclipai/shared").AiConnectionLoginIntent;
-  companyId: string;
   environmentId: string;
   adapterType: AgentAdapterType;
   /** The immutable owner principal. The service returns the prompt only to it. */
@@ -269,7 +265,6 @@ export interface AdapterAuthSessionRow {
    *  value. It never equals the internal primary-key `id`, so a caller cannot
    *  address a row by the internal id. */
   publicSessionId: string;
-  companyId: string;
   environmentId: string;
   adapterType: AgentAdapterType;
   startedByUserId: string;
@@ -293,7 +288,6 @@ export interface InsertAdapterAuthSessionInput {
   /** The public, CSPRNG session identifier. The service builds it and returns it
    *  to the client; the store persists it in `public_session_id`. */
   publicSessionId: string;
-  companyId: string;
   environmentId: string;
   adapterType: AgentAdapterType;
   startedByUserId: string;
@@ -355,7 +349,6 @@ export interface AdapterAuthSessionStore {
    */
   getByPublicId(
     publicSessionId: string,
-    companyId: string,
     adapterType?: AgentAdapterType,
   ): Promise<AdapterAuthSessionRow | null>;
   /**
@@ -365,7 +358,6 @@ export interface AdapterAuthSessionStore {
    * owner holds no active session for the adapter.
    */
   getActiveByOwner(
-    companyId: string,
     startedByUserId: string,
     adapterType: AgentAdapterType,
   ): Promise<AdapterAuthSessionRow | null>;
@@ -374,7 +366,6 @@ export interface AdapterAuthSessionStore {
    *  row inside this lock, so a reclaim never interleaves with a live credential
    *  write for the same slot. */
   withCompanyAdapterPromotionLock<T>(
-    companyId: string,
     startedByUserId: string,
     adapterType: AgentAdapterType,
     fn: () => Promise<T>,
@@ -386,15 +377,14 @@ export interface AdapterAuthSessionStore {
  *  never contend. The credential-promotion path and the reaper reclaim both
  *  derive the key from this function, so they take the exact same lock. */
 export function adapterLoginPromotionLockKey(
-  companyId: string,
   startedByUserId: string,
   adapterType: AgentAdapterType,
 ): string {
-  return `paperclip:adapter-login-promotion:${companyId}:${startedByUserId}:${adapterType}`;
+  return `paperclip:adapter-login-promotion:${startedByUserId}:${adapterType}`;
 }
 
 /**
- * Run `fn` inside the promotion critical section for one company, owner, and
+ * Run `fn` inside the promotion critical section for one owner and
  * adapter slot.
  *
  * The function opens a database transaction and takes a transaction-scoped
@@ -408,12 +398,11 @@ export function adapterLoginPromotionLockKey(
  */
 export async function withAdapterLoginPromotionLock<T>(
   db: Db,
-  companyId: string,
   startedByUserId: string,
   adapterType: AgentAdapterType,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const key = adapterLoginPromotionLockKey(companyId, startedByUserId, adapterType);
+  const key = adapterLoginPromotionLockKey(startedByUserId, adapterType);
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
     return fn();
@@ -460,7 +449,6 @@ export interface AdapterAuthReaperStore {
    *  row inside this lock, so a reclaim never interleaves with a live credential
    *  write for the same slot. */
   withCompanyAdapterPromotionLock<T>(
-    companyId: string,
     startedByUserId: string,
     adapterType: AgentAdapterType,
     fn: () => Promise<T>,
@@ -491,7 +479,6 @@ function toRow(row: typeof adapterAuthSessions.$inferSelect): AdapterAuthSession
     id: row.id,
     ...(row.aiConnection ? { aiConnection: row.aiConnection } : {}),
     publicSessionId: row.publicSessionId,
-    companyId: row.companyId,
     environmentId: row.environmentId,
     adapterType: row.adapterType,
     startedByUserId: row.startedByUserId,
@@ -534,7 +521,6 @@ export function createDbAdapterAuthSessionStore(
       try {
         await db.insert(adapterAuthSessions).values({
           id: input.id,
-          companyId: input.companyId,
           environmentId: input.environmentId,
           adapterType: input.adapterType,
           startedByUserId: input.startedByUserId,
@@ -594,7 +580,7 @@ export function createDbAdapterAuthSessionStore(
       const row = rows[0];
       return row ? toRow(row) : null;
     },
-    async getByPublicId(publicSessionId, companyId, adapterType) {
+    async getByPublicId(publicSessionId, adapterType) {
       // The predicate carries the company id, so a read never keys on the public
       // session id alone. A foreign-company caller reads nothing. The internal
       // primary-key `id` never matches, so a caller cannot address a row by the
@@ -606,7 +592,6 @@ export function createDbAdapterAuthSessionStore(
         .where(
           and(
             eq(adapterAuthSessions.publicSessionId, publicSessionId),
-            eq(adapterAuthSessions.companyId, companyId),
             adapterType
               ? eq(adapterAuthSessions.adapterType, adapterType)
               : inArray(adapterAuthSessions.adapterType, DISPLAYED_CODE_ADAPTER_TYPES),
@@ -616,7 +601,7 @@ export function createDbAdapterAuthSessionStore(
       const row = rows[0];
       return row ? toRow(row) : null;
     },
-    async getActiveByOwner(companyId, startedByUserId, adapterType) {
+    async getActiveByOwner(startedByUserId, adapterType) {
       // The predicate matches the same three columns as the active-slot partial
       // unique index, plus the active-status set, so at most one row can match.
       const rows = await db
@@ -624,7 +609,6 @@ export function createDbAdapterAuthSessionStore(
         .from(adapterAuthSessions)
         .where(
           and(
-            eq(adapterAuthSessions.companyId, companyId),
             eq(adapterAuthSessions.startedByUserId, startedByUserId),
             eq(adapterAuthSessions.adapterType, adapterType),
             inArray(adapterAuthSessions.status, [...ADAPTER_AUTH_ACTIVE_STATUSES]),
@@ -687,8 +671,8 @@ export function createDbAdapterAuthSessionStore(
         .map((row) => row.providerLeaseId)
         .filter((value): value is string => value != null);
     },
-    async withCompanyAdapterPromotionLock(companyId, startedByUserId, adapterType, fn) {
-      return withAdapterLoginPromotionLock(db, companyId, startedByUserId, adapterType, fn);
+    async withCompanyAdapterPromotionLock(startedByUserId, adapterType, fn) {
+      return withAdapterLoginPromotionLock(db, startedByUserId, adapterType, fn);
     },
   };
 }
@@ -921,7 +905,6 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
     const expiresAt = new Date(startedAt.getTime() + ttlSeconds * 1000);
     const base = {
       sessionId,
-      companyId: input.companyId,
       environmentId: input.environmentId,
       adapterType: input.adapterType,
     };
@@ -935,7 +918,6 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
     await store.insert({
       id: sessionId,
       publicSessionId,
-      companyId: input.companyId,
       environmentId: input.environmentId,
       adapterType: input.adapterType,
       startedByUserId: input.startedByUserId,
@@ -952,7 +934,6 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
     let lease: LoginSessionLease;
     try {
       lease = await runtime.acquireLoginLease({
-        companyId: input.companyId,
         environmentId: input.environmentId,
         adapterType: input.adapterType,
         sessionId,
@@ -1122,7 +1103,6 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
         }
         await profile.promotion.promote(credential, {
           sessionId,
-          companyId: input.companyId,
           startedByUserId: input.startedByUserId,
           adapterType: input.adapterType,
         });
@@ -1156,7 +1136,6 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
         });
       const promotionContext: CredentialPromotionContext = {
         sessionId,
-        companyId: input.companyId,
         startedByUserId: input.startedByUserId,
         adapterType: input.adapterType,
       };
@@ -1324,12 +1303,11 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
 
   async function readOwnerSession(
     publicSessionId: string,
-    companyId: string,
     requestingUserId: string,
   ): Promise<AdapterAuthSessionOwnerResponse | null> {
     // Look the row up by its public session id, scoped to the company. A
     // foreign-company caller reads nothing, and the internal id never matches.
-    const row = await store.getByPublicId(publicSessionId, companyId);
+    const row = await store.getByPublicId(publicSessionId);
     if (!row) return null;
     return buildOwnerResponse(row, requestingUserId);
   }
@@ -1339,11 +1317,10 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
   // local state. The store predicate matches only an active row for this exact
   // owner, so this never surfaces a foreign owner's session.
   async function readActiveOwnerSession(
-    companyId: string,
     adapterType: AgentAdapterType,
     requestingUserId: string,
   ): Promise<AdapterAuthSessionOwnerResponse | null> {
-    const row = await store.getActiveByOwner(companyId, requestingUserId, adapterType);
+    const row = await store.getActiveByOwner(requestingUserId, adapterType);
     if (!row) return null;
     return buildOwnerResponse(row, requestingUserId);
   }
@@ -1362,13 +1339,12 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
   // promotion runs to its own terminal.
   async function cancelOwnerSession(
     publicSessionId: string,
-    companyId: string,
     requestingUserId: string,
   ): Promise<AdapterAuthSessionOwnerResponse | null> {
     // Look the row up by its public session id, scoped to the company. The status
     // write keys on the internal `row.id`, so a cancel never addresses a row by
     // the public id alone.
-    const row = await store.getByPublicId(publicSessionId, companyId);
+    const row = await store.getByPublicId(publicSessionId);
     if (!row || row.startedByUserId !== requestingUserId) return null;
     const write = terminalCleanupWrite(false, "cancelled", null);
     await store.compareAndSetStatus({
@@ -1384,7 +1360,7 @@ export function createDeviceLoginService(deps: DeviceLoginServiceDeps) {
     // above won. A lost write means the row already left the cancellable
     // states, so no fresh prompt exists for it either.
     promptsBySession.delete(row.id);
-    return readOwnerSession(publicSessionId, companyId, requestingUserId);
+    return readOwnerSession(publicSessionId, requestingUserId);
   }
 
   return { start, readOwnerSession, readActiveOwnerSession, cancelOwnerSession };
@@ -1494,7 +1470,6 @@ export function buildSandboxLoginDriver(deps: {
  * opens.
  */
 export interface LoginPtySessionBinding {
-  companyId: string;
   environmentId: string;
   adapterType: AgentAdapterType;
   /** The provider lease that binds the sandbox worker. */
@@ -1582,7 +1557,6 @@ export function createWorkerBoundLoginPtyOpener(
     return (_command: string) =>
       deps.workerManager.openLoginPtySession(pluginId, {
         driverKey,
-        companyId: binding.companyId,
         environmentId: binding.environmentId,
         providerLeaseId: binding.providerLeaseId,
         loginCommandKey,
@@ -1643,7 +1617,6 @@ export function createProductionLoginSessionRuntime(
       const record = await deps.environmentRuntime.acquireRunLease(
         buildLoginLeaseAcquireArgs({
           metadata: {
-            companyId: input.companyId,
             environment,
             adapterType: input.adapterType,
           },
@@ -1664,7 +1637,6 @@ export function createProductionLoginSessionRuntime(
       // `sessionHome` the descriptor-bound read opens.
       const openPtySession: LoginPtySessionOpener = deps.openLivePtySession
         ? await deps.openLivePtySession({
-            companyId: input.companyId,
             environmentId: input.environmentId,
             adapterType: input.adapterType,
             providerLeaseId,

@@ -26,7 +26,7 @@ console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:1,output_t
   }
   try {
     const result = await testEnvironment({
-      companyId: "company-1", adapterType: "codex_local",
+      adapterType: "codex_local",
       config: { engine: "cli", command, cwd: root, env: {
         OPENAI_API_KEY: "fixture-key", PROBE_CAPTURE: capture,
         PROBE_ERROR: options.error ?? "", PATH: `${root}${path.delimiter}${process.env.PATH ?? ""}`,
@@ -82,7 +82,6 @@ describe("codex_local environment diagnostics", () => {
     await fs.rm(path.dirname(cwd), { recursive: true, force: true });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         engine: "cli",
@@ -114,7 +113,6 @@ describe("codex_local environment diagnostics", () => {
       );
 
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "codex_local",
         config: {
           engine: "cli",
@@ -144,7 +142,6 @@ describe("codex_local environment diagnostics", () => {
       // No auth.json written
 
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "codex_local",
         config: {
           engine: "cli",
@@ -183,7 +180,6 @@ describe("codex_local environment diagnostics", () => {
       await fs.writeFile(fakeCodex, script, "utf8");
 
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "codex_local",
         config: {
           engine: "cli",

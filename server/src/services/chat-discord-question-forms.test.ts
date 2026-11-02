@@ -12,7 +12,7 @@ import type {
   ChatSdkStateRecord,
 } from "./chat-sdk-state.js";
 
-const scope = { companyId: "company", endpointId: "endpoint" };
+const scope = { endpointId: "endpoint" };
 const owner = {
   principalId: "principal",
   userId: "member",
@@ -27,8 +27,8 @@ const optionId = `pcfo:${"O".repeat(22)}`;
 const submitActionId = `pcfs:${"A".repeat(22)}`;
 function fixture() {
   const rows = new Map<string, ChatSdkStateRecord>();
-  const key = (scope: { companyId: string; endpointId: string }, key: string) =>
-    JSON.stringify([scope.companyId, scope.endpointId, key]);
+  const key = (scope: { endpointId: string }, key: string) =>
+    JSON.stringify([scope.endpointId, key]);
   const persistence: ChatSdkStatePersistence = {
     async read(scope, id) {
       return rows.get(key(scope, id)) ?? null;
@@ -133,7 +133,6 @@ describe("Discord actor-scoped correction drafts", () => {
   });
 
   it.each([
-    "company",
     "endpoint",
     "principal",
     "member",
@@ -150,7 +149,6 @@ describe("Discord actor-scoped correction drafts", () => {
     );
     const readScope = { ...scope };
     const readOwner = { ...owner };
-    if (kind === "company") readScope.companyId = "other";
     if (kind === "endpoint") readScope.endpointId = "other";
     if (kind === "principal") readOwner.principalId = "other";
     if (kind === "member") readOwner.userId = "other";

@@ -2,9 +2,9 @@
  * Cross-tab shared polling coordination (PAP-12557 / Phase 2 of PAP-12542).
  *
  * Goal: when a user restores many Paperclip tabs at once, we do not want every
- * tab independently polling the same company-scoped hot endpoints (live-runs,
- * dashboard, inbox list, activity). Instead we elect ONE visible leader tab per
- * company to poll, and the leader broadcasts fresh results to the other tabs.
+ * tab independently polling the same hot endpoints (live-runs, dashboard,
+ * inbox list, activity). Instead we elect ONE visible leader tab to poll, and
+ * the leader broadcasts fresh results to the other tabs.
  *
  * Two independent primitives make this robust:
  *
@@ -22,7 +22,7 @@
  * cache / a slow safety poll, so we never regress to worse than a single tab.
  *
  * Design rules (from the approved plan, Phase 2 acceptance):
- *   - At most one active leader per company under normal browser conditions.
+ *   - At most one active leader under normal browser conditions.
  *   - Hidden tabs do NOT become leader while a visible tab exists.
  *   - Leader failover happens within ~one poll interval + lease grace when the
  *     leader closes or crashes (its lease expires and a follower reclaims it).
@@ -323,7 +323,7 @@ export function createLeaseStore(
 export interface SharedMessage {
   /** `result`: leader is publishing fresh data. `request`: a joiner wants the latest. */
   type: "result" | "request";
-  /** Resource key, e.g. `live-runs:<companyId>`. */
+  /** Resource key, e.g. `live-runs:<queryKeyHash>`. */
   key: string;
   /** Sender tab id (so tabs ignore their own echoes). */
   from: string;
@@ -437,7 +437,7 @@ export function createSharedChannel(name: string): SharedChannel {
 }
 
 // ---------------------------------------------------------------------------
-// Browser coordinator (one leader lease + one channel per company)
+// Browser coordinator (one leader lease + one channel)
 // ---------------------------------------------------------------------------
 
 export interface SharedPollingSnapshot {
@@ -464,16 +464,12 @@ const MAX_COORDINATOR_CACHE_ENTRIES = 32;
 const COORDINATOR_CACHE_TTL_MS = 5 * 60_000;
 const TAB_ID_STORAGE_KEY = "paperclip:shared-poll:tab-id";
 
-function sanitizeCompanyId(companyId: string): string {
-  return encodeURIComponent(companyId);
+export function sharedPollingLeaseKey(): string {
+  return "paperclip:shared-poll:leader";
 }
 
-export function sharedPollingLeaseKey(companyId: string): string {
-  return `paperclip:shared-poll:${sanitizeCompanyId(companyId)}:leader`;
-}
-
-export function sharedPollingChannelName(companyId: string): string {
-  return `paperclip:shared-poll:${sanitizeCompanyId(companyId)}`;
+export function sharedPollingChannelName(): string {
+  return "paperclip:shared-poll";
 }
 
 export function getSharedPollingTabId(): string {
@@ -503,20 +499,20 @@ function getBrowserVisible(): boolean {
   return document.visibilityState === "visible";
 }
 
-function createBrowserLeaseStore(companyId: string): LeaseStore | null {
+function createBrowserLeaseStore(): LeaseStore | null {
   if (typeof localStorage === "undefined") return null;
   try {
-    const probeKey = `paperclip:shared-poll:${sanitizeCompanyId(companyId)}:probe`;
+    const probeKey = "paperclip:shared-poll:probe";
     localStorage.setItem(probeKey, "1");
     localStorage.removeItem(probeKey);
   } catch {
     return null;
   }
-  return createLeaseStore(localStorage, sharedPollingLeaseKey(companyId));
+  return createLeaseStore(localStorage, sharedPollingLeaseKey());
 }
 
 /**
- * Per-company coordinator that owns one lease election and one result channel.
+ * Coordinator that owns one lease election and one result channel.
  * Multiple query hooks in the same tab share the same coordinator via a registry
  * in `useSharedPolling`, so unmounting one component does not release leadership
  * while another shared query is still active in the tab.
@@ -553,14 +549,14 @@ export class SharedPollingCoordinator {
   private releaseListeners: Array<() => void> = [];
   private snapshot: SharedPollingSnapshot = { isLeader: false };
 
-  constructor(companyId: string, options: SharedPollingCoordinatorOptions = {}) {
+  constructor(options: SharedPollingCoordinatorOptions = {}) {
     this.tabId = options.tabId ?? getSharedPollingTabId();
-    this.channel = options.channel ?? createSharedChannel(sharedPollingChannelName(companyId));
+    this.channel = options.channel ?? createSharedChannel(sharedPollingChannelName());
     this.tickMs = options.tickMs ?? DEFAULT_COORDINATOR_TICK_MS;
     this.publishDebounceMs = options.publishDebounceMs ?? DEFAULT_PUBLISH_DEBOUNCE_MS;
     this.now = options.now ?? (() => Date.now());
     this.getVisible = options.getVisible ?? getBrowserVisible;
-    const leaseStore = createBrowserLeaseStore(companyId);
+    const leaseStore = createBrowserLeaseStore();
     this.localOnlyFallback = !options.election && !leaseStore;
     this.election = options.election ?? new LeaderElection(
       {

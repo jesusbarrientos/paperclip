@@ -39,7 +39,6 @@ import { ImportFromVaultDialog } from "./ImportFromVaultDialog";
 
 const awsVault: CompanySecretProviderConfig = {
   id: "vault-aws",
-  companyId: "company-1",
   provider: "aws_secrets_manager",
   displayName: "AWS production",
   status: "ready",
@@ -162,7 +161,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -242,7 +240,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -285,7 +282,6 @@ describe("ImportFromVaultDialog", () => {
     const existing: CompanySecret[] = [
       {
         id: "secret-existing",
-        companyId: "company-1",
         scope: "company",
         ownerUserId: null,
         userSecretDefinitionId: null,
@@ -317,7 +313,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={existing}
           />
@@ -381,7 +376,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -473,7 +467,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -522,7 +515,7 @@ describe("ImportFromVaultDialog", () => {
     await flush();
     await flush();
 
-    expect(mockSecretsApi.remoteImport).toHaveBeenCalledWith("company-1", {
+    expect(mockSecretsApi.remoteImport).toHaveBeenCalledWith({
       providerConfigId: awsVault.id,
       secrets: [
         expect.objectContaining({
@@ -610,7 +603,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -673,7 +665,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[]}
             existingSecrets={[]}
             onManageVaults={vi.fn()}
@@ -707,7 +698,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -745,7 +735,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -788,7 +777,6 @@ describe("ImportFromVaultDialog", () => {
           <ImportFromVaultDialog
             open
             onOpenChange={vi.fn()}
-            companyId="company-1"
             providerConfigs={[awsVault]}
             existingSecrets={[]}
           />
@@ -814,7 +802,7 @@ describe("ImportFromVaultDialog", () => {
 
     expect(mockSecretsApi.remoteImportPreview).toHaveBeenCalledTimes(2);
     const lastCall = mockSecretsApi.remoteImportPreview.mock.calls.at(-1);
-    expect(lastCall?.[1]).toMatchObject({ query: "stripe" });
+    expect(lastCall?.[0]).toMatchObject({ query: "stripe" });
 
     await act(async () => {
       root.unmount();

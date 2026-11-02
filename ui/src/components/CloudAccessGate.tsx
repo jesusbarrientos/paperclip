@@ -112,8 +112,7 @@ export function CloudAccessGate({ allowMembershipRequest = false }: { allowMembe
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.health });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.organization });
       await queryClient.invalidateQueries({ queryKey: queryKeys.access.currentBoardAccess });
     },
   });
@@ -134,7 +133,7 @@ export function CloudAccessGate({ allowMembershipRequest = false }: { allowMembe
     (isAuthenticatedMode && sessionQuery.isLoading) ||
     (isAuthenticatedMode && !isBootstrapPending && !!sessionQuery.data && boardAccessQuery.isLoading);
   const hasBoardAccess = allowMembershipRequest || !isAuthenticatedMode
-    || !!boardAccessQuery.data?.isInstanceAdmin || (boardAccessQuery.data?.companyIds.length ?? 0) > 0;
+    || !!boardAccessQuery.data?.isInstanceAdmin || (boardAccessQuery.data?.memberships?.length ?? 0) > 0;
   const canAccessBoard = !isLoading && !blockingError && !isBootstrapPending
     && (!isAuthenticatedMode || !!sessionQuery.data) && hasBoardAccess;
   useEffect(() => {

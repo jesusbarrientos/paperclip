@@ -265,18 +265,17 @@ function sourceFromRow(row: SourceRow): PipelineCaseOutputSource {
 
 export function pipelineCaseOutputsService(db: Db) {
   return {
-    listCaseOutputs: async (companyId: string, caseId: string): Promise<PipelineCaseOutputsResponse> => {
+    listCaseOutputs: async (caseId: string): Promise<PipelineCaseOutputsResponse> => {
       const [caseRow, company] = await Promise.all([
         db
           .select({ id: pipelineCases.id, pipelineId: pipelineCases.pipelineId })
           .from(pipelineCases)
-          .where(and(eq(pipelineCases.companyId, companyId), eq(pipelineCases.id, caseId)))
+          .where(eq(pipelineCases.id, caseId))
           .limit(1)
           .then((rows) => rows[0] ?? null),
         db
           .select({ issuePrefix: companies.issuePrefix })
           .from(companies)
-          .where(eq(companies.id, companyId))
           .limit(1)
           .then((rows) => rows[0] ?? null),
       ]);
@@ -297,10 +296,8 @@ export function pipelineCaseOutputsService(db: Db) {
         .from(pipelineCaseIssueLinks)
         .innerJoin(issues, eq(pipelineCaseIssueLinks.issueId, issues.id))
         .where(and(
-          eq(pipelineCaseIssueLinks.companyId, companyId),
           eq(pipelineCaseIssueLinks.caseId, caseId),
           isNull(pipelineCaseIssueLinks.retiredAt),
-          eq(issues.companyId, companyId),
           visibleIssueCondition(),
           isNull(issues.cancelledAt),
           ne(issues.status, "cancelled"),
@@ -334,16 +331,11 @@ export function pipelineCaseOutputsService(db: Db) {
             updatedAt: documents.updatedAt,
           })
           .from(issueDocuments)
-          .innerJoin(documents, and(
-            eq(issueDocuments.documentId, documents.id),
-            eq(documents.companyId, issueDocuments.companyId),
-          ))
+          .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
           .leftJoin(latestRevision, and(
             eq(latestRevision.id, documents.latestRevisionId),
-            eq(latestRevision.companyId, documents.companyId),
           ))
           .where(and(
-            eq(issueDocuments.companyId, companyId),
             inArray(issueDocuments.issueId, sourceIssueIds),
             notInArray(issueDocuments.key, [...SYSTEM_ISSUE_DOCUMENT_KEYS]),
           ));
@@ -403,12 +395,8 @@ export function pipelineCaseOutputsService(db: Db) {
           .from(issueWorkProducts)
           .leftJoin(workProductRun, and(
             eq(workProductRun.id, issueWorkProducts.createdByRunId),
-            eq(workProductRun.companyId, issueWorkProducts.companyId),
           ))
-          .where(and(
-            eq(issueWorkProducts.companyId, companyId),
-            inArray(issueWorkProducts.issueId, sourceIssueIds),
-          ));
+          .where(inArray(issueWorkProducts.issueId, sourceIssueIds));
 
         for (const row of workProductRows) {
           const source = sourceByIssueId.get(row.issueId);
@@ -457,14 +445,8 @@ export function pipelineCaseOutputsService(db: Db) {
             updatedAt: issueAttachments.updatedAt,
           })
           .from(issueAttachments)
-          .innerJoin(assets, and(
-            eq(issueAttachments.assetId, assets.id),
-            eq(assets.companyId, issueAttachments.companyId),
-          ))
-          .where(and(
-            eq(issueAttachments.companyId, companyId),
-            inArray(issueAttachments.issueId, sourceIssueIds),
-          ));
+          .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
+          .where(inArray(issueAttachments.issueId, sourceIssueIds));
 
         for (const row of attachmentRows) {
           const source = sourceByIssueId.get(row.issueId);

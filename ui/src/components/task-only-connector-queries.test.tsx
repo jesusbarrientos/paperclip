@@ -14,15 +14,14 @@ vi.mock("@/hooks/useChatConnectorsEnabled", () => ({
   useChatConnectorsEnabled: () => ({ enabled: true, loaded: true }),
 }));
 
-const companyId = "test-company";
 const taskId = "22222222-2222-4222-8222-222222222222";
 const chatId = `chat:${taskId}`;
 
 function ConnectorQueries({ issueId }: { issueId: string }) {
-  const { binding, isLoading } = useIssueChatBinding(companyId, issueId);
+  const { binding, isLoading } = useIssueChatBinding(issueId);
   return <>
     <output>{binding ? "bound" : isLoading ? "loading" : "unbound"}</output>
-    <EmailTaskActivity companyId={companyId} issueId={issueId} />
+    <EmailTaskActivity issueId={issueId} />
   </>;
 }
 
@@ -69,7 +68,7 @@ describe("task-only connector queries", () => {
   it("resumes task queries when navigating from an agent chat to a task", async () => {
     await render(taskId);
     expect(api.getIssueBinding).toHaveBeenCalledWith(taskId);
-    expect(api.thread).toHaveBeenCalledWith(companyId, taskId);
+    expect(api.thread).toHaveBeenCalledWith(taskId);
     expect(container.textContent).toBe("bound");
 
     await render(chatId);
@@ -80,13 +79,13 @@ describe("task-only connector queries", () => {
     const nextTaskId = "33333333-3333-4333-8333-333333333333";
     await render(nextTaskId);
     expect(api.getIssueBinding).toHaveBeenLastCalledWith(nextTaskId);
-    expect(api.thread).toHaveBeenLastCalledWith(companyId, nextTaskId);
+    expect(api.thread).toHaveBeenLastCalledWith(nextTaskId);
     expect(container.textContent).toBe("bound");
   });
 
   it("does not display cached task connector data for an agent chat", async () => {
-    client.setQueryData(["issue-chat-binding", companyId, chatId], { endpointId: "stale-endpoint" });
-    client.setQueryData(["email-thread", companyId, chatId], {
+    client.setQueryData(["issue-chat-binding", chatId], { endpointId: "stale-endpoint" });
+    client.setQueryData(["email-thread", chatId], {
       messages: [],
       publications: [{ id: "stale-publication", outcome: "failed", error: "Stale task delivery" }],
     });

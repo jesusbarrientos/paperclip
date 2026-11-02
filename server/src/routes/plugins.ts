@@ -69,7 +69,7 @@ import {
   assertBoard,
   assertBoardOrAgent,
   assertBoardOrgAccess,
-  assertCompanyAccess,
+  assertOrgAccess,
   assertInstanceAdmin,
   getActorInfo,
 } from "./authz.js";
@@ -461,7 +461,6 @@ interface PluginScopedApiRequest {
     userId?: string | null;
     runId?: string | null;
   };
-  companyId: string;
   headers: Record<string, string>;
 }
 
@@ -605,34 +604,6 @@ export function pluginRoutes(
     return normalized;
   }
 
-  async function resolveScopedApiCompanyId(
-    route: PluginApiRouteDeclaration,
-    params: Record<string, string>,
-    req: Request,
-  ) {
-    const resolution = route.companyResolution;
-    if (!resolution) {
-      if (req.actor.type === "agent" && req.actor.companyId) return req.actor.companyId;
-      return null;
-    }
-
-    if (resolution.from === "body") {
-      const body = req.body as Record<string, unknown> | undefined;
-      const companyId = body?.[resolution.key ?? ""];
-      return typeof companyId === "string" ? companyId : null;
-    }
-
-    if (resolution.from === "query") {
-      const value = req.query[resolution.key ?? ""];
-      return typeof value === "string" ? value : null;
-    }
-
-    const issueId = params[resolution.param ?? ""];
-    if (!issueId) return null;
-    const issue = await issuesSvc.getById(issueId);
-    return issue?.companyId ?? null;
-  }
-
   function assertScopedApiAuth(req: Request, route: PluginApiRouteDeclaration) {
     if (route.auth === "board") {
       assertBoard(req);
@@ -656,7 +627,6 @@ export function pluginRoutes(
     req: Request,
     route: PluginApiRouteDeclaration,
     params: Record<string, string>,
-    companyId: string,
   ) {
     const policy = route.checkoutPolicy ?? "none";
     if (policy === "none" || req.actor.type !== "agent") return;
@@ -665,7 +635,7 @@ export function pluginRoutes(
       throw unprocessable("Checkout-protected plugin API routes require an issueId route parameter");
     }
     const issue = await issuesSvc.getById(issueId);
-    if (!issue || issue.companyId !== companyId) {
+    if (!issue) {
       throw notFound("Issue not found");
     }
     if (policy === "required-for-agent-in-progress") {
@@ -681,73 +651,27 @@ export function pluginRoutes(
     await issuesSvc.assertCheckoutOwner(issueId, req.actor.agentId, runId);
   }
 
-  async function resolvePluginAuditCompanyIds(req: Request): Promise<string[]> {
-    if (typeof (db as { select?: unknown }).select === "function") {
-      const rows = await db
-        .select({ id: companies.id })
-        .from(companies);
-      return rows.map((row) => row.id);
-    }
-
-    if (req.actor.type === "agent" && req.actor.companyId) {
-      return [req.actor.companyId];
-    }
-
-    if (req.actor.type === "board") {
-      return req.actor.companyIds ?? [];
-    }
-
-    return [];
-  }
-
   async function logPluginMutationActivity(
     req: Request,
     action: string,
     entityId: string,
     details: Record<string, unknown>,
   ): Promise<void> {
-    const companyIds = await resolvePluginAuditCompanyIds(req);
-    if (companyIds.length === 0) return;
-
     const actor = getActorInfo(req);
-    await Promise.all(companyIds.map((companyId) =>
-      logActivity(db, {
-        companyId,
-        actorType: actor.actorType,
-        actorId: actor.actorId,
-        agentId: actor.agentId,
-        runId: actor.runId,
-        agentApiKeyId: actor.agentApiKeyId,
-        action,
-        entityType: "plugin",
-        entityId,
-        details,
-      })));
+    await logActivity(db, {
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action,
+      entityType: "plugin",
+      entityId,
+      details,
+    });
   }
 
-  function assertPluginBridgeScope(req: Request, companyId: unknown): string | undefined {
-    if (companyId === undefined || companyId === null) {
-      assertInstanceAdmin(req);
-      return undefined;
-    }
-    if (typeof companyId !== "string" || companyId.trim().length === 0) {
-      throw badRequest('"companyId" must be a non-empty string when provided');
-    }
-    assertCompanyAccess(req, companyId);
-    return companyId;
-  }
-
-  function requirePluginConfigCompanyId(req: Request, companyId: unknown): string {
-    if (typeof companyId !== "string" || companyId.trim().length === 0) {
-      throw badRequest('"companyId" is required and must be a non-empty string');
-    }
-    const scopedCompanyId = companyId.trim();
-    assertCompanyAccess(req, scopedCompanyId);
-    return scopedCompanyId;
-  }
-
-  async function validatePluginSecretRefsForCompany(
-    companyId: string,
+  async function validatePluginSecretRefs(
     refs: ReturnType<typeof extractSecretRefBindingsFromConfig>,
   ): Promise<void> {
     if (refs.length === 0) return;
@@ -757,8 +681,8 @@ export function pluginRoutes(
       if (checked.has(ref.secretId)) continue;
       checked.add(ref.secretId);
       const secret = await secretsSvc.getById(ref.secretId);
-      if (!secret || secret.companyId !== companyId) {
-        throw unprocessable("Plugin config references a secret outside the selected company");
+      if (!secret) {
+        throw unprocessable("Plugin config references a secret that does not exist");
       }
       if (secret.status === "deleted") {
         throw unprocessable("Plugin config references a deleted secret");
@@ -766,15 +690,13 @@ export function pluginRoutes(
     }
   }
 
-  function performActionActorContext(req: Request, companyId: string | undefined): PluginPerformActionActorContext {
-    const scopedCompanyId = companyId ?? null;
+  function performActionActorContext(req: Request): PluginPerformActionActorContext {
     if (req.actor.type === "agent") {
       return {
         type: "agent",
         userId: null,
         agentId: req.actor.agentId ?? null,
-        runId: req.actor.runId ?? null,
-        companyId: scopedCompanyId,
+        runId: req.actor.runId ?? null
       };
     }
     if (req.actor.type === "board") {
@@ -782,56 +704,46 @@ export function pluginRoutes(
         type: "user",
         userId: req.actor.userId ?? null,
         agentId: null,
-        runId: req.actor.runId ?? null,
-        companyId: scopedCompanyId,
+        runId: req.actor.runId ?? null
       };
     }
     return {
       type: "system",
       userId: null,
       agentId: null,
-      runId: req.actor.runId ?? null,
-      companyId: scopedCompanyId,
+      runId: req.actor.runId ?? null
     };
-  }
-
-  function actionParamsWithAuthorizedCompanyScope(
-    params: Record<string, unknown> | undefined,
-    companyId: string | undefined,
-  ): Record<string, unknown> {
-    const base = params ?? {};
-    return companyId === undefined ? base : { ...base, companyId };
   }
 
   async function validateToolRunContextScope(runContext: ToolRunContext): Promise<string | null> {
     const [agent] = await db
-      .select({ companyId: agents.companyId })
+      .select({ id: agents.id })
       .from(agents)
       .where(eq(agents.id, runContext.agentId))
       .limit(1);
-    if (!agent || agent.companyId !== runContext.companyId) {
-      return '"runContext.agentId" does not belong to "runContext.companyId"';
+    if (!agent) {
+      return '"runContext.agentId" does not exist';
     }
 
     const [run] = await db
-      .select({ companyId: heartbeatRuns.companyId, agentId: heartbeatRuns.agentId })
+      .select({ agentId: heartbeatRuns.agentId })
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runContext.runId))
       .limit(1);
-    if (!run || run.companyId !== runContext.companyId) {
-      return '"runContext.runId" does not belong to "runContext.companyId"';
+    if (!run) {
+      return '"runContext.runId" does not exist';
     }
     if (run.agentId !== runContext.agentId) {
       return '"runContext.runId" does not belong to "runContext.agentId"';
     }
 
     const [project] = await db
-      .select({ companyId: projects.companyId })
+      .select({ id: projects.id })
       .from(projects)
       .where(eq(projects.id, runContext.projectId))
       .limit(1);
-    if (!project || project.companyId !== runContext.companyId) {
-      return '"runContext.projectId" does not belong to "runContext.companyId"';
+    if (!project) {
+      return '"runContext.projectId" does not exist';
     }
 
     return null;
@@ -972,12 +884,11 @@ export function pluginRoutes(
 
     const pluginId = req.query.pluginId as string | undefined;
     if (req.actor.type === "agent" && toolGatewayDeps) {
-      if (!req.actor.companyId || !req.actor.agentId) {
+      if (!req.actor.agentId) {
         res.status(401).json({ error: "Agent identity is required" });
         return;
       }
       const tools = await toolGatewayDeps.toolGateway.listPluginToolsForAgent({
-        companyId: req.actor.companyId,
         agentId: req.actor.agentId,
       });
       res.json(pluginId ? tools.filter((tool) => tool.pluginId === pluginId || tool.name.startsWith(`${pluginId}:`)) : tools);
@@ -1036,14 +947,14 @@ export function pluginRoutes(
       return;
     }
 
-    if (!runContext.agentId || !runContext.runId || !runContext.companyId || !runContext.projectId) {
+    if (!runContext.agentId || !runContext.runId || !runContext.projectId) {
       res.status(400).json({
         error: '"runContext" must include agentId, runId, companyId, and projectId',
       });
       return;
     }
 
-    assertCompanyAccess(req, runContext.companyId);
+    assertOrgAccess(req);
     const scopeError = await validateToolRunContextScope(runContext);
     if (scopeError) {
       res.status(403).json({ error: scopeError });
@@ -1056,7 +967,6 @@ export function pluginRoutes(
           actor: {
             type: "agent",
             agentId: req.actor.agentId,
-            companyId: req.actor.companyId,
             runId: req.actor.runId ?? null,
           },
           tool,
@@ -1246,8 +1156,6 @@ export function pluginRoutes(
   interface PluginBridgeDataRequest {
     /** Plugin-defined data key (e.g. `"sync-health"`). */
     key: string;
-    /** Optional company scope for authorizing company-context bridge calls. */
-    companyId?: string;
     /** Optional context and query parameters from the UI. */
     params?: Record<string, unknown>;
     /** Optional host launcher/render metadata for the worker bridge call. */
@@ -1258,8 +1166,6 @@ export function pluginRoutes(
   interface PluginBridgeActionRequest {
     /** Plugin-defined action key (e.g. `"resync"`). */
     key: string;
-    /** Optional company scope for authorizing company-context bridge calls. */
-    companyId?: string;
     /** Optional parameters from the UI. */
     params?: Record<string, unknown>;
     /** Optional host launcher/render metadata for the worker bridge call. */
@@ -1293,12 +1199,6 @@ export function pluginRoutes(
         case PLUGIN_RPC_ERROR_CODES.CAPABILITY_DENIED:
           return {
             code: "CAPABILITY_DENIED",
-            message: err.message,
-            details: err.data,
-          };
-        case PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED:
-          return {
-            code: "INVOCATION_SCOPE_DENIED",
             message: err.message,
             details: err.data,
           };
@@ -1434,7 +1334,7 @@ export function pluginRoutes(
       return;
     }
 
-    const companyId = assertPluginBridgeScope(req, body.companyId);
+    assertOrgAccess(req);
 
     try {
       const result = await bridgeDeps.workerManager.call(
@@ -1442,7 +1342,6 @@ export function pluginRoutes(
         "getData",
         {
           key: body.key,
-          ...(companyId ? { companyId } : {}),
           params: body.params ?? {},
           renderEnvironment: body.renderEnvironment ?? null,
         },
@@ -1527,7 +1426,7 @@ export function pluginRoutes(
       return;
     }
 
-    const companyId = assertPluginBridgeScope(req, body.companyId);
+    assertOrgAccess(req);
 
     try {
       const result = await bridgeDeps.workerManager.call(
@@ -1535,8 +1434,8 @@ export function pluginRoutes(
         "performAction",
         {
           key: body.key,
-          params: actionParamsWithAuthorizedCompanyScope(body.params, companyId),
-          actorContext: performActionActorContext(req, companyId),
+          params: body.params ?? {},
+          actorContext: performActionActorContext(req),
           renderEnvironment: body.renderEnvironment ?? null,
         },
       );
@@ -1616,12 +1515,11 @@ export function pluginRoutes(
     }
 
     const body = req.body as {
-      companyId?: string;
       params?: Record<string, unknown>;
       renderEnvironment?: PluginLauncherRenderContextSnapshot | null;
     } | undefined;
 
-    const companyId = assertPluginBridgeScope(req, body?.companyId);
+    assertOrgAccess(req);
 
     try {
       const result = await bridgeDeps.workerManager.call(
@@ -1629,7 +1527,6 @@ export function pluginRoutes(
         "getData",
         {
           key,
-          ...(companyId ? { companyId } : {}),
           params: body?.params ?? {},
           renderEnvironment: body?.renderEnvironment ?? null,
         },
@@ -1706,12 +1603,11 @@ export function pluginRoutes(
     }
 
     const body = req.body as {
-      companyId?: string;
       params?: Record<string, unknown>;
       renderEnvironment?: PluginLauncherRenderContextSnapshot | null;
     } | undefined;
 
-    const companyId = assertPluginBridgeScope(req, body?.companyId);
+    assertOrgAccess(req);
 
     try {
       const result = await bridgeDeps.workerManager.call(
@@ -1719,8 +1615,8 @@ export function pluginRoutes(
         "performAction",
         {
           key,
-          params: actionParamsWithAuthorizedCompanyScope(body?.params, companyId),
-          actorContext: performActionActorContext(req, companyId),
+          params: body?.params ?? {},
+          actorContext: performActionActorContext(req),
           renderEnvironment: body?.renderEnvironment ?? null,
         },
       );
@@ -1773,20 +1669,13 @@ export function pluginRoutes(
     }
 
     const { pluginId, channel } = req.params;
-    const companyId = req.query.companyId as string | undefined;
-
-    if (!companyId) {
-      res.status(400).json({ error: '"companyId" query parameter is required' });
-      return;
-    }
-
     const plugin = await resolvePlugin(registry, pluginId);
     if (!plugin) {
       res.status(404).json({ error: "Plugin not found" });
       return;
     }
 
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
 
     // Set SSE headers
     res.writeHead(200, {
@@ -1811,7 +1700,6 @@ export function pluginRoutes(
     const unsubscribe = bridgeDeps.streamBus.subscribe(
       plugin.id,
       channel,
-      companyId,
       (event, eventType) => {
         if (unsubscribed || !res.writable) return;
         try {
@@ -1870,13 +1758,8 @@ export function pluginRoutes(
 
     try {
       assertScopedApiAuth(req, match.route);
-      const companyId = await resolveScopedApiCompanyId(match.route, match.params, req);
-      if (!companyId) {
-        res.status(400).json({ error: "Unable to resolve company for plugin API route" });
-        return;
-      }
-      assertCompanyAccess(req, companyId);
-      await enforceScopedApiCheckout(req, match.route, match.params, companyId);
+      assertOrgAccess(req);
+      await enforceScopedApiCheckout(req, match.route, match.params);
       if (req.method !== "GET" && req.headers["content-type"] && !req.is("application/json")) {
         res.status(415).json({ error: "Plugin API routes accept JSON requests only" });
         return;
@@ -1903,7 +1786,6 @@ export function pluginRoutes(
           userId: actor.actorType === "user" ? actor.actorId : null,
           runId: actor.runId,
         },
-        companyId,
         headers: sanitizePluginRequestHeaders(req),
       };
 
@@ -1924,10 +1806,7 @@ export function pluginRoutes(
     } catch (err) {
       const status = typeof (err as { status?: unknown }).status === "number"
         ? (err as { status: number }).status
-        : err instanceof JsonRpcCallError && (
-          err.code === PLUGIN_RPC_ERROR_CODES.CAPABILITY_DENIED ||
-          err.code === PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED
-        )
+        : err instanceof JsonRpcCallError && err.code === PLUGIN_RPC_ERROR_CODES.CAPABILITY_DENIED
           ? 403
           : err instanceof JsonRpcCallError && err.code === PLUGIN_RPC_ERROR_CODES.METHOD_NOT_IMPLEMENTED
             ? 501
@@ -2274,7 +2153,7 @@ export function pluginRoutes(
   router.get("/plugins/:pluginId/config", async (req, res) => {
     assertBoardOrgAccess(req);
     const { pluginId } = req.params;
-    const companyId = requirePluginConfigCompanyId(req, req.query.companyId);
+    assertOrgAccess(req);
 
     const plugin = await resolvePlugin(registry, pluginId);
     if (!plugin) {
@@ -2282,7 +2161,7 @@ export function pluginRoutes(
       return;
     }
 
-    const config = await registry.getConfig(plugin.id, companyId);
+    const config = await registry.getConfig(plugin.id);
     res.json(config);
   });
 
@@ -2314,8 +2193,8 @@ export function pluginRoutes(
       return;
     }
 
-    const body = req.body as { companyId?: unknown; configJson?: Record<string, unknown> } | undefined;
-    const companyId = requirePluginConfigCompanyId(req, body?.companyId);
+    const body = req.body as { configJson?: Record<string, unknown> } | undefined;
+    assertOrgAccess(req);
     if (!body?.configJson || typeof body.configJson !== "object" || Array.isArray(body.configJson)) {
       res.status(400).json({ error: '"configJson" is required and must be an object' });
       return;
@@ -2347,22 +2226,19 @@ export function pluginRoutes(
 
     try {
       const secretRefs = extractSecretRefBindingsFromConfig(body.configJson, schema);
-      await validatePluginSecretRefsForCompany(companyId, secretRefs);
+      await validatePluginSecretRefs(secretRefs);
       await secretService(db).syncSecretRefsForTarget(
-        companyId,
         { targetType: "plugin", targetId: plugin.id },
         secretRefs,
         { replaceAll: true },
       );
 
-      const result = await registry.upsertConfig(plugin.id, companyId, {
-        companyId,
+      const result = await registry.upsertConfig(plugin.id, {
         configJson: body.configJson,
       });
       await logPluginMutationActivity(req, "plugin.config.updated", plugin.id, {
         pluginId: plugin.id,
         pluginKey: plugin.pluginKey,
-        companyId,
         secretRefCount: secretRefs.length,
         configKeyCount: Object.keys(body.configJson).length,
       });
@@ -2372,25 +2248,11 @@ export function pluginRoutes(
       // If it doesn't (METHOD_NOT_IMPLEMENTED), restart the worker so it picks
       // up the new config on re-initialize. If no worker is running, skip.
       if (bridgeDeps?.workerManager.isRunning(plugin.id)) {
-        // Refresh the worker's authorized proactive company scopes so the
-        // just-configured company can be acted on from proactive loops (e.g.
-        // the chat gateway's notifier drain) without requiring a restart
-        // (LOOA-629). The set is exactly the plugin's configured companies.
-        try {
-          const configRows = await registry.listConfigs(plugin.id);
-          bridgeDeps.workerManager.setProactiveCompanyScopes(
-            plugin.id,
-            configRows.map((row) => row.companyId),
-          );
-        } catch {
-          // Non-fatal: the set is rebuilt from the DB on the next worker start.
-        }
-
         try {
           await bridgeDeps.workerManager.call(
             plugin.id,
             "configChanged",
-            { config: body.configJson, companyId },
+            { config: body.configJson },
           );
         } catch (rpcErr) {
           if (
@@ -2460,8 +2322,8 @@ export function pluginRoutes(
       return;
     }
 
-    const body = req.body as { companyId?: unknown; configJson?: Record<string, unknown> } | undefined;
-    const companyId = requirePluginConfigCompanyId(req, body?.companyId);
+    const body = req.body as { configJson?: Record<string, unknown> } | undefined;
+    assertOrgAccess(req);
     if (!body?.configJson || typeof body.configJson !== "object" || Array.isArray(body.configJson)) {
       res.status(400).json({ error: '"configJson" is required and must be an object' });
       return;
@@ -2482,7 +2344,7 @@ export function pluginRoutes(
 
     try {
       const secretRefs = extractSecretRefBindingsFromConfig(body.configJson, schema);
-      await validatePluginSecretRefsForCompany(companyId, secretRefs);
+      await validatePluginSecretRefs(secretRefs);
 
       const result = await bridgeDeps.workerManager.call(
         plugin.id,
@@ -2826,10 +2688,10 @@ export function pluginRoutes(
   // Company-scoped trusted local folders
   // ===========================================================================
 
-  router.get("/plugins/:pluginId/companies/:companyId/local-folders", async (req, res) => {
+  router.get("/plugins/:pluginId/local-folders", async (req, res) => {
     assertBoardOrgAccess(req);
-    const { pluginId, companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    const { pluginId } = req.params;
+    assertOrgAccess(req);
 
     const plugin = await resolvePlugin(registry, pluginId);
     if (!plugin) {
@@ -2837,7 +2699,7 @@ export function pluginRoutes(
       return;
     }
 
-    const settings = await registry.getCompanySettings(plugin.id, companyId);
+    const settings = await registry.getCompanySettings(plugin.id);
     const storedFolders = getStoredLocalFolders(settings?.settingsJson);
     const declarations = plugin.manifestJson.localFolders ?? [];
     const folderKeys = declarations.map((declaration) => declaration.folderKey);
@@ -2851,16 +2713,15 @@ export function pluginRoutes(
 
     res.json({
       pluginId: plugin.id,
-      companyId,
       declarations,
       folders: statuses,
     });
   });
 
-  router.get("/plugins/:pluginId/companies/:companyId/local-folders/:folderKey/status", async (req, res) => {
+  router.get("/plugins/:pluginId/local-folders/:folderKey/status", async (req, res) => {
     assertBoardOrgAccess(req);
-    const { pluginId, companyId, folderKey } = req.params;
-    assertCompanyAccess(req, companyId);
+    const { pluginId, folderKey } = req.params;
+    assertOrgAccess(req);
 
     const plugin = await resolvePlugin(registry, pluginId);
     if (!plugin) {
@@ -2868,7 +2729,7 @@ export function pluginRoutes(
       return;
     }
 
-    const settings = await registry.getCompanySettings(plugin.id, companyId);
+    const settings = await registry.getCompanySettings(plugin.id);
     const storedFolders = getStoredLocalFolders(settings?.settingsJson);
     const declarations = plugin.manifestJson.localFolders ?? [];
     const declaration = requireLocalFolderDeclaration(declarations, folderKey);
@@ -2880,10 +2741,10 @@ export function pluginRoutes(
     res.json(status);
   });
 
-  router.post("/plugins/:pluginId/companies/:companyId/local-folders/:folderKey/validate", async (req, res) => {
+  router.post("/plugins/:pluginId/local-folders/:folderKey/validate", async (req, res) => {
     assertBoardOrgAccess(req);
-    const { pluginId, companyId, folderKey } = req.params;
-    assertCompanyAccess(req, companyId);
+    const { pluginId, folderKey } = req.params;
+    assertOrgAccess(req);
 
     const plugin = await resolvePlugin(registry, pluginId);
     if (!plugin) {
@@ -2913,11 +2774,11 @@ export function pluginRoutes(
     res.json(status);
   });
 
-  router.put("/plugins/:pluginId/companies/:companyId/local-folders/:folderKey", async (req, res) => {
+  router.put("/plugins/:pluginId/local-folders/:folderKey", async (req, res) => {
     assertBoardOrgAccess(req);
     assertPluginManagementVisible();
-    const { pluginId, companyId, folderKey } = req.params;
-    assertCompanyAccess(req, companyId);
+    const { pluginId, folderKey } = req.params;
+    assertOrgAccess(req);
 
     const plugin = await resolvePlugin(registry, pluginId);
     if (!plugin) {
@@ -2936,7 +2797,7 @@ export function pluginRoutes(
       return;
     }
 
-    const existing = await registry.getCompanySettings(plugin.id, companyId);
+    const existing = await registry.getCompanySettings(plugin.id);
     const declaration = requireLocalFolderDeclaration(plugin.manifestJson.localFolders ?? [], folderKey);
     const status = await inspectPluginLocalFolder({
       folderKey,
@@ -2953,7 +2814,7 @@ export function pluginRoutes(
       requiredDirectories: status.requiredDirectories,
       requiredFiles: status.requiredFiles,
     });
-    await registry.upsertCompanySettings(plugin.id, companyId, {
+    await registry.upsertCompanySettings(plugin.id, {
       enabled: existing?.enabled ?? true,
       settingsJson: nextSettings,
       lastError: status.healthy ? null : status.problems.map((item: { message: string }) => item.message).join("; "),
@@ -2961,7 +2822,6 @@ export function pluginRoutes(
     await logPluginMutationActivity(req, "plugin.local_folder.configured", plugin.id, {
       pluginId: plugin.id,
       pluginKey: plugin.pluginKey,
-      companyId,
       folderKey,
       healthy: status.healthy,
     });

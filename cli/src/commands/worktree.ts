@@ -139,7 +139,6 @@ type WorktreeListOptions = {
 type WorktreeMergeHistoryOptions = {
   from?: string;
   to?: string;
-  company?: string;
   scope?: string;
   apply?: boolean;
   dry?: boolean;
@@ -179,7 +178,6 @@ type WorktreeEnsureSeededOptions = {
   preserveLiveWork?: boolean;
   registeredBaseWorkspaceCwd?: string;
   registeredProjectWorkspaceId?: string;
-  expectedCompanyId?: string;
 };
 
 type EmbeddedPostgresInstance = {
@@ -232,7 +230,6 @@ export type WorktreeSeedValidationSummary = {
   activeMembershipCount: number;
   companyCount: number;
   issueCount: number;
-  representativeCompanyId: string;
   representativeIssueId: string;
   migrationRevision: string;
 };
@@ -316,13 +313,13 @@ function resolveWorktreeStartPoint(explicit?: string): string | undefined {
 }
 
 type ConfiguredStorage = {
-  getObject(companyId: string, objectKey: string): Promise<Buffer>;
-  putObject(companyId: string, objectKey: string, body: Buffer, contentType: string): Promise<void>;
+  getObject(objectKey: string): Promise<Buffer>;
+  putObject(objectKey: string, body: Buffer, contentType: string): Promise<void>;
 };
 
-function assertStorageCompanyPrefix(companyId: string, objectKey: string): void {
-  if (!objectKey.startsWith(`${companyId}/`) || objectKey.includes("..")) {
-    throw new Error(`Invalid object key for company ${companyId}.`);
+function assertSafeStorageObjectKey(objectKey: string): void {
+  if (objectKey.includes("..")) {
+    throw new Error("Invalid object key.");
   }
 }
 
@@ -395,12 +392,12 @@ function createConfiguredStorageFromPaperclipConfig(config: PaperclipConfig): Co
   if (config.storage.provider === "local_disk") {
     const baseDir = expandHomePrefix(config.storage.localDisk.baseDir);
     return {
-      async getObject(companyId: string, objectKey: string) {
-        assertStorageCompanyPrefix(companyId, objectKey);
+      async getObject(objectKey: string) {
+        assertSafeStorageObjectKey(objectKey);
         return await fsPromises.readFile(resolveLocalStoragePath(baseDir, objectKey));
       },
-      async putObject(companyId: string, objectKey: string, body: Buffer) {
-        assertStorageCompanyPrefix(companyId, objectKey);
+      async putObject(objectKey: string, body: Buffer) {
+        assertSafeStorageObjectKey(objectKey);
         const filePath = resolveLocalStoragePath(baseDir, objectKey);
         await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
         await fsPromises.writeFile(filePath, body);
@@ -428,8 +425,8 @@ function createConfiguredStorageFromPaperclipConfig(config: PaperclipConfig): Co
   }
   const bucket = config.storage.s3.bucket;
   return {
-    async getObject(companyId: string, objectKey: string) {
-      assertStorageCompanyPrefix(companyId, objectKey);
+    async getObject(objectKey: string) {
+      assertSafeStorageObjectKey(objectKey);
       const { sdk, client } = await getS3Client();
       const response = await client.send(
         new sdk.GetObjectCommand({
@@ -439,8 +436,8 @@ function createConfiguredStorageFromPaperclipConfig(config: PaperclipConfig): Co
       );
       return await s3BodyToBuffer(response.Body);
     },
-    async putObject(companyId: string, objectKey: string, body: Buffer, contentType: string) {
-      assertStorageCompanyPrefix(companyId, objectKey);
+    async putObject(objectKey: string, body: Buffer, contentType: string) {
+      assertSafeStorageObjectKey(objectKey);
       const { sdk, client } = await getS3Client();
       await client.send(
         new sdk.PutObjectCommand({
@@ -483,12 +480,11 @@ export function isMissingStorageObjectError(error: unknown): boolean {
 
 export async function readSourceAttachmentBody(
   sourceStorages: Array<Pick<ConfiguredStorage, "getObject">>,
-  companyId: string,
   objectKey: string,
 ): Promise<Buffer | null> {
   for (const sourceStorage of sourceStorages) {
     try {
-      return await sourceStorage.getObject(companyId, objectKey);
+      return await sourceStorage.getObject(objectKey);
     } catch (error) {
       if (isMissingStorageObjectError(error)) {
         continue;
@@ -1316,7 +1312,6 @@ export async function quarantineSeededWorktreeExecutionState(
       const affectedIssues = await tx
         .select({
           id: issues.id,
-          companyId: issues.companyId,
           status: issues.status,
         })
         .from(issues)
@@ -1347,7 +1342,6 @@ export async function quarantineSeededWorktreeExecutionState(
         if (issue.status === "in_progress") {
           summary.quarantinedInProgressIssues += 1;
           await tx.insert(issueComments).values({
-            companyId: issue.companyId,
             issueId: issue.id,
             body:
               "Quarantined during worktree seed so copied in-flight work does not auto-run in this isolated instance. " +
@@ -1413,7 +1407,6 @@ export async function quarantineSeededWorktreeExecutionState(
 
 type WorktreeSeedValidationExpectation = {
   adminUserId: string;
-  representativeCompanyId: string;
   representativeIssueId: string;
 };
 
@@ -1503,14 +1496,12 @@ async function inspectVerifiedSeedDatabase(
     deploymentMode: PaperclipConfig["server"]["deploymentMode"];
     expected?: WorktreeSeedValidationExpectation;
     migrationRequirement?: "sourcePrefix" | "upToDate";
-    requiredCompanyId?: string;
   },
 ): Promise<{ summary: WorktreeSeedValidationSummary; expectation: WorktreeSeedValidationExpectation }> {
   const {
     deploymentMode,
     expected,
     migrationRequirement = "upToDate",
-    requiredCompanyId,
   } = options;
   const requiresCredentialAccount = requiresWorktreeSeedCredentialAccount(deploymentMode);
   const migrationState = await inspectMigrations(connectionString);
@@ -1545,7 +1536,7 @@ async function inspectVerifiedSeedDatabase(
         ),
       )
       .leftJoin(companies, sql`true`)
-      .leftJoin(issues, eq(issues.companyId, companies.id));
+      .leftJoin(issues, sql`true`);
 
     const admin = await db
       .select({ userId: authUsers.id })
@@ -1586,20 +1577,13 @@ async function inspectVerifiedSeedDatabase(
     }
 
     const representative = await db
-      .select({ companyId: companies.id, issueId: issues.id })
-      .from(companies)
-      .innerJoin(issues, eq(issues.companyId, companies.id))
-      .where(
-        and(
-          expected ? eq(companies.id, expected.representativeCompanyId) : undefined,
-          expected ? eq(issues.id, expected.representativeIssueId) : undefined,
-          requiredCompanyId ? eq(companies.id, requiredCompanyId) : undefined,
-        ),
-      )
+      .select({ issueId: issues.id })
+      .from(issues)
+      .where(expected ? eq(issues.id, expected.representativeIssueId) : undefined)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!representative) {
-      throw new Error("No representative cloned company and issue pair is readable.");
+      throw new Error("No representative cloned issue is readable.");
     }
 
     const summary: WorktreeSeedValidationSummary = {
@@ -1609,7 +1593,6 @@ async function inspectVerifiedSeedDatabase(
       activeMembershipCount: counts?.activeMembershipCount ?? 0,
       companyCount: counts?.companyCount ?? 0,
       issueCount: counts?.issueCount ?? 0,
-      representativeCompanyId: representative.companyId,
       representativeIssueId: representative.issueId,
       migrationRevision,
     };
@@ -1628,7 +1611,6 @@ async function inspectVerifiedSeedDatabase(
       summary,
       expectation: {
         adminUserId: admin.userId,
-        representativeCompanyId: representative.companyId,
         representativeIssueId: representative.issueId,
       },
     };
@@ -1645,7 +1627,6 @@ async function seedWorktreeDatabase(input: {
   instanceId: string;
   seedMode: WorktreeSeedMode;
   preserveLiveWork?: boolean;
-  expectedCompanyId?: string;
   onPhase?: (phase: WorktreeSeedPhase, status: "started" | "succeeded", message?: string) => void;
 }): Promise<SeedWorktreeDatabaseResult> {
   const seedPlan = resolveWorktreeSeedPlan(input.seedMode);
@@ -1674,7 +1655,6 @@ async function seedWorktreeDatabase(input: {
       {
         deploymentMode: input.sourceConfig.server.deploymentMode,
         migrationRequirement: "sourcePrefix",
-        requiredCompanyId: input.expectedCompanyId,
       },
     );
     input.onPhase?.(
@@ -2130,7 +2110,6 @@ async function runVerifiedWorktreeSeed(input: {
   instanceId: string;
   seedMode: WorktreeSeedMode;
   preserveLiveWork?: boolean;
-  expectedCompanyId?: string;
   seedDatabase: SeedWorktreeDatabase;
 }): Promise<SeedWorktreeDatabaseResult> {
   let activePhase: WorktreeSeedPhase = "pending";
@@ -2165,7 +2144,6 @@ async function runVerifiedWorktreeSeed(input: {
       instanceId: input.instanceId,
       seedMode: input.seedMode,
       preserveLiveWork: input.preserveLiveWork,
-      expectedCompanyId: input.expectedCompanyId,
       onPhase: (phase, status, message) => {
         activePhase = phase;
         updateWorktreeSeedManifest({
@@ -2251,13 +2229,9 @@ export async function ensureWorktreeSeeded(
   const registeredProjectWorkspaceId = opts.registeredProjectWorkspaceId
     ?? nonEmpty(process.env.PAPERCLIP_PROJECT_WORKSPACE_ID)
     ?? null;
-  const expectedCompanyId = opts.expectedCompanyId
-    ?? nonEmpty(process.env.PAPERCLIP_SEED_EXPECTED_COMPANY_ID)
-    ?? nonEmpty(process.env.PAPERCLIP_COMPANY_ID)
-    ?? undefined;
-  if (!explicitSourceConfigPath && registeredBaseWorkspaceCwd && (!registeredProjectWorkspaceId || !expectedCompanyId)) {
+  if (!explicitSourceConfigPath && registeredBaseWorkspaceCwd && !registeredProjectWorkspaceId) {
     throw new Error(
-      "Managed worktree seed registration is incomplete; project workspace and company bindings are required.",
+      "Managed worktree seed registration is incomplete; a project workspace binding is required.",
     );
   }
 
@@ -2381,7 +2355,6 @@ export async function ensureWorktreeSeeded(
       instanceId: targetPaths.instanceId,
       seedMode: manifest.seedMode,
       preserveLiveWork: opts.preserveLiveWork,
-      expectedCompanyId,
       seedDatabase,
     });
     return { seeded: true, reason: "seeded", details };
@@ -3111,53 +3084,20 @@ async function openConfiguredDb(configPath: string): Promise<OpenDbHandle> {
   }
 }
 
-async function resolveMergeCompany(input: {
-  sourceDb: ClosableDb;
-  targetDb: ClosableDb;
-  selector?: string;
-}): Promise<ResolvedMergeCompany> {
-  const [sourceCompanies, targetCompanies] = await Promise.all([
-    input.sourceDb
-      .select({
-        id: companies.id,
-        name: companies.name,
-        issuePrefix: companies.issuePrefix,
-      })
-      .from(companies),
-    input.targetDb
-      .select({
-        id: companies.id,
-        name: companies.name,
-        issuePrefix: companies.issuePrefix,
-      })
-      .from(companies),
-  ]);
-
-  const targetById = new Map(targetCompanies.map((company) => [company.id, company]));
-  const shared = sourceCompanies.filter((company) => targetById.has(company.id));
-  const selector = nonEmpty(input.selector);
-  if (selector) {
-    const matched = shared.find(
-      (company) => company.id === selector || company.issuePrefix.toLowerCase() === selector.toLowerCase(),
-    );
-    if (!matched) {
-      throw new Error(`Could not resolve company "${selector}" in both source and target databases.`);
-    }
-    return matched;
+async function resolveMergeOrganization(targetDb: ClosableDb): Promise<ResolvedMergeCompany> {
+  const organization = await targetDb
+    .select({
+      id: companies.id,
+      name: companies.name,
+      issuePrefix: companies.issuePrefix,
+    })
+    .from(companies)
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+  if (!organization) {
+    throw new Error("Target database has no organization record.");
   }
-
-  if (shared.length === 1) {
-    return shared[0];
-  }
-
-  if (shared.length === 0) {
-    throw new Error("Source and target databases do not share a company id. Pass --company explicitly once both sides match.");
-  }
-
-  const options = shared
-    .map((company) => `${company.issuePrefix} (${company.name})`)
-    .join(", ");
-  throw new Error(`Multiple shared companies found. Re-run with --company <id-or-prefix>. Options: ${options}`);
+  return organization;
 }
 
 function renderMergePlan(plan: Awaited<ReturnType<typeof collectMergePlan>>["plan"], extras: {
@@ -3276,7 +3216,6 @@ async function collectMergePlan(input: {
   importProjectIds?: Iterable<string>;
   projectIdOverrides?: Record<string, string | null | undefined>;
 }) {
-  const companyId = input.company.id;
   const [
     targetCompanyRow,
     sourceIssuesRows,
@@ -3302,30 +3241,25 @@ async function collectMergePlan(input: {
         issueCounter: companies.issueCounter,
       })
       .from(companies)
-      .where(eq(companies.id, companyId))
+      .where(eq(companies.id, input.company.id))
       .then((rows) => rows[0] ?? null),
     input.sourceDb
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, companyId)),
+      .from(issues),
     input.targetDb
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, companyId)),
+      .from(issues),
     input.scopes.includes("comments")
       ? input.sourceDb
         .select()
         .from(issueComments)
-        .where(eq(issueComments.companyId, companyId))
       : Promise.resolve([]),
     input.targetDb
       .select()
-      .from(issueComments)
-      .where(eq(issueComments.companyId, companyId)),
+      .from(issueComments),
     input.sourceDb
       .select({
         id: issueDocuments.id,
-        companyId: issueDocuments.companyId,
         issueId: issueDocuments.issueId,
         documentId: issueDocuments.documentId,
         key: issueDocuments.key,
@@ -3345,12 +3279,10 @@ async function collectMergePlan(input: {
       })
       .from(issueDocuments)
       .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(issues, eq(issueDocuments.issueId, issues.id)),
     input.targetDb
       .select({
         id: issueDocuments.id,
-        companyId: issueDocuments.companyId,
         issueId: issueDocuments.issueId,
         documentId: issueDocuments.documentId,
         key: issueDocuments.key,
@@ -3370,12 +3302,10 @@ async function collectMergePlan(input: {
       })
       .from(issueDocuments)
       .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(issues, eq(issueDocuments.issueId, issues.id)),
     input.sourceDb
       .select({
         id: documentRevisions.id,
-        companyId: documentRevisions.companyId,
         documentId: documentRevisions.documentId,
         revisionNumber: documentRevisions.revisionNumber,
         body: documentRevisions.body,
@@ -3386,12 +3316,10 @@ async function collectMergePlan(input: {
       })
       .from(documentRevisions)
       .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(issues, eq(issueDocuments.issueId, issues.id)),
     input.targetDb
       .select({
         id: documentRevisions.id,
-        companyId: documentRevisions.companyId,
         documentId: documentRevisions.documentId,
         revisionNumber: documentRevisions.revisionNumber,
         body: documentRevisions.body,
@@ -3402,12 +3330,10 @@ async function collectMergePlan(input: {
       })
       .from(documentRevisions)
       .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
-      .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(issues, eq(issueDocuments.issueId, issues.id)),
     input.sourceDb
       .select({
         id: issueAttachments.id,
-        companyId: issueAttachments.companyId,
         issueId: issueAttachments.issueId,
         issueCommentId: issueAttachments.issueCommentId,
         assetId: issueAttachments.assetId,
@@ -3426,12 +3352,10 @@ async function collectMergePlan(input: {
       })
       .from(issueAttachments)
       .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
-      .innerJoin(issues, eq(issueAttachments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(issues, eq(issueAttachments.issueId, issues.id)),
     input.targetDb
       .select({
         id: issueAttachments.id,
-        companyId: issueAttachments.companyId,
         issueId: issueAttachments.issueId,
         issueCommentId: issueAttachments.issueCommentId,
         assetId: issueAttachments.assetId,
@@ -3450,44 +3374,35 @@ async function collectMergePlan(input: {
       })
       .from(issueAttachments)
       .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
-      .innerJoin(issues, eq(issueAttachments.issueId, issues.id))
-      .where(eq(issues.companyId, companyId)),
+      .innerJoin(issues, eq(issueAttachments.issueId, issues.id)),
     input.sourceDb
       .select()
-      .from(projects)
-      .where(eq(projects.companyId, companyId)),
+      .from(projects),
     input.sourceDb
       .select()
-      .from(projectWorkspaces)
-      .where(eq(projectWorkspaces.companyId, companyId)),
+      .from(projectWorkspaces),
     input.targetDb
       .select()
-      .from(projects)
-      .where(eq(projects.companyId, companyId)),
+      .from(projects),
     input.targetDb
       .select()
-      .from(agents)
-      .where(eq(agents.companyId, companyId)),
+      .from(agents),
     input.targetDb
       .select()
-      .from(projectWorkspaces)
-      .where(eq(projectWorkspaces.companyId, companyId)),
+      .from(projectWorkspaces),
     input.targetDb
       .select()
-      .from(goals)
-      .where(eq(goals.companyId, companyId)),
+      .from(goals),
     input.sourceDb
       .select({ count: sql<number>`count(*)::int` })
-      .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, companyId)),
+      .from(heartbeatRuns),
   ]);
 
   if (!targetCompanyRow) {
-    throw new Error(`Target company ${companyId} was not found.`);
+    throw new Error(`Target organization ${input.company.id} was not found.`);
   }
 
   const plan = buildWorktreeMergePlan({
-    companyId,
     companyName: input.company.name,
     issuePrefix: input.company.issuePrefix,
     previewIssueCounterStart: targetCompanyRow.issueCounter,
@@ -3715,8 +3630,6 @@ async function applyMergePlan(input: {
   company: ResolvedMergeCompany;
   plan: Awaited<ReturnType<typeof collectMergePlan>>["plan"];
 }) {
-  const companyId = input.company.id;
-
   return await input.targetDb.transaction(async (tx) => {
     const importedProjectIds = input.plan.projectImports.map((project) => project.source.id);
     const existingImportedProjectIds = importedProjectIds.length > 0
@@ -3745,7 +3658,6 @@ async function applyMergePlan(input: {
     for (const project of projectImports) {
       await tx.insert(projects).values({
         id: project.source.id,
-        companyId,
         goalId: project.targetGoalId,
         name: project.source.name,
         description: project.source.description,
@@ -3766,7 +3678,6 @@ async function applyMergePlan(input: {
         if (existingImportedWorkspaceIds.has(workspace.id)) continue;
         await tx.insert(projectWorkspaces).values({
           id: workspace.id,
-          companyId,
           projectId: project.source.id,
           name: workspace.name,
           sourceType: workspace.sourceType,
@@ -3809,7 +3720,7 @@ async function applyMergePlan(input: {
       const [companyRow] = await tx
         .update(companies)
         .set({ issueCounter: sql`${companies.issueCounter} + ${issueInserts.length}` })
-        .where(eq(companies.id, companyId))
+        .where(eq(companies.id, input.company.id))
         .returning({ issueCounter: companies.issueCounter });
       nextIssueNumber = companyRow.issueCounter - issueInserts.length + 1;
     }
@@ -3823,7 +3734,6 @@ async function applyMergePlan(input: {
       insertedIssueIdentifiers.set(issue.source.id, identifier);
       await tx.insert(issues).values({
         id: issue.source.id,
-        companyId,
         projectId: issue.targetProjectId,
         projectWorkspaceId: issue.targetProjectWorkspaceId,
         goalId: issue.targetGoalId,
@@ -3878,12 +3788,11 @@ async function applyMergePlan(input: {
       const parentExists = await tx
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.id, comment.source.issueId), eq(issues.companyId, companyId)))
+        .where(eq(issues.id, comment.source.issueId))
         .then((rows) => rows[0] ?? null);
       if (!parentExists) continue;
       await tx.insert(issueComments).values({
         id: comment.source.id,
-        companyId,
         issueId: comment.source.issueId,
         authorAgentId: comment.targetAuthorAgentId,
         authorUserId: comment.source.authorUserId,
@@ -3905,7 +3814,7 @@ async function applyMergePlan(input: {
       const parentExists = await tx
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.id, documentPlan.source.issueId), eq(issues.companyId, companyId)))
+        .where(eq(issues.id, documentPlan.source.issueId))
         .then((rows) => rows[0] ?? null);
       if (!parentExists) continue;
 
@@ -3930,7 +3839,6 @@ async function applyMergePlan(input: {
       if (!existingDocument) {
         await tx.insert(documents).values({
           id: documentPlan.source.documentId,
-          companyId,
           title: documentPlan.source.title,
           format: documentPlan.source.format,
           latestBody: documentPlan.source.latestBody,
@@ -3945,7 +3853,6 @@ async function applyMergePlan(input: {
         });
         await tx.insert(issueDocuments).values({
           id: documentPlan.source.id,
-          companyId,
           issueId: documentPlan.source.issueId,
           documentId: documentPlan.source.documentId,
           key: documentPlan.source.key,
@@ -3962,7 +3869,6 @@ async function applyMergePlan(input: {
         if (!existingLink) {
           await tx.insert(issueDocuments).values({
             id: documentPlan.source.id,
-            companyId,
             issueId: documentPlan.source.issueId,
             documentId: documentPlan.source.documentId,
             key: documentPlan.source.key,
@@ -4008,7 +3914,6 @@ async function applyMergePlan(input: {
         if (existingRevisionIds.has(revisionPlan.source.id)) continue;
         await tx.insert(documentRevisions).values({
           id: revisionPlan.source.id,
-          companyId,
           documentId: documentPlan.source.documentId,
           revisionNumber: revisionPlan.targetRevisionNumber,
           body: revisionPlan.source.body,
@@ -4029,7 +3934,6 @@ async function applyMergePlan(input: {
         await tx
           .select({ id: issueAttachments.id })
           .from(issueAttachments)
-          .where(eq(issueAttachments.companyId, companyId))
       ).map((row) => row.id),
     );
     let insertedAttachments = 0;
@@ -4039,13 +3943,12 @@ async function applyMergePlan(input: {
       const parentExists = await tx
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.id, attachment.source.issueId), eq(issues.companyId, companyId)))
+        .where(eq(issues.id, attachment.source.issueId))
         .then((rows) => rows[0] ?? null);
       if (!parentExists) continue;
 
       const body = await readSourceAttachmentBody(
         input.sourceStorages,
-        companyId,
         attachment.source.objectKey,
       );
       if (!body) {
@@ -4053,7 +3956,6 @@ async function applyMergePlan(input: {
         continue;
       }
       await input.targetStorage.putObject(
-        companyId,
         attachment.source.objectKey,
         body,
         attachment.source.contentType,
@@ -4061,7 +3963,6 @@ async function applyMergePlan(input: {
 
       await tx.insert(assets).values({
         id: attachment.source.assetId,
-        companyId,
         provider: attachment.source.provider,
         objectKey: attachment.source.objectKey,
         contentType: attachment.source.contentType,
@@ -4076,7 +3977,6 @@ async function applyMergePlan(input: {
 
       await tx.insert(issueAttachments).values({
         id: attachment.source.id,
-        companyId,
         issueId: attachment.source.issueId,
         assetId: attachment.source.assetId,
         issueCommentId: attachment.targetIssueCommentId,
@@ -4133,11 +4033,7 @@ export async function worktreeMergeHistoryCommand(sourceArg: string | undefined,
   const targetStorage = openConfiguredStorage(targetEndpoint.configPath);
 
   try {
-    const company = await resolveMergeCompany({
-      sourceDb: sourceHandle.db,
-      targetDb: targetHandle.db,
-      selector: opts.company,
-    });
+    const company = await resolveMergeOrganization(targetHandle.db);
     let collected = await collectMergePlan({
       sourceDb: sourceHandle.db,
       targetDb: targetHandle.db,
@@ -4316,7 +4212,6 @@ async function runWorktreeReseed(opts: WorktreeReseedOptions): Promise<void> {
       instanceId: targetPaths.instanceId,
       seedMode,
       preserveLiveWork: opts.preserveLiveWork,
-      expectedCompanyId: nonEmpty(process.env.PAPERCLIP_SEED_EXPECTED_COMPANY_ID) ?? undefined,
       seedDatabase: seedWorktreeDatabase,
     });
     spinner.stop(`Reseeded ${targetEndpoint.label} (${seedMode}).`);
@@ -4504,7 +4399,6 @@ export function registerWorktreeCommands(program: Command): void {
     .argument("[source]", "Optional source worktree path, directory name, or branch name (back-compat alias for --from)")
     .option("--from <worktree>", "Source worktree path, directory name, branch name, or current")
     .option("--to <worktree>", "Target worktree path, directory name, branch name, or current (defaults to current)")
-    .option("--company <id-or-prefix>", "Shared company id or issue prefix inside the chosen source/target instances")
     .option("--scope <items>", "Comma-separated scopes to import (issues, comments)", "issues,comments")
     .option("--apply", "Apply the import after previewing the plan", false)
     .option("--dry", "Preview only and do not import anything", false)

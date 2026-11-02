@@ -375,7 +375,6 @@ function validateRuntimeResourceRequest(config: DaytonaDriverConfig): string | n
 }
 
 function buildSandboxLabels(input: {
-  companyId: string;
   environmentId: string;
   runId?: string;
   setupSessionId?: string;
@@ -384,7 +383,6 @@ function buildSandboxLabels(input: {
 }): Record<string, string> {
   return {
     "paperclip-provider": "daytona",
-    "paperclip-company-id": input.companyId,
     "paperclip-environment-id": input.environmentId,
     "paperclip-reuse-lease": input.reuseLease ? "true" : "false",
     ...(input.runId ? { "paperclip-run-id": input.runId } : {}),
@@ -546,7 +544,7 @@ function parseProbeInteger(value: string | undefined | null): number | null {
 }
 
 function workspaceSentinelToken(input: {
-  params: Pick<PluginEnvironmentAcquireLeaseParams, "companyId" | "environmentId" | "agentId" | "executionWorkspaceId" | "issueId" | "adapterType" | "runId">;
+  params: Pick<PluginEnvironmentAcquireLeaseParams, "environmentId" | "agentId" | "executionWorkspaceId" | "issueId" | "adapterType" | "runId">;
   providerLeaseId: string;
   config: DaytonaDriverConfig;
 }): string | null {
@@ -557,7 +555,6 @@ function workspaceSentinelToken(input: {
     .update(stableStringify({
       provider: "daytona",
       ...(!input.config.reuseLease ? { ephemeralRunId: input.params.runId, ephemeralProviderLeaseId: input.providerLeaseId } : {}),
-      companyId: input.params.companyId,
       environmentId: input.params.environmentId,
       agentId: input.params.agentId,
       executionWorkspaceId: input.params.executionWorkspaceId,
@@ -598,7 +595,6 @@ async function writeWorkspaceSentinel(input: {
     Buffer.from(JSON.stringify({
       version: 1,
       token,
-      companyId: input.params.companyId,
       environmentId: input.params.environmentId,
       agentId: input.params.agentId,
       executionWorkspaceId: input.params.executionWorkspaceId,
@@ -960,7 +956,6 @@ async function createSandbox(
   const attemptId = randomUUID();
   const name = `paperclip-create-${attemptId}`;
   const labels = { ...buildSandboxLabels({
-    companyId: params.companyId,
     environmentId: params.environmentId,
     runId: "runId" in params ? params.runId : undefined,
     setupSessionId: "sessionId" in params ? params.sessionId : undefined,
@@ -971,7 +966,7 @@ async function createSandbox(
   // Preserve our immutable ownership snapshot for validation and retry.
   const createParams = { ...buildCreateParams(config, { ...labels }), name };
   const cleanup: PluginEnvironmentCreationCleanup = {
-    providerLeaseId: name, companyId: params.companyId, environmentId: params.environmentId,
+    providerLeaseId: name, environmentId: params.environmentId,
     ...("runId" in params ? { runId: params.runId } : {}),
     attemptId, labels, accountFingerprint: sandboxAccountDiscriminator(config),
   };
@@ -1006,7 +1001,6 @@ async function destroyFailedCreation(
       cleanup.accountFingerprint !== sandboxAccountDiscriminator(config) ||
       cleanup.labels["paperclip-provider"] !== "daytona" ||
       cleanup.labels["paperclip-create-attempt"] !== cleanup.attemptId ||
-      cleanup.labels["paperclip-company-id"] !== cleanup.companyId ||
       cleanup.labels["paperclip-environment-id"] !== cleanup.environmentId ||
       (cleanup.runId !== undefined && cleanup.labels["paperclip-run-id"] !== cleanup.runId)) {
     throw new Error("Failed-create sandbox ownership does not match");
@@ -1048,7 +1042,7 @@ async function destroyFailedCreation(
 // commands inside another's sandbox. The guarantees below map 1:1 to the Stage-1
 // required-fix conditions:
 //   C1  Key by a NON-SECRET composite scope, never the bare providerLeaseId:
-//       {driverKey, companyId, environmentId, providerLeaseId, account}. The
+//       {driverKey, environmentId, providerLeaseId, account}. The
 //       account discriminator is a hash of the resolved endpoint + credentials
 //       so two environments pointing at different Daytona accounts (or a rotated
 //       key) never collide — without storing the secret in the key.
@@ -1063,7 +1057,6 @@ async function destroyFailedCreation(
 //       promise can never be awaited for lease B.
 type SandboxScope = {
   driverKey: string;
-  companyId: string;
   environmentId: string;
   providerLeaseId: string;
   config: DaytonaDriverConfig;
@@ -1088,7 +1081,6 @@ function sandboxAccountDiscriminator(config: DaytonaDriverConfig): string {
 function sandboxHandleCacheKey(scope: SandboxScope): string {
   return stableStringify({
     driverKey: scope.driverKey,
-    companyId: scope.companyId,
     environmentId: scope.environmentId,
     providerLeaseId: scope.providerLeaseId,
     account: sandboxAccountDiscriminator(scope.config),
@@ -1586,14 +1578,12 @@ export function __resetDaytonaSandboxHandleCacheForTest(): void {
  */
 export function __getDaytonaWritableDirsForTest(input: {
   driverKey: string;
-  companyId: string;
   environmentId: string;
   lease: { providerLeaseId?: string | null };
   config: Record<string, unknown>;
 }): string[] {
   const scope: SandboxScope = {
     driverKey: input.driverKey,
-    companyId: input.companyId,
     environmentId: input.environmentId,
     providerLeaseId: input.lease.providerLeaseId ?? "",
     config: parseDriverConfig(input.config),
@@ -2445,7 +2435,6 @@ const plugin = definePlugin({
         assertActive();
         sandboxHandleLeaseAdmissionStates.open({
           driverKey: params.driverKey,
-          companyId: params.companyId,
           environmentId: params.environmentId,
           providerLeaseId: sandbox.id,
           config,
@@ -2456,7 +2445,6 @@ const plugin = definePlugin({
         sandboxHandleCache.seed(
           {
             driverKey: params.driverKey,
-            companyId: params.companyId,
             environmentId: params.environmentId,
             providerLeaseId: sandbox.id,
             config,
@@ -2524,7 +2512,6 @@ const plugin = definePlugin({
     }
     const scope: SandboxScope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.providerLeaseId,
       config,
@@ -2631,7 +2618,7 @@ const plugin = definePlugin({
   async onEnvironmentStopLease(params: PluginEnvironmentReleaseLeaseParams): Promise<PluginEnvironmentTerminationReceipt> {
     if (!params.providerLeaseId) throw new Error("Daytona stop requires an exact sandbox identity");
     const config = parseDriverConfig(params.config);
-    const scope: SandboxScope = { driverKey: params.driverKey, companyId: params.companyId,
+    const scope: SandboxScope = { driverKey: params.driverKey,
       environmentId: params.environmentId, providerLeaseId: params.providerLeaseId, config };
     const teardownGate = sandboxHandleTeardownGates.begin(scope);
     sandboxHandleLeaseAdmissionStates.close(scope);
@@ -2666,7 +2653,6 @@ const plugin = definePlugin({
     const config = parseDriverConfig(params.config);
     const scope: SandboxScope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.providerLeaseId,
       config,
@@ -2743,7 +2729,7 @@ const plugin = definePlugin({
       const cleanup = readEnvironmentCreationCleanupError({ data: {
         schema: "paperclip/environment-creation-cleanup/v1", cleanup: params.leaseMetadata.failedCreateCleanup,
       } });
-      if (!cleanup || cleanup.companyId !== params.companyId || cleanup.environmentId !== params.environmentId ||
+      if (!cleanup || cleanup.environmentId !== params.environmentId ||
           cleanup.providerLeaseId !== params.providerLeaseId) {
         throw new Error("Failed-create sandbox cleanup scope does not match");
       }
@@ -2752,7 +2738,6 @@ const plugin = definePlugin({
     }
     const scope: SandboxScope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.providerLeaseId,
       config,
@@ -2788,7 +2773,6 @@ const plugin = definePlugin({
     if (params.lease.providerLeaseId) {
       const scope: SandboxScope = {
         driverKey: params.driverKey,
-        companyId: params.companyId,
         environmentId: params.environmentId,
         providerLeaseId: params.lease.providerLeaseId,
         config,
@@ -2824,7 +2808,6 @@ const plugin = definePlugin({
       );
       sandboxHandleLeaseAdmissionStates.open({
         driverKey: params.driverKey,
-        companyId: params.companyId,
         environmentId: params.environmentId,
         providerLeaseId: sandbox.id,
         config,
@@ -2866,7 +2849,6 @@ const plugin = definePlugin({
     }
     const scope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.providerLeaseId,
       config,
@@ -2928,7 +2910,6 @@ const plugin = definePlugin({
     }
     const scope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.providerLeaseId,
       config,
@@ -2982,7 +2963,6 @@ const plugin = definePlugin({
     }
     const scope: SandboxScope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.providerLeaseId,
       config,
@@ -3063,7 +3043,6 @@ const plugin = definePlugin({
     const providerLeaseId = params.lease.providerLeaseId;
     return await withSandboxActivityGate({
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId,
       config,
@@ -3085,7 +3064,6 @@ const plugin = definePlugin({
       let cacheHit = false;
       const sandbox = await getSandbox({
         driverKey: params.driverKey,
-        companyId: params.companyId,
         environmentId: params.environmentId,
         providerLeaseId,
         config,
@@ -3098,7 +3076,6 @@ const plugin = definePlugin({
       const getDurationMs = timingNow() - getStart;
       const scope: SandboxScope = {
         driverKey: params.driverKey,
-        companyId: params.companyId,
         environmentId: params.environmentId,
         providerLeaseId,
         config,
@@ -3155,7 +3132,6 @@ const plugin = definePlugin({
     return await withSandboxActivityGate(
       {
         driverKey: params.driverKey,
-        companyId: params.companyId,
         environmentId: params.environmentId,
         providerLeaseId,
         config,
@@ -3163,7 +3139,6 @@ const plugin = definePlugin({
       async () => {
         const sandbox = await getSandbox({
           driverKey: params.driverKey,
-          companyId: params.companyId,
           environmentId: params.environmentId,
           providerLeaseId,
           config,
@@ -3219,7 +3194,6 @@ const plugin = definePlugin({
     const timeoutSeconds = toTimeoutSeconds(config.timeoutMs);
     const scope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.lease.providerLeaseId,
       config,
@@ -3253,7 +3227,6 @@ const plugin = definePlugin({
     const timeoutSeconds = toTimeoutSeconds(config.timeoutMs);
     const scope = {
       driverKey: params.driverKey,
-      companyId: params.companyId,
       environmentId: params.environmentId,
       providerLeaseId: params.lease.providerLeaseId,
       config,

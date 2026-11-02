@@ -77,7 +77,6 @@ const PROBE_CLEANUP_WARNING = "[paperclip] Codex probe cleanup incomplete";
 
 async function prepareCodexHelloProbe(input: {
   runId: string;
-  companyId: string;
   target: AdapterEnvironmentTestContext["executionTarget"] | null;
   targetIsRemote: boolean;
   cwd: string;
@@ -109,7 +108,7 @@ async function prepareCodexHelloProbe(input: {
   if (input.targetIsRemote && !input.probeApiKey) {
     // Prepare the exact home a real run would use, mirroring execute.ts: vend
     // the shared credential's freshest same-identity cached copy, then seed the
-    // effective home — the company default when no CODEX_HOME is configured, a
+    // effective home — the default managed home when no CODEX_HOME is configured, a
     // Paperclip-managed override (the per-agent home) seeded in place — and
     // stage that home's credentials. A genuine external override manages its
     // own auth: its bytes are staged as-is and it is never seeded or mutated.
@@ -120,7 +119,7 @@ async function prepareCodexHelloProbe(input: {
       : null;
     const configuredHomeIsManaged =
       configuredCodexHome != null &&
-      isManagedCodexHomePath(process.env, input.companyId, configuredCodexHome);
+      isManagedCodexHomePath(process.env, configuredCodexHome);
     if (!input.managedAiConnection && isCodexAuthCacheEnabled(process.env)) {
       // Identity-anchored cache vend, exactly as execute runs it before the
       // seeding below. Best-effort: a vend failure never blocks the probe, and
@@ -128,13 +127,13 @@ async function prepareCodexHelloProbe(input: {
       const sharedHomeAuthPath = path.join(resolveSharedCodexHomeDir(process.env), "auth.json");
       await selectVendCredential(
         sharedHomeAuthPath,
-        (accountId) => resolveCodexAuthCacheEntryPath(process.env, accountId, input.companyId),
+        (accountId) => resolveCodexAuthCacheEntryPath(process.env, accountId),
         async () => {},
       ).catch(() => undefined);
     }
     let effectiveHome: string;
     if (configuredCodexHome == null) {
-      effectiveHome = await prepareManagedCodexHome(process.env, async () => {}, input.companyId, {
+      effectiveHome = await prepareManagedCodexHome(process.env, async () => {}, {
         apiKey: null,
       });
     } else {
@@ -428,7 +427,6 @@ export async function testEnvironment(
       const preparedProbe = await prepareCodexHelloProbe({
         managedAiConnection: Boolean(config.managedAiConnection),
         runId,
-        companyId: ctx.companyId,
         target,
         targetIsRemote,
         cwd,

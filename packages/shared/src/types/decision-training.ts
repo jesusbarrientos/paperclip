@@ -53,7 +53,6 @@ export interface DecisionTrainingPreview {
 
 export interface DecisionTrainingExample {
   id: string;
-  companyId: string;
   sourceKind: DecisionTrainingSourceKind;
   sourceId: string;
   issueId: string;

@@ -29,7 +29,7 @@ Important validation rules:
 - non-local `bridgeBaseUrl` values must be `https://`
 - `sessionId` is required when `sessionStrategy` is `named`
 
-Pasted auth tokens are stored by Paperclip as company secrets because the manifest marks `bridgeAuthToken` as a `secret-ref` field.
+Pasted auth tokens are stored by Paperclip as Paperclip secrets because the manifest marks `bridgeAuthToken` as a `secret-ref` field.
 
 ## Bridge template
 

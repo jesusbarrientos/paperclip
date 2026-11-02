@@ -48,7 +48,7 @@ export function claudePaperclipPermissionRules(
       : action?.effect === "read";
     // This only bypasses the provider's redundant permission prompt. The
     // authenticated bridge and controller still validate run authority,
-    // company scope, claims, task mode, and governed-action approvals.
+    // claims, task mode, and governed-action approvals.
     return isRead || (action && (
       mode === "approve-paperclip" && AUTOMATIC_PAPERCLIP_WORKFLOW_ACTIONS.has(name)
     ))

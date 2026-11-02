@@ -33,7 +33,6 @@ const describePg = support.supported ? describe : describe.skip;
 describePg("decisionService", () => {
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let db: ReturnType<typeof createDb>;
-  let companyId: string;
   let agentId: string;
   let originIssueId: string;
   let targetIssueId: string;
@@ -49,7 +48,7 @@ describePg("decisionService", () => {
 
   beforeEach(async () => {
     process.env.PAPERCLIP_DECISION_SIGNING_SECRET = "0123456789abcdef0123456789abcdef";
-    companyId = randomUUID(); agentId = randomUUID(); originIssueId = randomUUID(); targetIssueId = randomUUID(); runId = randomUUID();
+    const companyId = randomUUID(); agentId = randomUUID(); originIssueId = randomUUID(); targetIssueId = randomUUID(); runId = randomUUID();
     originResponsibleUserId = `origin-${randomUUID()}`; decidedByUserId = `decider-${randomUUID()}`; wakes = [];
     const now = new Date();
     await db.insert(companies).values({ id: companyId, name: "Decisions", issuePrefix: `D${companyId.slice(0, 6)}`, requireBoardApprovalForNewAgents: false });
@@ -61,12 +60,12 @@ describePg("decisionService", () => {
       { principalType: "user", principalId: originResponsibleUserId, status: "active", membershipRole: "member" },
       { principalType: "user", principalId: decidedByUserId, status: "active", membershipRole: "member" },
     ]).onConflictDoUpdate(membershipUpsert);
-    await db.insert(agents).values({ id: agentId, companyId, name: "Proposer", role: "engineer", status: "active", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
+    await db.insert(agents).values({ id: agentId, name: "Proposer", role: "engineer", status: "active", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
     await db.insert(issues).values([
-      { id: originIssueId, companyId, title: "Origin", status: "in_progress", priority: "medium", assigneeAgentId: agentId, responsibleUserId: originResponsibleUserId },
-      { id: targetIssueId, companyId, title: "Target", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
+      { id: originIssueId, title: "Origin", status: "in_progress", priority: "medium", assigneeAgentId: agentId, responsibleUserId: originResponsibleUserId },
+      { id: targetIssueId, title: "Target", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
     ]);
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", responsibleUserId: originResponsibleUserId, contextSnapshot: { issueId: originIssueId } });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running", responsibleUserId: originResponsibleUserId, contextSnapshot: { issueId: originIssueId } });
   });
 
   afterEach(async () => {
@@ -78,13 +77,13 @@ describePg("decisionService", () => {
   });
   afterAll(async () => tempDb?.cleanup());
 
-  const agentActor = () => ({ type: "agent" as const, companyId, agentId, runId, source: "agent_jwt" as const,
-    onBehalfOfUserId: originResponsibleUserId, onBehalfOfMemberships: [{ companyId, membershipRole: "member", status: "active" }] });
-  const boardActor = () => ({ type: "board" as const, userId: decidedByUserId, companyIds: [companyId], source: "session" as const,
-    memberships: [{ companyId, membershipRole: "member", status: "active" }] });
+  const agentActor = () => ({ type: "agent" as const, agentId, runId, source: "agent_jwt" as const,
+    onBehalfOfUserId: originResponsibleUserId, onBehalfOfMemberships: [{ membershipRole: "member", status: "active" }] });
+  const boardActor = () => ({ type: "board" as const, userId: decidedByUserId, source: "session" as const,
+    memberships: [{ membershipRole: "member", status: "active" }] });
   const service = () => decisionService(db, { wakeOriginAgent: async (input) => { wakes.push(input); } });
   const createCommentDecision = (staleness: "strict" | "lenient" = "lenient", extra: Record<string, unknown> = {}) => service().create({
-    companyId, actor: agentActor(), agentId, runId, title: "Comment?", body: "Body", continuationPolicy: "wake_origin_agent",
+    actor: agentActor(), agentId, runId, title: "Comment?", body: "Body", continuationPolicy: "wake_origin_agent",
     options: [{ id: "yes", label: "Yes", effects: [{ type: "comment_on_issue", targetIssueId, staleness, bodyMarkdown: "hello" }] }],
     ...extra,
   });
@@ -101,7 +100,7 @@ describePg("decisionService", () => {
 
   it("returns the existing decision for concurrent idempotent creates", async () => {
     const input = {
-      companyId, actor: agentActor(), agentId, runId, title: "Same?", body: "Body", idempotencyKey: "concurrent-create",
+      actor: agentActor(), agentId, runId, title: "Same?", body: "Body", idempotencyKey: "concurrent-create",
       options: [{ id: "yes", label: "Yes", effects: [{ type: "comment_on_issue" as const, targetIssueId, staleness: "lenient" as const, bodyMarkdown: "hello" }] }],
     };
     const [first, second] = await Promise.all([service().create(input), service().create(input)]);
@@ -142,18 +141,16 @@ describePg("decisionService", () => {
     const extraIssueId = randomUUID();
     const unreviewedIssueId = randomUUID();
     await db.insert(issues).values([
-      { id: extraIssueId, companyId, title: "Second aging item", status: "in_review", priority: "medium", createdByAgentId: agentId, assigneeUserId: decidedByUserId },
-      { id: unreviewedIssueId, companyId, title: "Not reviewed", status: "in_review", priority: "medium", createdByAgentId: agentId, assigneeUserId: decidedByUserId },
+      { id: extraIssueId, title: "Second aging item", status: "in_review", priority: "medium", createdByAgentId: agentId, assigneeUserId: decidedByUserId },
+      { id: unreviewedIssueId, title: "Not reviewed", status: "in_review", priority: "medium", createdByAgentId: agentId, assigneeUserId: decidedByUserId },
     ]);
     const activityAt = new Date("2026-04-01T00:00:00.000Z");
     await db.insert(decisionRetention).values([targetIssueId, extraIssueId, unreviewedIssueId].map((sourceId) => ({
-      companyId,
       sourceKind: "review",
       sourceId,
       sourceActivityAt: activityAt,
     })));
     const manifest: AttentionArchiveManifestEntry[] = [targetIssueId, extraIssueId].map((sourceId) => ({
-      companyId,
       sourceKind: "review",
       sourceId,
       expectedVersion: 1,
@@ -171,7 +168,6 @@ describePg("decisionService", () => {
       } satisfies AttentionArchiveTargetSnapshot,
     ]));
     const created = await service().create({
-      companyId,
       actor: agentActor(),
       agentId,
       runId,
@@ -211,7 +207,7 @@ describePg("decisionService", () => {
 
   it("fails closed when the origin actor retains read access but loses mutation access", async () => {
     const created = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Update?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Update?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{ type: "update_issue_status", targetIssueId, staleness: "lenient", status: "in_progress" }] }],
     });
     await db.update(companyMemberships).set({ membershipRole: "viewer" }).where(eq(companyMemberships.principalId, originResponsibleUserId));
@@ -224,24 +220,24 @@ describePg("decisionService", () => {
     const retainedBlockerId = randomUUID();
     const downstreamId = randomUUID();
     await db.insert(issues).values([
-      { id: removedBlockerId, companyId, title: "Removed blocker", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
-      { id: retainedBlockerId, companyId, title: "Retained blocker", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
-      { id: downstreamId, companyId, title: "Downstream", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
+      { id: removedBlockerId, title: "Removed blocker", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
+      { id: retainedBlockerId, title: "Retained blocker", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
+      { id: downstreamId, title: "Downstream", status: "todo", priority: "medium", responsibleUserId: decidedByUserId },
     ]);
     await db.insert(issueRelations).values([
-      { companyId, issueId: removedBlockerId, relatedIssueId: targetIssueId, type: "blocks" },
-      { companyId, issueId: retainedBlockerId, relatedIssueId: targetIssueId, type: "blocks" },
-      { companyId, issueId: targetIssueId, relatedIssueId: downstreamId, type: "blocks" },
+      { issueId: removedBlockerId, relatedIssueId: targetIssueId, type: "blocks" },
+      { issueId: retainedBlockerId, relatedIssueId: targetIssueId, type: "blocks" },
+      { issueId: targetIssueId, relatedIssueId: downstreamId, type: "blocks" },
     ]);
     const created = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Resolve blocker?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Resolve blocker?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{ type: "resolve_blocker", targetIssueId, staleness: "lenient",
         removeBlockedByIssueIds: [removedBlockerId] }] }],
     });
 
     await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
 
-    const relations = await db.select().from(issueRelations).where(eq(issueRelations.companyId, companyId));
+    const relations = await db.select().from(issueRelations);
     expect(relations).toEqual(expect.arrayContaining([
       expect.objectContaining({ issueId: retainedBlockerId, relatedIssueId: targetIssueId, type: "blocks" }),
       expect.objectContaining({ issueId: targetIssueId, relatedIssueId: downstreamId, type: "blocks" }),
@@ -254,10 +250,10 @@ describePg("decisionService", () => {
   it("rejects mutation proposals from an origin actor with read-only access", async () => {
     await db.update(companyMemberships).set({ membershipRole: "viewer" }).where(eq(companyMemberships.principalId, originResponsibleUserId));
     const readOnlyActor = { ...agentActor(),
-      onBehalfOfMemberships: [{ companyId, membershipRole: "viewer" as const, status: "active" as const }] };
+      onBehalfOfMemberships: [{ membershipRole: "viewer" as const, status: "active" as const }] };
 
     await expect(service().create({
-      companyId, actor: readOnlyActor, agentId, runId, title: "Update?", body: "Body",
+      actor: readOnlyActor, agentId, runId, title: "Update?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{
         type: "update_issue_status", targetIssueId, staleness: "lenient", status: "in_progress",
       }] }],
@@ -276,9 +272,9 @@ describePg("decisionService", () => {
 
   it("rejects strict effects when secondary targets or cancellation scope change", async () => {
     const blockerId = randomUUID();
-    await db.insert(issues).values({ id: blockerId, companyId, title: "Blocker", status: "todo", priority: "medium", responsibleUserId: decidedByUserId });
+    await db.insert(issues).values({ id: blockerId, title: "Blocker", status: "todo", priority: "medium", responsibleUserId: decidedByUserId });
     const createDecision = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Create?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Create?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{ type: "create_issue", targetIssueId, staleness: "strict", draft: { title: "Follow-up", blockedByIssueIds: [blockerId] } }] }],
     });
     await db.update(issues).set({ updatedAt: new Date(Date.now() + 1_000) }).where(eq(issues.id, blockerId));
@@ -286,11 +282,11 @@ describePg("decisionService", () => {
     expect(createResult.executions[0]).toMatchObject({ status: "skipped", error: "target_changed" });
 
     const cancelDecision = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Cancel?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Cancel?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{ type: "cancel_issue_tree", targetIssueId, staleness: "strict", reasonComment: "cleanup" }] }],
     });
     const childId = randomUUID();
-    await db.insert(issues).values({ id: childId, companyId, title: "New child", status: "todo", priority: "medium", parentId: targetIssueId, responsibleUserId: decidedByUserId });
+    await db.insert(issues).values({ id: childId, title: "New child", status: "todo", priority: "medium", parentId: targetIssueId, responsibleUserId: decidedByUserId });
     const cancelResult = await service().decide({ id: cancelDecision.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
     expect(cancelResult.executions[0]).toMatchObject({ status: "skipped", error: "target_changed" });
     expect((await db.select().from(issues).where(eq(issues.id, childId)))[0]?.status).toBe("todo");
@@ -298,16 +294,16 @@ describePg("decisionService", () => {
 
   it("never expands a lenient cancellation beyond the signed descendant scope", async () => {
     const reviewedChildId = randomUUID();
-    await db.insert(issues).values({ id: reviewedChildId, companyId, title: "Reviewed child", status: "todo", priority: "medium",
+    await db.insert(issues).values({ id: reviewedChildId, title: "Reviewed child", status: "todo", priority: "medium",
       parentId: targetIssueId, responsibleUserId: decidedByUserId });
     const created = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Cancel?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Cancel?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{
         type: "cancel_issue_tree", targetIssueId, staleness: "lenient", reasonComment: "cleanup",
       }] }],
     });
     const unreviewedChildId = randomUUID();
-    await db.insert(issues).values({ id: unreviewedChildId, companyId, title: "Unreviewed child", status: "todo", priority: "medium",
+    await db.insert(issues).values({ id: unreviewedChildId, title: "Unreviewed child", status: "todo", priority: "medium",
       parentId: targetIssueId, responsibleUserId: decidedByUserId });
 
     const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
@@ -319,11 +315,11 @@ describePg("decisionService", () => {
 
   it("bounds cyclic issue traversal for snapshots and cancel-tree execution", async () => {
     const childId = randomUUID();
-    await db.insert(issues).values({ id: childId, companyId, title: "Cycle child", status: "todo", priority: "medium",
+    await db.insert(issues).values({ id: childId, title: "Cycle child", status: "todo", priority: "medium",
       parentId: targetIssueId, responsibleUserId: decidedByUserId });
     await db.update(issues).set({ parentId: childId }).where(eq(issues.id, targetIssueId));
     const created = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Cancel cycle?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Cancel cycle?", body: "Body",
       options: [{ id: "cancel", label: "Cancel", style: "destructive", effects: [{
         type: "cancel_issue_tree", targetIssueId, staleness: "strict", reasonComment: "cleanup",
       }] }],
@@ -332,7 +328,7 @@ describePg("decisionService", () => {
     expect((created.targetSnapshots as Record<string, { descendantCount: number }>)[targetIssueId]?.descendantCount).toBe(1);
     const result = await service().decide({ id: created.id, optionId: "cancel", decidedByUserId, userActor: boardActor() });
     expect(result.executions[0]).toMatchObject({ status: "executed", result: { cancelledIssueIds: [childId, targetIssueId] } });
-    expect(await db.select({ id: issues.id, status: issues.status }).from(issues).where(eq(issues.companyId, companyId)))
+    expect(await db.select({ id: issues.id, status: issues.status }).from(issues))
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ id: targetIssueId, status: "cancelled" }),
         expect.objectContaining({ id: childId, status: "cancelled" }),
@@ -341,9 +337,9 @@ describePg("decisionService", () => {
 
   it("fails closed when the deciding user lacks assignment capability", async () => {
     const assigneeAgentId = randomUUID();
-    await db.insert(agents).values({ id: assigneeAgentId, companyId, name: "Assignee", role: "engineer", status: "active", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
+    await db.insert(agents).values({ id: assigneeAgentId, name: "Assignee", role: "engineer", status: "active", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
     const created = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Assign?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Assign?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [{ type: "assign_issue", targetIssueId, staleness: "lenient", assigneeAgentId }] }],
     });
     await db.update(companyMemberships).set({ membershipRole: "viewer" }).where(eq(companyMemberships.principalId, decidedByUserId));
@@ -395,7 +391,7 @@ describePg("decisionService", () => {
 
   it("records a failed effect and continues independent later effects", async () => {
     const created = await service().create({
-      companyId, actor: agentActor(), agentId, runId, title: "Continue?", body: "Body",
+      actor: agentActor(), agentId, runId, title: "Continue?", body: "Body",
       options: [{ id: "yes", label: "Yes", effects: [
         { type: "update_issue_status", targetIssueId, staleness: "lenient", status: "in_progress" },
         { type: "comment_on_issue", targetIssueId, staleness: "lenient", bodyMarkdown: "still runs" },
@@ -431,7 +427,7 @@ describePg("decisionService", () => {
     expect(await service().sweepExpired()).toEqual({ expired: 0, resumed: 1 });
     expect((await service().get(created.id))?.executionStatus).toBe("succeeded");
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, targetIssueId))).toHaveLength(1);
-    expect(wakes).toEqual([{ companyId, agentId, issueId: originIssueId, decisionId: created.id, outcome: "decided" }]);
+    expect(wakes).toEqual([{ agentId, issueId: originIssueId, decisionId: created.id, outcome: "decided" }]);
   });
 
   it("retries a terminal continuation after a crash between effects and wake delivery", async () => {
@@ -448,7 +444,7 @@ describePg("decisionService", () => {
 
     await service().sweepExpired();
 
-    expect(wakes).toEqual([{ companyId, agentId, issueId: originIssueId, decisionId: created.id, outcome: "decided" }]);
+    expect(wakes).toEqual([{ agentId, issueId: originIssueId, decisionId: created.id, outcome: "decided" }]);
     expect((await service().get(created.id))?.metadata).toMatchObject({ continuationPending: false });
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, targetIssueId))).toHaveLength(1);
   });
@@ -460,12 +456,12 @@ describePg("decisionService", () => {
 
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.metadata).toMatchObject({ continuationPending: false });
-    expect(wakes).toEqual([{ companyId, agentId, issueId: originIssueId, decisionId: created.id, outcome: "cancelled" }]);
+    expect(wakes).toEqual([{ agentId, issueId: originIssueId, decisionId: created.id, outcome: "cancelled" }]);
   });
 
   it("adds open decisions to the attention feed and badge count", async () => {
     const created = await createCommentDecision();
-    const feed = await attentionService(db).list(companyId, { userId: decidedByUserId });
+    const feed = await attentionService(db).list({ userId: decidedByUserId });
     expect(feed.countsBySourceKind.decision).toBe(1);
     expect(feed.items).toEqual(expect.arrayContaining([expect.objectContaining({
       sourceKind: "decision",
@@ -477,7 +473,7 @@ describePg("decisionService", () => {
     const created = await createCommentDecision();
     await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
 
-    const listed = await service().list(companyId, { status: "decided" });
+    const listed = await service().list({ status: "decided" });
 
     expect(listed).toEqual(expect.arrayContaining([expect.objectContaining({
       id: created.id,
@@ -490,7 +486,7 @@ describePg("decisionService", () => {
     const newer = await createCommentDecision("lenient", { idempotencyKey: "attention-newer" });
     await db.update(decisions).set({ updatedAt: new Date(Date.now() - 1_000) }).where(eq(decisions.id, older.id));
 
-    const feed = await attentionService(db, { openDecisionLimit: 1 }).list(companyId, { userId: decidedByUserId });
+    const feed = await attentionService(db, { openDecisionLimit: 1 }).list({ userId: decidedByUserId });
 
     expect(feed.countsBySourceKind.decision).toBe(1);
     expect(feed.items.filter((item) => item.sourceKind === "decision").map((item) => item.subject.id)).toEqual([newer.id]);
@@ -503,7 +499,7 @@ describePg("decisionService", () => {
 
     const selectSpy = vi.spyOn(db, "select");
     try {
-      const listed = await service().list(companyId, { status: "open" });
+      const listed = await service().list({ status: "open" });
       expect(selectSpy).toHaveBeenCalledTimes(2);
       expect(listed.filter((decision) => decision.id === first.id || decision.id === second.id))
         .toEqual(expect.arrayContaining([
@@ -557,7 +553,7 @@ describePg("decisionService", () => {
 
     expect((await service().get(completed.id))?.metadata).toMatchObject({ expiredReason: "target_completed" });
     expect((await service().get(lenient.id))?.status).toBe("open");
-    expect(wakes).toEqual([{ companyId, agentId, issueId: originIssueId, decisionId: completed.id, outcome: "expired" }]);
+    expect(wakes).toEqual([{ agentId, issueId: originIssueId, decisionId: completed.id, outcome: "expired" }]);
   });
 
   it("keeps strict decisions that intentionally target an already-done issue", async () => {
@@ -573,14 +569,12 @@ describePg("decisionService", () => {
     await db.update(issues).set({ status: "done" }).where(eq(issues.id, targetIssueId));
     await db.insert(issues).values({
       id: blockerId,
-      companyId,
       title: "Secondary blocker",
       status: "todo",
       priority: "medium",
       responsibleUserId: decidedByUserId,
     });
     const created = await service().create({
-      companyId,
       actor: agentActor(),
       agentId,
       runId,
@@ -605,19 +599,19 @@ describePg("decisionService", () => {
 
   it("groups rule-key stats and separates explicit dismissals from expiry", async () => {
     const accepted = await service().create({
-      companyId, actor: agentActor(), agentId, runId, ruleKey: "routing.assign", title: "Assign?", body: "Body",
+      actor: agentActor(), agentId, runId, ruleKey: "routing.assign", title: "Assign?", body: "Body",
       options: [{ id: "assign", label: "Assign", effects: [] }, { id: "skip", label: "Skip", effects: [] }],
     });
     const rejected = await service().create({
-      companyId, actor: agentActor(), agentId, runId, ruleKey: "routing.assign", title: "Assign another?", body: "Body",
+      actor: agentActor(), agentId, runId, ruleKey: "routing.assign", title: "Assign another?", body: "Body",
       options: [{ id: "assign", label: "Assign", effects: [] }, { id: "skip", label: "Skip", effects: [] }],
     });
     const acceptedAgain = await service().create({
-      companyId, actor: agentActor(), agentId, runId, ruleKey: "routing.assign", title: "Assign again?", body: "Body",
+      actor: agentActor(), agentId, runId, ruleKey: "routing.assign", title: "Assign again?", body: "Body",
       options: [{ id: "assign", label: "Assign", effects: [] }, { id: "skip", label: "Skip", effects: [] }],
     });
     const stale = await service().create({
-      companyId, actor: agentActor(), agentId, runId, ruleKey: "cleanup.stale", title: "Clean up?", body: "Body",
+      actor: agentActor(), agentId, runId, ruleKey: "cleanup.stale", title: "Clean up?", body: "Body",
       options: [{ id: "clean", label: "Clean", effects: [] }], expiresAt: nearFutureExpiry(),
     });
     await service().decide({ id: accepted.id, optionId: "assign", decidedByUserId, userActor: boardActor() });
@@ -626,7 +620,7 @@ describePg("decisionService", () => {
     await expireDecisionNow(stale.id);
     await service().sweepExpired();
 
-    const stats = await service().stats(companyId, { originAgentId: agentId });
+    const stats = await service().stats({ originAgentId: agentId });
     expect(stats.filters).toEqual({ originAgentId: agentId, since: null });
     expect(stats.totals).toEqual({ proposed: 4, accepted: 2, rejected: 1, expired: 1 });
     expect(stats.groups).toEqual([
@@ -656,6 +650,6 @@ describePg("decisionService", () => {
     const result = await service().dismiss(created.id, decidedByUserId, boardActor(), "No");
 
     expect(result).toMatchObject({ status: "decided", chosenOptionId: "dismissed" });
-    expect(wakes).toEqual([{ companyId, agentId, issueId: originIssueId, decisionId: created.id, outcome: "decided" }]);
+    expect(wakes).toEqual([{ agentId, issueId: originIssueId, decisionId: created.id, outcome: "decided" }]);
   });
 });

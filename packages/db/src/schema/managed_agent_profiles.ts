@@ -11,8 +11,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-
-import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
 
 /**
@@ -25,9 +23,6 @@ export const managedAgentProfiles = pgTable(
   "managed_agent_profiles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id, { onDelete: "cascade" }),
     profileKey: text("profile_key").notNull(),
     displayName: text("display_name").notNull(),
     service: text("service").notNull().default("anthropic_managed_agents"),
@@ -49,13 +44,10 @@ export const managedAgentProfiles = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyIdx: index("managed_agent_profiles_company_idx").on(table.companyId),
     companyKeyUq: uniqueIndex("managed_agent_profiles_company_key_uq").on(
-      table.companyId,
       table.profileKey,
     ),
     resourceUq: uniqueIndex("managed_agent_profiles_company_resource_uq").on(
-      table.companyId,
       table.anthropicAgentId,
       table.agentVersion,
       table.environmentId,

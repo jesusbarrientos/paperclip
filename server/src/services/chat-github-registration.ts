@@ -85,8 +85,7 @@ export function githubChatRegistrationService(
       throw forbidden("An active company member is required");
     const [company] = await db
       .select({ issuePrefix: companies.issuePrefix })
-      .from(companies)
-      .where(eq(companies.id, endpoint.companyId));
+      .from(companies);
     const state = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 30 * 60_000);
     await db.transaction(async (tx) => {
@@ -105,7 +104,6 @@ export function githubChatRegistrationService(
           ),
         );
       await tx.insert(chatGitHubRegistrations).values({
-        companyId: endpoint.companyId,
         endpointId,
         userId,
         stateHash: digest(state),
@@ -113,7 +111,6 @@ export function githubChatRegistrationService(
         expiresAt,
       });
       await logActivity(tx as unknown as Db, {
-        companyId: endpoint.companyId,
         actorType: "user",
         actorId: userId,
         action: "chat_github.registration_started",
@@ -227,8 +224,7 @@ export function githubChatRegistrationService(
         .where(eq(chatGitHubRegistrations.id, session.id));
       const [company] = await db
         .select({ issuePrefix: companies.issuePrefix })
-        .from(companies)
-        .where(eq(companies.id, session.companyId));
+        .from(companies);
       return `${origin}/${company!.issuePrefix}/apps/chat/connect?provider=github&resume=${session.endpointId}`;
     } catch (error) {
       await db

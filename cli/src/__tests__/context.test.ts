@@ -29,7 +29,6 @@ describe("client context store", () => {
       "work",
       {
         apiBase: "http://localhost:3100",
-        companyId: "company-123",
         persona: "agent",
         agentId: "agent-123",
         agentName: "Agent One",
@@ -44,7 +43,6 @@ describe("client context store", () => {
     expect(context.currentProfile).toBe("work");
     expect(context.profiles.work).toEqual({
       apiBase: "http://localhost:3100",
-      companyId: "company-123",
       persona: "agent",
       agentId: "agent-123",
       agentName: "Agent One",
@@ -67,7 +65,6 @@ describe("client context store", () => {
       "default",
       {
         apiBase: undefined,
-        companyId: "company-123",
         persona: undefined,
       },
       contextPath,
@@ -75,8 +72,7 @@ describe("client context store", () => {
 
     const context = readContext(contextPath);
     expect(context.profiles.default).toEqual({
-      apiBase: "http://127.0.0.1:3197",
-      companyId: "company-123",
+      apiBase: "http://127.0.0.1:3197"
     });
   });
 
@@ -90,7 +86,6 @@ describe("client context store", () => {
         profiles: {
           legacy: {
             apiBase: "http://localhost:3101",
-            companyId: "company-legacy",
             persona: "board",
             apiKeyEnvVarName: "PAPERCLIP_BOARD_TOKEN",
           },
@@ -103,7 +98,6 @@ describe("client context store", () => {
     expect(context.version).toBe(2);
     expect(context.profiles.legacy).toEqual({
       apiBase: "http://localhost:3101",
-      companyId: "company-legacy",
       persona: "board",
       apiKeyEnvVarName: "PAPERCLIP_BOARD_TOKEN",
     });
@@ -118,7 +112,6 @@ describe("client context store", () => {
         profiles: {
           x: {
             apiBase: " ",
-            companyId: " ",
             apiKeyEnvVarName: " ",
           },
         },

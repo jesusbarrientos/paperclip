@@ -11,7 +11,6 @@ type MediaKind =
   | "rich_document"
   | "rich_photo";
 export interface TelegramMediaScope {
-  companyId: string;
   endpointId: string;
   runtimeGeneration: number;
   credentialFingerprint: string;
@@ -99,7 +98,6 @@ function sourceHash(value: Origin & TelegramMediaScope): string {
         value.fileId,
         value.fileUniqueId,
         value.metadataSha256,
-        value.companyId,
         value.endpointId,
         value.runtimeGeneration,
         value.credentialFingerprint,
@@ -383,7 +381,6 @@ export function telegramMediaLocator(
     origin.metadataSha256 !== metadataHash(attachment) ||
     !integer(scope.runtimeGeneration, 1) ||
     !id(scope.credentialFingerprint) ||
-    !id(scope.companyId) ||
     !id(scope.endpointId) ||
     origin.threadId !== scope.threadId ||
     origin.messageId !== scope.messageId ||

@@ -8,7 +8,7 @@ Routines are recurring tasks that fire on a schedule, webhook, or API call and c
 ## List Routines
 
 ```
-GET /api/companies/{companyId}/routines
+GET /api/routines
 ```
 
 Returns all routines in the company.
@@ -31,7 +31,7 @@ IDs in webhook URLs are separate opaque identifiers, not resource UUIDs.
 ## Create Routine
 
 ```
-POST /api/companies/{companyId}/routines
+POST /api/routines
 {
   "title": "Weekly CEO briefing",
   "description": "Compile status report and email Founder",

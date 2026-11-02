@@ -149,7 +149,6 @@ async function makeCtx(runId: string, cwd: string): Promise<AdapterExecutionCont
     runId,
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "Grok Agent",
       adapterType: "grok_local",
       adapterConfig: {},
@@ -335,7 +334,6 @@ describe("grok_local execute", () => {
       runId: "run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Grok Agent",
         adapterType: "grok_local",
         adapterConfig: {},
@@ -467,7 +465,7 @@ describe("grok_local execute", () => {
       await fs.mkdir(hostHome);
       const auth = grokAuth({ key: "fixture-host-key", expiresAt: NEWER_EXPIRY });
       await fs.writeFile(path.join(hostHome, "auth.json"), auth);
-      const companyHome = resolveManagedGrokHomeDir(process.env, "company-1");
+      const companyHome = resolveManagedGrokHomeDir(process.env);
       await fs.mkdir(companyHome, { recursive: true });
       const ctx = await makeCtx("run-host-login-child", await makeTempRoot());
       ctx.config.env = { HOME: hostRoot };
@@ -494,7 +492,7 @@ describe("grok_local execute", () => {
     });
 
     it("pins GROK_HOME to the company home when that home has usable auth", async () => {
-      const companyHome = resolveManagedGrokHomeDir(process.env, "company-1");
+      const companyHome = resolveManagedGrokHomeDir(process.env);
       await fs.mkdir(companyHome, { recursive: true });
       await fs.writeFile(
         path.join(companyHome, "auth.json"),
@@ -515,7 +513,7 @@ describe("grok_local execute", () => {
     it.each(["{invalid", "{}", JSON.stringify({ [GROK_IDENTITY]: { key: "incomplete" } })])(
       "uses host login when company auth is unusable (%s)",
       async (contents) => {
-        const companyHome = resolveManagedGrokHomeDir(process.env, "company-1");
+        const companyHome = resolveManagedGrokHomeDir(process.env);
         await fs.mkdir(companyHome, { recursive: true });
         await fs.writeFile(path.join(companyHome, "auth.json"), contents);
         runProcessMock.mockResolvedValue(makeSuccessfulRunResult());
@@ -545,7 +543,7 @@ describe("grok_local execute", () => {
     it("uses company login when an explicit empty API key overrides an inherited key", async () => {
       process.env.XAI_API_KEY = "host-api-key";
       process.env.GROK_HOME = await makeTempRoot();
-      const companyHome = resolveManagedGrokHomeDir(process.env, "company-1");
+      const companyHome = resolveManagedGrokHomeDir(process.env);
       await fs.mkdir(companyHome, { recursive: true });
       await fs.writeFile(path.join(companyHome, "auth.json"), grokAuth({ key: "company-key", expiresAt: NEWER_EXPIRY }));
       const ctx = await makeCtx("run-cleared-host-api-key", await makeTempRoot());
@@ -601,7 +599,6 @@ describe("grok_local execute", () => {
       runId: "run-permission-mode",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Grok Agent",
         adapterType: "grok_local",
         adapterConfig: {},
@@ -634,7 +631,6 @@ describe("grok_local execute", () => {
       runId: "run-setup-fail",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Grok Agent",
         adapterType: "grok_local",
         adapterConfig: {},
@@ -691,7 +687,7 @@ describe("grok_local execute", () => {
     });
 
     async function seedHostGrokAuth(contents: string): Promise<string> {
-      const hostGrokHome = resolveManagedGrokHomeDir(process.env, "company-1");
+      const hostGrokHome = resolveManagedGrokHomeDir(process.env);
       await fs.mkdir(hostGrokHome, { recursive: true });
       await fs.writeFile(path.join(hostGrokHome, "auth.json"), contents, "utf8");
       return hostGrokHome;

@@ -18,39 +18,39 @@ const support = await getEmbeddedPostgresTestSupport();
   async function seed() {
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), runId = randomUUID();
     await db.insert(companies).values({ id: companyId, name: "Identity tests", issuePrefix: companyId.slice(0, 8) });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Shared agent", role: "engineer", adapterType: "codex_local" });
-    await db.insert(issues).values({ id: issueId, companyId, title: "Shared task", responsibleUserId: "owner" });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", contextSnapshot: { issueId } });
+    await db.insert(agents).values({ id: agentId, name: "Shared agent", role: "engineer", adapterType: "codex_local" });
+    await db.insert(issues).values({ id: issueId, title: "Shared task", responsibleUserId: "owner" });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running", contextSnapshot: { issueId } });
     const messageIds: string[] = [];
     for (const author of ["A", "B", "A"]) {
       const id = randomUUID();
-      await db.insert(issueComments).values({ id, companyId, issueId, authorUserId: author, body: "Instruction" });
+      await db.insert(issueComments).values({ id, issueId, authorUserId: author, body: "Instruction" });
       messageIds.push(id);
     }
-    return { companyId, agentId, issueId, runId, messageIds };
+    return { agentId, issueId, runId, messageIds };
   }
   it("retains mixed-author delivery order without rewriting task ownership", async () => {
     const input = await seed();
     await initializeRunIdentity(db, { ...input, responsibleUserId: "owner", cause: "queued" });
-    const history = await listRunIdentityContexts(db, input.companyId, input.runId);
+    const history = await listRunIdentityContexts(db, input.runId);
     expect(history.map((row) => row.responsibleUserId)).toEqual(["owner", "A", "B", "A"]);
     expect(history.map((row) => row.revision)).toEqual([1, 2, 3, 4]);
     expect((await captureRunIdentity(db, input)).context?.responsibleUserId).toBe("A");
     const [issue] = await db.select().from(issues).where(eq(issues.id, input.issueId));
     expect(issue.responsibleUserId).toBe("owner");
     await initializeRunIdentity(db, { ...input, responsibleUserId: "B", cause: "restart" });
-    expect(await listRunIdentityContexts(db, input.companyId, input.runId)).toHaveLength(4);
+    expect(await listRunIdentityContexts(db, input.runId)).toHaveLength(4);
   });
   async function seedInterrupt() {
     const input = await seed();
     const queueId = randomUUID(), wakeupRequestId = randomUUID();
     const contextSnapshot = { issueId: input.issueId, wakeCommentIds: input.messageIds };
     await db.insert(agentWakeupRequests).values([
-      { id: queueId, companyId: input.companyId, agentId: input.agentId, source: "automation",
+      { id: queueId, agentId: input.agentId, source: "automation",
         status: "coalesced", runId: input.runId, requestedByActorType: "system",
         payload: { issueId: input.issueId, _paperclipWakeContext: { wakeCommentIds: input.messageIds },
           queuedCommentInterrupt: { actorId: "operator", requestedAt: new Date().toISOString() } } },
-      { id: wakeupRequestId, companyId: input.companyId, agentId: input.agentId, source: "on_demand",
+      { id: wakeupRequestId, agentId: input.agentId, source: "on_demand",
         status: "queued", runId: input.runId, requestedByActorType: "user", requestedByActorId: "operator",
         idempotencyKey: `queued-comment-interrupt:${queueId}` },
     ]);
@@ -65,16 +65,16 @@ const support = await getEmbeddedPostgresTestSupport();
       ...input, responsibleUserId: "A", parentContextId: randomUUID(), cause: "dispatch",
     });
     expect(identity).toMatchObject({ responsibleUserId: "operator", cause: "queued_comment_interrupt" });
-    const history = await listRunIdentityContexts(db, input.companyId, input.runId);
+    const history = await listRunIdentityContexts(db, input.runId);
     expect(history.map(row => row.responsibleUserId)).toEqual(["operator", "operator", "operator", "operator"]);
     expect(await initializeRunIdentity(db, { ...input, responsibleUserId: "B", cause: "restart" })).toEqual(identity);
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, input.issueId));
     expect(input.messageIds.map(id => comments.find(c => c.id === id)?.authorUserId)).toEqual(["A", "B", "A"]);
     expect((await captureRunIdentity(db, input)).context?.responsibleUserId).toBe("operator");
     const retryRunId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: retryRunId, companyId: input.companyId,
+    await db.insert(heartbeatRuns).values({ id: retryRunId,
       agentId: input.agentId, contextSnapshot: input.contextSnapshot, status: "queued", retryOfRunId: input.runId });
-    const retried = await initializeRunIdentity(db, { companyId: input.companyId, runId: retryRunId,
+    const retried = await initializeRunIdentity(db, { runId: retryRunId,
       issueId: input.issueId, parentRunId: input.runId, responsibleUserId: "A", cause: "retry" });
     expect(retried.responsibleUserId).toBe("operator");
   });
@@ -92,7 +92,7 @@ const support = await getEmbeddedPostgresTestSupport();
         const [receipt] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, input.queueId));
         if (fault === "other-agent") {
           const agentId = randomUUID();
-          await db.insert(agents).values({ id: agentId, companyId: input.companyId, name: "Other", role: "engineer" });
+          await db.insert(agents).values({ id: agentId, name: "Other", role: "engineer" });
           await db.update(agentWakeupRequests).set({ agentId }).where(eq(agentWakeupRequests.id, input.queueId));
         } else await db.update(agentWakeupRequests).set(
           fault === "unconsumed" ? { status: "deferred_issue_execution" } :
@@ -102,7 +102,7 @@ const support = await getEmbeddedPostgresTestSupport();
         ).where(eq(agentWakeupRequests.id, input.queueId));
       }
       await expect(initializeRunIdentity(db, { ...input, responsibleUserId: "A", cause: "dispatch" })).rejects.toThrow("interrupt authority");
-      expect(await listRunIdentityContexts(db, input.companyId, input.runId)).toHaveLength(0);
+      expect(await listRunIdentityContexts(db, input.runId)).toHaveLength(0);
     },
   );
 
@@ -132,11 +132,10 @@ const support = await getEmbeddedPostgresTestSupport();
     await rejectSteeredIdentity(db, b!);
     expect((await captureRunIdentity(db, input)).context?.responsibleUserId).toBe("A");
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: input.companyId, agentId: input.agentId, status: "running" });
-    const retry = await initializeRunIdentity(db, { companyId: input.companyId, runId, parentRunId: input.runId, responsibleUserId: "B", cause: "retry" });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: input.agentId, status: "running" });
+    const retry = await initializeRunIdentity(db, { runId, parentRunId: input.runId, responsibleUserId: "B", cause: "retry" });
     expect(retry.responsibleUserId).toBe("A");
     expect(retry.parentContextId).toBe((await captureRunIdentity(db, input)).context?.id);
-    await expect(captureRunIdentity(db, { ...input, companyId: randomUUID() })).rejects.toThrow();
     await expect(captureRunIdentity(db, { ...input, agentId: randomUUID() })).rejects.toThrow();
   });
   it("preserves an explicitly absent identity through a continuation initiated by another person", async () => {
@@ -146,11 +145,11 @@ const support = await getEmbeddedPostgresTestSupport();
     });
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
-      id: runId, companyId: input.companyId, agentId: input.agentId,
+      id: runId, agentId: input.agentId,
       status: "running", responsibleUserId: "B",
     });
     const continued = await initializeRunIdentity(db, {
-      companyId: input.companyId, runId, parentContextId: origin.id,
+      runId, parentContextId: origin.id,
       responsibleUserId: "B", cause: "retry",
     });
     expect(continued.responsibleUserId).toBeNull();
@@ -163,7 +162,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await initializeRunIdentity(db, { ...input, messageIds: [], responsibleUserId: "A", cause: "instruction" });
     const pending = await reserveSteeredIdentity(db, { ...input, messageId: input.messageIds[1] });
     await expect(captureRunIdentity(db, input)).rejects.toThrow(/reconciled/);
-    await db.insert(heartbeatRunEvents).values({ companyId: input.companyId, runId: input.runId,
+    await db.insert(heartbeatRunEvents).values({ runId: input.runId,
       agentId: input.agentId, seq: 1, eventType: "item.completed", sourceEventId: randomUUID(),
       payload: { prpEvent: { turnId: "turn-1", itemId: `turn-1:steer:${pending!.messageId}`, payload: {kind: "steering_acknowledgement"} } },
     });
@@ -175,7 +174,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const input = await seed();
     const origin = await initializeRunIdentity(db, { ...input, messageIds: [], responsibleUserId: "A", cause: "instruction" });
     const interactionId = randomUUID();
-    await db.insert(issueThreadInteractions).values({ id: interactionId, companyId: input.companyId,
+    await db.insert(issueThreadInteractions).values({ id: interactionId,
       issueId: input.issueId, kind: "request_confirmation", sourceRunId: input.runId,
       sourceIdentityContextId: origin.id, payload: { prompt: "Continue?" } as never,
     });
@@ -183,8 +182,8 @@ const support = await getEmbeddedPostgresTestSupport();
     await acceptSteeredIdentity(db, b!);
     for (const approval of [true, false]) {
       const runId = randomUUID();
-      await db.insert(heartbeatRuns).values({ id: runId, companyId: input.companyId, agentId: input.agentId, status: "running" });
-      const continued = await initializeRunIdentity(db, { companyId: input.companyId, runId, issueId: input.issueId,
+      await db.insert(heartbeatRuns).values({ id: runId, agentId: input.agentId, status: "running" });
+      const continued = await initializeRunIdentity(db, { runId, issueId: input.issueId,
         ...(approval ? { interactionId } : { parentContextId: origin.id }),
         responsibleUserId: "B", cause: approval ? "approval" : "delegation",
       });
@@ -196,7 +195,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const input = await seed();
     const origin = await initializeRunIdentity(db, { ...input, messageIds: [], responsibleUserId: "A", cause: "instruction" });
     const interactionId = randomUUID();
-    await db.insert(issueThreadInteractions).values({ id: interactionId, companyId: input.companyId,
+    await db.insert(issueThreadInteractions).values({ id: interactionId,
       issueId: input.issueId, kind: "request_confirmation", sourceRunId: input.runId,
       sourceIdentityContextId: origin.id, payload: { prompt: "Continue?" } as never,
     });
@@ -204,13 +203,13 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.delete(heartbeatRuns).where(eq(heartbeatRuns.agentId, input.agentId));
     await db.delete(agents).where(eq(agents.id, input.agentId));
     const agentId = randomUUID();
-    await db.insert(agents).values({ id: agentId, companyId: input.companyId, name: "Replacement", role: "engineer", adapterType: "codex_local" });
+    await db.insert(agents).values({ id: agentId, name: "Replacement", role: "engineer", adapterType: "codex_local" });
     const [task] = await db.select().from(issues).where(eq(issues.id, input.issueId));
     expect(task.continuationIdentityContextId).toBe(origin.id);
     for (const source of [{ parentContextId: task.originIdentityContextId }, { parentContextId: task.continuationIdentityContextId }, { interactionId }]) {
       const runId = randomUUID();
-      await db.insert(heartbeatRuns).values({ id: runId, companyId: input.companyId, agentId, status: "running" });
-      const continued = await initializeRunIdentity(db, { companyId: input.companyId, runId,
+      await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running" });
+      const continued = await initializeRunIdentity(db, { runId,
         issueId: input.issueId, ...source, responsibleUserId: "B", cause: "continuation" });
       expect(continued.responsibleUserId).toBe("A");
       expect(continued.parentContextId).toBe(origin.id);
@@ -258,7 +257,6 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(settings?.lock_timeout).toBe("1s");
       await db.transaction(async (audit) => {
         await audit.insert(secretAccessEvents).values({
-          companyId: input.companyId,
           heartbeatRunId: input.runId,
           issueId: input.issueId,
           provider: "local_encrypted",
@@ -286,8 +284,8 @@ const support = await getEmbeddedPostgresTestSupport();
     const input = await seed();
     await initializeRunIdentity(db, { ...input, messageIds: [], responsibleUserId: "A", cause: "company_default" });
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId: input.companyId, agentId: input.agentId, status: "running" });
-    const retry = await initializeRunIdentity(db, { companyId: input.companyId, runId, parentRunId: input.runId, responsibleUserId: "A", cause: "retry" });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId: input.agentId, status: "running" });
+    const retry = await initializeRunIdentity(db, { runId, parentRunId: input.runId, responsibleUserId: "A", cause: "retry" });
     expect(retry.cause).toBe("company_default");
   });
 

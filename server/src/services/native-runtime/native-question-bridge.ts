@@ -34,7 +34,7 @@ type QueueCommand = (
 ) => { readonly commandId: string; readonly controllerSeq: number } | Promise<{ readonly commandId: string; readonly controllerSeq: number }>;
 
 interface NativeQuestionCommandTarget {
-  binding: Pick<NativeRunStoreBinding, "companyId" | "issueId" | "runId" | "agentId">;
+  binding: Pick<NativeRunStoreBinding, "issueId" | "runId" | "agentId">;
   queueCommand: QueueCommand;
 }
 
@@ -47,7 +47,6 @@ interface NativeQuestionIdentity {
 }
 
 export interface NativeQuestionAuthorizationIdentity extends NativeQuestionIdentity {
-  companyId: string;
   issueId: string;
 }
 
@@ -98,14 +97,12 @@ async function authorizedNativeRun(
   if (!requestId || !interaction.sourceRunId) return null;
   const run = await db.select({
     id: heartbeatRuns.id,
-    companyId: heartbeatRuns.companyId,
     issueId: heartbeatRuns.nativeIssueId,
     agentId: heartbeatRuns.agentId,
     runtimeMode: heartbeatRuns.runtimeMode,
     status: heartbeatRuns.status,
   }).from(heartbeatRuns).where(and(
     eq(heartbeatRuns.id, interaction.sourceRunId),
-    eq(heartbeatRuns.companyId, interaction.companyId),
     eq(heartbeatRuns.nativeIssueId, interaction.issueId),
     eq(heartbeatRuns.runtimeMode, "native"),
   )).limit(1).then((rows) => rows[0] ?? null);
@@ -115,7 +112,7 @@ async function authorizedNativeRun(
 /** Materialize questions; permission requests use the privileged runtime card. */
 export async function projectNativeRuntimeRequest(input: {
   db: Db;
-  binding: Pick<NativeRunStoreBinding, "companyId" | "issueId" | "runId" | "agentId" | "normalizedSessionId" | "runnerSourceInstanceId">;
+  binding: Pick<NativeRunStoreBinding, "issueId" | "runId" | "agentId" | "normalizedSessionId" | "runnerSourceInstanceId">;
   event: PrpEvent;
 }): Promise<AskUserQuestionsInteraction | null> {
   if (input.event.eventType !== "runtime_request.created") return null;
@@ -178,14 +175,13 @@ export async function projectNativeRuntimeRequest(input: {
   const existing = await input.db.select({ id: issueThreadInteractions.id })
     .from(issueThreadInteractions)
     .where(and(
-      eq(issueThreadInteractions.companyId, input.binding.companyId),
       eq(issueThreadInteractions.issueId, input.binding.issueId),
       eq(issueThreadInteractions.idempotencyKey, idempotencyKey),
     ))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   const interaction = await issueThreadInteractionService(input.db).create(
-    { id: input.binding.issueId, companyId: input.binding.companyId },
+    { id: input.binding.issueId },
     {
       kind: "ask_user_questions",
       idempotencyKey,
@@ -201,7 +197,6 @@ export async function projectNativeRuntimeRequest(input: {
   ) as AskUserQuestionsInteraction;
   if (!existing) {
     await logActivity(input.db, {
-      companyId: input.binding.companyId,
       actorType: "agent",
       actorId: input.binding.agentId,
       agentId: input.binding.agentId,
@@ -256,7 +251,6 @@ export async function deliverNativeQuestionResponse(
   const target = activeTargets.get(run.id);
   if (
     !target
-    || target.binding.companyId !== run.companyId
     || target.binding.issueId !== run.issueId
     || target.binding.agentId !== run.agentId
   ) {
@@ -362,7 +356,6 @@ export async function requestNativeQuestionRunCancellation(
     updatedAt: new Date(),
   }).where(and(
     eq(heartbeatRuns.id, run.id),
-    eq(heartbeatRuns.companyId, interaction.companyId),
     eq(heartbeatRuns.nativeIssueId, interaction.issueId),
     eq(heartbeatRuns.runtimeMode, "native"),
     inArray(heartbeatRuns.status, ["queued", "running"]),
@@ -375,7 +368,6 @@ export function nativeQuestionCancellationIdentity(
 ): NativeQuestionAuthorizationIdentity | null {
   if (!requestIdForInteraction(interaction)) return null;
   return {
-    companyId: interaction.companyId,
     issueId: interaction.issueId,
     sourceRunId: interaction.sourceRunId,
     payload: interaction.payload,

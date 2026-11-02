@@ -162,7 +162,6 @@ function registerServiceMocks() {
 function makeIssue() {
   return {
     id: issueId,
-    companyId: "company-1",
     status: "todo",
     priority: "medium",
     assigneeAgentId: agentId,
@@ -221,7 +220,7 @@ describe("closed isolated workspace issue routes", () => {
       (req as any).actor = actor ?? {
         type: "board",
         userId: "local-board",
-        companyIds: ["company-1"],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "local_implicit",
         isInstanceAdmin: false,
       };
@@ -259,7 +258,7 @@ describe("closed isolated workspace issue routes", () => {
 
     expect(mockExecutionWorkspaceService.reopenClosedIsolatedExecutionWorkspaceForIssue).toHaveBeenCalledWith({
       workspaceId: closedWorkspaceId,
-      issue: { id: issueId, companyId: "company-1", projectId: null },
+      issue: { id: issueId, projectId: null },
       actor: expect.objectContaining({ actorType: "user" }),
     });
     // The closed-workspace dead end is gone: the comment is accepted.
@@ -333,7 +332,6 @@ describe("closed isolated workspace issue routes", () => {
     const agentActorWithoutRunId = {
       type: "agent",
       agentId,
-      companyId: "company-1",
       runId: null,
       source: "agent_key",
     };

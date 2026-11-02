@@ -16,8 +16,8 @@ vi.mock("@/lib/router", () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("../context/BreadcrumbContext", () => ({

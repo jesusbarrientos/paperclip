@@ -111,7 +111,6 @@ function createComment(
   const authorAgentId = overrides.authorAgentId ?? null;
   return {
     id: "comment-1",
-    companyId: "company-1",
     issueId: "issue-1",
     authorAgentId: null,
     authorUserId: "user-1",
@@ -131,7 +130,6 @@ function createInteraction(
 ): SuggestTasksInteraction {
   return {
     id: "interaction-1",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "suggest_tasks",
     title: "Suggested follow-up work",
@@ -174,7 +172,6 @@ function createRequestConfirmation(
 ): RequestConfirmationInteraction {
   return {
     id: "confirmation-1",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "request_confirmation",
     title: "Approve the plan",
@@ -810,7 +807,6 @@ describe("buildIssueChatMessages", () => {
         ],
       ]),
       hasOutputForRun: (runId) => runId === "run-live-1",
-      companyId: "company-1",
       projectId: "project-1",
       agentMap,
       currentUserId: "user-1",

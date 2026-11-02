@@ -106,7 +106,6 @@ describe("CommentThread", () => {
     const root = createRoot(container);
     const agent: Agent = {
       id: "agent-1",
-      companyId: "company-1",
       name: "CodexCoder",
       urlKey: "codexcoder",
       role: "engineer",
@@ -201,7 +200,6 @@ describe("CommentThread", () => {
           <CommentThread
             comments={[{
               id: "comment-1",
-              companyId: "company-1",
               issueId: "issue-1",
               authorAgentId: null,
               authorUserId: "local-board",
@@ -285,7 +283,6 @@ describe("CommentThread", () => {
     const root = createRoot(container);
     const agent: Agent = {
       id: "agent-1",
-      companyId: "company-1",
       name: "CodexCoder",
       urlKey: "codexcoder",
       role: "engineer",
@@ -309,7 +306,6 @@ describe("CommentThread", () => {
     };
     const approval: Approval = {
       id: "approval-1",
-      companyId: "company-1",
       type: "request_board_approval",
       requestedByAgentId: "agent-1",
       requestedByUserId: null,
@@ -361,7 +357,6 @@ describe("CommentThread", () => {
           <CommentThread
             comments={[{
               id: "comment-1",
-              companyId: "company-1",
               issueId: "issue-1",
               authorAgentId: null,
               authorUserId: "user-1",
@@ -419,7 +414,6 @@ describe("CommentThread", () => {
           <CommentThread
             comments={[{
               id: "comment-ref",
-              companyId: "company-1",
               issueId: "issue-1",
               authorAgentId: null,
               authorUserId: "user-1",

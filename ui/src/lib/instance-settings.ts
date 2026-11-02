@@ -1,7 +1,8 @@
-export const INSTANCE_SETTINGS_PATH_PREFIX = "/company/settings/instance";
+export const INSTANCE_SETTINGS_PATH_PREFIX = "/organization/settings/instance";
 export const DEFAULT_INSTANCE_SETTINGS_PATH = `${INSTANCE_SETTINGS_PATH_PREFIX}/general`;
 
 const LEGACY_INSTANCE_SETTINGS_PATH_PREFIX = "/instance/settings";
+const LEGACY_COMPANY_INSTANCE_SETTINGS_PATH_PREFIX = "/company/settings/instance";
 const LEGACY_SETTINGS_PATH_PREFIX = "/settings";
 
 function splitPath(rawPath: string): { pathname: string; search: string; hash: string } {
@@ -13,25 +14,13 @@ function splitPath(rawPath: string): { pathname: string; search: string; hash: s
   };
 }
 
-function normalizePathForMatching(rawPath: string): { pathname: string; search: string; hash: string } {
-  const { pathname, search, hash } = splitPath(rawPath);
-  const segments = pathname.split("/").filter(Boolean);
-  const first = segments[0]?.toLowerCase();
-  const second = segments[1]?.toLowerCase();
-
-  if (first === "company") {
-    return { pathname: `/${segments.join("/")}`, search, hash };
-  }
-
-  if (second === "company" || second === "settings" || second === "instance") {
-    return { pathname: `/${segments.slice(1).join("/")}`, search, hash };
-  }
-
-  return { pathname, search, hash };
-}
-
 function instanceSettingsSuffix(pathname: string): string | null {
-  if (pathname === "/company/settings/environments") return "/environments";
+  if (pathname === "/organization/settings/environments") return "/environments";
+
+  if (pathname === LEGACY_COMPANY_INSTANCE_SETTINGS_PATH_PREFIX) return "/general";
+  if (pathname.startsWith(`${LEGACY_COMPANY_INSTANCE_SETTINGS_PATH_PREFIX}/`)) {
+    return pathname.slice(LEGACY_COMPANY_INSTANCE_SETTINGS_PATH_PREFIX.length);
+  }
 
   if (pathname === INSTANCE_SETTINGS_PATH_PREFIX) return "/general";
   if (pathname.startsWith(`${INSTANCE_SETTINGS_PATH_PREFIX}/`)) {
@@ -56,7 +45,7 @@ function instanceSettingsSuffix(pathname: string): string | null {
 export function normalizeRememberedInstanceSettingsPath(rawPath: string | null): string {
   if (!rawPath) return DEFAULT_INSTANCE_SETTINGS_PATH;
 
-  const { pathname, search, hash } = normalizePathForMatching(rawPath);
+  const { pathname, search, hash } = splitPath(rawPath);
   const suffix = instanceSettingsSuffix(pathname);
   if (!suffix) return DEFAULT_INSTANCE_SETTINGS_PATH;
 

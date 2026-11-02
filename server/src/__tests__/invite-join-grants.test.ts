@@ -127,7 +127,7 @@ describe("human invite roles", () => {
             grants: [
               {
                 permissionKey: "users:invite",
-                scope: { companyId: "company-1" },
+                scope: { },
               },
             ],
           },
@@ -137,7 +137,7 @@ describe("human invite roles", () => {
     ).toEqual([
       {
         permissionKey: "users:invite",
-        scope: { companyId: "company-1" },
+        scope: { },
       },
     ]);
   });

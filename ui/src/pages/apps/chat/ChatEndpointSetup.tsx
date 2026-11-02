@@ -30,7 +30,6 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
-import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { agentsApi } from "@/api/agents";
 import { instanceSettingsApi } from "@/api/instanceSettings";
@@ -166,7 +165,6 @@ function ChatSdkEndpointSetup() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const provider = isProvider(params.get("provider"))
@@ -197,9 +195,8 @@ function ChatSdkEndpointSetup() {
   }, [setBreadcrumbs]);
 
   const agentsQuery = useQuery({
-    queryKey: ["chat-endpoint-setup-agents", selectedCompanyId],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: ["chat-endpoint-setup-agents"],
+    queryFn: () => agentsApi.list(),
   });
   const resumeQuery = useQuery({
     queryKey: ["chat-endpoint-setup-resume", resumeEndpointId],
@@ -267,7 +264,7 @@ function ChatSdkEndpointSetup() {
   };
   const createEndpoint = useMutation({
     mutationFn: () =>
-      chatEndpointsApi.create(selectedCompanyId!, {
+      chatEndpointsApi.create({
         provider: provider!,
         assignedAgentId: agentId,
       }),
@@ -410,7 +407,7 @@ function ChatSdkEndpointSetup() {
     reconnectRequested,
   );
   const isSlack = provider === "slack";
-  const avatarProgress = useSlackAvatarProgress(selectedCompanyId, endpoint?.id);
+  const avatarProgress = useSlackAvatarProgress(endpoint?.id);
   const tryStep = isSlack ? 6 : 2;
   const availableStep = endpoint
     ? !repairing &&
@@ -424,7 +421,7 @@ function ChatSdkEndpointSetup() {
   const step = Math.min(viewedStep ?? availableStep, availableStep);
   const avatarAgent = useQuery({
     queryKey: queryKeys.agents.detail(endpoint?.assignedAgentId ?? ""),
-    queryFn: () => agentsApi.get(endpoint!.assignedAgentId, endpoint!.companyId),
+    queryFn: () => agentsApi.get(endpoint!.assignedAgentId),
     enabled: Boolean(isSlack && endpoint && step === 4),
   });
   const slackVerificationQuery = useQuery({
@@ -455,12 +452,6 @@ function ChatSdkEndpointSetup() {
     return (
       <p className="text-sm text-destructive">
         This chat provider is not supported.
-      </p>
-    );
-  if (!selectedCompanyId)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Select an organization to connect chat.
       </p>
     );
 

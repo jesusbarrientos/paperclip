@@ -14,13 +14,12 @@ describe("announcement lifecycle", () => {
   let container: HTMLDivElement;
   let root: Root;
   let userId: string;
-  let companyId: string;
   let enabled: boolean;
   let failure: ReturnType<typeof vi.fn<(savedLocally: boolean) => void>>;
   let observed: ReturnType<typeof useAnnouncement>;
   let sequence = 0;
   function Harness() {
-    observed = useAnnouncement({ userId, companyId, enabled, onSaveFailure: failure });
+    observed = useAnnouncement({ userId, enabled, onSaveFailure: failure });
     return <div>{observed.announcement?.id}</div>;
   }
   const render = async () => { await act(async () => root.render(<Harness />)); };
@@ -36,7 +35,6 @@ describe("announcement lifecycle", () => {
     api.current.mockResolvedValue(announcementPreview);
     api.dismiss.mockResolvedValue(undefined);
     userId = `user-${++sequence}`;
-    companyId = "company-one";
     enabled = true;
     failure = vi.fn();
     // The repository's generic storage stub lacks key()/length; this feature
@@ -65,7 +63,6 @@ describe("announcement lifecycle", () => {
     expect(container.textContent).toBe(announcementPreview.id);
     await act(async () => { await vi.advanceTimersByTimeAsync(3_600_000); });
     expect(api.current).toHaveBeenCalledTimes(1);
-    companyId = "company-two";
     await render();
     expect(api.current).toHaveBeenCalledTimes(1);
   });
@@ -92,7 +89,7 @@ describe("announcement lifecycle", () => {
     await render(); await settle();
     await act(async () => observed.dismiss(announcementPreview.id));
     expect(container.textContent).toBe("");
-    expect(api.dismiss).toHaveBeenCalledWith(announcementPreview.id, companyId, expect.any(AbortSignal));
+    expect(api.dismiss).toHaveBeenCalledWith(announcementPreview.id, expect.any(AbortSignal));
     await act(async () => root.unmount());
     root = createRoot(container);
     api.current.mockResolvedValue({ ...announcementPreview, title: "Corrected" });

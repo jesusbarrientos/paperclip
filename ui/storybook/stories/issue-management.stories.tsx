@@ -85,7 +85,6 @@ const longProject: Project = {
 const longLabels: IssueLabel[] = [
   {
     id: "label-long-properties-pane-regression",
-    companyId,
     name: "label-with-a-deliberately-long-name-that-must-truncate-inside-the-pane",
     color: "#0f766e",
     createdAt: new Date("2026-01-01T00:00:00Z"),
@@ -93,7 +92,6 @@ const longLabels: IssueLabel[] = [
   },
   {
     id: "label-long-properties-pane-follow-up",
-    companyId,
     name: "secondary-overflow-regression-label",
     color: "#b45309",
     createdAt: new Date("2026-01-01T00:00:00Z"),
@@ -188,13 +186,13 @@ function Section({
 }
 
 function hydrateStorybookQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  queryClient.setQueryData(queryKeys.companies.all, { companies: storybookCompanies, unauthorized: false });
+  queryClient.setQueryData(queryKeys.organization, storybookCompanies[0]);
   queryClient.setQueryData(queryKeys.auth.session, storybookAuthSession);
-  queryClient.setQueryData(queryKeys.agents.list(companyId), storybookAgents);
-  queryClient.setQueryData(queryKeys.projects.list(companyId), storybookProjects);
-  queryClient.setQueryData(queryKeys.projects.list(companyId, { includeArchived: true }), storybookProjects);
-  queryClient.setQueryData(queryKeys.issues.list(companyId), storybookIssues);
-  queryClient.setQueryData(queryKeys.issues.labels(companyId), storybookIssueLabels);
+  queryClient.setQueryData(queryKeys.agents.list(), storybookAgents);
+  queryClient.setQueryData(queryKeys.projects.list(), storybookProjects);
+  queryClient.setQueryData(queryKeys.projects.list({ includeArchived: true }), storybookProjects);
+  queryClient.setQueryData(queryKeys.issues.list(), storybookIssues);
+  queryClient.setQueryData(queryKeys.issues.labels(), storybookIssueLabels);
   queryClient.setQueryData(queryKeys.issues.documents(primaryIssue.id), storybookIssueDocuments);
   queryClient.setQueryData(queryKeys.issues.runs(primaryIssue.id), storybookIssueRuns);
   queryClient.setQueryData(queryKeys.issues.liveRuns(primaryIssue.id), []);
@@ -203,7 +201,7 @@ function hydrateStorybookQueries(queryClient: ReturnType<typeof useQueryClient>)
     enableIsolatedWorkspaces: true,
     enableRoutineTriggers: true,
   });
-  queryClient.setQueryData(queryKeys.access.companyUserDirectory(companyId), {
+  queryClient.setQueryData(queryKeys.access.companyUserDirectory(), {
     users: [
       {
         principalId: "user-board",
@@ -228,11 +226,11 @@ function hydrateStorybookQueries(queryClient: ReturnType<typeof useQueryClient>)
     ],
   });
   queryClient.setQueryData(
-    queryKeys.sidebarPreferences.projectOrder(companyId, storybookAuthSession.user.id),
+    queryKeys.sidebarPreferences.projectOrder(storybookAuthSession.user.id),
     { orderedIds: storybookProjects.map((project) => project.id), updatedAt: null },
   );
   queryClient.setQueryData(
-    queryKeys.executionWorkspaces.summaryList(companyId),
+    queryKeys.executionWorkspaces.summaryList(),
     storybookExecutionWorkspaces.map((workspace) => ({
       id: workspace.id,
       name: workspace.name,
@@ -241,7 +239,7 @@ function hydrateStorybookQueries(queryClient: ReturnType<typeof useQueryClient>)
     })),
   );
   queryClient.setQueryData(
-    queryKeys.executionWorkspaces.list(companyId, {
+    queryKeys.executionWorkspaces.list({
       projectId: primaryIssue.projectId ?? undefined,
       projectWorkspaceId: primaryIssue.projectWorkspaceId ?? undefined,
       reuseEligible: true,
@@ -283,14 +281,14 @@ function LongValueStorybookData({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [ready] = useState(() => {
     hydrateStorybookQueries(queryClient);
-    queryClient.setQueryData(queryKeys.projects.list(companyId), [longProject, ...storybookProjects]);
-    queryClient.setQueryData(queryKeys.projects.list(companyId, { includeArchived: true }), [longProject, ...storybookProjects]);
-    queryClient.setQueryData(queryKeys.issues.list(companyId), [
+    queryClient.setQueryData(queryKeys.projects.list(), [longProject, ...storybookProjects]);
+    queryClient.setQueryData(queryKeys.projects.list({ includeArchived: true }), [longProject, ...storybookProjects]);
+    queryClient.setQueryData(queryKeys.issues.list(), [
       longValueIssue,
       longParentIssue,
       ...storybookIssues,
     ]);
-    queryClient.setQueryData(queryKeys.issues.labels(companyId), [...longLabels, ...storybookIssueLabels]);
+    queryClient.setQueryData(queryKeys.issues.labels(), [...longLabels, ...storybookIssueLabels]);
     seedIssueListLocalStorage();
     return true;
   });
@@ -701,7 +699,7 @@ function QuicklookSurfaces() {
         <IssueLinkQuicklook
           issuePathId={primaryIssue.identifier ?? primaryIssue.id}
           issuePrefetch={primaryIssue}
-          to={`/PAP/issues/${primaryIssue.identifier}`}
+          to={`/issues/${primaryIssue.identifier}`}
           className="font-mono text-sm text-primary hover:underline"
         >
           {primaryIssue.identifier}
@@ -709,7 +707,7 @@ function QuicklookSurfaces() {
         <div className="mt-4 rounded-md border border-border bg-popover p-3 shadow-xl">
           <IssueQuicklookCard
             issue={primaryIssue}
-            linkTo={`/PAP/issues/${primaryIssue.identifier}`}
+            linkTo={`/issues/${primaryIssue.identifier}`}
             compact
           />
         </div>
@@ -726,7 +724,7 @@ function QuicklookSurfaces() {
         <div className="mt-4 rounded-md border border-border bg-card p-3">
           <IssueQuicklookCard
             issue={storybookIssues[2]!}
-            linkTo={`/PAP/issues/${storybookIssues[2]!.identifier}`}
+            linkTo={`/issues/${storybookIssues[2]!.identifier}`}
           />
         </div>
       </div>

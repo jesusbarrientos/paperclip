@@ -130,10 +130,7 @@ export async function syncGitHubBotTools(
     .select()
     .from(toolConnections)
     .where(
-      and(
-        eq(toolConnections.companyId, endpoint.companyId),
-        eq(toolConnections.id, endpoint.connectionId),
-      ),
+      eq(toolConnections.id, endpoint.connectionId),
     );
   if (!connection) return;
   for (const tool of GITHUB_BOT_TOOLS) {
@@ -141,7 +138,6 @@ export async function syncGitHubBotTools(
       .update(JSON.stringify(tool))
       .digest("hex");
     const values = {
-      companyId: endpoint.companyId,
       applicationId: connection.applicationId,
       connectionId: connection.id,
       entryKind: "tool" as const,
@@ -172,7 +168,6 @@ export async function syncGitHubBotTools(
     await tx
       .insert(toolConnectionInstalls)
       .values({
-        companyId: endpoint.companyId,
         connectionId: connection.id,
         targetType: "agent",
         targetId: endpoint.assignedAgentId,
@@ -183,7 +178,6 @@ export async function syncGitHubBotTools(
   const [profile] = await tx
     .insert(toolProfiles)
     .values({
-      companyId: endpoint.companyId,
       profileKey,
       name: `GitHub bot ${endpoint.id}`,
       description: "Task-scoped tools using this bot's App connection",
@@ -192,20 +186,16 @@ export async function syncGitHubBotTools(
       metadata: { githubChatEndpointId: endpoint.id },
     })
     .onConflictDoUpdate({
-      target: [toolProfiles.companyId, toolProfiles.profileKey],
+      target: [toolProfiles.profileKey],
       set: { status: enabled ? "active" : "disabled", updatedAt: new Date() },
     })
     .returning();
   await tx
     .delete(toolProfileEntries)
     .where(
-      and(
-        eq(toolProfileEntries.companyId, endpoint.companyId),
-        eq(toolProfileEntries.profileId, profile!.id),
-      ),
+      eq(toolProfileEntries.profileId, profile!.id),
     );
   await tx.insert(toolProfileEntries).values({
-    companyId: endpoint.companyId,
     profileId: profile!.id,
     selectorType: "connection",
     connectionId: connection.id,
@@ -214,7 +204,6 @@ export async function syncGitHubBotTools(
   await tx
     .insert(toolProfileBindings)
     .values({
-      companyId: endpoint.companyId,
       profileId: profile!.id,
       targetType: "agent",
       targetId: endpoint.assignedAgentId,
@@ -228,7 +217,7 @@ export async function githubBotToolsForSession(
   db: Db,
   session: Pick<
     ToolGatewaySession,
-    "companyId" | "agentId" | "issueId" | "runId"
+    "agentId" | "issueId" | "runId"
   >,
 ): Promise<ToolGatewayDescriptor[]> {
   if (!session.agentId || !session.issueId || !session.runId) return [];
@@ -258,7 +247,6 @@ export async function githubBotToolsForSession(
     )
     .where(
       and(
-        eq(chatConversations.companyId, session.companyId),
         eq(chatConversations.issueId, session.issueId),
         eq(chatEndpoints.assignedAgentId, session.agentId),
         eq(chatEndpoints.provider, "github"),
@@ -298,7 +286,6 @@ export async function githubBotToolsForSession(
 /** Only a run on the endpoint's bound task may realize its channel tools. */
 export async function githubBotConnectionIdsForRun(
   db: Db,
-  companyId: string,
   agentId: string,
   runId: string,
 ): Promise<Set<string>> {
@@ -310,7 +297,6 @@ export async function githubBotConnectionIdsForRun(
     .from(heartbeatRuns)
     .where(
       and(
-        eq(heartbeatRuns.companyId, companyId),
         eq(heartbeatRuns.agentId, agentId),
         eq(heartbeatRuns.id, runId),
       ),
@@ -333,7 +319,6 @@ export async function githubBotConnectionIdsForRun(
     )
     .where(
       and(
-        eq(chatConversations.companyId, companyId),
         eq(chatConversations.issueId, issueId),
         eq(chatEndpoints.assignedAgentId, agentId),
         eq(chatEndpoints.provider, "github"),
@@ -352,7 +337,7 @@ export async function githubGuestBotConnectionForSession(
   db: Db,
   session: Pick<
     ToolGatewaySession,
-    "companyId" | "agentId" | "runId" | "issueId"
+    "agentId" | "runId" | "issueId"
   >,
 ): Promise<string | null> {
   if (!session.runId || !session.agentId || !session.issueId) return null;
@@ -361,7 +346,6 @@ export async function githubGuestBotConnectionForSession(
     .from(heartbeatRuns)
     .where(
       and(
-        eq(heartbeatRuns.companyId, session.companyId),
         eq(heartbeatRuns.agentId, session.agentId),
         eq(heartbeatRuns.id, session.runId),
       ),
@@ -388,7 +372,6 @@ export async function githubGuestBotConnectionForSession(
     )
     .where(
       and(
-        eq(chatMessageLinks.companyId, session.companyId),
         eq(chatMessageLinks.commentId, commentId),
         eq(chatConversations.issueId, session.issueId),
         eq(chatEndpoints.assignedAgentId, session.agentId),

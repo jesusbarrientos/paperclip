@@ -181,7 +181,6 @@ function documentHasUnsavedChanges(doc: IssueDocument, draft: DraftState | null)
 function toDocumentSummary(document: IssueDocument) {
   return {
     id: document.id,
-    companyId: document.companyId,
     issueId: document.issueId,
     key: document.key,
     title: document.title,

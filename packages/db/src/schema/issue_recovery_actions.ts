@@ -10,14 +10,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
 export const issueRecoveryActions = pgTable(
   "issue_recovery_actions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     sourceIssueId: uuid("source_issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     recoveryIssueId: uuid("recovery_issue_id").references(() => issues.id, { onDelete: "set null" }),
     kind: text("kind").notNull(),
@@ -45,24 +43,21 @@ export const issueRecoveryActions = pgTable(
   },
   (table) => ({
     companySourceStatusIdx: index("issue_recovery_actions_company_source_status_idx").on(
-      table.companyId,
       table.sourceIssueId,
       table.status,
     ),
     companyOwnerStatusIdx: index("issue_recovery_actions_company_owner_status_idx").on(
-      table.companyId,
       table.ownerAgentId,
       table.status,
     ),
     companyRecoveryIssueIdx: index("issue_recovery_actions_company_recovery_issue_idx").on(
-      table.companyId,
       table.recoveryIssueId,
     ),
     activeSourceIdx: uniqueIndex("issue_recovery_actions_active_source_uq")
-      .on(table.companyId, table.sourceIssueId)
+      .on(table.sourceIssueId)
       .where(sql`${table.status} in ('active', 'escalated')`),
     activeFingerprintIdx: uniqueIndex("issue_recovery_actions_active_fingerprint_uq")
-      .on(table.companyId, table.sourceIssueId, table.cause, table.fingerprint)
+      .on(table.sourceIssueId, table.cause, table.fingerprint)
       .where(sql`${table.status} in ('active', 'escalated')`),
   }),
 );

@@ -4,7 +4,7 @@ import { agents, heartbeatRuns, issues, projects } from "@paperclipai/db";
 import { isUuidLike } from "@paperclipai/shared";
 import type { Request } from "express";
 import { forbidden, notFound } from "../errors.js";
-import { assertCompanyAccess, hasCompanyAccess } from "./authz.js";
+import { assertOrgAccess, hasOrgAccess } from "./authz.js";
 import { parseProjectExecutionWorkspacePolicy } from "../services/execution-workspace-policy.js";
 import { isLowTrustRuntimeManagementAllowed } from "../services/low-trust-runtime-containment.js";
 import { resolveCoreTrustPreset, type TrustPresetResolution } from "../services/trust-preset-resolver.js";
@@ -32,14 +32,14 @@ function readRunIssueId(context: Record<string, unknown> | null) {
   return typeof nestedIssueId === "string" && isUuidLike(nestedIssueId) ? nestedIssueId : null;
 }
 
-async function listReportingSubtreeAgentIds(db: Db, companyId: string, actorAgentId: string) {
+async function listReportingSubtreeAgentIds(db: Db, actorAgentId: string) {
   const companyAgents = await db
     .select({
       id: agents.id,
       reportsTo: agents.reportsTo,
     })
     .from(agents)
-    .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
+    .where(ne(agents.status, "terminated"));
 
   const reportsByManager = new Map<string, string[]>();
   for (const agent of companyAgents) {
@@ -69,7 +69,6 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
   db: Db,
   req: Request,
   input: {
-    companyId: string;
     projectWorkspaceId?: string | null;
     executionWorkspaceId?: string | null;
     sourceIssueId?: string | null;
@@ -82,7 +81,6 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
   const actorAgent = await db
     .select({
       id: agents.id,
-      companyId: agents.companyId,
       role: agents.role,
       permissions: agents.permissions,
     })
@@ -90,21 +88,19 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
     .where(eq(agents.id, req.actor.agentId))
     .then((rows) => rows[0] ?? null);
 
-  if (!actorAgent || actorAgent.companyId !== input.companyId) {
-    throw forbidden("Agent key cannot access another company");
+  if (!actorAgent) {
+    throw forbidden("Agent not found");
   }
 
   const actorRun = req.actor.runId
     ? await db
         .select({
-          companyId: heartbeatRuns.companyId,
           agentId: heartbeatRuns.agentId,
           contextSnapshot: heartbeatRuns.contextSnapshot,
         })
         .from(heartbeatRuns)
         .where(and(
           eq(heartbeatRuns.id, req.actor.runId),
-          eq(heartbeatRuns.companyId, input.companyId),
           eq(heartbeatRuns.agentId, actorAgent.id),
         ))
         .then((rows) => rows[0] ?? null)
@@ -113,7 +109,6 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
   const runExecutionPolicy = readObject(runContext?.executionPolicy);
 
   const actorRuntimeTrust = assertLowTrustCanManageRuntimeForActor({
-    companyId: input.companyId,
     actorAgent,
     runExecutionPolicy,
   });
@@ -128,17 +123,13 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
     ? await db
         .select({
           id: issues.id,
-          companyId: issues.companyId,
           projectId: issues.projectId,
           executionPolicy: issues.executionPolicy,
           projectExecutionWorkspacePolicy: projects.executionWorkspacePolicy,
         })
         .from(issues)
-        .leftJoin(projects, and(eq(projects.id, issues.projectId), eq(projects.companyId, issues.companyId)))
-        .where(and(
-          eq(issues.id, runIssueId),
-          eq(issues.companyId, input.companyId),
-        ))
+        .leftJoin(projects, eq(projects.id, issues.projectId))
+        .where(eq(issues.id, runIssueId))
         .then((rows) => rows[0] ?? null)
     : null;
 
@@ -168,15 +159,13 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
   const linkedScopeIssues = await db
     .select({
       id: issues.id,
-      companyId: issues.companyId,
       projectId: issues.projectId,
       executionPolicy: issues.executionPolicy,
       projectExecutionWorkspacePolicy: projects.executionWorkspacePolicy,
     })
     .from(issues)
-    .leftJoin(projects, and(eq(projects.id, issues.projectId), eq(projects.companyId, issues.companyId)))
+    .leftJoin(projects, eq(projects.id, issues.projectId))
     .where(and(
-      eq(issues.companyId, input.companyId),
       isNull(issues.hiddenAt),
       inArray(issues.status, WORKSPACE_RUNTIME_ELIGIBLE_ISSUE_STATUS_LIST),
       workspaceScopeCondition,
@@ -195,19 +184,17 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
     return { runIssueId };
   }
 
-  const eligibleAgentIds = await listReportingSubtreeAgentIds(db, input.companyId, actorAgent.id);
+  const eligibleAgentIds = await listReportingSubtreeAgentIds(db, actorAgent.id);
   const linkedIssue = await db
     .select({
       id: issues.id,
-      companyId: issues.companyId,
       projectId: issues.projectId,
       executionPolicy: issues.executionPolicy,
       projectExecutionWorkspacePolicy: projects.executionWorkspacePolicy,
     })
     .from(issues)
-    .leftJoin(projects, and(eq(projects.id, issues.projectId), eq(projects.companyId, issues.companyId)))
+    .leftJoin(projects, eq(projects.id, issues.projectId))
     .where(and(
-      eq(issues.companyId, input.companyId),
       isNull(issues.hiddenAt),
       inArray(issues.status, WORKSPACE_RUNTIME_ELIGIBLE_ISSUE_STATUS_LIST),
       inArray(issues.assigneeAgentId, eligibleAgentIds),
@@ -229,23 +216,18 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
 }
 
 function assertLowTrustCanManageRuntimeForActor(input: {
-  companyId: string;
   actorAgent: {
     id: string;
-    companyId: string;
     permissions: unknown;
   };
   runExecutionPolicy?: unknown;
 }): TrustPresetResolution {
   const resolution = resolveCoreTrustPreset({
-    companyId: input.companyId,
     agent: {
-      companyId: input.actorAgent.companyId,
       permissions: input.actorAgent.permissions,
     },
     run: input.runExecutionPolicy
       ? {
-          companyId: input.companyId,
           executionPolicy: input.runExecutionPolicy,
         }
       : null,
@@ -261,12 +243,10 @@ function assertLowTrustCanManageRuntimeForActor(input: {
 function assertLowTrustCanManageRuntimeForIssue(input: {
   actorAgent: {
     id: string;
-    companyId: string;
     permissions: unknown;
   };
   issue: {
     id: string;
-    companyId: string;
     projectId: string | null;
     executionPolicy: unknown;
   };
@@ -274,24 +254,19 @@ function assertLowTrustCanManageRuntimeForIssue(input: {
   runExecutionPolicy?: unknown;
 }) {
   const resolution = resolveCoreTrustPreset({
-    companyId: input.issue.companyId,
     agent: {
-      companyId: input.actorAgent.companyId,
       permissions: input.actorAgent.permissions,
     },
     project: input.issue.projectId
       ? {
-          companyId: input.issue.companyId,
           executionWorkspacePolicy: parseProjectExecutionWorkspacePolicy(input.projectExecutionWorkspacePolicy),
         }
       : null,
     issue: {
-      companyId: input.issue.companyId,
       executionPolicy: input.issue.executionPolicy,
     },
     run: input.runExecutionPolicy
       ? {
-          companyId: input.issue.companyId,
           executionPolicy: input.runExecutionPolicy,
         }
       : null,
@@ -308,14 +283,13 @@ export async function assertCanManageProjectWorkspaceRuntimeServices(
   db: Db,
   req: Request,
   input: {
-    companyId: string;
     projectWorkspaceId: string;
   },
 ) {
-  if (!hasCompanyAccess(req, input.companyId)) {
+  if (!hasOrgAccess(req)) {
     throw notFound("Project workspace not found");
   }
-  assertCompanyAccess(req, input.companyId);
+  assertOrgAccess(req);
   if (req.actor.type === "board") return;
   await assertAgentCanManageRuntimeServicesForWorkspace(db, req, input);
 }
@@ -324,15 +298,14 @@ export async function assertCanManageExecutionWorkspaceRuntimeServices(
   db: Db,
   req: Request,
   input: {
-    companyId: string;
     executionWorkspaceId: string;
     sourceIssueId?: string | null;
   },
 ): Promise<WorkspaceRuntimeControlAuthorization> {
-  if (!hasCompanyAccess(req, input.companyId)) {
+  if (!hasOrgAccess(req)) {
     throw notFound("Execution workspace not found");
   }
-  assertCompanyAccess(req, input.companyId);
+  assertOrgAccess(req);
   if (req.actor.type === "board") {
     return { actorType: "board", agentId: null, runId: null, issueId: null };
   }

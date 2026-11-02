@@ -54,7 +54,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   function createApp(
-    companyId: string,
     opts: Parameters<typeof issueRoutes>[2] = {},
   ) {
     const app = express();
@@ -64,8 +63,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       (req as any).actor = {
         type: "board",
         userId,
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active", principalId: userId }],
+        memberships: [{ membershipRole: "owner", status: "active", principalId: userId }],
         source: "cloud_tenant",
         isInstanceAdmin: false,
       };
@@ -81,7 +79,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     return `P${randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase()}`;
   }
 
-  async function seedCloudTenantMember(companyId: string, userId = "cloud-user-1") {
+  async function seedCloudTenantMember(userId = "cloud-user-1") {
     await db.insert(companyMemberships).values({
       principalType: "user",
       principalId: userId,
@@ -108,10 +106,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values({
       id: assigneeAgentId,
-      companyId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -123,7 +120,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(issues).values([
       {
         id: assignedIssueId,
-        companyId,
         title: "Assigned issue",
         status: "todo",
         priority: "medium",
@@ -131,7 +127,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: unassignedIssueId,
-        companyId,
         title: "Unassigned issue",
         status: "todo",
         priority: "medium",
@@ -139,9 +134,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ status: "todo", assigneeAgentId: "null", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -160,10 +155,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values({
       id: ownerAgentId,
-      companyId,
       name: "Recovery owner",
       role: "engineer",
       status: "active",
@@ -174,7 +168,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Compact issue",
       description: "This long detail belongs on the issue detail endpoint, not the board list.",
       status: "todo",
@@ -182,7 +175,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       billingCode: "product",
     });
     const recoveryAction = await issueRecoveryActionService(db).upsertSourceScoped({
-      companyId,
       sourceIssueId: issueId,
       kind: "missing_disposition",
       ownerType: "agent",
@@ -194,7 +186,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       wakePolicy: { type: "wake_owner" },
     });
     await db.insert(activityLog).values({
-      companyId,
       actorType: "system",
       actorId: "system",
       action: "issue.successful_run_handoff_required",
@@ -208,9 +199,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -219,7 +210,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({
       id: issueId,
-      companyId,
       title: "Compact issue",
       description: "This long detail belongs on the issue detail endpoint, not the board list.",
       status: "todo",
@@ -256,10 +246,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -270,14 +259,12 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Live handoff issue",
       status: "in_progress",
       priority: "medium",
       assigneeAgentId: agentId,
     });
     await db.insert(activityLog).values({
-      companyId,
       actorType: "system",
       actorId: "system",
       action: "issue.successful_run_handoff_required",
@@ -288,15 +275,14 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       contextSnapshot: { taskId: issueId },
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -320,10 +306,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -334,14 +319,12 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Escalated handoff issue",
       status: "in_progress",
       priority: "medium",
       assigneeAgentId: agentId,
     });
     await db.insert(activityLog).values({
-      companyId,
       actorType: "system",
       actorId: "system",
       action: "issue.successful_run_handoff_escalated",
@@ -352,15 +335,14 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       contextSnapshot: { taskId: issueId },
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -387,7 +369,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -398,14 +379,12 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: resolverRunId,
-      companyId,
       agentId,
       status: "succeeded",
       contextSnapshot: { issueId },
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: `${uniqueIssuePrefix()}-1`,
       title: "Stale handoff",
       status: "in_progress",
@@ -413,7 +392,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       assigneeAgentId: agentId,
     });
     await db.insert(activityLog).values({
-      companyId,
       actorType: "system",
       actorId: "heartbeat",
       action: "issue.successful_run_handoff_required",
@@ -425,7 +403,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
 
     await expect(resolveRequiredSuccessfulRunHandoffOnValidPath(db, {
-      companyId,
       issueId,
       issueIdentifier: "PAP-1",
       agentId,
@@ -458,24 +435,23 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Cached compact issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
     const first = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" });
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.headers.etag).toBeTruthy();
 
     const second = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" })
       .set("If-None-Match", first.headers.etag);
 
@@ -494,16 +470,15 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Coalesced issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp({
       issueListDiagnostics: {
         async onComputeStart() {
           computeCount += 1;
@@ -513,7 +488,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     const responses = await Promise.all(Array.from({ length: 10 }, () =>
       request(app)
-        .get(`/api/companies/${companyId}/issues`)
+        .get(`/api/issues`)
         .query({ view: "compact", limit: "20" })
     ));
 
@@ -536,17 +511,16 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId, "cloud-user-1");
-    await seedCloudTenantMember(companyId, "cloud-user-2");
+    await seedCloudTenantMember("cloud-user-1");
+    await seedCloudTenantMember("cloud-user-2");
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Separated issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp({
       issueListDiagnostics: {
         async onComputeStart() {
           computeCount += 1;
@@ -556,11 +530,11 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     const [first, second] = await Promise.all([
       request(app)
-        .get(`/api/companies/${companyId}/issues`)
+        .get(`/api/issues`)
         .set("X-Test-User-Id", "cloud-user-1")
         .query({ view: "compact", limit: "20" }),
       request(app)
-        .get(`/api/companies/${companyId}/issues`)
+        .get(`/api/issues`)
         .set("X-Test-User-Id", "cloud-user-2")
         .query({ view: "compact", limit: "20" }),
     ]);
@@ -583,16 +557,15 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Cached issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp({
       issueListDiagnostics: {
         onComputeStart() {
           computeCount += 1;
@@ -600,10 +573,10 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     });
     const first = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" });
     const second = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ view: "compact", limit: "20" });
 
     expect(first.status, JSON.stringify(first.body)).toBe(200);
@@ -623,19 +596,18 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Bounded cache issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
     for (let index = 0; index < ISSUE_LIST_SERVER_CACHE_MAX_ENTRIES + 5; index += 1) {
       const res = await request(app)
-        .get(`/api/companies/${companyId}/issues`)
+        .get(`/api/issues`)
         .query({ view: "compact", limit: "20", q: `cache-key-${index}` });
       expect(res.status, JSON.stringify(res.body)).toBe(200);
     }
@@ -654,16 +626,15 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Storm issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp({
       issueListDiagnostics: {
         async onComputeStart() {
           await new Promise((resolve) => setTimeout(resolve, 50));
@@ -675,7 +646,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     const responses = await Promise.all(Array.from({ length: 5 }, () =>
       request(app)
-        .get(`/api/companies/${companyId}/issues`)
+        .get(`/api/issues`)
         .set("Referer", "http://localhost:3100/issues?q=do-not-log-this")
         .set("X-Paperclip-Tab-Visible", "visible")
         .query({ view: "compact", limit: "20", q: "do-not-log-this" })
@@ -685,8 +656,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     expect(stormEvents).toHaveLength(1);
     expect(stormEvents[0]).toMatchObject({
       event: "request_storm_detected",
-      route: "GET /api/companies/:companyId/issues",
-      companyId,
+      route: "GET /api/issues",
       visibilityHint: "visible",
       referer: "/issues",
     });
@@ -709,11 +679,10 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values([
       {
         id: assigneeAgentId,
-        companyId,
         name: "Assignee",
         role: "engineer",
         status: "active",
@@ -724,7 +693,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: otherAgentId,
-        companyId,
         name: "Other",
         role: "engineer",
         status: "active",
@@ -737,7 +705,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(issues).values([
       {
         id: assignedIssueId,
-        companyId,
         title: "Assigned issue",
         status: "todo",
         priority: "medium",
@@ -745,7 +712,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: otherIssueId,
-        companyId,
         title: "Other issue",
         status: "todo",
         priority: "medium",
@@ -753,9 +719,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ status: "todo", assigneeAgentId, limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -770,11 +736,11 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ status: "todo", assigneeAgentId: "bad", limit: "20" });
 
     expect(res.status).toBe(422);
@@ -785,18 +751,15 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
 
   it("returns opt-in live descendant counts for offscreen live descendants only", async () => {
     const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
     const agentId = randomUUID();
     const otherAgentId = randomUUID();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
     const grandchildIssueId = randomUUID();
     const hiddenChildIssueId = randomUUID();
-    const crossCompanyChildIssueId = randomUUID();
     const rootRunId = randomUUID();
     const grandchildRunId = randomUUID();
     const hiddenRunId = randomUUID();
-    const crossCompanyRunId = randomUUID();
 
     await db.insert(companies).values([
       {
@@ -805,18 +768,11 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
         issuePrefix: uniqueIssuePrefix(),
         requireBoardApprovalForNewAgents: false,
       },
-      {
-        id: otherCompanyId,
-        name: "Other Company",
-        issuePrefix: uniqueIssuePrefix(),
-        requireBoardApprovalForNewAgents: false,
-      },
     ]);
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values([
       {
         id: agentId,
-        companyId,
         name: "Assignee",
         role: "engineer",
         status: "active",
@@ -827,7 +783,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: otherAgentId,
-        companyId: otherCompanyId,
         name: "Other",
         role: "engineer",
         status: "active",
@@ -840,37 +795,26 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: rootRunId,
-        companyId,
         agentId,
         status: "running",
         contextSnapshot: { issueId: rootIssueId },
       },
       {
         id: grandchildRunId,
-        companyId,
         agentId,
         status: "queued",
         contextSnapshot: { issueId: grandchildIssueId },
       },
       {
         id: hiddenRunId,
-        companyId,
         agentId,
         status: "running",
         contextSnapshot: { issueId: hiddenChildIssueId },
-      },
-      {
-        id: crossCompanyRunId,
-        companyId: otherCompanyId,
-        agentId: otherAgentId,
-        status: "running",
-        contextSnapshot: { issueId: crossCompanyChildIssueId },
       },
     ]);
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "Blocked parent",
         status: "blocked",
         priority: "critical",
@@ -879,7 +823,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: childIssueId,
-        companyId,
         title: "Offscreen child",
         status: "todo",
         priority: "medium",
@@ -888,7 +831,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: grandchildIssueId,
-        companyId,
         title: "Offscreen live grandchild",
         status: "todo",
         priority: "medium",
@@ -898,7 +840,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: hiddenChildIssueId,
-        companyId,
         title: "Hidden live child",
         status: "todo",
         priority: "medium",
@@ -907,21 +848,11 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
         hiddenAt: new Date("2026-07-02T00:00:00.000Z"),
         assigneeAgentId: agentId,
       },
-      {
-        id: crossCompanyChildIssueId,
-        companyId: otherCompanyId,
-        title: "Cross-company live child",
-        status: "todo",
-        priority: "medium",
-        parentId: rootIssueId,
-        executionRunId: crossCompanyRunId,
-        assigneeAgentId: otherAgentId,
-      },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp();
     const withoutSummary = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ status: "blocked", limit: "20" });
 
     expect(withoutSummary.status, JSON.stringify(withoutSummary.body)).toBe(200);
@@ -930,7 +861,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     expect(withoutSummary.body[0].liveDescendantCount).toBeUndefined();
 
     const withSummary = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ status: "blocked", includeLiveDescendantSummary: "true", limit: "20" });
 
     expect(withSummary.status, JSON.stringify(withSummary.body)).toBe(200);
@@ -954,10 +885,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -968,7 +898,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       contextSnapshot: { issueId: childIssueId },
@@ -976,7 +905,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(issues).values([
       {
         id: parentIssueId,
-        companyId,
         title: "Cycle parent",
         status: "blocked",
         priority: "medium",
@@ -985,7 +913,6 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: childIssueId,
-        companyId,
         title: "Cycle live child",
         status: "in_progress",
         priority: "medium",
@@ -995,9 +922,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ status: "blocked", includeLiveDescendantSummary: "true", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);

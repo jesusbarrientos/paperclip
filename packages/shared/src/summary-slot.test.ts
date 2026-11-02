@@ -11,12 +11,12 @@ const issueId = "33333333-3333-4333-8333-333333333333";
 
 describe("summary slot shared contract", () => {
   it("defines stable summary slot API path constants", () => {
-    expect(API.summarySlot).toBe("/api/companies/:companyId/summary-slots/:scopeKind/:slotKey");
+    expect(API.summarySlot).toBe("/api/summary-slots/:scopeKind/:slotKey");
     expect(API.summarySlotRevisions).toBe(
-      "/api/companies/:companyId/summary-slots/:scopeKind/:slotKey/revisions",
+      "/api/summary-slots/:scopeKind/:slotKey/revisions",
     );
     expect(API.summarySlotGenerate).toBe(
-      "/api/companies/:companyId/summary-slots/:scopeKind/:slotKey/generate",
+      "/api/summary-slots/:scopeKind/:slotKey/generate",
     );
   });
 

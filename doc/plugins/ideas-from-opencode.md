@@ -1031,10 +1031,10 @@ This plugin lets the board inspect project workspaces, agent workspaces, generat
 ### UX
 
 - Settings page: `/settings/plugins/workspace-files`
-- Main page: `/:companyPrefix/plugins/workspace-files`
-- Project tab: `/:companyPrefix/projects/:projectId?tab=files`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=files`
-- Optional agent tab: `/:companyPrefix/agents/:agentId?tab=workspace`
+- Main page: `/plugins/workspace-files`
+- Project tab: `/projects/:projectId?tab=files`
+- Optional issue tab: `/issues/:issueId?tab=files`
+- Optional agent tab: `/agents/:agentId?tab=workspace`
 
 Main screens and interactions:
 
@@ -1107,10 +1107,10 @@ This plugin gives the board a controlled terminal UI for project workspaces and 
 ### UX
 
 - Settings page: `/settings/plugins/terminal`
-- Main page: `/:companyPrefix/plugins/terminal`
-- Project tab: `/:companyPrefix/projects/:projectId?tab=terminal`
-- Optional agent tab: `/:companyPrefix/agents/:agentId?tab=terminal`
-- Optional run tab: `/:companyPrefix/agents/:agentId/runs/:runId?tab=terminal`
+- Main page: `/plugins/terminal`
+- Project tab: `/projects/:projectId?tab=terminal`
+- Optional agent tab: `/agents/:agentId?tab=terminal`
+- Optional run tab: `/agents/:agentId/runs/:runId?tab=terminal`
 
 Main screens and interactions:
 
@@ -1179,10 +1179,10 @@ This plugin adds repo-aware workflow tooling around issues and workspaces. It is
 ### UX
 
 - Settings page: `/settings/plugins/git`
-- Main page: `/:companyPrefix/plugins/git`
-- Project tab: `/:companyPrefix/projects/:projectId?tab=git`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=git`
-- Optional agent tab: `/:companyPrefix/agents/:agentId?tab=git`
+- Main page: `/plugins/git`
+- Project tab: `/projects/:projectId?tab=git`
+- Optional issue tab: `/issues/:issueId?tab=git`
+- Optional agent tab: `/agents/:agentId?tab=git`
 
 Main screens and interactions:
 
@@ -1262,10 +1262,10 @@ This plugin syncs Paperclip work with Linear. It is useful for:
 ### UX
 
 - Settings page: `/settings/plugins/linear`
-- Main page: `/:companyPrefix/plugins/linear`
-- Dashboard widget: `/:companyPrefix/dashboard`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=linear`
-- Optional project tab: `/:companyPrefix/projects/:projectId?tab=linear`
+- Main page: `/plugins/linear`
+- Dashboard widget: `/dashboard`
+- Optional issue tab: `/issues/:issueId?tab=linear`
+- Optional project tab: `/projects/:projectId?tab=linear`
 
 Main screens and interactions:
 
@@ -1342,10 +1342,10 @@ This plugin syncs Paperclip issues with GitHub Issues and optionally links PRs. 
 ### UX
 
 - Settings page: `/settings/plugins/github-issues`
-- Main page: `/:companyPrefix/plugins/github-issues`
-- Dashboard widget: `/:companyPrefix/dashboard`
-- Optional issue tab: `/:companyPrefix/issues/:issueId?tab=github`
-- Optional project tab: `/:companyPrefix/projects/:projectId?tab=github`
+- Main page: `/plugins/github-issues`
+- Dashboard widget: `/dashboard`
+- Optional issue tab: `/issues/:issueId?tab=github`
+- Optional project tab: `/projects/:projectId?tab=github`
 
 Main screens and interactions:
 
@@ -1417,9 +1417,9 @@ This plugin surfaces external metrics and dashboards inside Paperclip. It is use
 ### UX
 
 - Settings page: `/settings/plugins/grafana`
-- Main page: `/:companyPrefix/plugins/grafana`
-- Dashboard widgets: `/:companyPrefix/dashboard`
-- Optional goal tab: `/:companyPrefix/goals/:goalId?tab=metrics`
+- Main page: `/plugins/grafana`
+- Dashboard widgets: `/dashboard`
+- Optional goal tab: `/goals/:goalId?tab=metrics`
 
 Main screens and interactions:
 
@@ -1489,11 +1489,11 @@ This plugin tracks long-lived local processes and dev servers started in project
 ### UX
 
 - Settings page: `/settings/plugins/runtime-processes`
-- Main page: `/:companyPrefix/plugins/runtime-processes`
-- Dashboard widget: `/:companyPrefix/dashboard`
-- Process detail page: `/:companyPrefix/plugins/runtime-processes/:processId`
-- Project tab: `/:companyPrefix/projects/:projectId?tab=processes`
-- Optional agent tab: `/:companyPrefix/agents/:agentId?tab=processes`
+- Main page: `/plugins/runtime-processes`
+- Dashboard widget: `/dashboard`
+- Process detail page: `/plugins/runtime-processes/:processId`
+- Project tab: `/projects/:projectId?tab=processes`
+- Optional agent tab: `/agents/:agentId?tab=processes`
 
 Main screens and interactions:
 
@@ -1561,8 +1561,8 @@ This plugin pulls Stripe revenue and subscription data into Paperclip. It is use
 ### UX
 
 - Settings page: `/settings/plugins/stripe`
-- Main page: `/:companyPrefix/plugins/stripe`
-- Dashboard widgets: `/:companyPrefix/dashboard`
+- Main page: `/plugins/stripe`
+- Dashboard widgets: `/dashboard`
 - Optional company/goal metric tabs if those surfaces exist later
 
 Main screens and interactions:

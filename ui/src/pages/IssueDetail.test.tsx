@@ -136,7 +136,6 @@ const mockClearPanelMaximizeRequest = vi.hoisted(() => vi.fn());
 const mockPanelState = vi.hoisted(() => ({ panelVisible: true }));
 const mockRouteParams = vi.hoisted(() => ({
   issueId: "PAP-1",
-  companyPrefix: "PAP",
 }));
 const mockSidebarState = vi.hoisted(() => ({ isMobile: false }));
 const mockIssuePropertiesRender = vi.hoisted(() => vi.fn());
@@ -245,8 +244,8 @@ vi.mock("@/lib/router", () => ({
   useParams: () => ({ ...mockRouteParams }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
     companies: [
       {
         id: "company-1",
@@ -255,8 +254,7 @@ vi.mock("../context/CompanyContext", () => ({
         status: "active",
       },
     ],
-    selectedCompanyId: "company-1",
-    selectedCompany: {
+    organization: {
       id: "company-1",
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -265,7 +263,6 @@ vi.mock("../context/CompanyContext", () => ({
     selectionSource: "manual",
     loading: false,
     error: null,
-    setSelectedCompanyId: vi.fn(),
     reloadCompanies: vi.fn(),
     createCompany: vi.fn(),
   }),
@@ -768,7 +765,6 @@ function createDeferred<T>() {
 function createIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-1",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: "goal-1",
@@ -819,7 +815,6 @@ function createIssueComment(
 ): IssueComment {
   return {
     id: "comment-1",
-    companyId: "company-1",
     issueId: "issue-1",
     authorType: "user",
     authorAgentId: null,
@@ -859,7 +854,6 @@ function createAttachment(
   const { id, ...attachmentOverrides } = overrides;
   return {
     id,
-    companyId: "company-1",
     issueId: "issue-1",
     issueCommentId: null,
     assetId: `asset-${id}`,
@@ -899,7 +893,6 @@ function createArtifactWorkProduct(
   const contentPath = `/api/attachments/${attachmentId}/content`;
   return {
     id,
-    companyId: "company-1",
     projectId: null,
     issueId: "issue-1",
     executionWorkspaceId: null,
@@ -933,7 +926,6 @@ function createArtifactWorkProduct(
 function createAgent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "CodexCoder",
     urlKey: "codexcoder",
     role: "engineer",
@@ -964,7 +956,6 @@ function createPauseHold(
   const now = new Date("2026-04-21T00:00:00.000Z");
   return {
     id: "hold-1",
-    companyId: "company-1",
     rootIssueId: "issue-1",
     mode: "pause",
     status: "active",
@@ -986,7 +977,6 @@ function createPauseHold(
     members: [
       {
         id: "hold-member-root",
-        companyId: "company-1",
         holdId: "hold-1",
         issueId: "issue-1",
         parentIssueId: null,
@@ -1004,7 +994,6 @@ function createPauseHold(
       },
       {
         id: "hold-member-child",
-        companyId: "company-1",
         holdId: "hold-1",
         issueId: "child-1",
         parentIssueId: "issue-1",
@@ -1027,7 +1016,6 @@ function createPauseHold(
 
 function createResumePreview(): IssueTreeControlPreview {
   return {
-    companyId: "company-1",
     rootIssueId: "issue-1",
     mode: "resume",
     generatedAt: new Date("2026-04-21T00:00:00.000Z"),
@@ -1082,7 +1070,6 @@ function createResumePreview(): IssueTreeControlPreview {
 
 function createPausePreview(): IssueTreeControlPreview {
   return {
-    companyId: "company-1",
     rootIssueId: "issue-1",
     mode: "pause",
     generatedAt: new Date("2026-04-21T00:00:00.000Z"),
@@ -1168,7 +1155,6 @@ function createPausePreview(): IssueTreeControlPreview {
 
 function createRestorePreview(): IssueTreeControlPreview {
   return {
-    companyId: "company-1",
     rootIssueId: "issue-1",
     mode: "restore",
     generatedAt: new Date("2026-04-21T00:00:00.000Z"),
@@ -1255,7 +1241,6 @@ function createCancelPreview(issueCount = 8): IssueTreeControlPreview {
   }));
 
   return {
-    companyId: "company-1",
     rootIssueId: "issue-1",
     mode: "cancel",
     generatedAt: new Date("2026-04-21T00:00:00.000Z"),
@@ -1417,7 +1402,6 @@ describe("IssueDetail", () => {
     mockLocation.hash = "";
     mockLocation.state = null;
     mockRouteParams.issueId = "PAP-1";
-    mockRouteParams.companyPrefix = "PAP";
   });
 
   afterEach(async () => {
@@ -1434,7 +1418,7 @@ describe("IssueDetail", () => {
 
   it.each(["new-project", null])("remembers project %s only after its task update succeeds", async (projectId) => {
     const issue = createIssue({ projectId: "original-project" });
-    trackRecentProject("original-project", issue.companyId);
+    trackRecentProject("original-project");
     const failedUpdate = createDeferred<Issue>();
     const successfulUpdate = createDeferred<Issue>();
     mockIssuesApi.get.mockResolvedValue(issue);
@@ -1448,16 +1432,15 @@ describe("IssueDetail", () => {
     });
     await act(async () => properties.onUpdate({ projectId }));
     await waitForAssertion(() => expect(mockIssuesApi.update).toHaveBeenCalledTimes(1));
-    expect(getLastProjectId(issue.companyId)).toBe("original-project");
+    expect(getLastProjectId()).toBe("original-project");
     await act(async () => failedUpdate.reject(new Error("Project save failed")));
     await waitForAssertion(() => expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Task update failed" })));
-    expect(getLastProjectId(issue.companyId)).toBe("original-project");
+    expect(getLastProjectId()).toBe("original-project");
     await act(async () => properties.onUpdate({ projectId }));
     await waitForAssertion(() => expect(mockIssuesApi.update).toHaveBeenCalledTimes(2));
-    expect(getLastProjectId(issue.companyId)).toBe("original-project");
+    expect(getLastProjectId()).toBe("original-project");
     await act(async () => successfulUpdate.resolve({ ...issue, projectId }));
-    await waitForAssertion(() => expect(getLastProjectId(issue.companyId)).toBe(projectId ?? ""));
-    expect(getLastProjectId("company-2")).toBeUndefined();
+    await waitForAssertion(() => expect(getLastProjectId()).toBe(projectId ?? ""));
   });
 
   it("keeps an existing conversation on its agent-addressed route", async () => {
@@ -1510,7 +1493,7 @@ describe("IssueDetail", () => {
     } else {
       const file = new File(["image"], "first.png", { type: "image/png" });
       await act(async () => { await props.onAttachImage(file); });
-      expect(mockIssuesApi.uploadAttachment).toHaveBeenCalledWith(canonical.companyId, canonical.id, file);
+      expect(mockIssuesApi.uploadAttachment).toHaveBeenCalledWith(canonical.id, file);
       expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.attachments(canonical.id) });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.issues.detail(canonical.id) });
     }
@@ -1702,7 +1685,6 @@ describe("IssueDetail", () => {
       mockIssuesApi.uploadAttachment.mockResolvedValue({
         id,
         issueId: issue.id,
-        companyId: issue.companyId,
         contentPath: `/api/attachments/${id}/content`,
       });
       mockIssuesApi.addComment
@@ -1791,7 +1773,6 @@ describe("IssueDetail", () => {
         labels: [
           {
             id: "label-1",
-            companyId: "company-1",
             name: "Quick win",
             color: "#22c55e",
             createdAt: new Date("2026-04-21T00:00:00.000Z"),
@@ -1837,7 +1818,6 @@ describe("IssueDetail", () => {
         labels: [
           {
             id: "label-1",
-            companyId: "company-1",
             name: "Legacy label",
             color: "#22c55e",
             createdAt: new Date("2026-04-21T00:00:00.000Z"),
@@ -1957,7 +1937,7 @@ describe("IssueDetail", () => {
     await flushReact();
 
     expect(
-      readRecentTasks(getRecentTasksStorageKey("company-1", null), "company-1"),
+      readRecentTasks(getRecentTasksStorageKey(null)),
     ).toEqual([]);
 
     await act(async () => {
@@ -1969,8 +1949,7 @@ describe("IssueDetail", () => {
     await waitForAssertion(() => {
       expect(
         readRecentTasks(
-          getRecentTasksStorageKey("company-1", "user-1"),
-          "company-1",
+          getRecentTasksStorageKey("user-1"),
         ),
       ).toEqual([
         expect.objectContaining({
@@ -1994,8 +1973,7 @@ describe("IssueDetail", () => {
 
     expect(
       readRecentTasks(
-        getRecentTasksStorageKey("company-1", "user-1"),
-        "company-1",
+        getRecentTasksStorageKey("user-1"),
       )[0],
     ).toMatchObject({
       title: "Snapshot refresh title",
@@ -2291,7 +2269,7 @@ describe("IssueDetail", () => {
     mockLocation.hash = "#document-agents";
     mockIssuesApi.get.mockResolvedValue(createIssue({
       documentSummaries: [{
-        id: "agents-doc", companyId: "company-1", issueId: "issue-1",
+        id: "agents-doc", issueId: "issue-1",
         key: "agents", title: "AGENTS.md", format: "markdown",
         latestRevisionId: "revision-1", latestRevisionNumber: 1,
         createdByAgentId: "agent-1", createdByUserId: null,
@@ -2421,7 +2399,7 @@ describe("IssueDetail", () => {
     const child = createIssue({ id: "manual-child", parentId: source.id, title: "Manual child" });
     const created = createIssue({ id: "created-task", parentId: null, title: "Created elsewhere" });
     mockIssuesApi.get.mockResolvedValue(source);
-    mockIssuesApi.list.mockImplementation((_companyId, filters?: { descendantOf?: string; createdFromIssueId?: string }) =>
+    mockIssuesApi.list.mockImplementation((filters?: { descendantOf?: string; createdFromIssueId?: string }) =>
       Promise.resolve(filters?.descendantOf === source.id ? [child] : filters?.createdFromIssueId === source.id ? [created] : []),
     );
     await act(async () => { root.render(<QueryClientProvider client={queryClient}><IssueDetail /></QueryClientProvider>); });
@@ -2434,10 +2412,10 @@ describe("IssueDetail", () => {
     expect(taskProjection()?.count).toBe(3);
 
     const next = createIssue({ id: "new-created-task", parentId: source.id });
-    mockIssuesApi.list.mockImplementation((_companyId, filters?: { descendantOf?: string; createdFromIssueId?: string }) =>
+    mockIssuesApi.list.mockImplementation((filters?: { descendantOf?: string; createdFromIssueId?: string }) =>
       Promise.resolve(filters?.descendantOf === source.id ? [child, next] : filters?.createdFromIssueId === source.id ? [created, next] : []),
     );
-    await act(async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(source.companyId) }); });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() }); });
     await flushReact();
     expect(taskProjection()?.count).toBe(4);
     expect(taskProjection()?.content.props.createdTasks.map((row: Issue) => row.id)).toContain(next.id);
@@ -2703,12 +2681,12 @@ describe("IssueDetail", () => {
     const snapshot: DispositionRecoverySnapshot = { kind: "disposition_repair_escalated", actionId, attemptCount: 2, maxAttempts: 2, reason: "unchanged_source_state_exhausted", assigneeAgentId: "agent-1" };
     const issue = createIssue({ status: "blocked", assigneeAgentId: "agent-1", activeRecoveryAction: {
       id: actionId, status: "active", kind: "deliberate_wait_without_target", ownerType: "board", returnOwnerAgentId: "agent-1", wakePolicy: { type: "board_escalation" },
-      companyId: "company-1", sourceIssueId: "issue-1", recoveryIssueId: null, ownerAgentId: null, ownerUserId: null,
+      sourceIssueId: "issue-1", recoveryIssueId: null, ownerAgentId: null, ownerUserId: null,
       previousOwnerAgentId: "agent-1", cause: "deliberate_wait_without_target", fingerprint: "fixture", evidence: {}, nextAction: "Retry", monitorPolicy: null,
       attemptCount: 2, maxAttempts: 2, timeoutAt: null, lastAttemptAt: null, outcome: null, resolutionNote: null, resolvedAt: null, createdAt: new Date(), updatedAt: new Date(),
     } });
     mockIssuesApi.get.mockResolvedValue(issue);
-    mockIssuesApi.listComments.mockResolvedValue([{ id: "notice-inline", companyId: issue.companyId, issueId: issue.id, authorType: "system", body: "Unrelated prose", createdAt: new Date(), updatedAt: new Date(), metadata: { version: 1, sections: [], recovery: snapshot } }]);
+    mockIssuesApi.listComments.mockResolvedValue([{ id: "notice-inline", issueId: issue.id, authorType: "system", body: "Unrelated prose", createdAt: new Date(), updatedAt: new Date(), metadata: { version: 1, sections: [], recovery: snapshot } }]);
     if (outcome === "pending question") mockIssuesApi.listInteractions.mockResolvedValue([{ id: "question-1", kind: "ask_user_questions", status: "pending", payload: { version: 1, questions: [] } }]);
     if (fail) mockIssuesApi.resolveRecoveryAction.mockRejectedValue(new Error("The task is now paused."));
     else mockIssuesApi.resolveRecoveryAction.mockResolvedValue({ issue: { ...issue, status: "todo", activeRecoveryAction: null }, recoveryAction: { ...issue.activeRecoveryAction, status: "resolved" } });
@@ -2754,22 +2732,22 @@ describe("IssueDetail", () => {
     mockIssuesApi.archiveFromInbox.mockReturnValue(archiveRequest.promise);
 
     const mineKey = [
-      ...queryKeys.issues.listMineByMe("company-1"),
+      ...queryKeys.issues.listMineByMe(),
       "with-routine-executions",
       "live-descendant-summary",
     ] as const;
     const compactKey = [
-      ...queryKeys.issues.list("company-1"),
+      ...queryKeys.issues.list(),
       "compact",
       "with-routine-executions",
       "live-descendant-summary",
     ] as const;
     const touchedKey = [
-      ...queryKeys.issues.listTouchedByMe("company-1"),
+      ...queryKeys.issues.listTouchedByMe(),
       "with-routine-executions",
       "live-descendant-summary",
     ] as const;
-    const unreadKey = queryKeys.issues.listUnreadTouchedByMe("company-1");
+    const unreadKey = queryKeys.issues.listUnreadTouchedByMe();
     queryClient.setQueryData<Issue[]>(mineKey, [issue, otherIssue]);
     queryClient.setQueryData<Issue[]>(compactKey, [issue, otherIssue]);
     queryClient.setQueryData<Issue[]>(touchedKey, [issue, otherIssue]);
@@ -2899,7 +2877,7 @@ describe("IssueDetail", () => {
     );
 
     const mineKey = [
-      ...queryKeys.issues.listMineByMe("company-1"),
+      ...queryKeys.issues.listMineByMe(),
       "with-routine-executions",
       "live-descendant-summary",
     ] as const;
@@ -3649,7 +3627,6 @@ describe("IssueDetail", () => {
     mockIssuesApi.listInteractions.mockResolvedValue([
       {
         id: "interaction-answers",
-        companyId: "company-1",
         issueId: "issue-1",
         kind: "ask_user_questions",
         status: "answered",
@@ -3698,7 +3675,6 @@ describe("IssueDetail", () => {
     mockActivityApi.forIssue.mockResolvedValue([
       {
         id: "activity-answer-delivered",
-        companyId: "company-1",
         actorType: "system",
         actorId: "question-response-delivery",
         agentId: null,
@@ -3788,7 +3764,6 @@ describe("IssueDetail", () => {
       mockIssuesApi.listInteractions.mockResolvedValue([
         {
           id: "interaction-plan",
-          companyId: "company-1",
           issueId: "issue-1",
           kind: "request_confirmation",
           status: "accepted",
@@ -4289,8 +4264,7 @@ describe("IssueDetail", () => {
 
     expect(
       readRecentTasks(
-        getRecentTasksStorageKey("company-1", null),
-        "company-1",
+        getRecentTasksStorageKey(null),
       )[0],
     ).toMatchObject({
       id: "issue-1",
@@ -4628,7 +4602,7 @@ describe("IssueDetail", () => {
 
       mockIssuesApi.get.mockResolvedValue(createIssue());
       mockIssuesApi.list.mockImplementation(
-        (_companyId, filters?: { descendantOf?: string }) =>
+        (filters?: { descendantOf?: string }) =>
           Promise.resolve(
             filters?.descendantOf === "issue-1" ? [childIssue] : [],
           ),
@@ -4748,7 +4722,7 @@ describe("IssueDetail", () => {
 
     mockIssuesApi.get.mockResolvedValue(createIssue());
     mockIssuesApi.list.mockImplementation(
-      (_companyId, filters?: { descendantOf?: string }) =>
+      (filters?: { descendantOf?: string }) =>
         Promise.resolve(
           filters?.descendantOf === "issue-1" ? [childIssue] : [],
         ),
@@ -5075,7 +5049,6 @@ describe("IssueDetail", () => {
   it("reports the selected continuation action after rejecting completion", async () => {
     const pendingInteraction = {
       id: "interaction-continue",
-      companyId: "company-1",
       issueId: "issue-1",
       kind: "request_confirmation",
       title: "Review completion",
@@ -5284,7 +5257,6 @@ describe("IssueDetail", () => {
     mockIssuesApi.listInteractions.mockResolvedValue([
       {
         id: "classic-question",
-        companyId: "company-1",
         issueId: "issue-1",
         kind: "ask_user_questions",
         status: "answered",
@@ -5402,7 +5374,7 @@ describe("IssueDetail", () => {
       title: "Mentionable task",
     };
     mockIssuesApi.list.mockImplementation(
-      (_companyId: string, filters?: { sortField?: string }) =>
+      (filters?: { sortField?: string }) =>
         Promise.resolve(
           filters?.sortField === "updated" ? [mentionPoolIssue] : [],
         ),
@@ -5427,7 +5399,6 @@ describe("IssueDetail", () => {
       );
     });
     expect(mockIssuesApi.list).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({ sortField: "updated" }),
     );
   });
@@ -5690,7 +5661,7 @@ describe("IssueDetail", () => {
 
     mockIssuesApi.get.mockResolvedValue(createIssue());
     mockIssuesApi.list.mockImplementation(
-      (_companyId, filters?: { descendantOf?: string }) =>
+      (filters?: { descendantOf?: string }) =>
         Promise.resolve(
           filters?.descendantOf === "issue-1" ? [childIssue] : [],
         ),
@@ -5778,7 +5749,7 @@ describe("IssueDetail", () => {
 
     mockIssuesApi.get.mockResolvedValue(createIssue());
     mockIssuesApi.list.mockImplementation(
-      (_companyId, filters?: { descendantOf?: string }) =>
+      (filters?: { descendantOf?: string }) =>
         Promise.resolve(
           filters?.descendantOf === "issue-1" ? [childIssue] : [],
         ),
@@ -6091,7 +6062,6 @@ describe("IssueDetail", () => {
     releaseActivity([
       {
         id: "activity-steer-1",
-        companyId: "company-1",
         issueId: "issue-1",
         action: "issue.queued_comment_steered",
         createdAt: new Date("2026-04-21T00:00:06.000Z"),
@@ -6387,10 +6357,9 @@ describe("IssueDetail", () => {
 });
 
 describe("canBoardResolveRecoveryAction", () => {
-  it("falls back to companyIds when memberships are not populated", () => {
+  it("denies board users without an active membership", () => {
     expect(
-      canBoardResolveRecoveryAction("company-1", {
-        companyIds: ["company-1"],
+      canBoardResolveRecoveryAction({
         memberships: [],
         isInstanceAdmin: false,
         source: "session",
@@ -6398,16 +6367,14 @@ describe("canBoardResolveRecoveryAction", () => {
         user: null,
         userId: "user-1",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("uses populated memberships as the authoritative board access source", () => {
     expect(
-      canBoardResolveRecoveryAction("company-1", {
-        companyIds: ["company-1"],
+      canBoardResolveRecoveryAction({
         memberships: [
           {
-            companyId: "company-1",
             membershipRole: "viewer",
             status: "active",
           },
@@ -6423,10 +6390,9 @@ describe("canBoardResolveRecoveryAction", () => {
 });
 
 describe("canBoardManageRuntime", () => {
-  it("falls back to companyIds when memberships are not populated", () => {
+  it("denies board users without an active membership", () => {
     expect(
-      canBoardManageRuntime("company-1", {
-        companyIds: ["company-1"],
+      canBoardManageRuntime({
         memberships: [],
         isInstanceAdmin: false,
         source: "session",
@@ -6434,16 +6400,14 @@ describe("canBoardManageRuntime", () => {
         user: null,
         userId: "user-1",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("denies viewers the runtime-manage-gated break-glass affordance", () => {
     expect(
-      canBoardManageRuntime("company-1", {
-        companyIds: ["company-1"],
+      canBoardManageRuntime({
         memberships: [
           {
-            companyId: "company-1",
             membershipRole: "viewer",
             status: "active",
           },
@@ -6459,11 +6423,9 @@ describe("canBoardManageRuntime", () => {
 
   it("allows non-viewer active members (mirrors the backend runtime:manage member gate)", () => {
     expect(
-      canBoardManageRuntime("company-1", {
-        companyIds: ["company-1"],
+      canBoardManageRuntime({
         memberships: [
           {
-            companyId: "company-1",
             membershipRole: "operator",
             status: "active",
           },

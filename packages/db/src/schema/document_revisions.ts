@@ -1,5 +1,4 @@
 import { pgTable, uuid, text, integer, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { documents } from "./documents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
@@ -8,7 +7,6 @@ export const documentRevisions = pgTable(
   "document_revisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
     revisionNumber: integer("revision_number").notNull(),
     title: text("title"),
@@ -26,7 +24,6 @@ export const documentRevisions = pgTable(
       table.revisionNumber,
     ),
     companyDocumentCreatedIdx: index("document_revisions_company_document_created_idx").on(
-      table.companyId,
       table.documentId,
       table.createdAt,
     ),

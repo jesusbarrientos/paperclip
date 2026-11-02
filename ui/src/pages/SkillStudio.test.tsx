@@ -68,8 +68,8 @@ vi.mock("@/context/BreadcrumbContext", () => ({
   useBreadcrumbs: () => ({ setBreadcrumbs: mockSetBreadcrumbs }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("@/api/companySkills", () => ({
@@ -130,7 +130,7 @@ vi.mock("@/components/ui/resizable-panels", () => ({
   ResizableHandle: () => <div />,
 }));
 
-vi.mock("./CompanySkills", () => ({
+vi.mock("./OrganizationSkills", () => ({
   SkillCardIcon: ({ card }: { card: { name: string } }) => (
     <div data-testid="skill-card-icon">{card.name}</div>
   ),
@@ -210,7 +210,6 @@ async function keyDown(element: HTMLElement, key: string) {
 function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
   return {
     id: "source-skill",
-    companyId: "company-1",
     key: "paperclip/demo-skill",
     slug: "demo-skill",
     name: "Demo Skill",
@@ -231,7 +230,6 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
     sharingScope: "company",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,
@@ -325,7 +323,7 @@ describe("SkillStudio create mode", () => {
     await waitFor(() => expect(node.textContent).toContain("Create a new skill"));
 
     expect(node.textContent).not.toContain("Skill not found.");
-    expect(mockCompanySkillsApi.detail).not.toHaveBeenCalledWith("company-1", "new");
+    expect(mockCompanySkillsApi.detail).not.toHaveBeenCalledWith("new");
     expect(mockSetBreadcrumbs).toHaveBeenCalledWith([
       { label: "Skills", href: "/skills" },
       { label: "Studio", href: "/skills/studio" },
@@ -340,7 +338,7 @@ describe("SkillStudio create mode", () => {
 
     await waitFor(() => expect(node.textContent).toContain("Forking Demo Skill"));
 
-    expect(mockCompanySkillsApi.detail).toHaveBeenCalledWith("company-1", "source-skill");
+    expect(mockCompanySkillsApi.detail).toHaveBeenCalledWith("source-skill");
     expect((node.querySelector("#skill-name") as HTMLInputElement).value).toBe("Demo Skill Fork");
     expect((node.querySelector("#skill-slug") as HTMLInputElement).value).toBe("demo-skill-fork");
   });
@@ -355,7 +353,6 @@ describe("SkillStudio create mode", () => {
     await waitFor(() => expect(mockCompanySkillsApi.create).toHaveBeenCalled());
 
     expect(mockCompanySkillsApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         name: "Code Review",
         slug: "code-review",
@@ -378,7 +375,6 @@ describe("SkillStudio create mode", () => {
     await waitFor(() => expect(mockCompanySkillsApi.create).toHaveBeenCalled());
 
     expect(mockCompanySkillsApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         name: "Code Review",
         folderId: "folder-my-skills",
@@ -399,7 +395,6 @@ describe("SkillStudio create mode", () => {
     await waitFor(() => expect(mockCompanySkillsApi.create).toHaveBeenCalled());
 
     expect(mockCompanySkillsApi.create).toHaveBeenCalledWith(
-      "company-1",
       expect.objectContaining({
         categories: ["AI Tools", "Developer Experience"],
       }),
@@ -411,7 +406,6 @@ function makeListItem(
   overrides: Partial<CompanySkillListItem> & { id: string },
 ): CompanySkillListItem {
   return {
-    companyId: "company-1",
     key: overrides.id,
     slug: overrides.id,
     name: overrides.id,
@@ -431,7 +425,6 @@ function makeListItem(
     sharingScope: "private",
     publicShareToken: null,
     forkedFromSkillId: null,
-    forkedFromCompanyId: null,
     starCount: 0,
     installCount: 0,
     forkCount: 0,
@@ -579,7 +572,7 @@ describe("SkillStudio editor frontmatter", () => {
     const node = await renderStudio();
 
     await waitFor(() => {
-      expect(mockCompanySkillsApi.file).toHaveBeenCalledWith("company-1", "source-skill", "SKILL.md");
+      expect(mockCompanySkillsApi.file).toHaveBeenCalledWith("source-skill", "SKILL.md");
     });
     await waitFor(() => {
       const textareas = Array.from(node.querySelectorAll("textarea"));
@@ -604,7 +597,6 @@ describe("SkillStudio editor frontmatter", () => {
 
   it("marks rich markdown body edits dirty and saves the edited markdown", async () => {
     mockCompanySkillsApi.updateFile.mockImplementationOnce((
-      _companyId: string,
       _skillId: string,
       path: string,
       content: string,
@@ -636,14 +628,12 @@ describe("SkillStudio editor frontmatter", () => {
 
     await waitFor(() => {
       expect(mockCompanySkillsApi.updateFile).toHaveBeenCalledWith(
-        "company-1",
         "source-skill",
         "SKILL.md",
         expect.stringContaining("Edited body"),
       );
     });
     expect(mockCompanySkillsApi.updateFile).toHaveBeenCalledWith(
-      "company-1",
       "source-skill",
       "SKILL.md",
       expect.stringContaining("---\nname: Demo Skill"),

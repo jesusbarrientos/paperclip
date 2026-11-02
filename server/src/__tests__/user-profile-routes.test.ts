@@ -31,10 +31,9 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", () => {
+describeEmbeddedPostgres("GET /users/:userSlug/profile", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
   let userId!: string;
   let agentId!: string;
 
@@ -54,15 +53,13 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
     ]);
     userProfileRoutes = routes.userProfileRoutes;
     errorHandler = middleware.errorHandler;
-    companyId = randomUUID();
     userId = randomUUID();
     agentId = randomUUID();
     const now = new Date();
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
-      issuePrefix: `U${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "USR",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(authUsers).values({
@@ -84,7 +81,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
     }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Coder",
       role: "engineer",
       adapterType: "process",
@@ -118,7 +114,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
         type: "board",
         source: "local_implicit",
         userId,
-        companyIds: [companyId],
       };
       next();
     });
@@ -136,7 +131,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
     await db.insert(issues).values([
       {
         id: doneIssueId,
-        companyId,
         title: "Ship profile page",
         status: "done",
         priority: "high",
@@ -148,7 +142,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       },
       {
         id: openIssueId,
-        companyId,
         title: "Review profile copy",
         status: "in_progress",
         priority: "medium",
@@ -159,7 +152,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       },
     ]);
     await db.insert(issueComments).values({
-      companyId,
       issueId: openIssueId,
       authorUserId: userId,
       body: "Looks good.",
@@ -167,7 +159,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       updatedAt: now,
     });
     await db.insert(activityLog).values({
-      companyId,
       actorType: "user",
       actorId: userId,
       action: "issue.updated",
@@ -176,7 +167,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       createdAt: now,
     });
     await db.insert(costEvents).values({
-      companyId,
       agentId,
       issueId: doneIssueId,
       provider: "openai",
@@ -190,7 +180,7 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       occurredAt: now,
     });
 
-    const response = await request(createApp()).get(`/api/companies/${companyId}/users/dotta/profile`);
+    const response = await request(createApp()).get(`/api/users/dotta/profile`);
 
     expect(response.status).toBe(200);
     expect(response.body.user.slug).toBe("dotta");

@@ -236,7 +236,6 @@ function buildContext(root: string, overrides: Partial<AdapterExecutionContext> 
     runId: "run-1",
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "Claude ACP",
       adapterType: "claude_local",
       adapterConfig: {},
@@ -475,7 +474,7 @@ describe("claude_local ACP lane", () => {
     }));
     try {
       const result = await testClaudeAcpEnvironment({
-        companyId: "company-1", adapterType: "claude_local",
+        adapterType: "claude_local",
         config: { cwd: configuredCwd, agentCommand: "claude-agent-acp", env: { ANTHROPIC_API_KEY: "fixture" } },
         executionTarget: { kind: "remote", transport: "sandbox", remoteCwd, runner: { execute } },
       });
@@ -502,7 +501,6 @@ describe("claude_local ACP lane", () => {
     // prerequisites, and a valid credential lets the lane report a pass.
     const result = await testClaudeAcpEnvironment({
       adapterType: "claude_local",
-      companyId: "company-1",
       config: {
         engine: "acp",
         cwd: root,

@@ -67,7 +67,7 @@ describeEmbeddedPostgres("pending approval agent config integrity", () => {
     const companyId = await seedCompany();
     const agentSvc = agentService(db);
     const approvalSvc = approvalService(db);
-    const pending = await agentSvc.create(companyId, {
+    const pending = await agentSvc.create({
       name: "Pending Coder",
       role: "engineer",
       title: "Software Engineer",
@@ -83,7 +83,7 @@ describeEmbeddedPostgres("pending approval agent config integrity", () => {
       permissions: {},
       lastHeartbeatAt: null,
     });
-    const approval = await approvalSvc.create(companyId, {
+    const approval = await approvalSvc.create({
       type: "hire_agent",
       requestedByAgentId: null,
       requestedByUserId: "board-user",

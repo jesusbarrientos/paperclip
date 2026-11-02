@@ -21,7 +21,6 @@ const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
     then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
       Promise.resolve([{
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
         agentId: "agent-1",
         contextSnapshot: { issueId: "11111111-1111-4111-8111-111111111111" },
         permissions: null,
@@ -30,7 +29,6 @@ const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
   then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
     Promise.resolve([{
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
       agentId: "agent-1",
       contextSnapshot: { issueId: "11111111-1111-4111-8111-111111111111" },
       permissions: null,
@@ -129,7 +127,6 @@ function registerModuleMocks() {
 function makeIssue(status: "todo" | "done") {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
     status,
     assigneeAgentId: "agent-1",
     assigneeUserId: null,
@@ -186,7 +183,6 @@ describe("issue telemetry routes", () => {
         then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
           Promise.resolve([{
             id: "22222222-2222-4222-8222-222222222222",
-            companyId: "company-1",
             agentId: "agent-1",
             contextSnapshot: { issueId: "11111111-1111-4111-8111-111111111111" },
             permissions: null,
@@ -195,7 +191,6 @@ describe("issue telemetry routes", () => {
       then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
         Promise.resolve([{
           id: "22222222-2222-4222-8222-222222222222",
-          companyId: "company-1",
           agentId: "agent-1",
           contextSnapshot: { issueId: "11111111-1111-4111-8111-111111111111" },
           permissions: null,
@@ -208,7 +203,6 @@ describe("issue telemetry routes", () => {
   it("emits task-completed telemetry with the agent role, adapter type, and model", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: { model: "claude-sonnet-4-6" },
@@ -217,7 +211,6 @@ describe("issue telemetry routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       runId: "22222222-2222-4222-8222-222222222222",
     });
     const res = await request(app)

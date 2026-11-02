@@ -48,7 +48,6 @@ function parseRun(value: unknown): NativeRunIdentity {
   return {
     runId: asIdentifier(run.runId, "run.runId"),
     sessionId: asIdentifier(run.sessionId, "run.sessionId"),
-    companyId: asIdentifier(run.companyId, "run.companyId"),
     issueId: asIdentifier(run.issueId, "run.issueId"),
     agentId: asIdentifier(run.agentId, "run.agentId"),
   };

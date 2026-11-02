@@ -88,7 +88,6 @@ function createComment(overrides: Partial<StoryComment>): StoryComment {
   const authorAgentId = overrides.authorAgentId ?? null;
   return {
     id: "comment-default",
-    companyId,
     issueId,
     authorAgentId: null,
     authorUserId: currentUserId,
@@ -286,7 +285,6 @@ const commentLinkedRuns = [
 const feedbackVotes: FeedbackVote[] = [
   {
     id: "feedback-chat-comment-01",
-    companyId,
     issueId,
     targetType: "issue_comment",
     targetId: "comment-issue-agent",
@@ -606,7 +604,6 @@ function ThreadProps({
       queuedComments={queuedComments}
       linkedRuns={commentLinkedRuns}
       timelineEvents={timelineEvents}
-      companyId={companyId}
       projectId={projectId}
       issueStatus="in_progress"
       agentMap={storybookAgentMap}
@@ -728,7 +725,6 @@ function RunChatMatrix() {
             run={liveRun}
             transcript={liveRunTranscript}
             hasOutput
-            companyId={companyId}
           />
         </div>
         <Card className="shadow-none">
@@ -768,7 +764,6 @@ function IssueChatMatrix() {
             liveRuns={[liveRun]}
             feedbackVotes={feedbackVotes}
             feedbackDataSharingPreference="allowed"
-            companyId={companyId}
             projectId={projectId}
             issueStatus="in_progress"
             agentMap={storybookAgentMap}
@@ -798,7 +793,6 @@ function IssueChatMatrix() {
               timelineEvents={[]}
               linkedRuns={[]}
               liveRuns={[]}
-              companyId={companyId}
               projectId={projectId}
               agentMap={storybookAgentMap}
               currentUserId={currentUserId}
@@ -813,7 +807,6 @@ function IssueChatMatrix() {
               timelineEvents={[]}
               linkedRuns={[]}
               liveRuns={[]}
-              companyId={companyId}
               projectId={projectId}
               agentMap={storybookAgentMap}
               currentUserId={currentUserId}
@@ -832,7 +825,6 @@ function IssueChatMatrix() {
               timelineEvents={[]}
               linkedRuns={[]}
               liveRuns={[]}
-              companyId={companyId}
               projectId={projectId}
               agentMap={storybookAgentMap}
               currentUserId={currentUserId}
@@ -860,7 +852,6 @@ function IssueThreadNoticeReview() {
               timelineEvents={issueThreadNoticeReviewTimelineEvents}
               linkedRuns={[]}
               liveRuns={[]}
-              companyId={companyId}
               projectId={projectId}
               issueStatus="done"
               successfulRunHandoff={{
@@ -954,7 +945,6 @@ function CompactRecoveryNoticeReview() {
               timelineEvents={[]}
               linkedRuns={[]}
               liveRuns={[]}
-              companyId={companyId}
               projectId={projectId}
               issueStatus="in_progress"
               agentMap={storybookAgentMap}
@@ -973,7 +963,6 @@ function CompactRecoveryNoticeReview() {
               timelineEvents={[]}
               linkedRuns={[]}
               liveRuns={[]}
-              companyId={companyId}
               projectId={projectId}
               issueStatus="in_progress"
               agentMap={storybookAgentMap}

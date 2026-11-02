@@ -12,6 +12,6 @@ import { useCloudInstance } from "@/hooks/useCloudInstance";
 export function CloudManagedPageGate() {
   const isCloud = Boolean(useCloudInstance());
 
-  if (isCloud) return <Navigate to="/company/settings" replace />;
+  if (isCloud) return <Navigate to="/organization/settings" replace />;
   return <Outlet />;
 }

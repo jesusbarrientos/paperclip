@@ -150,7 +150,7 @@ describe("Chat connectors visibility gate", () => {
     expect(api.settings).not.toHaveBeenCalled();
   });
   it("keeps agent email channels available but hides cached experimental chat channels and task bindings", async () => {
-    client.setQueryData(queryKeys.chatEndpoints.list("company-1"), [
+    client.setQueryData(queryKeys.chatEndpoints.list(), [
       { provider: "slack", id: "endpoint-1", assignedAgentId: "agent-1", status: "active" },
     ]);
     client.setQueryData(["issue-chat-binding", "company-1", "issue-1"], {
@@ -160,9 +160,8 @@ describe("Chat connectors visibility gate", () => {
     flushSync(() =>
       root.render(
         <QueryClientProvider client={client}>
-          <AgentChannelsPanel companyId="company-1" agentId="agent-1" />
+          <AgentChannelsPanel agentId="agent-1" />
           <ExternallyConnectedTaskBanner
-            companyId="company-1"
             issueId="issue-1"
           />
         </QueryClientProvider>,
@@ -171,7 +170,7 @@ describe("Chat connectors visibility gate", () => {
     await flushReact();
     expect(container.textContent).toContain("Connect AgentMail from Connectors.");
     expect(container.querySelector('a[href="/apps/chat/endpoint-1/settings"]')).toBeNull();
-    expect(api.list).toHaveBeenCalledWith("company-1");
+    expect(api.list).toHaveBeenCalledWith();
     expect(api.binding).not.toHaveBeenCalled();
   });
 });

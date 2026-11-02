@@ -1,7 +1,6 @@
 export interface NativeRunIdentity {
   runId: string;
   sessionId: string;
-  companyId: string;
   issueId: string;
   agentId: string;
 }

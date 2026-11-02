@@ -1,8 +1,6 @@
 import { integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
-
 export const companySkillPolicies = pgTable("company_skill_policies", {
-  companyId: uuid("company_id").primaryKey().references(() => companies.id, { onDelete: "cascade" }),
+  singletonKey: text("singleton_key").primaryKey().default("default"),
   schemaVersion: integer("schema_version").notNull().default(1),
   revision: integer("revision").notNull(),
   defaultEffect: text("default_effect").$type<"allow" | "deny">().notNull(),

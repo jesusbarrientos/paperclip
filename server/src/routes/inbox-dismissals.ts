@@ -1,8 +1,9 @@
+import { organizationService } from "../services/organization.js";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getActorInfo } from "./authz.js";
 import { inboxDismissalService, logActivity } from "../services/index.js";
 
 const ITEM_KEY_RE = /^(approval|join|run|attention):.+$/;
@@ -49,31 +50,28 @@ export function inboxDismissalRoutes(db: Db) {
   const router = Router();
   const svc = inboxDismissalService(db);
 
-  router.get("/companies/:companyId/inbox-dismissals", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/inbox-dismissals", async (req, res) => {
+    assertOrgAccess(req);
     const userId = requireBoardUser(req, res);
     if (!userId) return;
 
-    const dismissals = await svc.list(companyId, userId);
+    const dismissals = await svc.list(userId);
     res.json(dismissals);
   });
 
   router.post(
-    "/companies/:companyId/inbox-dismissals",
+    "/inbox-dismissals",
     validate(inboxDismissalSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       const userId = requireBoardUser(req, res);
       if (!userId) return;
 
       const dismissal = req.body.kind === "snooze"
-        ? await svc.snooze(companyId, userId, req.body.itemKey, new Date(req.body.snoozedUntil))
-        : await svc.dismiss(companyId, userId, req.body.itemKey, new Date());
+        ? await svc.snooze(userId, req.body.itemKey, new Date(req.body.snoozedUntil))
+        : await svc.dismiss(userId, req.body.itemKey, new Date());
       const actor = getActorInfo(req);
       await logActivity(db, {
-        companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -81,7 +79,7 @@ export function inboxDismissalRoutes(db: Db) {
         agentApiKeyId: actor.agentApiKeyId,
         action: dismissal.kind === "snooze" ? "inbox.snoozed" : "inbox.dismissed",
         entityType: "company",
-        entityId: companyId,
+        entityId: await organizationService(db).requireId(),
         details: {
           userId,
           itemKey: dismissal.itemKey,
@@ -95,9 +93,8 @@ export function inboxDismissalRoutes(db: Db) {
     },
   );
 
-  router.delete("/companies/:companyId/inbox-dismissals/:itemKey", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.delete("/inbox-dismissals/:itemKey", async (req, res) => {
+    assertOrgAccess(req);
     const userId = requireBoardUser(req, res);
     if (!userId) return;
 
@@ -107,11 +104,10 @@ export function inboxDismissalRoutes(db: Db) {
       return;
     }
 
-    const restored = await svc.restore(companyId, userId, itemKey);
+    const restored = await svc.restore(userId, itemKey);
     if (restored) {
       const actor = getActorInfo(req);
       await logActivity(db, {
-        companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -119,7 +115,7 @@ export function inboxDismissalRoutes(db: Db) {
         agentApiKeyId: actor.agentApiKeyId,
         action: "inbox.restored",
         entityType: "company",
-        entityId: companyId,
+        entityId: await organizationService(db).requireId(),
         details: {
           userId,
           itemKey: restored.itemKey,

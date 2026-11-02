@@ -24,7 +24,7 @@ const date = new Date("2026-09-22T18:03:00Z");
 const media = [["Paper Trail", trail], ["Big Type", type], ["Ticket Board", tickets], ["Night Pills", night], ["Manila Ledger", manila]];
 function product(title: string, index: number, overrides: Partial<IssueWorkProduct> = {}): IssueWorkProduct {
   return {
-    id: `gallery-product-${index}`, companyId: issue.companyId, projectId: null, issueId: issue.id,
+    id: `gallery-product-${index}`, projectId: null, issueId: issue.id,
     executionWorkspaceId: null, runtimeServiceId: null, type: "artifact", provider: "paperclip",
     externalId: null, title, url: null, status: "approved", reviewState: "none", isPrimary: false,
     healthStatus: "unknown", summary: null, metadata: null, createdByRunId: "style-exploration",
@@ -47,7 +47,7 @@ const images = [manilaImage, nightImage].map((src, index) => product(index ? "Ni
 type Scenario = "videos" | "mixed" | "rows" | "fallback" | "empty";
 function GalleryStory({ scenario = "videos", width = 480 }: { scenario?: Scenario; width?: number }) {
   const workProducts = scenario === "empty" ? [] : scenario === "rows" ? [...videos.slice(0, 1), ...images.slice(0, 1), ...files] : scenario === "mixed" ? [...videos.slice(0, 2), ...images, ...files] : scenario === "fallback" ? [product("Video preview unavailable", 30, { metadata: { contentType: "video/mp4", contentPath: "data:video/mp4;base64,AA==", originalFilename: "unavailable.mp4" } }), product("Image preview unavailable", 31, { metadata: { contentType: "image/png", contentPath: "data:image/png;base64,AA==" } })] : videos;
-  const attachments = scenario === "mixed" ? [{ id: "loose-image", companyId: issue.companyId, issueId: issue.id, createdByAgentId: storybookAgents[0].id, contentPath: nightImage, contentType: "image/png", originalFilename: "Unpromoted agent attachment.png", objectKey: "cover.png", byteSize: 42000, createdAt: date } as IssueAttachment] : [];
+  const attachments = scenario === "mixed" ? [{ id: "loose-image", issueId: issue.id, createdByAgentId: storybookAgents[0].id, contentPath: nightImage, contentType: "image/png", originalFilename: "Unpromoted agent attachment.png", objectKey: "cover.png", byteSize: 42000, createdAt: date } as IssueAttachment] : [];
   const [client] = useState(() => {
     const cache = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
     cache.setQueryData(queryKeys.issues.workProducts(issue.id), workProducts);
@@ -57,7 +57,7 @@ function GalleryStory({ scenario = "videos", width = 480 }: { scenario?: Scenari
       { runId: "style-exploration", agentId: storybookAgents[0].id, startedAt: date },
       { runId: "first-concepts", agentId: storybookAgents[0].id, startedAt: new Date("2026-09-22T17:43:00Z") },
     ]);
-    cache.setQueryData(queryKeys.agents.list(issue.companyId), [{ ...storybookAgents[0], name: "CodexRunner" }]);
+    cache.setQueryData(queryKeys.agents.list(), [{ ...storybookAgents[0], name: "CodexRunner" }]);
     return cache;
   });
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);

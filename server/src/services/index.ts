@@ -201,7 +201,7 @@ export {
 } from "./activity-log.js";
 export { summarySlotService, SUMMARIZER_BUILT_IN_KEY } from "./summary-slots.js";
 export { notifyHireApproved, type NotifyHireApprovedInput } from "./hire-hook.js";
-export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
+export { publishLiveEvent, subscribeLiveEvents } from "./live-events.js";
 export {
   reconcileCodexLocalManagedHomesOnStartup,
   type CodexAuthReconciliationSummary,

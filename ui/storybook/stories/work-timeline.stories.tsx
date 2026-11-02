@@ -11,7 +11,7 @@ import {
   zoomScaleForLevel,
 } from "@/components/timeline/WorkTimelineChart";
 import { Button } from "@/components/ui/button";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import sampleJson from "../fixtures/workTimeline.sample.json";
 import humanSampleJson from "../fixtures/workTimeline.human.sample.json";
 
@@ -52,18 +52,8 @@ const humanSample = withStorybookTimelineDetails(humanSampleJson as unknown as W
 const NOW = new Date("2026-07-02T15:45:00.000Z").getTime();
 
 function FullPageTimelineHarness() {
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
 
-  useEffect(() => {
-    window.localStorage.setItem("paperclip.selectedCompanyId", COMPANY_ID);
-    if (selectedCompanyId !== COMPANY_ID) {
-      setSelectedCompanyId(COMPANY_ID);
-    }
-  }, [selectedCompanyId, setSelectedCompanyId]);
 
-  if (selectedCompanyId !== COMPANY_ID) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">

@@ -476,7 +476,6 @@ class HarnessNativeSession implements NativeSession {
     const currentIdentity = this.#input.identity;
     if (
       input.identity.sessionId !== currentIdentity.sessionId ||
-      input.identity.companyId !== currentIdentity.companyId ||
       input.identity.issueId !== currentIdentity.issueId ||
       input.identity.agentId !== currentIdentity.agentId
     ) {

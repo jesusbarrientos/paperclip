@@ -239,7 +239,6 @@ export const portabilityManifestSchema = z.object({
   generatedAt: z.string().datetime(),
   source: z
     .object({
-      companyId: z.string().guid(),
       companyName: z.string().min(1),
     })
     .nullable(),
@@ -285,8 +284,7 @@ export const portabilityTargetSchema = z.discriminatedUnion("mode", [
     newCompanyName: z.string().min(1).optional().nullable(),
   }),
   z.object({
-    mode: z.literal("existing_company"),
-    companyId: z.string().guid(),
+    mode: z.literal("existing_company")
   }),
 ]);
 

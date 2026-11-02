@@ -36,7 +36,6 @@ function createAsset() {
   const now = new Date("2026-01-01T00:00:00.000Z");
   return {
     id: "asset-1",
-    companyId: "company-1",
     provider: "local",
     objectKey: "assets/abc",
     contentType: "image/png",
@@ -53,7 +52,6 @@ function createAsset() {
 type TestStorageService = StorageService & {
   __calls: {
     putFileInputs: Array<{
-      companyId: string;
       namespace: string;
       originalFilename: string | null;
       contentType: string;
@@ -65,7 +63,6 @@ type TestStorageService = StorageService & {
 function createStorageService(contentType = "image/png"): TestStorageService {
   const calls: TestStorageService["__calls"] = { putFileInputs: [] };
   const putFile: StorageService["putFile"] = async (input: {
-    companyId: string;
     namespace: string;
     originalFilename: string | null;
     contentType: string;
@@ -134,7 +131,7 @@ async function requestApp(
   }
 }
 
-describe("POST /api/companies/:companyId/assets/images", () => {
+describe("POST /api/assets/images", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../services/activity-log.js");
@@ -158,7 +155,7 @@ describe("POST /api/companies/:companyId/assets/images", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/assets/images")
+        .post("/api/assets/images")
         .field("namespace", "goals")
         .attach("file", Buffer.from("png"), "logo.png"),
     );
@@ -167,7 +164,6 @@ describe("POST /api/companies/:companyId/assets/images", () => {
     expect(res.body.contentPath).toBe("/api/assets/asset-1/content");
     expect(createAssetMock).toHaveBeenCalledTimes(1);
     expect(png.__calls.putFileInputs[0]).toMatchObject({
-      companyId: "company-1",
       namespace: "assets/goals",
       originalFilename: "logo.png",
       contentType: "image/png",
@@ -184,14 +180,13 @@ describe("POST /api/companies/:companyId/assets/images", () => {
     const namespace = "profiles/oidc:example|jane.example@example.com";
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/assets/images")
+        .post("/api/assets/images")
         .field("namespace", namespace)
         .attach("file", Buffer.from("png"), "avatar.png"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(png.__calls.putFileInputs[0]).toMatchObject({
-      companyId: "company-1",
       namespace: `assets/${namespace}`,
       originalFilename: "avatar.png",
       contentType: "image/png",
@@ -206,7 +201,7 @@ describe("POST /api/companies/:companyId/assets/images", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/assets/images")
+        .post("/api/assets/images")
         .field("namespace", "profiles/bad name!")
         .attach("file", Buffer.from("png"), "avatar.png"),
     );
@@ -226,7 +221,7 @@ describe("POST /api/companies/:companyId/assets/images", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/assets/images")
+        .post("/api/assets/images")
         .field("namespace", "profiles/../secrets")
         .attach("file", Buffer.from("png"), "avatar.png"),
     );
@@ -249,7 +244,7 @@ describe("POST /api/companies/:companyId/assets/images", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/assets/images")
+        .post("/api/assets/images")
         .field("namespace", "issues/drafts")
         .attach("file", Buffer.from("hello"), { filename: "note.txt", contentType: "text/plain" }),
     );
@@ -266,7 +261,7 @@ describe("POST /api/companies/:companyId/assets/images", () => {
     const file = Buffer.alloc(MAX_ATTACHMENT_BYTES + 1, "a");
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/assets/images")
+        .post("/api/assets/images")
         .attach("file", file, "too-large.png"),
     );
 
@@ -275,7 +270,7 @@ describe("POST /api/companies/:companyId/assets/images", () => {
   });
 });
 
-describe("POST /api/companies/:companyId/logo", () => {
+describe("POST /api/organization/logo", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../services/index.js");
@@ -297,7 +292,7 @@ describe("POST /api/companies/:companyId/logo", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/logo")
+        .post("/api/organization/logo")
         .attach("file", Buffer.from("png"), "logo.png"),
     );
 
@@ -305,7 +300,6 @@ describe("POST /api/companies/:companyId/logo", () => {
     expect(res.body.contentPath).toBe("/api/assets/asset-1/content");
     expect(createAssetMock).toHaveBeenCalledTimes(1);
     expect(png.__calls.putFileInputs[0]).toMatchObject({
-      companyId: "company-1",
       namespace: "assets/companies",
       originalFilename: "logo.png",
       contentType: "image/png",
@@ -325,7 +319,7 @@ describe("POST /api/companies/:companyId/logo", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/logo")
+        .post("/api/organization/logo")
         .attach(
           "file",
           Buffer.from(
@@ -356,7 +350,7 @@ describe("POST /api/companies/:companyId/logo", () => {
     const file = Buffer.alloc(150 * 1024, "a");
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/logo")
+        .post("/api/organization/logo")
         .attach("file", file, "within-limit.png"),
     );
 
@@ -370,7 +364,7 @@ describe("POST /api/companies/:companyId/logo", () => {
     const file = Buffer.alloc(MAX_ATTACHMENT_BYTES + 1, "a");
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/logo")
+        .post("/api/organization/logo")
         .attach("file", file, "too-large.png"),
     );
 
@@ -384,7 +378,7 @@ describe("POST /api/companies/:companyId/logo", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/logo")
+        .post("/api/organization/logo")
         .attach("file", Buffer.from("not an image"), "note.txt"),
     );
 
@@ -399,7 +393,7 @@ describe("POST /api/companies/:companyId/logo", () => {
 
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/companies/company-1/logo")
+        .post("/api/organization/logo")
         .attach("file", Buffer.from("not actually svg"), "logo.svg"),
     );
 
@@ -424,7 +418,7 @@ describe("GET /api/assets/:assetId/content", () => {
   it("reads only the requested storage range for a large asset", async () => {
     const storage = createStorageService("text/plain");
     getAssetByIdMock.mockResolvedValue({ ...createAsset(), contentType: "text/plain", byteSize: 10 * 1024 * 1024 });
-    vi.mocked(storage.getObject).mockImplementation(async (_company, _key, options) => {
+    vi.mocked(storage.getObject).mockImplementation(async (_key, options) => {
       expect(options).toEqual({ range: { start: 8192, end: 12288 } });
       return { stream: Readable.from(Buffer.alloc(4097, 65)), contentLength: 4097 };
     });

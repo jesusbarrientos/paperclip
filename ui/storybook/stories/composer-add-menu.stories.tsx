@@ -45,7 +45,7 @@ function ComposerAddStory({ initialMode, goalAvailable, mobile, mobileContext, f
 
   async function attachFile(file: File): Promise<IssueAttachment> {
     return {
-      id: crypto.randomUUID(), companyId: "storybook", issueId: "composer-story",
+      id: crypto.randomUUID(), issueId: "composer-story",
       issueCommentId: null, assetId: crypto.randomUUID(), provider: "storybook",
       objectKey: file.name, contentType: file.type, byteSize: file.size, sha256: "storybook",
       originalFilename: file.name, createdByAgentId: null, createdByUserId: "storybook",

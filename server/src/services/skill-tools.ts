@@ -33,10 +33,10 @@ export const updateSkillToolInput = z.object({
 });
 
 export async function callUpdateSkillTool(input: {
-  arguments: Record<string, unknown>; apiUrl: string; token: string; companyId: string;
+  arguments: Record<string, unknown>; apiUrl: string; token: string;
 }, fetcher: typeof fetch = fetch) {
   const { skillId, markdown, expectedVersionId, idempotencyKey } = updateSkillToolInput.parse(input.arguments);
-  const response = await fetcher(`${input.apiUrl.replace(/\/+$/, "").replace(/\/api$/, "")}/api/companies/${encodeURIComponent(input.companyId)}/skills/${encodeURIComponent(skillId)}/files`, {
+  const response = await fetcher(`${input.apiUrl.replace(/\/+$/, "").replace(/\/api$/, "")}/api/skills/${encodeURIComponent(skillId)}/files`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${input.token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ path: "SKILL.md", content: markdown, expectedVersionId, idempotencyKey }),
@@ -49,10 +49,10 @@ export async function callUpdateSkillTool(input: {
 
 /** Use the same API and company skill policy as Skill Studio. */
 export async function callCreateSkillTool(input: {
-  arguments: Record<string, unknown>; apiUrl: string; token: string; companyId: string;
+  arguments: Record<string, unknown>; apiUrl: string; token: string;
 }, fetcher: typeof fetch = fetch) {
   const body = createSkillToolInput.parse(input.arguments);
-  const response = await fetcher(`${input.apiUrl.replace(/\/+$/, "").replace(/\/api$/, "")}/api/companies/${encodeURIComponent(input.companyId)}/skills`, {
+  const response = await fetcher(`${input.apiUrl.replace(/\/+$/, "").replace(/\/api$/, "")}/api/skills`, {
     method: "POST",
     headers: { Authorization: `Bearer ${input.token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body), signal: AbortSignal.timeout(60_000),

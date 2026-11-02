@@ -60,7 +60,6 @@ describeEmbeddedPostgres("documentService system issue documents", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: "PAP-1600",
       title: "System document filtering",
       description: "Validate document filtering",

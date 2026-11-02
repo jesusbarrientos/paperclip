@@ -4,17 +4,17 @@ import { toolsApi } from "@/api/tools";
 import { queryKeys } from "@/lib/queryKeys";
 import { AgentMultiSelect } from "@/components/AgentMultiSelect";
 import { RadioCardGroup } from "@/components/ui/radio-card";
+import { useOrganization } from "@/context/OrganizationContext";
 
 export function EmailConnectionAccess({
-  companyId,
   connectionId,
   agents,
 }: {
-  companyId: string;
   connectionId: string;
   agents: Agent[];
 }) {
   const cache = useQueryClient();
+  const organizationId = useOrganization().organization?.id ?? null;
   const grants = useQuery({
     queryKey: queryKeys.tools.connectionGrants(connectionId),
     queryFn: () => toolsApi.listConnectionGrants(connectionId),
@@ -58,7 +58,7 @@ export function EmailConnectionAccess({
       .filter((i) => i.targetType === "agent")
       .map((i) => i.targetId),
   );
-  const disabled = !grants.data?.capabilities.canConfigure || save.isPending;
+  const disabled = !organizationId || !grants.data?.capabilities.canConfigure || save.isPending;
   return (
     <div className="space-y-8">
       <section className="space-y-3">
@@ -81,9 +81,9 @@ export function EmailConnectionAccess({
             { value: "all", title: "Any agent" },
           ]}
           onValueChange={(value) =>
-            save.mutate(
+            organizationId && save.mutate(
               value === "all"
-                ? [{ targetType: "company", targetId: companyId }]
+                ? [{ targetType: "company", targetId: organizationId }]
                 : Array.from(selected, (targetId) => ({
                     targetType: "agent",
                     targetId,

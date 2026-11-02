@@ -2,7 +2,7 @@
   "schema": "paperclip.prp.fixture.v1", "fixtureVersion": 1, "protocolVersion": 1,
   "name": "Unknown optional fields", "description": "A future producer adds optional fields that a PRP v1 consumer preserves and ignores safely.",
   "futureFixtureHint": { "producerVersion": "1.1-preview" },
-  "identity": { "schema": "paperclip.prp.identity.v1", "companyId": "company_replay", "issueId": "issue_replay_future", "runId": "run_replay_future", "environmentLeaseId": "lease_replay_future", "runnerInstanceId": "runner_replay", "normalizedSessionId": "session_replay_future", "driverSessionId": "driver_replay_future", "futureIdentityLabel": "preserved" },
+  "identity": { "schema": "paperclip.prp.identity.v1", "issueId": "issue_replay_future", "runId": "run_replay_future", "environmentLeaseId": "lease_replay_future", "runnerInstanceId": "runner_replay", "normalizedSessionId": "session_replay_future", "driverSessionId": "driver_replay_future", "futureIdentityLabel": "preserved" },
   "capabilities": { "schema": "paperclip.prp.capabilities.v1", "sessionReusePolicy": "new_per_run", "driver": { "kind": "fake", "version": "1.1.0", "futureDriverField": true }, "steer": true, "interrupt": true, "resume": true, "runtimeRequests": true, "structuredResult": true, "typedEvents": true, "futureCapability": { "mode": "optional" } },
   "commands": [{ "schema": "paperclip.prp.command.v1", "commandId": "command_future_prepare", "controllerSeq": 1, "type": "run.prepare", "issuedAt": "2026-08-07T12:50:00.000Z", "payload": {}, "futureDeadlineMode": "soft" }],
   "events": [

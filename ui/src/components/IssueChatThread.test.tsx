@@ -224,7 +224,6 @@ function createSuggestedTasksInteraction(
 ): SuggestTasksInteraction {
   return {
     id: "interaction-suggest-1",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "suggest_tasks",
     title: "Suggested follow-up work",
@@ -267,7 +266,6 @@ function createQuestionInteraction(
 ): AskUserQuestionsInteraction {
   return {
     id: "interaction-question-1",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "ask_user_questions",
     title: "Clarify the phase",
@@ -316,7 +314,6 @@ function createExpiredRequestConfirmationInteraction(
 ): RequestConfirmationInteraction {
   return {
     id: "interaction-confirmation-expired",
-    companyId: "company-1",
     issueId: "issue-1",
     kind: "request_confirmation",
     title: "Approve the plan",
@@ -436,7 +433,6 @@ describe("IssueChatThread", () => {
           <IssueChatThread
             comments={["imessage", "board"].map((source) => ({
               id: `comment-${source}`,
-              companyId: "company-1",
               issueId: "issue-1",
               authorAgentId: null,
               authorUserId: "user-board",
@@ -477,7 +473,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-current-user",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-board",
@@ -609,7 +604,6 @@ describe("IssueChatThread", () => {
               comments={[
                 {
                   id: "comment-copy",
-                  companyId: "company-1",
                   issueId: "issue-1",
                   authorAgentId: null,
                   authorUserId: "user-1",
@@ -1445,7 +1439,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-target",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: "agent-1",
                 authorUserId: null,
@@ -1654,7 +1647,6 @@ describe("IssueChatThread", () => {
 
     const olderComment = {
       id: "comment-before-refresh",
-      companyId: "company-1",
       issueId: "issue-1",
       authorAgentId: "agent-perf-codex",
       authorUserId: null,
@@ -1918,7 +1910,6 @@ describe("IssueChatThread", () => {
     const comments = [
       {
         id: "comment-agent-feedback",
-        companyId: "company-1",
         issueId: "issue-1",
         authorAgentId: "agent-1",
         authorUserId: null,
@@ -1965,7 +1956,6 @@ describe("IssueChatThread", () => {
             feedbackVotes={[
               {
                 id: "feedback-1",
-                companyId: "company-1",
                 issueId: "issue-1",
                 targetType: "issue_comment",
                 targetId: "comment-agent-feedback",
@@ -2003,7 +1993,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-agent-bubble",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: "agent-1",
                 authorUserId: null,
@@ -2057,7 +2046,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-owned",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-board",
@@ -2070,7 +2058,6 @@ describe("IssueChatThread", () => {
               },
               {
                 id: "comment-other",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-other",
@@ -2133,7 +2120,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-deleted",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-board",
@@ -2190,7 +2176,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-deleted",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-board",
@@ -2235,7 +2220,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-1",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "local-board",
@@ -2663,7 +2647,6 @@ describe("IssueChatThread", () => {
     const root = createRoot(container);
     const pausedAgent = {
       id: "agent-1",
-      companyId: "company-1",
       name: "CodexCoder",
       status: "paused",
       pauseReason: "manual",
@@ -3092,7 +3075,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-1",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: "agent-1",
                 authorUserId: null,
@@ -3128,7 +3110,7 @@ describe("IssueChatThread", () => {
   it("hides queued interrupt and cancel actions until the task resumes", () => {
     const root = createRoot(container);
     const comments = [{
-      id: "comment-paused-queue", companyId: "company-1", issueId: "issue-1",
+      id: "comment-paused-queue", issueId: "issue-1",
       authorAgentId: null, authorUserId: "user-1", authorType: "user" as const,
       body: "Keep this queued message", presentation: null, metadata: null,
       queueState: "queued" as const, queueTargetRunId: "run-1",
@@ -3153,7 +3135,7 @@ describe("IssueChatThread", () => {
     const root = createRoot(container);
     const onInterruptQueued = vi.fn(async () => {});
     act(() => root.render(<MemoryRouter><IssueChatThread
-      comments={[{ id: "comment-queue", companyId: "company-1", issueId: "issue-1",
+      comments={[{ id: "comment-queue", issueId: "issue-1",
         authorAgentId: null, authorUserId: "user-1", authorType: "user", body: "Pending input",
         presentation: null, metadata: null, queueState: "queued", queueTargetRunId: null,
         createdAt: new Date(), updatedAt: new Date() }]}
@@ -3177,7 +3159,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-hold",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-1",
@@ -3211,7 +3192,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-active-run",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-1",
@@ -3688,7 +3668,6 @@ describe("IssueChatThread", () => {
       await uploadGate;
       return {
         id: "attachment-1",
-        companyId: "company-1",
         issueId: "issue-1",
         issueCommentId: null,
         assetId: "asset-1",
@@ -4091,7 +4070,6 @@ describe("IssueChatThread", () => {
     const root = createRoot(container);
     const onAttachImage = vi.fn(async (file: File) => ({
       id: "attachment-1",
-      companyId: "company-1",
       issueId: "issue-1",
       issueCommentId: null,
       assetId: "asset-1",
@@ -4159,7 +4137,6 @@ describe("IssueChatThread", () => {
             comments={[
               {
                 id: "comment-spacer-1",
-                companyId: "company-1",
                 issueId: "issue-1",
                 authorAgentId: null,
                 authorUserId: "user-1",

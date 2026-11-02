@@ -159,7 +159,6 @@ function createApp() {
 
 const legacyProjectLinkedIssue = {
   id: "11111111-1111-4111-8111-111111111111",
-  companyId: "company-1",
   identifier: "PAP-581",
   title: "Legacy onboarding task",
   description: "Seed the first CEO task",
@@ -179,7 +178,6 @@ const legacyProjectLinkedIssue = {
 
 const projectGoal = {
   id: "44444444-4444-4444-8444-444444444444",
-  companyId: "company-1",
   title: "Launch the company",
   description: null,
   level: "company",
@@ -230,7 +228,6 @@ describe("issue goal context routes", () => {
     mockDb.execute.mockResolvedValue([]);
     mockProjectService.getById.mockResolvedValue({
       id: legacyProjectLinkedIssue.projectId,
-      companyId: "company-1",
       urlKey: "onboarding",
       goalId: projectGoal.id,
       goalIds: [projectGoal.id],
@@ -307,7 +304,6 @@ describe("issue goal context routes", () => {
   it("keeps GET /issues/:id project and workspace embeds compact for fast detail loads", async () => {
     const workspaceId = "55555555-5555-4555-8555-555555555555";
     const runtimeServiceBase = {
-      companyId: "company-1",
       projectId: legacyProjectLinkedIssue.projectId,
       projectWorkspaceId: "workspace-primary",
       executionWorkspaceId: workspaceId,
@@ -342,7 +338,6 @@ describe("issue goal context routes", () => {
       workspaces: [
         {
           id: "workspace-primary",
-          companyId: "company-1",
           projectId: legacyProjectLinkedIssue.projectId,
           name: "Main",
           sourceType: "local_path",
@@ -366,7 +361,6 @@ describe("issue goal context routes", () => {
       ],
       primaryWorkspace: {
         id: "workspace-primary",
-        companyId: "company-1",
         projectId: legacyProjectLinkedIssue.projectId,
         name: "Main",
         sourceType: "local_path",
@@ -390,7 +384,6 @@ describe("issue goal context routes", () => {
     });
     mockExecutionWorkspaceService.getById.mockResolvedValueOnce({
       id: workspaceId,
-      companyId: "company-1",
       projectId: legacyProjectLinkedIssue.projectId,
       projectWorkspaceId: "workspace-primary",
       sourceIssueId: legacyProjectLinkedIssue.id,

@@ -35,18 +35,17 @@ describeEmbeddedPostgres("issue identifier routes", () => {
     await tempDb?.cleanup();
   });
 
-  function createApp(companyId: string) {
+  function createApp() {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "board",
         userId: "cloud-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
-        // cloud_tenant actors are never instance admins — access flows through
-        // company-scoped membership grants, seeded per test company below.
+        // cloud_tenant actors are never instance admins; access flows through
+        // the membership grants seeded below.
         isInstanceAdmin: false,
       };
       next();
@@ -56,7 +55,7 @@ describeEmbeddedPostgres("issue identifier routes", () => {
     return app;
   }
 
-  async function seedCloudTenantMember(companyId: string) {
+  async function seedCloudTenantMember() {
     await db.insert(companyMemberships).values({
       principalType: "user",
       principalId: "cloud-user-1",
@@ -81,10 +80,9 @@ describeEmbeddedPostgres("issue identifier routes", () => {
       issuePrefix: "PC1A2",
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       issueNumber: 7,
       identifier: "PC1A2-7",
       title: "Tenant identifier route",
@@ -93,13 +91,12 @@ describeEmbeddedPostgres("issue identifier routes", () => {
       createdByUserId: "cloud-user-1",
     });
 
-    const app = createApp(companyId);
+    const app = createApp();
     const read = await request(app).get("/api/issues/pc1a2-7");
 
     expect(read.status, JSON.stringify(read.body)).toBe(200);
     expect(read.body).toMatchObject({
       id: issueId,
-      companyId,
       identifier: "PC1A2-7",
     });
 
@@ -110,7 +107,6 @@ describeEmbeddedPostgres("issue identifier routes", () => {
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
     expect(updated.body).toMatchObject({
       id: issueId,
-      companyId,
       identifier: "PC1A2-7",
       priority: "high",
     });

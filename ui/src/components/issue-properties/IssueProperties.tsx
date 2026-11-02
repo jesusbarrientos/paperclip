@@ -27,7 +27,6 @@ import { useIssueDocuments } from "@/hooks/useIssueDocuments";
 import { useStreamlinedUiEnabled } from "@/hooks/useStreamlinedUiEnabled";
 import { selectAgentArtifactAttachments } from "@/lib/issue-artifacts";
 import { projectsApi } from "../../api/projects";
-import { useCompany } from "../../context/CompanyContext";
 import { useSidebar } from "../../context/SidebarContext";
 import { queryKeys } from "../../lib/queryKeys";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap, buildCompanyUserProfileMap, isAgentTaskTarget } from "../../lib/company-members";
@@ -242,10 +241,8 @@ export function IssueProperties({
   documentDeepLink,
   sidePanelContentOnly = false,
 }: IssuePropertiesProps) {
-  const { selectedCompanyId } = useCompany();
   const { isMobile } = useSidebar();
   const queryClient = useQueryClient();
-  const companyId = issue.companyId ?? selectedCompanyId;
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
@@ -413,19 +410,16 @@ export function IssueProperties({
   const currentUserId = session?.user?.id ?? session?.session?.userId;
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(companyId!),
-    queryFn: () => agentsApi.list(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(companyId!),
-    queryFn: () => accessApi.listUserDirectory(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(companyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(companyId!, { includeArchived: true }),
-    enabled: !!companyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
   const activeProjects = useMemo(
     () => (projects ?? []).filter((p) => !p.archivedAt || p.id === issue.projectId),
@@ -433,49 +427,43 @@ export function IssueProperties({
   );
   const { orderedProjects } = useProjectOrder({
     projects: activeProjects,
-    companyId,
     userId: currentUserId,
   });
 
   const { data: labels } = useQuery({
-    queryKey: queryKeys.issues.labels(companyId!),
-    queryFn: () => issuesApi.listLabels(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
   });
 
   const { data: allIssues, isFetching: isFetchingIssuePickerIssues } = useQuery({
-    queryKey: queryKeys.issues.list(companyId!),
-    queryFn: () => issuesApi.list(companyId!),
-    enabled: !!companyId && (parentOpen || (blockedByOpen && normalizedBlockedBySearch.length === 0)),
+    queryKey: queryKeys.issues.list(),
+    queryFn: () => issuesApi.list(),
+    enabled: (parentOpen || (blockedByOpen && normalizedBlockedBySearch.length === 0)),
   });
 
   const { data: searchedBlockedByIssues, isFetching: isFetchingSearchedBlockedByIssues } = useQuery({
-    queryKey: companyId
-      ? queryKeys.issues.search(companyId, normalizedBlockedBySearch, undefined, ISSUE_BLOCKER_SEARCH_LIMIT)
-      : ["issues", "blocker-search", normalizedBlockedBySearch, ISSUE_BLOCKER_SEARCH_LIMIT],
-    queryFn: () => issuesApi.list(companyId!, {
+    queryKey: queryKeys.issues.search(normalizedBlockedBySearch, undefined, ISSUE_BLOCKER_SEARCH_LIMIT),
+    queryFn: () => issuesApi.list({
       q: normalizedBlockedBySearch,
       limit: ISSUE_BLOCKER_SEARCH_LIMIT,
     }),
-    enabled: !!companyId && blockedByOpen && normalizedBlockedBySearch.length > 0,
+    enabled: blockedByOpen && normalizedBlockedBySearch.length > 0,
   });
 
   const { data: searchedParentIssues, isFetching: isFetchingSearchedParentIssues } = useQuery({
-    queryKey: companyId
-      ? queryKeys.issues.search(companyId, normalizedParentSearch, undefined, ISSUE_BLOCKER_SEARCH_LIMIT)
-      : ["issues", "blocker-search", normalizedParentSearch, ISSUE_BLOCKER_SEARCH_LIMIT],
-    queryFn: () => issuesApi.list(companyId!, {
+    queryKey: queryKeys.issues.search(normalizedParentSearch, undefined, ISSUE_BLOCKER_SEARCH_LIMIT),
+    queryFn: () => issuesApi.list({
       q: normalizedParentSearch,
       limit: ISSUE_BLOCKER_SEARCH_LIMIT,
     }),
-    enabled: !!companyId && parentOpen && normalizedParentSearch.length > 0,
+    enabled: parentOpen && normalizedParentSearch.length > 0,
   });
 
   const createLabel = useMutation({
-    mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(companyId!, data),
+    mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(data),
     onSuccess: async (created) => {
       queryClient.setQueryData<IssueLabel[] | undefined>(
-        queryKeys.issues.labels(companyId!),
+        queryKeys.issues.labels(),
         (current) => {
           if (!current) return [created];
           if (current.some((label) => label.id === created.id)) return current;
@@ -483,7 +471,7 @@ export function IssueProperties({
         },
       );
       onUpdate({ labelIds: [...(issue.labelIds ?? []), created.id] });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.issues.labels(companyId!) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.issues.labels() });
       setNewLabelName("");
     },
   });
@@ -499,7 +487,7 @@ export function IssueProperties({
         current ? { ...current, archivedAt: null, archivedByActorType: null, archivedByAgentId: null, archivedByRunId: null } : current,
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
-      if (companyId) invalidateInboxIssueQueries(queryClient, companyId);
+      invalidateInboxIssueQueries(queryClient);
     },
     onError: (error) => {
       setUnarchiveErrorMessage(error instanceof Error && error.message.trim().length > 0
@@ -539,17 +527,17 @@ export function IssueProperties({
     isLoading: reusableExecutionWorkspacesLoading,
     isError: reusableExecutionWorkspacesError,
   } = useQuery({
-    queryKey: queryKeys.executionWorkspaces.list(companyId!, {
+    queryKey: queryKeys.executionWorkspaces.list({
       projectId: issue.projectId ?? undefined,
       projectWorkspaceId: issue.projectWorkspaceId ?? undefined,
       reuseEligible: true,
     }),
-    queryFn: () => executionWorkspacesApi.list(companyId!, {
+    queryFn: () => executionWorkspacesApi.list({
       projectId: issue.projectId ?? undefined,
       projectWorkspaceId: issue.projectWorkspaceId ?? undefined,
       reuseEligible: true,
     }),
-    enabled: Boolean(companyId) && Boolean(issue.projectId) && workspacePickerEligible && workspacePickerOpen,
+    enabled: Boolean(issue.projectId) && workspacePickerEligible && workspacePickerOpen,
   });
   const effectiveWorkspaceSelection = currentWorkspaceSelection(issue, issueProject);
   const hasWorkspaceOverride = issue.executionWorkspacePreference != null
@@ -626,12 +614,10 @@ export function IssueProperties({
       queryClient.setQueryData(queryKeys.executionWorkspaces.detail(result.workspace.id), result.workspace);
       void queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(result.workspace.projectId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.overview(result.workspace.companyId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.overview() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.workspaceOperations(result.workspace.id) });
-      if (companyId) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list(companyId) });
-      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.executionWorkspaces.list() });
       setRuntimeActionErrorMessage(null);
       setRuntimeActionMessage(
         request.action === "run"
@@ -747,11 +733,11 @@ export function IssueProperties({
   const catalogProvider = assigneeAdapterType === "paperclip_runner" ? String(normalizeLegacyRunnerProvider(assigneePrimaryAdapterConfig).provider ?? "codex") : undefined;
   const { data: assigneeAdapterModels } = useQuery({
     queryKey:
-      companyId && assigneeAdapterType
-        ? queryKeys.agents.adapterModels(companyId, assigneeAdapterType, null, catalogProvider)
+      assigneeAdapterType
+        ? queryKeys.agents.adapterModels(assigneeAdapterType, null, catalogProvider)
         : ["agents", "none", "adapter-models", assigneeAdapterType ?? "none"],
-    queryFn: () => agentsApi.adapterModels(companyId!, assigneeAdapterType!, { provider: catalogProvider }),
-    enabled: Boolean(companyId) && showAssigneeAdapterOptions && supportsAssigneeOverrides,
+    queryFn: () => agentsApi.adapterModels(assigneeAdapterType!, { provider: catalogProvider }),
+    enabled: showAssigneeAdapterOptions && supportsAssigneeOverrides,
   });
   const modelOverrideOptions = useMemo<InlineEntityOption[]>(() => {
     const models = sortAdapterModels(assigneeAdapterModels ?? []);
@@ -1762,11 +1748,11 @@ export function IssueProperties({
       onClick={() => {
         if (option.kind === "agent") {
           selectAssignee({ assigneeAgentId: option.agent.id, assigneeUserId: null }, option.label, () =>
-            trackRecentAssignee(option.agent.id, companyId ?? undefined),
+            trackRecentAssignee(option.agent.id),
           );
         } else if (option.kind === "user") {
           selectAssignee({ assigneeAgentId: null, assigneeUserId: option.userId }, option.label, () =>
-            trackRecentAssigneeUser(option.userId, companyId ?? undefined),
+            trackRecentAssigneeUser(option.userId),
           );
         } else {
           selectAssignee({ assigneeAgentId: null, assigneeUserId: null }, option.label);

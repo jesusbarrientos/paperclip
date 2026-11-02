@@ -78,7 +78,6 @@ function buildContext(config: Record<string, unknown> = {}) {
     runId: "run-1",
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "Gemini Coder",
       adapterType: "gemini_local",
       adapterConfig: {},

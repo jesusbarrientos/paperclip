@@ -37,7 +37,6 @@ export type {
 } from "@paperclipai/shared";
 
 export interface WorkTimelineQuery {
-  companyId: string;
   from?: Date;
   to?: Date;
   userId?: string;
@@ -51,7 +50,6 @@ export interface WorkTimelineQuery {
 
 export interface WorkTimelineIssueAccessInput {
   id: string;
-  companyId: string;
   projectId: string | null;
   parentId: string | null;
   assigneeAgentId: string | null;
@@ -61,7 +59,6 @@ export interface WorkTimelineIssueAccessInput {
 
 type IssueRow = {
   id: string;
-  companyId: string;
   projectId: string | null;
   goalId: string | null;
   parentId: string | null;
@@ -183,7 +180,6 @@ export function workTimelineService(db: Db) {
         issue,
         allowed: await canReadIssue({
           id: issue.id,
-          companyId: issue.companyId,
           projectId: issue.projectId,
           parentId: issue.parentId,
           assigneeAgentId: issue.assigneeAgentId,
@@ -206,7 +202,6 @@ export function workTimelineService(db: Db) {
     }
 
     const filterConditions = [
-      eq(issues.companyId, input.companyId),
       executionIssueCondition(),
       input.goalId ? eq(issues.goalId, input.goalId) : undefined,
       input.projectId ? eq(issues.projectId, input.projectId) : undefined,
@@ -234,7 +229,6 @@ export function workTimelineService(db: Db) {
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, input.companyId),
           runOverlapsWindow(from, to),
           sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' is not null`,
         ),
@@ -250,7 +244,6 @@ export function workTimelineService(db: Db) {
       .from(activityLog)
       .where(
         and(
-          eq(activityLog.companyId, input.companyId),
           eq(activityLog.entityType, "issue"),
           gte(activityLog.createdAt, from),
           lte(activityLog.createdAt, to),
@@ -265,7 +258,6 @@ export function workTimelineService(db: Db) {
       .from(issueComments)
       .where(
         and(
-          eq(issueComments.companyId, input.companyId),
           isNull(issueComments.deletedAt),
           gte(issueComments.createdAt, from),
           lte(issueComments.createdAt, to),
@@ -279,13 +271,10 @@ export function workTimelineService(db: Db) {
       .select({ issueId: issueThreadInteractions.issueId })
       .from(issueThreadInteractions)
       .where(
-        and(
-          eq(issueThreadInteractions.companyId, input.companyId),
-          or(
-            and(gte(issueThreadInteractions.createdAt, from), lte(issueThreadInteractions.createdAt, to)),
-            and(gte(issueThreadInteractions.resolvedAt, from), lte(issueThreadInteractions.resolvedAt, to)),
-          ),
-        ),
+        or(
+                      and(gte(issueThreadInteractions.createdAt, from), lte(issueThreadInteractions.createdAt, to)),
+                      and(gte(issueThreadInteractions.resolvedAt, from), lte(issueThreadInteractions.resolvedAt, to)),
+                    ),
       )
       .orderBy(desc(issueThreadInteractions.createdAt))
       .limit(MAX_SOURCE_ROWS);
@@ -296,13 +285,10 @@ export function workTimelineService(db: Db) {
       .from(issueApprovals)
       .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
       .where(
-        and(
-          eq(issueApprovals.companyId, input.companyId),
-          or(
-            and(gte(approvals.createdAt, from), lte(approvals.createdAt, to)),
-            and(gte(approvals.decidedAt, from), lte(approvals.decidedAt, to)),
-          ),
-        ),
+        or(
+                      and(gte(approvals.createdAt, from), lte(approvals.createdAt, to)),
+                      and(gte(approvals.decidedAt, from), lte(approvals.decidedAt, to)),
+                    ),
       )
       .orderBy(desc(approvals.createdAt))
       .limit(MAX_SOURCE_ROWS);
@@ -316,7 +302,6 @@ export function workTimelineService(db: Db) {
     return db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
         projectId: issues.projectId,
         goalId: issues.goalId,
         parentId: issues.parentId,
@@ -332,7 +317,6 @@ export function workTimelineService(db: Db) {
       .from(issues)
       .where(
         and(
-          eq(issues.companyId, input.companyId),
           executionIssueCondition(),
           inArray(issues.id, issueIds),
           input.goalId ? eq(issues.goalId, input.goalId) : undefined,
@@ -357,7 +341,6 @@ export function workTimelineService(db: Db) {
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.companyId, input.companyId),
             eq(issueComments.authorUserId, input.userId),
             isNull(issueComments.deletedAt),
             gte(issueComments.createdAt, from),
@@ -370,7 +353,6 @@ export function workTimelineService(db: Db) {
         .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
         .where(
           and(
-            eq(issueApprovals.companyId, input.companyId),
             eq(approvals.decidedByUserId, input.userId),
             gte(approvals.decidedAt, from),
             lte(approvals.decidedAt, to),
@@ -381,7 +363,6 @@ export function workTimelineService(db: Db) {
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, input.companyId),
             eq(issueThreadInteractions.resolvedByUserId, input.userId),
             gte(issueThreadInteractions.resolvedAt, from),
             lte(issueThreadInteractions.resolvedAt, to),
@@ -392,7 +373,6 @@ export function workTimelineService(db: Db) {
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.companyId, input.companyId),
             eq(activityLog.actorType, "user"),
             eq(activityLog.actorId, input.userId),
             eq(activityLog.entityType, "issue"),
@@ -420,7 +400,7 @@ export function workTimelineService(db: Db) {
     return rows.filter((issue) => selected.has(issue.id) || byId.get(issue.parentId ?? "") && selected.has(issue.parentId ?? ""));
   }
 
-  async function loadActorMaps(companyId: string, actorIds: Set<string>) {
+  async function loadActorMaps(actorIds: Set<string>) {
     const agentIds = Array.from(actorIds)
       .filter((id) => id.startsWith("agent:"))
       .map((id) => id.slice("agent:".length));
@@ -433,7 +413,7 @@ export function workTimelineService(db: Db) {
         ? db
           .select({ id: agents.id, name: agents.name, icon: agents.icon, appearance: agents.appearance })
           .from(agents)
-          .where(and(eq(agents.companyId, companyId), inArray(agents.id, maybeUuidList(agentIds))))
+          .where(inArray(agents.id, maybeUuidList(agentIds)))
         : [],
       userIds.length > 0
         ? db
@@ -550,7 +530,6 @@ export function workTimelineService(db: Db) {
         .from(heartbeatRuns)
         .where(
           and(
-            eq(heartbeatRuns.companyId, input.companyId),
             runOverlapsWindow(from, to),
             inArray(sql<string>`${heartbeatRuns.contextSnapshot} ->> 'issueId'`, readableIssueIds),
           ),
@@ -573,8 +552,6 @@ export function workTimelineService(db: Db) {
         .innerJoin(heartbeatRuns, eq(activityLog.runId, heartbeatRuns.id))
         .where(
           and(
-            eq(activityLog.companyId, input.companyId),
-            eq(heartbeatRuns.companyId, input.companyId),
             eq(activityLog.entityType, "issue"),
             inArray(activityLog.entityId, readableIssueIds),
             runOverlapsWindow(from, to),
@@ -590,7 +567,6 @@ export function workTimelineService(db: Db) {
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.companyId, input.companyId),
             isNull(issueComments.deletedAt),
             inArray(issueComments.issueId, readableIssueIds),
             gte(issueComments.createdAt, from),
@@ -610,7 +586,6 @@ export function workTimelineService(db: Db) {
         .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
         .where(
           and(
-            eq(issueApprovals.companyId, input.companyId),
             inArray(issueApprovals.issueId, readableIssueIds),
             or(
               and(gte(approvals.createdAt, from), lte(approvals.createdAt, to)),
@@ -631,7 +606,6 @@ export function workTimelineService(db: Db) {
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, input.companyId),
             inArray(issueThreadInteractions.issueId, readableIssueIds),
             or(
               and(gte(issueThreadInteractions.createdAt, from), lte(issueThreadInteractions.createdAt, to)),
@@ -651,7 +625,6 @@ export function workTimelineService(db: Db) {
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.companyId, input.companyId),
             eq(activityLog.entityType, "issue"),
             inArray(activityLog.entityId, readableIssueIds),
             gte(activityLog.createdAt, from),
@@ -759,7 +732,7 @@ export function workTimelineService(db: Db) {
       }
     }
 
-    const actorMaps = await loadActorMaps(input.companyId, actorIds);
+    const actorMaps = await loadActorMaps(actorIds);
     const actors: WorkTimelineActor[] = Array.from(actorIds).map((id) => {
       const [type, rawId] = id.split(":", 2) as [TimelineActorType, string];
       if (type === "agent") {

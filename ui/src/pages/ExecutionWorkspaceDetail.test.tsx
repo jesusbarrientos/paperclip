@@ -54,11 +54,9 @@ vi.mock("@/lib/router", () => ({
   useParams: () => ({ workspaceId: "workspace-1" }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: [{ id: "company-1", issuePrefix: "PAP" }],
-    selectedCompanyId: "company-1",
-    setSelectedCompanyId: vi.fn(),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 vi.mock("../context/BreadcrumbContext", () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: mockSetBreadcrumbs }) }));
@@ -123,7 +121,6 @@ function workspace(overrides: Partial<ExecutionWorkspace> = {}): ExecutionWorksp
   const now = new Date("2026-05-01T00:00:00Z");
   return {
     id: "workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: null,
     sourceIssueId: null,
@@ -156,7 +153,6 @@ function project(overrides: Partial<Project> = {}): Project {
   const now = new Date("2026-05-01T00:00:00Z");
   return {
     id: "project-1",
-    companyId: "company-1",
     urlKey: "project-1",
     goalId: null,
     goalIds: [],
@@ -270,17 +266,16 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
     expect(container.textContent).toContain("Services");
   });
 
-  it("scopes the plugin detail-tab discovery to execution_workspace and the workspace's company", async () => {
+  it("scopes the plugin detail-tab discovery to execution_workspace", async () => {
     await render();
 
     const enabledDetailTabFilters = mockUsePluginSlots.mock.calls
-      .map(([filters]) => filters as { slotTypes: string[]; entityType: string; companyId: string | null; enabled?: boolean })
+      .map(([filters]) => filters as { slotTypes: string[]; entityType: string; enabled?: boolean })
       .filter((filters) => filters.slotTypes.includes("detailTab") && filters.enabled !== false);
 
     expect(enabledDetailTabFilters.length).toBeGreaterThan(0);
     for (const filters of enabledDetailTabFilters) {
       expect(filters.entityType).toBe("execution_workspace");
-      expect(filters.companyId).toBe("company-1");
     }
   });
 
@@ -298,7 +293,6 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
     expect(toolbarOutlet?.context).toMatchObject({
       entityId: "workspace-1",
       entityType: "execution_workspace",
-      companyId: "company-1",
       projectId: "project-1",
     });
   });
@@ -309,7 +303,6 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
     await render();
 
     expect(mockSummarySlotCard).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       scopeKind: "execution_workspace",
       scopeId: "workspace-1",
       title: "Workspace summary",
@@ -326,7 +319,6 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
     await render();
 
     expect(mockSummarySlotCard).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       scopeKind: "execution_workspace",
       scopeId: "workspace-1",
     }));

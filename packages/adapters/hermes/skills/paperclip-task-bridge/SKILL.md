@@ -17,11 +17,10 @@ Configure these in Hermes env/profile secrets, not in prompt text:
 Optional:
 
 - `PAPERCLIP_API_KEY` - fallback env var for older profiles; it must still contain a `task_bridge` scoped key, never a full agent key.
-- `PAPERCLIP_COMPANY_ID` - skips one identity lookup when set.
 - `PAPERCLIP_AGENT_ID` - skips one identity lookup when set.
 - `PAPERCLIP_RUN_ID` - sent as `X-Paperclip-Run-Id` on mutating requests when Hermes is running inside a Paperclip heartbeat.
 
-Never print or paste API keys. The helper reads credentials from environment variables and only prints response summaries. Do not put a normal claimed agent API key in an internet-facing Hermes runtime; normal keys can use broad same-company Paperclip routes.
+Never print or paste API keys. The helper reads credentials from environment variables and only prints response summaries. Do not put a normal claimed agent API key in an internet-facing Hermes runtime; normal keys can use broad Paperclip routes.
 
 ## Create a Bridge Key
 
@@ -70,7 +69,6 @@ node ./paperclip-task.mjs comment --issue PAP-123 --body-file -
 
 ## Workflow Expectations
 
-- Keep tasks company-scoped by using the company resolved from the scoped agent key.
 - Let Paperclip activity logging come from the normal API endpoints; do not write local logs that include credentials.
 - Use comments for durable progress.
 - Use `update-status` only when the issue has a real disposition: `done`, `in_review`, `blocked`, `todo`, `in_progress`, `backlog`, or `cancelled`.

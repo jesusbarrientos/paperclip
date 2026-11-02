@@ -5,7 +5,6 @@ export type HumanCompanyRole = "owner" | "admin" | "operator" | "viewer";
 
 type InviteSummary = {
   id: string;
-  companyId: string | null;
   companyName?: string | null;
   companyLogoUrl?: string | null;
   inviteType: "company_join" | "bootstrap_ceo";
@@ -104,7 +103,6 @@ type CompanyInviteCreated = {
 
 export type CompanyMemberGrant = {
   id: string;
-  companyId: string;
   principalType: "user";
   principalId: string;
   permissionKey: PermissionKey;
@@ -116,7 +114,6 @@ export type CompanyMemberGrant = {
 
 export type CompanyMember = {
   id: string;
-  companyId: string;
   principalType: "user";
   principalId: string;
   status: "pending" | "active" | "suspended" | "archived";
@@ -158,7 +155,6 @@ export type CompanyUserDirectoryResponse = {
 
 export type CompanyInviteRecord = {
   id: string;
-  companyId: string | null;
   companyName: string | null;
   inviteType: "company_join" | "bootstrap_ceo";
   allowedJoinTypes: "human" | "agent" | "both";
@@ -210,7 +206,6 @@ export type AdminUserDirectoryEntry = {
 
 export type UserCompanyAccessEntry = {
   id: string;
-  companyId: string;
   principalType: "user";
   principalId: string;
   status: "pending" | "active" | "suspended" | "archived";
@@ -236,9 +231,7 @@ export type CurrentBoardAccess = {
   user: { id: string; email: string | null; name: string | null; image: string | null } | null;
   userId: string;
   isInstanceAdmin: boolean;
-  companyIds: string[];
   memberships?: Array<{
-    companyId: string;
     membershipRole: HumanCompanyRole | "member" | null;
     status: "pending" | "active" | "suspended" | "archived";
   }>;
@@ -261,7 +254,6 @@ function buildInviteListQuery(options: {
 
 export const accessApi = {
   createCompanyInvite: (
-    companyId: string,
     input: {
       allowedJoinTypes?: "human" | "agent" | "both";
       humanRole?: HumanCompanyRole | null;
@@ -269,16 +261,15 @@ export const accessApi = {
       agentMessage?: string | null;
     } = {},
   ) =>
-    api.post<CompanyInviteCreated>(`/companies/${companyId}/invites`, input),
+    api.post<CompanyInviteCreated>(`/invites`, input),
 
   createOpenClawInvitePrompt: (
-    companyId: string,
     input: {
       agentMessage?: string | null;
     } = {},
   ) =>
     api.post<CompanyInviteCreated>(
-      `/companies/${companyId}/openclaw/invite-prompt`,
+      `/openclaw/invite-prompt`,
       input,
     ),
 
@@ -293,7 +284,6 @@ export const accessApi = {
     ),
 
   listInvites: (
-    companyId: string,
     options: {
       state?: "active" | "revoked" | "accepted" | "expired";
       limit?: number;
@@ -301,37 +291,34 @@ export const accessApi = {
     } = {},
   ) =>
     api.get<CompanyInviteListResponse>(
-      `/companies/${companyId}/invites${buildInviteListQuery(options)}`,
+      `/invites${buildInviteListQuery(options)}`,
     ),
 
   revokeInvite: (inviteId: string) => api.post(`/invites/${inviteId}/revoke`, {}),
 
   listJoinRequests: (
-    companyId: string,
     status: "pending_approval" | "approved" | "rejected" = "pending_approval",
     requestType?: "human" | "agent",
   ) =>
     api.get<CompanyJoinRequest[]>(
-      `/companies/${companyId}/join-requests?status=${status}${requestType ? `&requestType=${requestType}` : ""}`,
+      `/join-requests?status=${status}${requestType ? `&requestType=${requestType}` : ""}`,
     ),
 
-  listMembers: (companyId: string) =>
-    api.get<CompanyMembersResponse>(`/companies/${companyId}/members`),
+  listMembers: () =>
+    api.get<CompanyMembersResponse>(`/members`),
 
-  listUserDirectory: (companyId: string) =>
-    api.get<CompanyUserDirectoryResponse>(`/companies/${companyId}/user-directory`),
+  listUserDirectory: () =>
+    api.get<CompanyUserDirectoryResponse>(`/user-directory`),
 
   updateMember: (
-    companyId: string,
     memberId: string,
     input: {
       membershipRole?: HumanCompanyRole | null;
       status?: "pending" | "active" | "suspended";
     },
-  ) => api.patch<CompanyMember>(`/companies/${companyId}/members/${memberId}`, input),
+  ) => api.patch<CompanyMember>(`/members/${memberId}`, input),
 
   updateMemberPermissions: (
-    companyId: string,
     memberId: string,
     input: {
       grants: Array<{
@@ -339,10 +326,9 @@ export const accessApi = {
         scope?: Record<string, unknown> | null;
       }>;
     },
-  ) => api.patch<CompanyMember>(`/companies/${companyId}/members/${memberId}/permissions`, input),
+  ) => api.patch<CompanyMember>(`/members/${memberId}/permissions`, input),
 
   updateMemberAccess: (
-    companyId: string,
     memberId: string,
     input: {
       membershipRole?: HumanCompanyRole | null;
@@ -352,10 +338,9 @@ export const accessApi = {
         scope?: Record<string, unknown> | null;
       }>;
     },
-  ) => api.patch<CompanyMember>(`/companies/${companyId}/members/${memberId}/role-and-grants`, input),
+  ) => api.patch<CompanyMember>(`/members/${memberId}/role-and-grants`, input),
 
   archiveMember: (
-    companyId: string,
     memberId: string,
     input: {
       reassignment?: {
@@ -363,13 +348,13 @@ export const accessApi = {
         assigneeUserId?: string | null;
       } | null;
     } = {},
-  ) => api.post<ArchiveCompanyMemberResponse>(`/companies/${companyId}/members/${memberId}/archive`, input),
+  ) => api.post<ArchiveCompanyMemberResponse>(`/members/${memberId}/archive`, input),
 
-  approveJoinRequest: (companyId: string, requestId: string) =>
-    api.post<JoinRequest>(`/companies/${companyId}/join-requests/${requestId}/approve`, {}),
+  approveJoinRequest: (requestId: string) =>
+    api.post<JoinRequest>(`/join-requests/${requestId}/approve`, {}),
 
-  rejectJoinRequest: (companyId: string, requestId: string) =>
-    api.post<JoinRequest>(`/companies/${companyId}/join-requests/${requestId}/reject`, {}),
+  rejectJoinRequest: (requestId: string) =>
+    api.post<JoinRequest>(`/join-requests/${requestId}/reject`, {}),
 
   claimJoinRequestApiKey: (requestId: string, claimSecret: string) =>
     api.post<{ keyId: string; token: string; agentId: string; createdAt: string }>(

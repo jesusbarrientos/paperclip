@@ -18,22 +18,16 @@ export class RunnerApiResponseLimitError extends Error {
 
 // Hold a slot until the temporary file is removed, including storage upload.
 // These limits are per server process; the run byte budget is database-backed.
-const activeByCompany = new Map<string, number>();
 let active = 0;
-export function acquireRunnerApiResponseSlot(companyId: string): () => void {
-  const companyActive = activeByCompany.get(companyId) ?? 0;
-  if (active >= 4 || companyActive >= 2) {
+export function acquireRunnerApiResponseSlot(): () => void {
+  if (active >= 2) {
     throw new RunnerApiResponseLimitError("api_response_capture_busy", "Large API response capture is busy. Wait for another capture to finish before retrying a read.");
   }
   active++;
-  activeByCompany.set(companyId, companyActive + 1);
   let released = false;
   return () => {
     if (released) return;
     released = true;
     active--;
-    const remaining = activeByCompany.get(companyId)! - 1;
-    if (remaining) activeByCompany.set(companyId, remaining);
-    else activeByCompany.delete(companyId);
   };
 }

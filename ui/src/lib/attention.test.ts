@@ -29,9 +29,8 @@ import {
 function buildItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
   return {
     id: "a1",
-    companyId: "c1",
     sourceKind: "approval",
-    subject: { kind: "approval", id: "s1", companyId: "c1", title: "t", identifier: null, status: null, href: null },
+    subject: { kind: "approval", id: "s1", title: "t", identifier: null, status: null, href: null },
     whyNow: "why",
     decisionVerbs: [],
     inlineResolvable: true,
@@ -114,7 +113,6 @@ describe("isInlineResolvable", () => {
 describe("attentionBadgeCount", () => {
   it("uses the server's pre-pagination desk badge count", () => {
     const feed: AttentionFeed = {
-      companyId: "c1",
       generatedAt: "2026-07-09T12:00:00Z",
       totalCount: 3,
       deskBadgeCount: 2,
@@ -273,7 +271,6 @@ describe("attentionTaskRef", () => {
       subject: {
         kind: "issue",
         id: "i1",
-        companyId: "c1",
         title: "Update primary paperclip instance",
         identifier: "PAP-23",
         status: "blocked",
@@ -289,7 +286,6 @@ describe("attentionTaskRef", () => {
       subject: {
         kind: "interaction",
         id: "x1",
-        companyId: "c1",
         title: "Ship it?",
         identifier: null,
         status: "pending",
@@ -298,7 +294,6 @@ describe("attentionTaskRef", () => {
       relatedIssue: {
         kind: "issue",
         id: "i2",
-        companyId: "c1",
         title: "Produce launch video",
         identifier: "PAP-20",
         status: "in_review",
@@ -313,7 +308,6 @@ describe("attentionTaskRef", () => {
       subject: {
         kind: "issue",
         id: "i1",
-        companyId: "c1",
         title: "Subject task",
         identifier: "PAP-1",
         status: "todo",
@@ -322,7 +316,6 @@ describe("attentionTaskRef", () => {
       relatedIssue: {
         kind: "issue",
         id: "i2",
-        companyId: "c1",
         title: "Related task",
         identifier: "PAP-2",
         status: "todo",
@@ -343,7 +336,6 @@ describe("attentionTaskRef", () => {
           subject: {
             kind: "agent",
             id: "ag1",
-            companyId: "c1",
             title: "CTO",
             identifier: null,
             status: "error",
@@ -359,7 +351,6 @@ describe("attentionTaskRef", () => {
       subject: {
         kind: "approval",
         id: "ap1",
-        companyId: "c1",
         title: "Sign off",
         identifier: "APR-9",
         status: "pending",

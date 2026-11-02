@@ -56,7 +56,6 @@ import {
 import { logActivity } from "./activity-log.js";
 
 type Session = {
-  companyId: string;
   agentId: string | null;
   issueId: string | null;
   runId: string | null;
@@ -133,7 +132,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
       .where(
         and(
           eq(heartbeatRuns.id, session.runId),
-          eq(heartbeatRuns.companyId, session.companyId),
           eq(heartbeatRuns.agentId, session.agentId),
         ),
       );
@@ -182,7 +180,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
             )
             .where(
               and(
-                eq(chatMessageLinks.companyId, session.companyId),
                 eq(chatMessageLinks.commentId, commentId),
                 eq(chatConversations.issueId, session.issueId),
                 eq(chatEndpoints.assignedAgentId, session.agentId),
@@ -237,19 +234,13 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
       .select()
       .from(agents)
       .where(
-        and(
-          eq(agents.companyId, session.companyId),
-          eq(agents.id, session.agentId),
-        ),
+        eq(agents.id, session.agentId),
       );
     const [issue] = await db
       .select()
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, session.companyId),
-          eq(issues.id, session.issueId),
-        ),
+        eq(issues.id, session.issueId),
       );
     if (!agent || !issue || issue.assigneeAgentId !== agent.id)
       throw forbidden("The assigned agent changed");
@@ -258,19 +249,14 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
           .select()
           .from(projects)
           .where(
-            and(
-              eq(projects.companyId, session.companyId),
-              eq(projects.id, issue.projectId),
-            ),
+            eq(projects.id, issue.projectId),
           )
       : [];
     const trust = resolveCoreTrustPreset({
-      companyId: session.companyId,
       agent,
       issue,
       project,
       run: {
-        companyId: session.companyId,
         executionPolicy: run.contextSnapshot?.executionPolicy,
       },
     });
@@ -309,7 +295,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
   ) {
     const token = await githubBotRepositoryToken(
       db,
-      source.endpoint.companyId,
       source.endpoint.id,
       source.repositoryId,
       requestFetch,
@@ -333,7 +318,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
       .from(chatGitHubReviews)
       .where(
         and(
-          eq(chatGitHubReviews.companyId, source.endpoint.companyId),
           eq(chatGitHubReviews.endpointId, source.endpoint.id),
           eq(chatGitHubReviews.issueId, source.issue.id),
           eq(chatGitHubReviews.headSha, pull.head.sha),
@@ -403,7 +387,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
     const [review] = await db
       .insert(chatGitHubReviews)
       .values({
-        companyId: source.endpoint.companyId,
         endpointId: source.endpoint.id,
         issueId: source.issue.id,
         runId: source.run.id,
@@ -455,7 +438,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
   ) {
     const actionKey = `github_publication:${source.issue.id}:${operation}:${hash(key)}`;
     const values = {
-      companyId: source.endpoint.companyId,
       endpointId: source.endpoint.id,
       conversationId: source.conversation.id,
       principalId: source.delivery.principalId,
@@ -472,7 +454,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
           (source.endpoint.setup as { runtimeGeneration?: number })
             .runtimeGeneration ?? 0,
         session: {
-          companyId: source.endpoint.companyId,
           agentId: source.agent.id,
           issueId: source.issue.id,
           runId: source.run.id,
@@ -786,10 +767,7 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
             updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(chatGitHubReviews.id, review.id),
-              eq(chatGitHubReviews.companyId, session.companyId),
-            ),
+            eq(chatGitHubReviews.id, review.id),
           );
         return stage(
           source,
@@ -874,7 +852,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
     const toolName = String(action.payload.toolName);
     const tool = (
       await githubBotToolsForSession(db, {
-        companyId: source.endpoint.companyId,
         agentId: source.agent.id,
         issueId: source.issue.id,
         runId: source.run.id,
@@ -886,7 +863,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
     );
     if (!tool) throw forbidden("The bot tool is no longer available");
     const decision = await toolAccessPolicyService(db).decide({
-      companyId: source.endpoint.companyId,
       actor: {
         actorType: "agent",
         actorId: source.agent.id,
@@ -922,7 +898,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
         .where(
           and(
             eq(toolInvocations.id, action.payload.invocationId),
-            eq(toolInvocations.companyId, source.endpoint.companyId),
             eq(toolInvocations.runId, source.run.id),
             eq(toolInvocations.agentId, source.agent.id),
             eq(toolInvocations.connectionId, source.endpoint.connectionId),
@@ -969,7 +944,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
       .where(
         and(
           eq(chatConversations.id, action.conversationId!),
-          eq(chatConversations.companyId, action.companyId),
           eq(chatConversations.endpointId, action.endpointId),
         ),
       );
@@ -980,7 +954,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
     await withGitHubPublicationLease(
       db,
       {
-        companyId: action.companyId,
         endpointId: action.endpointId,
         repositoryId: String(binding.repository.providerRepositoryId),
         number: Number(number),
@@ -993,7 +966,7 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
           .where(eq(chatActions.id, actionId));
         if (!fresh || ["processed", "cancelled"].includes(fresh.status)) return;
         const session = action.payload.session as Session;
-        if (!session || session.companyId !== action.companyId)
+        if (!session)
           throw forbidden("Invalid GitHub publication binding");
         try {
           const source = await scope(session, true);
@@ -1114,7 +1087,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
               .where(
                 and(
                   eq(chatGitHubReviews.id, String(action.payload.reviewId)),
-                  eq(chatGitHubReviews.companyId, action.companyId),
                   eq(chatGitHubReviews.endpointId, action.endpointId),
                   eq(chatGitHubReviews.runId, session.runId!),
                 ),
@@ -1141,8 +1113,7 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
             const origin = runtimePublicOrigin();
             const [company] = await db
               .select({ prefix: companies.issuePrefix })
-              .from(companies)
-              .where(eq(companies.id, source.endpoint.companyId));
+              .from(companies);
             const board =
               origin && company
                 ? `${origin}/${encodeURIComponent(company.prefix)}`
@@ -1243,7 +1214,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
                   await tx
                     .insert(chatConversations)
                     .values({
-                      companyId: source.endpoint.companyId,
                       endpointId: source.endpoint.id,
                       resourceId: source.resource.id,
                       issueId: source.issue.id,
@@ -1334,7 +1304,6 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
               })
               .where(eq(chatActions.id, action.id));
             await logActivity(tx as unknown as Db, {
-              companyId: action.companyId,
               actorType: "agent",
               actorId: source.agent.id,
               action: "chat_github.published",
@@ -1357,10 +1326,7 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
                 .update(chatGitHubReviews)
                 .set({ state: "superseded", updatedAt: new Date() })
                 .where(
-                  and(
-                    eq(chatGitHubReviews.id, String(action.payload.reviewId)),
-                    eq(chatGitHubReviews.companyId, action.companyId),
-                  ),
+                  eq(chatGitHubReviews.id, String(action.payload.reviewId)),
                 );
             });
           await lease.commit(async (tx) => {

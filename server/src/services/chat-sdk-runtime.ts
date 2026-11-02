@@ -519,7 +519,6 @@ export interface ChatSdkRuntimeCallbacks {
 
 export interface CreateChatSdkEndpointRuntimeOptions {
   callbacks: ChatSdkRuntimeCallbacks;
-  companyId: string;
   concurrency?: ConcurrencyConfig | ConcurrencyStrategy;
   /** Start Discord's long-lived Gateway listener for the elected owner only. */
   enableDiscordGateway?: boolean;
@@ -2001,7 +2000,6 @@ function registerCallbacks(
 
 /** One isolated Chat instance and provider adapter for one Paperclip endpoint. */
 export class ChatSdkEndpointRuntime {
-  readonly companyId: string;
   readonly endpointId: string;
   readonly provider: ChatSdkProvider;
   readonly sdkAdapterKey: ChatSdkAdapterKey;
@@ -2048,7 +2046,6 @@ export class ChatSdkEndpointRuntime {
 
   constructor(options: CreateChatSdkEndpointRuntimeOptions) {
     this.runtimeOptions = options;
-    this.companyId = options.companyId;
     this.endpointId = options.endpointId;
     this.provider = options.providerConfig.provider;
     this.githubReceiptApp =
@@ -2100,7 +2097,7 @@ export class ChatSdkEndpointRuntime {
     this.adapter = options.providerConfig.provider === "imessage-photon"
       ? new PhotonChatAdapter(options.providerConfig.userName,
           new PhotonLineAuthentication(options.providerConfig.credentials, options.providerConfig.credentials.projectSecret),
-          new PhotonState({ companyId: options.companyId, endpointId: options.endpointId }, options.persistence))
+          new PhotonState({ endpointId: options.endpointId }, options.persistence))
       : createProviderAdapter(
       options.providerConfig,
       options.logger,
@@ -2155,7 +2152,6 @@ export class ChatSdkEndpointRuntime {
         if (attempt && adapter.botUserId) {
           const captured = captureTelegramCallbackProvenance(
             {
-              companyId: this.companyId,
               endpointId: this.endpointId,
               botUserId: adapter.botUserId,
             },
@@ -2169,7 +2165,6 @@ export class ChatSdkEndpointRuntime {
       };
     }
     const durableState = createPaperclipChatSdkState({
-      companyId: options.companyId,
       endpointId: options.endpointId,
       persistence: options.persistence,
       maxValueBytes: options.maxStateValueBytes,
@@ -2249,7 +2244,6 @@ export class ChatSdkEndpointRuntime {
       }
       const callback = options.callbacks.onTeamsFileConsent!;
       installTeamsFileConsentHook(app as TeamsConsentApp, {
-        companyId: this.companyId,
         endpointId: this.endpointId,
         tenantId: this.microsoftTeamsTenantId,
         botAppId: options.providerConfig.credentials.appId,
@@ -2776,7 +2770,7 @@ export class ChatSdkEndpointRuntime {
 
   private telegramMediaScope(source?: ChatSdkAttachmentSource): TelegramMediaScope | null {
     if (!source || source.runtimeGeneration === undefined || !source.credentialFingerprint || !source.principalExternalId) return null;
-    return { companyId: this.companyId, endpointId: this.endpointId, runtimeGeneration: source.runtimeGeneration,
+    return { endpointId: this.endpointId, runtimeGeneration: source.runtimeGeneration,
       credentialFingerprint: source.credentialFingerprint, threadId: source.threadId, messageId: source.messageId,
       principalExternalId: source.principalExternalId };
   }
@@ -2794,7 +2788,6 @@ export class ChatSdkEndpointRuntime {
     )
       return null;
     return {
-      companyId: this.companyId,
       endpointId: this.endpointId,
       tenantId: this.microsoftTeamsTenantId,
       botAppId: this.microsoftTeamsAppId,
@@ -2844,7 +2837,6 @@ export class ChatSdkEndpointRuntime {
     if (
       this.provider !== "telegram" ||
       !this.telegramEphemeralBotToken ||
-      receipt.companyId !== this.companyId ||
       receipt.endpointId !== this.endpointId
     ) {
       throw Object.assign(

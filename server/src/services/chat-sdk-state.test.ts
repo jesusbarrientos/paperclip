@@ -14,7 +14,7 @@ class MemoryCasPersistence implements ChatSdkStatePersistence {
   readonly writes: ChatSdkStateCompareAndSetInput[] = [];
 
   private id(scope: ChatSdkStateScope, key: string): string {
-    return `${scope.companyId}\0${scope.endpointId}\0${key}`;
+    return `${scope.endpointId}\0${key}`;
   }
 
   async read(
@@ -56,7 +56,6 @@ function fixture(now: Date = new Date("2026-09-04T12:00:00.000Z")) {
   const persistence = new MemoryCasPersistence();
   let currentTime = now;
   const state = createPaperclipChatSdkState({
-    companyId: "company-1",
     endpointId: "endpoint-1",
     persistence,
     now: () => currentTime,
@@ -89,7 +88,6 @@ describe("PaperclipChatSdkStateAdapter", () => {
     expect(persistence.writes).toHaveLength(1);
     const [write] = persistence.writes;
     expect(write).toMatchObject({
-      companyId: "company-1",
       endpointId: "endpoint-1",
     });
     expect(write?.key).toMatch(/^cache:[a-f0-9]{64}$/);
@@ -175,7 +173,6 @@ describe("PaperclipChatSdkStateAdapter", () => {
   it("rejects unversioned state and oversized values", async () => {
     const persistence = new MemoryCasPersistence();
     const state = createPaperclipChatSdkState({
-      companyId: "company-1",
       endpointId: "endpoint-1",
       persistence,
       maxValueBytes: 64,
@@ -186,14 +183,13 @@ describe("PaperclipChatSdkStateAdapter", () => {
     );
 
     const valid = createPaperclipChatSdkState({
-      companyId: "company-1",
       endpointId: "endpoint-1",
       persistence,
     });
     await valid.connect();
     await valid.set("corrupt", "before");
     const key = persistence.writes.at(-1)!.key;
-    const record = persistence.records.get(`company-1\0endpoint-1\0${key}`)!;
+    const record = persistence.records.get(`endpoint-1\0${key}`)!;
     record.value = { value: "missing schema" };
     await expect(valid.get("corrupt")).rejects.toThrow(
       "Invalid Chat SDK state envelope",

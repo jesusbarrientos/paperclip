@@ -42,7 +42,6 @@ const catalogSkill = {
 
 const companySkill = {
   id: "00000000-0000-4000-8000-000000000001",
-  companyId: "00000000-0000-4000-8000-000000000002",
   key: catalogSkill.key,
   slug: catalogSkill.slug,
   name: catalogSkill.name,

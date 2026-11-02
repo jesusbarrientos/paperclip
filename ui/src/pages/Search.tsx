@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate, useSearchParams } from "@/lib/router";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useDialogActions } from "../context/DialogContext";
 import { searchApi } from "../api/search";
@@ -131,7 +130,6 @@ function shapeError(error: unknown): { message: string; status?: number } {
 }
 
 export function Search() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { openNewIssue } = useDialogActions();
   const navigate = useNavigate();
@@ -160,9 +158,8 @@ export function Search() {
   }, [setBreadcrumbs]);
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
-    setRecentSearches(loadRecentSearches(selectedCompanyId));
-  }, [selectedCompanyId]);
+    setRecentSearches(loadRecentSearches());
+  }, []);
 
   // Pull URL changes back into local state (e.g. browser back/forward).
   useEffect(() => {
@@ -179,21 +176,18 @@ export function Search() {
   }, [urlSort]);
 
   const { data: agents = [] } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const { data: projects = [] } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
 
   const { data: labels = [] } = useQuery({
-    queryKey: queryKeys.issues.labels(selectedCompanyId!),
-    queryFn: () => issuesApi.listLabels(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
   });
 
   const { data: session } = useQuery({
@@ -302,12 +296,11 @@ export function Search() {
 
   const trimmedQuery = parsedCommittedQuery.query.trim();
   const displayQuery = committedQuery.trim();
-  const queryEnabled = !!selectedCompanyId && (trimmedQuery.length > 0 || hasSearchFilters(activeFilters));
+  const queryEnabled = (trimmedQuery.length > 0 || hasSearchFilters(activeFilters));
 
   const { data, isFetching, error, refetch } = useQuery<CompanySearchResponse>({
     queryKey: [
       ...queryKeys.companySearch.search(
-        selectedCompanyId ?? "__no-company__",
         trimmedQuery,
         scope,
         COMPANY_SEARCH_DEFAULT_LIMIT,
@@ -317,7 +310,7 @@ export function Search() {
       sort,
     ] as const,
     queryFn: () =>
-      searchApi.search(selectedCompanyId!, {
+      searchApi.search({
         q: trimmedQuery,
         scope,
         limit: COMPANY_SEARCH_DEFAULT_LIMIT,
@@ -367,7 +360,6 @@ export function Search() {
   const { data: previewData } = useQuery<CompanySearchResponse>({
     queryKey: [
       ...queryKeys.companySearch.search(
-        selectedCompanyId ?? "__no-company__",
         trimmedQuery,
         scope,
         COMPANY_SEARCH_DEFAULT_LIMIT,
@@ -378,7 +370,7 @@ export function Search() {
       sort,
     ] as const,
     queryFn: () =>
-      searchApi.search(selectedCompanyId!, {
+      searchApi.search({
         q: trimmedQuery,
         scope,
         limit: COMPANY_SEARCH_DEFAULT_LIMIT,
@@ -391,11 +383,10 @@ export function Search() {
 
   // Persist recent searches once we have a successful response with a non-empty query.
   useEffect(() => {
-    if (!selectedCompanyId) return;
     if (!data || !displayQuery) return;
-    const next = pushRecentSearch(selectedCompanyId, displayQuery);
+    const next = pushRecentSearch(displayQuery);
     setRecentSearches(next);
-  }, [data, displayQuery, selectedCompanyId]);
+  }, [data, displayQuery]);
 
   // Identifier shortcut: when q matches PAP-123 and the API returns an exact identifier match, redirect to it.
   useEffect(() => {

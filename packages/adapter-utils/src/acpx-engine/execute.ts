@@ -213,7 +213,7 @@ type AcpxRuntimeFactory = (options: PaperclipAcpRuntimeOptions) => AcpRuntime;
  * A remote runner-backed session's staged runtime, kept warm across runs so a
  * compatible resume reuses it instead of re-shipping the workspace / re-seeding
  * the managed home (PR 3: "stage once per session"). Keyed by the session's
- * `sessionKey` (`paperclip:companyId:agentId:taskKey:fingerprint`) — the SAME
+ * `sessionKey` (`paperclip:agentId:taskKey:fingerprint`) — the SAME
  * fingerprint scoping the warm handle uses — so one session can never read
  * another session's staged credentials: a different agent/task/config hashes to
  * a different key, misses this cache, and stages its own home.
@@ -296,7 +296,6 @@ export interface AcpxEngineBillingIdentity {
  */
 export interface AcpxRemoteManagedHomeContext {
   acpxAgent: string;
-  companyId: string;
   runId: string;
   config: Record<string, unknown>;
   /** The runner-backed remote sandbox target the workspace stages into. */
@@ -547,10 +546,10 @@ export function buildSessionFingerprint(identity: SessionFingerprintIdentity): s
 
 /**
  * Build the session key from the fingerprint and the outer-key identity. The key
- * form is `paperclip:companyId:agentId:taskKey:fingerprint`.
+ * form is `paperclip:agentId:taskKey:fingerprint`.
  */
 export function buildSessionKey(identity: SessionKeyIdentity, fingerprint: string): string {
-  return `paperclip:${identity.companyId}:${identity.agentId}:${identity.taskKey}:${fingerprint}`;
+  return `paperclip:${identity.agentId}:${identity.taskKey}:${fingerprint}`;
 }
 
 // ACPX runs inside the long-lived Paperclip server process. A local child needs
@@ -807,16 +806,16 @@ function defaultPaperclipInstanceDir(): string {
   });
 }
 
-function defaultStateDir(companyId: string, agentId: string): string {
-  return path.join(defaultPaperclipInstanceDir(), "companies", companyId, "acp-engine", "agents", agentId);
+function defaultStateDir(agentId: string): string {
+  return path.join(defaultPaperclipInstanceDir(), "organization", "acp-engine", "agents", agentId);
 }
 
-function resolveManagedCodexHomeDir(companyId: string): string {
-  return path.join(defaultPaperclipInstanceDir(), "companies", companyId, "codex-home");
+function resolveManagedCodexHomeDir(): string {
+  return path.join(defaultPaperclipInstanceDir(), "organization", "codex-home");
 }
 
-function resolveManagedCodexApiKeyHomeDir(companyId: string, agentId: string): string {
-  return path.join(defaultStateDir(companyId, agentId), "codex-home");
+function resolveManagedCodexApiKeyHomeDir(agentId: string): string {
+  return path.join(defaultStateDir(agentId), "codex-home");
 }
 
 // Mirrors `resolveManagedGrokHomeDir` in
@@ -825,8 +824,8 @@ function resolveManagedCodexApiKeyHomeDir(companyId: string, agentId: string): s
 // direction), so the path scheme is duplicated here, the same way
 // `resolveManagedCodexHomeDir` above duplicates the Codex adapter's own
 // helper.
-function resolveManagedGrokHomeDir(companyId: string): string {
-  return path.join(defaultPaperclipInstanceDir(), "companies", companyId, "grok-home");
+function resolveManagedGrokHomeDir(): string {
+  return path.join(defaultPaperclipInstanceDir(), "organization", "grok-home");
 }
 
 // Walk up from startDir looking for `node_modules/.bin/<binName>`. This matches
@@ -1010,7 +1009,6 @@ async function ensureCopiedFile(target: string, source: string): Promise<void> {
 }
 
 async function prepareManagedCodexHome(input: {
-  companyId: string;
   sourceHome: string;
   targetHome: string;
   apiKey?: string;
@@ -1293,7 +1291,6 @@ async function reconcileManagedCodexSkills(input: {
 }
 
 async function prepareCodexSkillRuntime(input: {
-  companyId: string;
   agentId: string;
   config: Record<string, unknown>;
   env: Record<string, string>;
@@ -1327,11 +1324,10 @@ async function prepareCodexSkillRuntime(input: {
   // Keep API-key auth separate from the company home used by subscription
   // agents, so one agent cannot switch another agent's login on its next turn.
   const managedCodexHome = apiKey
-    ? resolveManagedCodexApiKeyHomeDir(input.companyId, input.agentId)
-    : resolveManagedCodexHomeDir(input.companyId);
+    ? resolveManagedCodexApiKeyHomeDir(input.agentId)
+    : resolveManagedCodexHomeDir();
   const effectiveCodexHome = configuredCodexHome ??
     await prepareManagedCodexHome({
-      companyId: input.companyId,
       sourceHome: sourceCodexHome,
       targetHome: managedCodexHome,
       apiKey,
@@ -1595,15 +1591,14 @@ async function writePaperclipClaudeSettings(input: {
   cwd: string;
   stateDir: string;
   agentHome: string;
-  companyId: string;
 }): Promise<PaperclipClaudeSettingsResult> {
   const filePath = path.join(input.cwd, ".claude", "settings.local.json");
   const instanceRoot = defaultPaperclipInstanceDir();
-  const companyRoot = path.join(instanceRoot, "companies", input.companyId);
+  const organizationRoot = path.join(instanceRoot, "organization");
   const paperclipAdditionalDirectories = uniqueSorted([
     input.stateDir,
     input.agentHome,
-    companyRoot,
+    organizationRoot,
   ]);
   const paperclipAllow = uniqueSorted([
     "Bash(curl:*)",
@@ -1955,7 +1950,7 @@ async function buildRuntime(input: {
     asNumber(config.timeoutSec, DEFAULT_ACP_ENGINE_TIMEOUT_SEC),
   );
   const timeoutSec = timeoutResolution.timeoutSec;
-  const stateDir = path.resolve(asString(config.stateDir, "") || defaultStateDir(agent.companyId, agent.id));
+  const stateDir = path.resolve(asString(config.stateDir, "") || defaultStateDir(agent.id));
   await fs.mkdir(stateDir, { recursive: true });
 
   const envConfig = parseObject(config.env);
@@ -2083,8 +2078,7 @@ async function buildRuntime(input: {
       // must not invalidate its resumable conversation. Run copies are covered
       // by the company root already granted in these settings; the process env
       // still receives this run's actual AGENT_HOME.
-      agentHome: asString(workspaceContext.agentHomeForPermissions, agentHome),
-      companyId: agent.companyId,
+      agentHome: asString(workspaceContext.agentHomeForPermissions, agentHome)
     });
     skillCommandNotes.push(
       `Wrote Paperclip-managed Claude settings to ${paperclipClaudeSettings.filePath} (defaultMode=${paperclipClaudeSettings.defaultMode}${
@@ -2097,7 +2091,6 @@ async function buildRuntime(input: {
     // threaded onEvent/now seam.
     const preparedSkills = await measureStartupStep(input.ctx, nowMs, "codex-home.seed", () =>
       prepareCodexSkillRuntime({
-        companyId: agent.companyId,
         agentId: agent.id,
         config,
         env,
@@ -2126,7 +2119,7 @@ async function buildRuntime(input: {
     // — that function stays Codex-only — and every other custom ACPX agent
     // (for example `kimi`) falls through this branch unaffected.
     if (acpxAgent === "grok" && !config.managedAiConnection) {
-      env.GROK_HOME = resolveManagedGrokHomeDir(agent.companyId);
+      env.GROK_HOME = resolveManagedGrokHomeDir();
     }
     const desired = resolveLegacyPaperclipDesiredSkillNames(
       config,
@@ -2245,7 +2238,6 @@ async function buildRuntime(input: {
   // Company, agent, and task identity for the outer session key. These parts
   // stay out of the fingerprint hash.
   const keyIdentity: SessionKeyIdentity = {
-    companyId: agent.companyId,
     agentId: agent.id,
     taskKey,
   };
@@ -2268,7 +2260,7 @@ async function buildRuntime(input: {
   // this exact `sessionKey` reuses the already-staged in-sandbox runtime — no
   // workspace re-ship, no home re-seed — while an incompatible fingerprint (a
   // different key) misses the cache and stages fresh. The `sessionKey`
-  // (`companyId:agentId:taskKey:fingerprint`) is the single scoping key, so one
+  // (`agentId:taskKey:fingerprint`) is the single scoping key, so one
   // session can never read another session's staged credentials. The cache is
   // populated by the executor only after a clean turn and dropped on
   // failure/cancel/timeout, so it always holds a known-good staged runtime.
@@ -2339,7 +2331,6 @@ async function buildRuntime(input: {
         ? async (stage) => {
             const seeded = await input.deps.prepareRemoteManagedHome!({
               acpxAgent,
-              companyId: agent.companyId,
               runId,
               config,
               executionTarget: remoteTarget,
@@ -3031,9 +3022,7 @@ async function buildPrompt(ctx: AdapterExecutionContext, resumedSession: boolean
   const bootstrapPromptTemplate = asString(config.bootstrapPromptTemplate, "");
   const templateData = {
     agentId: agent.id,
-    companyId: agent.companyId,
     runId,
-    company: { id: agent.companyId },
     agent,
     run: { id: runId, source: "on_demand" },
     context,

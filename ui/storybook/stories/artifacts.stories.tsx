@@ -346,7 +346,7 @@ const TASK_GROUPS: MockGroup[] = [
     count: 5,
     preview: makeArtifact({ mediaKind: "image", contentPath: SAMPLE_IMAGE }),
     updatedAt: new Date("2026-06-04T12:00:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=task&groupIssueId=issue-1",
+    href: "/artifacts?groupBy=task&groupIssueId=issue-1",
   },
   {
     id: "task:issue-2",
@@ -356,7 +356,7 @@ const TASK_GROUPS: MockGroup[] = [
     count: 3,
     preview: makeArtifact({ mediaKind: "video", contentPath: null }),
     updatedAt: new Date("2026-06-03T09:30:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=task&groupIssueId=issue-2",
+    href: "/artifacts?groupBy=task&groupIssueId=issue-2",
   },
   {
     id: "task:issue-3",
@@ -366,7 +366,7 @@ const TASK_GROUPS: MockGroup[] = [
     count: 2,
     preview: makeArtifact({ mediaKind: "document", contentPath: null }),
     updatedAt: new Date("2026-06-02T18:15:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=task&groupIssueId=issue-3",
+    href: "/artifacts?groupBy=task&groupIssueId=issue-3",
   },
   {
     id: "task:issue-4",
@@ -376,7 +376,7 @@ const TASK_GROUPS: MockGroup[] = [
     count: 1,
     preview: makeArtifact({ mediaKind: "image", contentPath: SAMPLE_IMAGE_AMBER }),
     updatedAt: new Date("2026-06-02T11:00:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=task&groupIssueId=issue-4",
+    href: "/artifacts?groupBy=task&groupIssueId=issue-4",
   },
   {
     id: "task:issue-5",
@@ -386,7 +386,7 @@ const TASK_GROUPS: MockGroup[] = [
     count: 4,
     preview: makeArtifact({ mediaKind: "image", contentPath: SAMPLE_IMAGE_TEAL }),
     updatedAt: new Date("2026-06-01T16:42:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=task&groupIssueId=issue-5",
+    href: "/artifacts?groupBy=task&groupIssueId=issue-5",
   },
   {
     id: "task:issue-6",
@@ -396,7 +396,7 @@ const TASK_GROUPS: MockGroup[] = [
     count: 1,
     preview: makeArtifact({ mediaKind: "text", previewText: "All empty states green except onboarding-step-3." }),
     updatedAt: new Date("2026-05-31T10:00:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=task&groupIssueId=issue-6",
+    href: "/artifacts?groupBy=task&groupIssueId=issue-6",
   },
 ];
 
@@ -409,7 +409,7 @@ const PARENT_TASK_GROUPS: MockGroup[] = [
     count: 14,
     preview: makeArtifact({ mediaKind: "image", contentPath: SAMPLE_IMAGE }),
     updatedAt: new Date("2026-06-04T12:00:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=parent_task&groupIssueId=root-1",
+    href: "/artifacts?groupBy=parent_task&groupIssueId=root-1",
   },
   {
     id: "parent_task:root-2",
@@ -419,7 +419,7 @@ const PARENT_TASK_GROUPS: MockGroup[] = [
     count: 9,
     preview: makeArtifact({ mediaKind: "image", contentPath: SAMPLE_IMAGE_TEAL }),
     updatedAt: new Date("2026-06-03T14:25:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=parent_task&groupIssueId=root-2",
+    href: "/artifacts?groupBy=parent_task&groupIssueId=root-2",
   },
   {
     id: "parent_task:root-3",
@@ -429,7 +429,7 @@ const PARENT_TASK_GROUPS: MockGroup[] = [
     count: 1,
     preview: makeArtifact({ mediaKind: "document", previewText: "Decision log" }),
     updatedAt: new Date("2026-05-30T08:11:00Z").toISOString(),
-    href: "/PAP/artifacts?groupBy=parent_task&groupIssueId=root-3",
+    href: "/artifacts?groupBy=parent_task&groupIssueId=root-3",
   },
 ];
 
@@ -590,7 +590,7 @@ export const SelectedStack: Story = {
         <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <a
-              href="/PAP/artifacts?groupBy=task"
+              href="/artifacts?groupBy=task"
               className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

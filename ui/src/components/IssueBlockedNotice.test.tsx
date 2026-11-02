@@ -686,7 +686,6 @@ describe("IssueBlockedNotice", () => {
             assigneeUserId: null,
             activeRecoveryAction: {
               id: "rec-1",
-              companyId: "co-1",
               sourceIssueId: "blocker-1",
               recoveryIssueId: null,
               kind: "missing_disposition",
@@ -741,7 +740,6 @@ describe("IssueBlockedNotice", () => {
             assigneeUserId: null,
             activeRecoveryAction: {
               id: "rec-2",
-              companyId: "co-1",
               sourceIssueId: "blocker-2",
               recoveryIssueId: null,
               kind: "workspace_validation",
@@ -791,7 +789,6 @@ describe("IssueBlockedNotice", () => {
     ): IssueRecoveryAction {
       return {
         id: "rec-3",
-        companyId: "co-1",
         sourceIssueId: "blocker-3",
         recoveryIssueId: null,
         kind: "deliberate_wait_without_target",

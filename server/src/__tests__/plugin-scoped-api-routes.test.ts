@@ -96,7 +96,6 @@ async function createApp(input: {
 
 describe("plugin scoped API routes", () => {
   const pluginId = "11111111-1111-4111-8111-111111111111";
-  const companyId = "22222222-2222-4222-8222-222222222222";
   const agentId = "33333333-3333-4333-8333-333333333333";
   const peerAgentId = "33333333-3333-4333-8333-333333333334";
   const runId = "44444444-4444-4444-8444-444444444444";
@@ -122,7 +121,6 @@ describe("plugin scoped API routes", () => {
         path: "/companies/:companySlug/summary",
         auth: "board",
         capability: "api.routes.register",
-        companyResolution: { from: "query", key: "companyId" },
       },
     ]);
     const { app, workerManager } = await createApp({
@@ -142,7 +140,7 @@ describe("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .get(`/api/plugins/${pluginId}/api/companies/acme/summary?companyId=${companyId}&view=compact`)
+      .get(`/api/plugins/${pluginId}/api/companies/acme/summary?view=compact`)
       .set("Authorization", "Bearer should-not-forward");
 
     expect(res.status).toBe(201);
@@ -151,8 +149,7 @@ describe("plugin scoped API routes", () => {
       routeKey: "summary.get",
       method: "GET",
       params: { companySlug: "acme" },
-      query: { companyId, view: "compact" },
-      companyId,
+      query: { view: "compact" },
       actor: expect.objectContaining({ actorType: "user", actorId: "user-1" }),
     }));
     expect(workerManager.call.mock.calls[0]?.[2].headers.authorization).toBeUndefined();
@@ -166,7 +163,6 @@ describe("plugin scoped API routes", () => {
         path: "/companies/:companySlug/summary",
         auth: "board",
         capability: "api.routes.register",
-        companyResolution: { from: "query", key: "companyId" },
       },
     ]);
     const { app } = await createApp({
@@ -195,7 +191,7 @@ describe("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .get(`/api/plugins/${pluginId}/api/companies/acme/summary?companyId=${companyId}`);
+      .get(`/api/plugins/${pluginId}/api/companies/acme/summary`);
 
     expect(res.status).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");
@@ -213,12 +209,10 @@ describe("plugin scoped API routes", () => {
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "required-for-agent-in-progress",
-        companyResolution: { from: "issue", param: "issueId" },
       },
     ]);
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
     });
@@ -226,7 +220,6 @@ describe("plugin scoped API routes", () => {
       actor: {
         type: "agent",
         agentId,
-        companyId,
         runId,
         source: "agent_key",
       },
@@ -249,7 +242,6 @@ describe("plugin scoped API routes", () => {
       params: { issueId },
       body: { step: "next" },
       actor: expect.objectContaining({ actorType: "agent", agentId, runId }),
-      companyId,
     }));
   });
 
@@ -262,12 +254,10 @@ describe("plugin scoped API routes", () => {
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "required-for-agent-in-progress",
-        companyResolution: { from: "issue", param: "issueId" },
       },
     ]);
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
     });
@@ -275,7 +265,6 @@ describe("plugin scoped API routes", () => {
       actor: {
         type: "agent",
         agentId: peerAgentId,
-        companyId,
         runId,
         source: "agent_key",
       },
@@ -297,8 +286,7 @@ describe("plugin scoped API routes", () => {
       routeKey: "issue.advance",
       params: { issueId },
       body: { step: "next" },
-      actor: expect.objectContaining({ actorType: "agent", agentId: peerAgentId, runId }),
-      companyId,
+      actor: expect.objectContaining({ actorType: "agent", agentId: peerAgentId, runId })
     }));
   });
 
@@ -311,12 +299,10 @@ describe("plugin scoped API routes", () => {
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "required-for-agent-in-progress",
-        companyResolution: { from: "issue", param: "issueId" },
       },
     ]);
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
     });
@@ -324,7 +310,6 @@ describe("plugin scoped API routes", () => {
       actor: {
         type: "agent",
         agentId,
-        companyId,
         source: "agent_key",
       },
       plugin: {
@@ -352,12 +337,10 @@ describe("plugin scoped API routes", () => {
         auth: "agent",
         capability: "api.routes.register",
         checkoutPolicy: "always-for-agent",
-        companyResolution: { from: "issue", param: "issueId" },
       },
     ]);
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
       status: "in_progress",
       assigneeAgentId: agentId,
     });
@@ -368,7 +351,6 @@ describe("plugin scoped API routes", () => {
       actor: {
         type: "agent",
         agentId,
-        companyId,
         runId,
         source: "agent_key",
       },
@@ -396,7 +378,6 @@ describe("plugin scoped API routes", () => {
         path: "/summary",
         auth: "board",
         capability: "api.routes.register",
-        companyResolution: { from: "query", key: "companyId" },
       },
     ]);
     const { app, workerManager } = await createApp({
@@ -415,7 +396,7 @@ describe("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .get(`/api/plugins/${pluginId}/api/summary?companyId=${companyId}`);
+      .get(`/api/plugins/${pluginId}/api/summary`);
 
     expect(res.status).toBe(503);
     expect(res.body.error).toContain("disabled");
@@ -430,7 +411,6 @@ describe("plugin scoped API routes", () => {
         path: "/summary",
         auth: "board",
         capability: "api.routes.register",
-        companyResolution: { from: "query", key: "companyId" },
       },
     ]);
     const { app, workerManager } = await createApp({
@@ -450,7 +430,7 @@ describe("plugin scoped API routes", () => {
     });
 
     const res = await request(app)
-      .get(`/api/plugins/${pluginId}/api/summary?companyId=${companyId}`);
+      .get(`/api/plugins/${pluginId}/api/summary`);
 
     expect(res.status).toBe(503);
     expect(res.body.error).toContain("worker is not running");

@@ -33,7 +33,6 @@ describe("cursor local skill sync", () => {
 
     const ctx = {
       agentId: "agent-1",
-      companyId: "company-1",
       adapterType: "cursor",
       config: {
         env: {
@@ -58,7 +57,6 @@ describe("cursor local skill sync", () => {
 
     const snapshot = await syncCursorSkills({
       agentId: "agent-required",
-      companyId: "company-1",
       adapterType: "cursor",
       config: {
         env: { HOME: home },
@@ -82,7 +80,6 @@ describe("cursor local skill sync", () => {
 
     const ctx = {
       agentId: "agent-3",
-      companyId: "company-1",
       adapterType: "cursor",
       config: {
         env: {

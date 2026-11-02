@@ -100,17 +100,17 @@ runWorker(plugin, import.meta.url);
 | `onValidateConfig?(config)` | Optional. Return `{ ok, warnings?, errors? }` for settings UI / Test Connection. |
 | `onWebhook?(input)` | Optional. Handle `POST /api/plugins/:pluginId/webhooks/:endpointKey`; required if webhooks declared. |
 
-**Context (`ctx`) in setup:** `config`, `localFolders`, `events`, `jobs`, `launchers`, `http`, `secrets`, `activity`, `state`, `entities`, `projects`, `companies`, `issues`, `agents`, `goals`, `access`, `authorization`, `data`, `actions`, `streams`, `tools`, `metrics`, `logger`, `manifest`. Worker-side host APIs are capability-gated; declare capabilities in the manifest.
+**Context (`ctx`) in setup:** `config`, `localFolders`, `events`, `jobs`, `launchers`, `http`, `secrets`, `activity`, `state`, `entities`, `projects`, `issues`, `agents`, `goals`, `access`, `authorization`, `data`, `actions`, `streams`, `tools`, `metrics`, `logger`, `manifest`. Worker-side host APIs are capability-gated; declare capabilities in the manifest.
 
-**Agents:** `ctx.agents.invoke(agentId, companyId, opts)` for one-shot invocation. `ctx.agents.sessions` for two-way chat: `create`, `list`, `sendMessage` (with streaming `onEvent` callback), `close`. See the [Plugin Authoring Guide](../../doc/plugins/PLUGIN_AUTHORING_GUIDE.md#agent-sessions-two-way-chat) for details.
+**Agents:** `ctx.agents.invoke(agentId, opts)` for one-shot invocation. `ctx.agents.sessions` for two-way chat: `create`, `list`, `sendMessage` (with streaming `onEvent` callback), `close`. See the [Plugin Authoring Guide](../../doc/plugins/PLUGIN_AUTHORING_GUIDE.md#agent-sessions-two-way-chat) for details.
 
-**Jobs:** Declare in `manifest.jobs` with `jobKey`, `displayName`, `schedule` (cron). Register handler with `ctx.jobs.register(jobKey, fn)`. **Webhooks:** Declare in `manifest.webhooks` with `endpointKey`; handle in `onWebhook(input)`. **State:** `ctx.state.get/set/delete(scopeKey)`; scope kinds: `instance`, `company`, `project`, `project_workspace`, `agent`, `issue`, `goal`, `run`.
+**Jobs:** Declare in `manifest.jobs` with `jobKey`, `displayName`, `schedule` (cron). Register handler with `ctx.jobs.register(jobKey, fn)`. **Webhooks:** Declare in `manifest.webhooks` with `endpointKey`; handle in `onWebhook(input)`. **State:** `ctx.state.get/set/delete(scopeKey)`; scope kinds: `instance`, `project`, `project_workspace`, `agent`, `issue`, `goal`, `run`.
 
-**Trusted local folders:** Declare `manifest.localFolders[]` and the `local.folders` capability when a plugin needs an operator-configured company-scoped folder. Use `ctx.localFolders.configure()`, `status()`, `readText()`, and `writeTextAtomic()` instead of resolving arbitrary filesystem paths yourself. The host validates absolute roots, read/write access, required relative folders/files, traversal attempts, symlink escapes, and writes through temp-file-plus-rename atomic replacement.
+**Trusted local folders:** Declare `manifest.localFolders[]` and the `local.folders` capability when a plugin needs an operator-configured folder. Use `ctx.localFolders.configure()`, `status()`, `readText()`, and `writeTextAtomic()` instead of resolving arbitrary filesystem paths yourself. The host validates absolute roots, read/write access, required relative folders/files, traversal attempts, symlink escapes, and writes through temp-file-plus-rename atomic replacement.
 
 ## Events
 
-Subscribe in `setup` with `ctx.events.on(name, handler)` or `ctx.events.on(name, filter, handler)`. Emit plugin-scoped events with `ctx.events.emit(name, companyId, payload)` (requires `events.emit`).
+Subscribe in `setup` with `ctx.events.on(name, handler)` or `ctx.events.on(name, filter, handler)`. Emit plugin-scoped events with `ctx.events.emit(name, payload)` (requires `events.emit`).
 
 **Core domain events (subscribe with `events.subscribe`):**
 
@@ -130,11 +130,9 @@ Subscribe in `setup` with `ctx.events.on(name, handler)` or `ctx.events.on(name,
 | `cost_event.created` | cost |
 | `activity.logged` | activity |
 
-**Plugin-to-plugin:** Subscribe to `plugin.<pluginId>.<eventName>` (e.g. `plugin.acme.linear.sync-done`). Emit with `ctx.events.emit("sync-done", companyId, payload)`; the host namespaces it automatically.
+**Plugin-to-plugin:** Subscribe to `plugin.<pluginId>.<eventName>` (e.g. `plugin.acme.linear.sync-done`). Emit with `ctx.events.emit("sync-done", payload)`; the host namespaces it automatically.
 
-**Filter (optional):** Pass a second argument to `on()`: `{ projectId?, companyId?, agentId? }` so the host only delivers matching events.
-
-**Company context:** Events still carry `companyId` for company-scoped data, but plugin installation and activation are instance-wide in the current runtime. Access and authorization host services require an active company-scoped invocation such as an event, API route, tool run, environment call, or UI bridge call; the requested `companyId` must match that active scope.
+**Filter (optional):** Pass a second argument to `on()`: `{ projectId?, agentId? }` so the host only delivers matching events.
 
 ## Scheduled (recurring) jobs
 
@@ -223,7 +221,7 @@ Slot types describe where a component mounts. Most values also exist as launcher
 | `toolbarButton` | Entity | varies by host surface |
 | `contextMenuItem` | Entity | varies by host surface |
 
-**Scope** describes whether the slot requires an entity to render. **Global** slots render without a specific entity but still receive the active `companyId` through `PluginHostContext` — use it to scope data fetches to the current company. **Entity** slots additionally require `entityId` and `entityType` (e.g. a detail tab on a specific issue).
+**Scope** describes whether the slot requires an entity to render. **Global** slots render without a specific entity. **Entity** slots additionally require `entityId` and `entityType` (e.g. a detail tab on a specific issue).
 
 **Entity types** (for `entityTypes` on slots): `project` \| `issue` \| `agent` \| `goal` \| `run` \| `comment`. Full list: import `PLUGIN_UI_SLOT_TYPES` and `PLUGIN_UI_SLOT_ENTITY_TYPES` from `@paperclipai/plugin-sdk`.
 
@@ -231,61 +229,61 @@ Slot types describe where a component mounts. Most values also exist as launcher
 
 #### `page`
 
-A full-page extension mounted at `/plugins/:pluginId` (global) or `/:company/plugins/:pluginId` (company-context route). Use this for rich, standalone plugin experiences such as dashboards, configuration wizards, or multi-step workflows. Receives `PluginPageProps` with `context.companyId` set to the active company. Requires the `ui.page.register` capability.
+A full-page extension mounted at `/plugins/:pluginId`. Use this for rich, standalone plugin experiences such as dashboards, configuration wizards, or multi-step workflows. Receives `PluginPageProps`. Requires the `ui.page.register` capability.
 
 #### `sidebar`
 
-Adds a navigation-style entry to the main company sidebar navigation area, rendered alongside the core nav items (Dashboard, Issues, Goals, etc.). Use this for lightweight, always-visible links or status indicators that feel native to the sidebar. Receives `PluginSidebarProps` with `context.companyId` set to the active company. Requires the `ui.sidebar.register` capability.
+Adds a navigation-style entry to the main sidebar navigation area, rendered alongside the core nav items (Dashboard, Issues, Goals, etc.). Use this for lightweight, always-visible links or status indicators that feel native to the sidebar. Receives `PluginSidebarProps`. Requires the `ui.sidebar.register` capability.
 
 #### `routeSidebar`
 
-A contextual sidebar shown while the current route is a plugin page route with the same `routePath`. Use this for full-page plugin workspaces that need their own local navigation. It does **not** replace the app sidebar: the host collapses the main `<Sidebar/>` to its 64px icon rail (still hover/peek-able) and renders your `routeSidebar` in a secondary pane beside it, producing `[ app rail ][ your sidebar ][ content ]`. Receives `PluginRouteSidebarProps` with `context.companyId` and `context.companyPrefix` set to the active company. Requires the `ui.sidebar.register` capability.
+A contextual sidebar shown while the current route is a plugin page route with the same `routePath`. Use this for full-page plugin workspaces that need their own local navigation. It does **not** replace the app sidebar: the host collapses the main `<Sidebar/>` to its 64px icon rail (still hover/peek-able) and renders your `routeSidebar` in a secondary pane beside it, producing `[ app rail ][ your sidebar ][ content ]`. Receives `PluginRouteSidebarProps`. Requires the `ui.sidebar.register` capability.
 
 Do **not** mount `RequestCollapsedSidebar` (or otherwise try to collapse the app sidebar) from a `routeSidebar` plugin — the host drives the collapse automatically while your route is active and restores the user's preference when they navigate away. The collapse is a hard invariant: a secondary sidebar always forces the app rail collapsed (hiding its expand toggle), overriding any user pin, but it never mutates the user's saved expanded/collapsed preference — that is restored as soon as they leave your route.
 
 #### `sidebarPanel`
 
-Renders richer inline content in a dedicated panel area below the company sidebar navigation sections. Use this for mini-widgets, summary cards, quick-action panels, or at-a-glance status views that need more vertical space than a nav link. Receives `context.companyId` set to the active company via `useHostContext()`. Requires the `ui.sidebar.register` capability.
+Renders richer inline content in a dedicated panel area below the sidebar navigation sections. Use this for mini-widgets, summary cards, quick-action panels, or at-a-glance status views that need more vertical space than a nav link. Reads host context via `useHostContext()`. Requires the `ui.sidebar.register` capability.
 
 #### `settingsPage`
 
-Replaces the auto-generated JSON Schema settings form with a custom React component. Use this when the default form is insufficient — for example, when your plugin needs multi-step configuration, OAuth flows, "Test Connection" buttons, or rich input controls. Receives `PluginSettingsPageProps` with `context.companyId` set to the active company. The component is responsible for reading and writing config through the bridge (via `usePluginData` and `usePluginAction`).
+Replaces the auto-generated JSON Schema settings form with a custom React component. Use this when the default form is insufficient — for example, when your plugin needs multi-step configuration, OAuth flows, "Test Connection" buttons, or rich input controls. Receives `PluginSettingsPageProps`. The component is responsible for reading and writing config through the bridge (via `usePluginData` and `usePluginAction`).
 
 #### `dashboardWidget`
 
-A card or section rendered on the main dashboard. Use this for at-a-glance metrics, status indicators, or summary views that surface plugin data alongside core Paperclip information. Receives `PluginWidgetProps` with `context.companyId` set to the active company. Requires the `ui.dashboardWidget.register` capability.
+A card or section rendered on the main dashboard. Use this for at-a-glance metrics, status indicators, or summary views that surface plugin data alongside core Paperclip information. Receives `PluginWidgetProps`. Requires the `ui.dashboardWidget.register` capability.
 
 #### `detailTab`
 
-An additional tab on a project, issue, agent, goal, or run detail page. Rendered when the user navigates to that entity's detail view. Receives `PluginDetailTabProps` with `context.companyId` set to the active company and `context.entityId` / `context.entityType` guaranteed to be non-null, so you can immediately scope data fetches to the relevant entity. Specify which entity types the tab applies to via the `entityTypes` array in the manifest slot declaration. Requires the `ui.detailTab.register` capability.
+An additional tab on a project, issue, agent, goal, or run detail page. Rendered when the user navigates to that entity's detail view. Receives `PluginDetailTabProps` with `context.entityId` / `context.entityType` guaranteed to be non-null, so you can immediately scope data fetches to the relevant entity. Specify which entity types the tab applies to via the `entityTypes` array in the manifest slot declaration. Requires the `ui.detailTab.register` capability.
 
 #### `taskDetailView`
 
-A specialized slot rendered in the context of a task or issue detail view. Similar to `detailTab` but designed for inline content within the task detail layout rather than a separate tab. Receives `context.companyId`, `context.entityId`, and `context.entityType` like `detailTab`. Requires the `ui.detailTab.register` capability.
+A specialized slot rendered in the context of a task or issue detail view. Similar to `detailTab` but designed for inline content within the task detail layout rather than a separate tab. Receives `context.entityId` and `context.entityType` like `detailTab`. Requires the `ui.detailTab.register` capability.
 
 #### `projectSidebarItem`
 
-A link or small component rendered **once per project** under that project's row in the sidebar Projects list. Use this to add project-scoped navigation entries (e.g. "Files", "Linear Sync") that deep-link into a plugin detail tab: `/:company/projects/:projectRef?tab=plugin:<key>:<slotId>`. Receives `PluginProjectSidebarItemProps` with `context.companyId` set to the active company, `context.entityId` set to the project id, and `context.entityType` set to `"project"`. Use the optional `order` field in the manifest slot to control sort position. Requires the `ui.sidebar.register` capability.
+A link or small component rendered **once per project** under that project's row in the sidebar Projects list. Use this to add project-scoped navigation entries (e.g. "Files", "Linear Sync") that deep-link into a plugin detail tab: `/projects/:projectRef?tab=plugin:<key>:<slotId>`. Receives `PluginProjectSidebarItemProps` with `context.entityId` set to the project id, and `context.entityType` set to `"project"`. Use the optional `order` field in the manifest slot to control sort position. Requires the `ui.sidebar.register` capability.
 
 #### `globalToolbarButton`
 
-A button rendered in the global top bar (breadcrumb bar) that appears on every page. Use this for company-wide actions that are not scoped to a specific entity — for example, a universal search trigger, a global sync status indicator, or a floating action that applies across the whole workspace. Receives only `context.companyId` and `context.companyPrefix`; no entity context is available. Requires the `ui.action.register` capability.
+A button rendered in the global top bar (breadcrumb bar) that appears on every page. Use this for workspace-wide actions that are not scoped to a specific entity — for example, a universal search trigger, a global sync status indicator, or a floating action that applies across the whole workspace. No entity context is available. Requires the `ui.action.register` capability.
 
 #### `toolbarButton`
 
-A button rendered in the toolbar of an entity page (e.g. project detail, issue detail). Use this for short-lived, contextual actions scoped to the current entity — like triggering a project sync, opening a picker, or running a quick command on that entity. The component can open a plugin-owned modal internally for confirmations or compact forms. Receives `context.companyId`, `context.entityId`, and `context.entityType`; declare `entityTypes` in the manifest to control which entity pages the button appears on. Requires the `ui.action.register` capability.
+A button rendered in the toolbar of an entity page (e.g. project detail, issue detail). Use this for short-lived, contextual actions scoped to the current entity — like triggering a project sync, opening a picker, or running a quick command on that entity. The component can open a plugin-owned modal internally for confirmations or compact forms. Receives `context.entityId` and `context.entityType`; declare `entityTypes` in the manifest to control which entity pages the button appears on. Requires the `ui.action.register` capability.
 
 #### `contextMenuItem`
 
-An entry added to a right-click or overflow context menu on a host surface. Use this for secondary actions that apply to the entity under the cursor (e.g. "Copy to Linear", "Re-run analysis"). Receives `context.companyId` set to the active company; entity context varies by host surface. Requires the `ui.action.register` capability.
+An entry added to a right-click or overflow context menu on a host surface. Use this for secondary actions that apply to the entity under the cursor (e.g. "Copy to Linear", "Re-run analysis"). Entity context varies by host surface. Requires the `ui.action.register` capability.
 
 #### `commentAnnotation`
 
-A per-comment annotation region rendered below each individual comment in the issue detail timeline. Use this to augment comments with parsed file links, sentiment badges, inline actions, or any per-comment metadata. Receives `PluginCommentAnnotationProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent issue UUID, `context.projectId` set to the issue's project (if any), and `context.companyPrefix` set to the active company slug. Requires the `ui.commentAnnotation.register` capability.
+A per-comment annotation region rendered below each individual comment in the issue detail timeline. Use this to augment comments with parsed file links, sentiment badges, inline actions, or any per-comment metadata. Receives `PluginCommentAnnotationProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent issue UUID, and `context.projectId` set to the issue's project (if any). Requires the `ui.commentAnnotation.register` capability.
 
 #### `commentContextMenuItem`
 
-A per-comment context menu item rendered in the "more" dropdown menu (⋮) on each comment in the issue detail timeline. Use this to add per-comment actions such as "Create sub-issue from comment", "Translate", "Flag for review", or custom plugin actions. Receives `PluginCommentContextMenuItemProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent issue UUID, `context.projectId` set to the issue's project (if any), and `context.companyPrefix` set to the active company slug. Plugins can open drawers, modals, or popovers scoped to that comment. The ⋮ menu button only appears on comments where at least one plugin renders visible content. Requires the `ui.action.register` capability.
+A per-comment context menu item rendered in the "more" dropdown menu (⋮) on each comment in the issue detail timeline. Use this to add per-comment actions such as "Create sub-issue from comment", "Translate", "Flag for review", or custom plugin actions. Receives `PluginCommentContextMenuItemProps` with `context.entityId` set to the comment UUID, `context.entityType` set to `"comment"`, `context.parentEntityId` set to the parent issue UUID, and `context.projectId` set to the issue's project (if any). Plugins can open drawers, modals, or popovers scoped to that comment. The ⋮ menu button only appears on comments where at least one plugin renders visible content. Requires the `ui.action.register` capability.
 
 ### Launcher actions and render options
 
@@ -309,8 +307,7 @@ Declare in `manifest.capabilities`. Grouped by scope:
 
 | Scope | Capability |
 |-------|------------|
-| **Company** | `companies.read` |
-| | `projects.read` |
+| **Data** | `projects.read` |
 | | `project.workspaces.read` |
 | | `issues.read` |
 | | `issue.comments.read` |
@@ -435,7 +432,7 @@ plugin namespace.
 
 ### Trusted Local Folders
 
-Trusted local plugins can request operator-configured folders per company:
+Trusted local plugins can request operator-configured folders:
 
 ```ts
 export const manifest = {
@@ -453,13 +450,13 @@ export const manifest = {
 };
 ```
 
-The host stores the selected path in company-scoped plugin settings and exposes
+The host stores the selected path in plugin settings and exposes
 readiness through:
 
-- `GET /api/plugins/:pluginId/companies/:companyId/local-folders`
-- `GET /api/plugins/:pluginId/companies/:companyId/local-folders/:folderKey/status`
-- `POST /api/plugins/:pluginId/companies/:companyId/local-folders/:folderKey/validate`
-- `PUT /api/plugins/:pluginId/companies/:companyId/local-folders/:folderKey`
+- `GET /api/plugins/:pluginId/local-folders`
+- `GET /api/plugins/:pluginId/local-folders/:folderKey/status`
+- `POST /api/plugins/:pluginId/local-folders/:folderKey/validate`
+- `PUT /api/plugins/:pluginId/local-folders/:folderKey`
 
 Worker code should access files through `ctx.localFolders.readText()` and
 `ctx.localFolders.writeTextAtomic()`. Relative paths must stay inside the
@@ -485,10 +482,10 @@ apiRoutes: [
 ```
 
 Implement `onApiRequest(input)` in the worker to handle the route. The host
-performs auth, company access, capability, route matching, and checkout policy
+performs auth, capability, route matching, and checkout policy
 before dispatch. The worker receives route params, query, parsed JSON body,
-sanitized headers, actor context, and `companyId`; responses are JSON `{ status?,
-headers?, body? }`.
+sanitized headers, and actor context; responses are JSON `{ status?, headers?,
+body? }`.
 
 ## Issue Orchestration APIs
 
@@ -498,7 +495,6 @@ Expanded create/update fields include blockers, billing code, board or agent ass
 
 ```ts
 const child = await ctx.issues.create({
-  companyId,
   parentId: missionIssueId,
   inheritExecutionWorkspaceFromIssueId: missionIssueId,
   title: "Implement feature slice",
@@ -516,16 +512,16 @@ If `originKind` is omitted, the host stores `plugin:<pluginKey>`. Plugins may us
 Blocker relationships are also exposed as first-class helpers:
 
 ```ts
-const relations = await ctx.issues.relations.get(child.id, companyId);
-await ctx.issues.relations.setBlockedBy(child.id, [planningIssueId], companyId);
-await ctx.issues.relations.addBlockers(child.id, [validationIssueId], companyId);
-await ctx.issues.relations.removeBlockers(child.id, [planningIssueId], companyId);
+const relations = await ctx.issues.relations.get(child.id);
+await ctx.issues.relations.setBlockedBy(child.id, [planningIssueId]);
+await ctx.issues.relations.addBlockers(child.id, [validationIssueId]);
+await ctx.issues.relations.removeBlockers(child.id, [planningIssueId]);
 ```
 
 Subtree reads can include just the issue tree, or compact related data for orchestration dashboards:
 
 ```ts
-const subtree = await ctx.issues.getSubtree(missionIssueId, companyId, {
+const subtree = await ctx.issues.getSubtree(missionIssueId, {
   includeRoot: true,
   includeRelations: true,
   includeDocuments: true,
@@ -539,7 +535,6 @@ Agent-run actions can assert checkout ownership before mutating in-progress work
 ```ts
 await ctx.issues.assertCheckoutOwner({
   issueId,
-  companyId,
   actorAgentId: runCtx.agentId,
   actorRunId: runCtx.runId,
 });
@@ -548,12 +543,12 @@ await ctx.issues.assertCheckoutOwner({
 Plugins can request assignment wakeups through the host so budget stops, execution locks, blocker checks, and heartbeat policy still apply:
 
 ```ts
-await ctx.issues.requestWakeup(child.id, companyId, {
+await ctx.issues.requestWakeup(child.id, {
   reason: "mission_advance",
   contextSource: "missions.advance",
 });
 
-await ctx.issues.requestWakeups([featureIssueId, validationIssueId], companyId, {
+await ctx.issues.requestWakeups([featureIssueId, validationIssueId], {
   reason: "mission_advance",
   contextSource: "missions.advance",
   idempotencyKeyPrefix: `mission:${missionIssueId}:advance`,
@@ -565,7 +560,6 @@ Use `ctx.issues.summaries.getOrchestration()` when a workflow needs compact read
 ```ts
 const summary = await ctx.issues.summaries.getOrchestration({
   issueId: missionIssueId,
-  companyId,
   includeSubtree: true,
   billingCode: "mission:alpha",
 });
@@ -578,14 +572,14 @@ issue, for example — can instead attribute the comment to that person by
 passing `actorUserId`:
 
 ```ts
-await ctx.issues.createComment(issueId, replyText, companyId, {
+await ctx.issues.createComment(issueId, replyText, {
   actorUserId: verifiedSlackUser.paperclipUserId,
 });
 ```
 
 This requires the `issue.comments.create_human_attributed` capability in
 addition to `issue.comments.create`. The host independently verifies that
-`actorUserId` is an active human member of the issue's company before
+`actorUserId` is an active human member before
 applying the comment — a plugin cannot forge attribution to an arbitrary or
 inactive user id. When the issue has a non-terminal status and an assigned
 agent, a human-attributed comment also wakes that assignee, the same way a
@@ -639,10 +633,8 @@ interface SyncStatus {
   healthy: boolean;
 }
 
-export function SyncStatusWidget({ context }: PluginWidgetProps) {
-  const { data, loading, error, refresh } = usePluginData<SyncStatus>("sync-status", {
-    companyId: context.companyId,
-  });
+export function SyncStatusWidget(_props: PluginWidgetProps) {
+  const { data, loading, error, refresh } = usePluginData<SyncStatus>("sync-status");
 
   if (loading) return <div>Loading…</div>;
   if (error) return <div>Error: {error.message}</div>;
@@ -666,7 +658,7 @@ Returns an async function that calls the worker's `performAction` handler. Throw
 import { useState } from "react";
 import { usePluginAction, type PluginBridgeError } from "@paperclipai/plugin-sdk/ui";
 
-export function ResyncButton({ context }: PluginWidgetProps) {
+export function ResyncButton(_props: PluginWidgetProps) {
   const resync = usePluginAction("resync");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -675,7 +667,7 @@ export function ResyncButton({ context }: PluginWidgetProps) {
     setBusy(true);
     setError(null);
     try {
-      await resync({ companyId: context.companyId });
+      await resync();
     } catch (err) {
       setError((err as PluginBridgeError).message);
     } finally {
@@ -696,16 +688,15 @@ export function ResyncButton({ context }: PluginWidgetProps) {
 
 #### `useHostContext()`
 
-Reads the active company, project, entity, and user context. Use this to scope data fetches and actions.
+Reads the active project, entity, and user context. Use this to scope data fetches and actions.
 
 ```tsx
 import { useHostContext, usePluginData } from "@paperclipai/plugin-sdk/ui";
 import type { PluginDetailTabProps } from "@paperclipai/plugin-sdk/ui";
 
 export function IssueLinearLink({ context }: PluginDetailTabProps) {
-  const { companyId, entityId, entityType } = context;
+  const { entityId } = context;
   const { data } = usePluginData<{ url: string }>("linear-link", {
-    companyId,
     issueId: entityId,
   });
 
@@ -727,11 +718,11 @@ export function WikiSidebarLink() {
 }
 ```
 
-`linkProps("/wiki")` resolves against the active company prefix, so in company `PAP` it renders `href="/PAP/wiki"`. Already-prefixed paths such as `/PAP/wiki` are not prefixed again. For button-style commands, call `hostNavigation.navigate("/issues/PAP-123")`.
+For button-style commands, call `hostNavigation.navigate("/issues/PAP-123")`.
 
 Avoid raw same-origin `href`s or `window.location.assign()` for Paperclip-internal navigation from plugin UI. Those bypass the host router and can reload the whole app. External links should keep normal anchors with `target="_blank"` and `rel="noopener noreferrer"` as appropriate.
 
-#### `usePluginStream<T>(channel, options?)`
+#### `usePluginStream<T>(channel)`
 
 Subscribes to a real-time event stream pushed from the plugin worker via SSE. The worker pushes events using `ctx.streams.emit(channel, event)` and the hook receives them as they arrive. Returns `{ events, lastEvent, connecting, connected, error, close }`.
 
@@ -742,10 +733,8 @@ interface ChatToken {
   text: string;
 }
 
-export function ChatMessages({ context }: PluginWidgetProps) {
-  const { events, connected, close } = usePluginStream<ChatToken>("chat-stream", {
-    companyId: context.companyId ?? undefined,
-  });
+export function ChatMessages(_props: PluginWidgetProps) {
+  const { events, connected, close } = usePluginStream<ChatToken>("chat-stream");
 
   return (
     <div>
@@ -757,7 +746,7 @@ export function ChatMessages({ context }: PluginWidgetProps) {
 }
 ```
 
-The SSE connection targets `GET /api/plugins/:pluginId/bridge/stream/:channel?companyId=...`. The host bridge manages the EventSource lifecycle; `close()` terminates the connection.
+The SSE connection targets `GET /api/plugins/:pluginId/bridge/stream/:channel`. The host bridge manages the EventSource lifecycle; `close()` terminates the connection.
 
 ### UI authoring note
 
@@ -783,7 +772,7 @@ Paperclip surface:
 | `MarkdownBlock` | Rendering markdown from plugin or host data |
 | `MarkdownEditor` | Editing markdown with the host editor treatment |
 | `FileTree` | Showing serializable workspace/wiki/import paths |
-| `IssuesList` | Embedding a company-scoped native issue list |
+| `IssuesList` | Embedding a native issue list |
 | `AssigneePicker` | Selecting an agent or board user with the same picker as the new issue pane |
 | `ProjectPicker` | Selecting a project with the same picker as the new issue pane |
 | `ManagedRoutinesList` | Showing plugin-managed routines in settings UI |
@@ -855,19 +844,18 @@ export function WikiFiles() {
 
 Use `AssigneePicker` and `ProjectPicker` when a plugin needs to create, filter,
 or configure work against Paperclip entities. Both are controlled components and
-load their options from the host for the provided company.
+load their options from the host.
 
 ```tsx
 import { AssigneePicker, ProjectPicker } from "@paperclipai/plugin-sdk/ui";
 
-export function AssignmentControls({ companyId }: { companyId: string }) {
+export function AssignmentControls() {
   const [assignee, setAssignee] = useState("");
   const [projectId, setProjectId] = useState("");
 
   return (
     <>
       <AssigneePicker
-        companyId={companyId}
         value={assignee}
         onChange={(value, selection) => {
           setAssignee(value);
@@ -875,7 +863,6 @@ export function AssignmentControls({ companyId }: { companyId: string }) {
         }}
       />
       <ProjectPicker
-        companyId={companyId}
         value={projectId}
         onChange={setProjectId}
       />
@@ -898,8 +885,8 @@ Each slot type receives a typed props object with `context: PluginHostContext`. 
 | `globalToolbarButton` | `PluginGlobalToolbarButtonProps` | — |
 | `detailTab` | `PluginDetailTabProps` | `entityId: string`, `entityType: string` |
 | `toolbarButton` | `PluginToolbarButtonProps` | `entityId: string`, `entityType: string` |
-| `commentAnnotation` | `PluginCommentAnnotationProps` | `entityId: string`, `entityType: "comment"`, `parentEntityId: string`, `projectId`, `companyPrefix` |
-| `commentContextMenuItem` | `PluginCommentContextMenuItemProps` | `entityId: string`, `entityType: "comment"`, `parentEntityId: string`, `projectId`, `companyPrefix` |
+| `commentAnnotation` | `PluginCommentAnnotationProps` | `entityId: string`, `entityType: "comment"`, `parentEntityId: string`, `projectId` |
+| `commentContextMenuItem` | `PluginCommentContextMenuItemProps` | `entityId: string`, `entityType: "comment"`, `parentEntityId: string`, `projectId` |
 | `projectSidebarItem` | `PluginProjectSidebarItemProps` | `entityId: string`, `entityType: "project"` |
 
 Example detail tab with entity context:
@@ -911,7 +898,6 @@ import { usePluginData } from "@paperclipai/plugin-sdk/ui";
 export function AgentMetricsTab({ context }: PluginDetailTabProps) {
   const { data, loading } = usePluginData<Record<string, string>>("agent-metrics", {
     agentId: context.entityId,
-    companyId: context.companyId,
   });
 
   if (loading) return <div>Loading…</div>;
@@ -1018,10 +1004,10 @@ Use optional `order` in the slot to sort among other project sidebar items. See 
 
 Two toolbar slot types are available depending on where the button should appear:
 
-- **`globalToolbarButton`** — renders in the top bar on every page, scoped to the company. No entity context. Use for workspace-wide actions.
+- **`globalToolbarButton`** — renders in the top bar on every page. No entity context. Use for workspace-wide actions.
 - **`toolbarButton`** — renders on entity detail pages (project, issue, etc.). Receives `entityId` and `entityType`. Declare `entityTypes` to control which pages the button appears on.
 
-For short-lived actions, mount the appropriate slot type and open a plugin-owned modal inside the component. Use `useHostContext()` to scope the action to the current company or entity.
+For short-lived actions, mount the appropriate slot type and open a plugin-owned modal inside the component. Use `useHostContext()` to scope the action to the current entity.
 
 Project-scoped example (appears only on project detail pages):
 
@@ -1123,8 +1109,7 @@ In `setup()`, use `ctx.streams` to open a channel, emit events, and close when d
 const plugin = definePlugin({
   async setup(ctx) {
     ctx.actions.register("chat", async (params) => {
-      const companyId = params.companyId as string;
-      ctx.streams.open("chat-stream", companyId);
+      ctx.streams.open("chat-stream");
 
       for await (const token of streamFromLLM(params.prompt as string)) {
         ctx.streams.emit("chat-stream", { text: token });
@@ -1141,15 +1126,15 @@ const plugin = definePlugin({
 
 | Method | Description |
 |--------|-------------|
-| `ctx.streams.open(channel, companyId)` | Open a named stream channel and associate it with a company. Sends a `streams.open` notification to the host. |
-| `ctx.streams.emit(channel, event)` | Push an event to the channel. The `companyId` is automatically resolved from the prior `open()` call. |
-| `ctx.streams.close(channel)` | Close the channel and clear the company mapping. Sends a `streams.close` notification. |
+| `ctx.streams.open(channel)` | Open a named stream channel. Sends a `streams.open` notification to the host. |
+| `ctx.streams.emit(channel, event)` | Push an event to the channel. |
+| `ctx.streams.close(channel)` | Close the channel. Sends a `streams.close` notification. |
 
 Stream notifications are fire-and-forget JSON-RPC messages (no `id` field). They are sent via `notifyHost()` synchronously during handler execution.
 
 ### UI side
 
-Use the `usePluginStream` hook (see [Hooks reference](#usepluginstreamtchannel-options) above) to subscribe to events from the UI.
+Use the `usePluginStream` hook (see [Hooks reference](#usepluginstreamtchannel) above) to subscribe to events from the UI.
 
 ### Host-side architecture
 
@@ -1157,9 +1142,9 @@ The host maintains an in-memory `PluginStreamBus` that fans out worker notificat
 
 1. Worker emits `streams.emit` notification via stdout
 2. Host (`plugin-worker-manager`) receives the notification and publishes to `PluginStreamBus`
-3. SSE endpoint (`GET /api/plugins/:pluginId/bridge/stream/:channel?companyId=...`) subscribes to the bus and writes events to the response
+3. SSE endpoint (`GET /api/plugins/:pluginId/bridge/stream/:channel`) subscribes to the bus and writes events to the response
 
-The bus is keyed by `pluginId:channel:companyId`, so multiple UI clients can subscribe to the same stream independently.
+The bus is keyed by `pluginId:channel`, so multiple UI clients can subscribe to the same stream independently.
 
 ### Streaming agent responses to the UI
 
@@ -1176,16 +1161,14 @@ The agent doesn't know about streams — the worker decides what to relay. Encod
 
 ```ts
 ctx.actions.register("ask-agent", async (params) => {
-  const { agentId, companyId, prompt } = params as {
-    agentId: string; companyId: string; prompt: string;
-  };
+  const { agentId, prompt } = params as { agentId: string; prompt: string };
 
   const channel = `agent:${agentId}`;
-  ctx.streams.open(channel, companyId);
+  ctx.streams.open(channel);
 
-  const session = await ctx.agents.sessions.create(agentId, companyId);
+  const session = await ctx.agents.sessions.create(agentId);
 
-  await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
+  await ctx.agents.sessions.sendMessage(session.sessionId, {
     prompt,
     onEvent: (event) => {
       ctx.streams.emit(channel, {
@@ -1211,14 +1194,14 @@ interface AgentEvent {
   text: string;
 }
 
-export function AgentChat({ agentId, companyId }: { agentId: string; companyId: string }) {
+export function AgentChat({ agentId }: { agentId: string }) {
   const askAgent = usePluginAction("ask-agent");
-  const { events, connected, close } = usePluginStream<AgentEvent>(`agent:${agentId}`, { companyId });
+  const { events, connected, close } = usePluginStream<AgentEvent>(`agent:${agentId}`);
   const [prompt, setPrompt] = useState("");
 
   async function send() {
     setPrompt("");
-    await askAgent({ agentId, companyId, prompt });
+    await askAgent({ agentId, prompt });
   }
 
   return (
@@ -1238,10 +1221,10 @@ Plugins can hold multi-turn conversational sessions with agents:
 
 ```ts
 // Create a session
-const session = await ctx.agents.sessions.create(agentId, companyId);
+const session = await ctx.agents.sessions.create(agentId);
 
 // Send a message and stream the response
-await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
+await ctx.agents.sessions.sendMessage(session.sessionId, {
   prompt: "Help me triage this issue",
   onEvent: (event) => {
     if (event.eventType === "chunk") console.log(event.message);
@@ -1250,10 +1233,10 @@ await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
 });
 
 // List active sessions
-const sessions = await ctx.agents.sessions.list(agentId, companyId);
+const sessions = await ctx.agents.sessions.list(agentId);
 
 // Close when done
-await ctx.agents.sessions.close(session.sessionId, companyId);
+await ctx.agents.sessions.close(session.sessionId);
 ```
 
 Requires capabilities: `agent.sessions.create`, `agent.sessions.list`, `agent.sessions.send`, `agent.sessions.close`.
@@ -1302,6 +1285,6 @@ Dev server endpoints:
 ### Persistent application shell contributions
 
 An `appShellOverlay` slot uses `ui.action.register` and the standard
-`PluginWidgetProps` context. It survives navigation and unmounts on account or
-company changes, sign-out and onboarding. Plugins own panel accessibility and
+`PluginWidgetProps` context. It survives navigation and unmounts on account
+changes, sign-out and onboarding. Plugins own panel accessibility and
 request cleanup. See [the distribution and lifecycle contract](../../../doc/plugins/DISTRIBUTION-PLUGINS.md).

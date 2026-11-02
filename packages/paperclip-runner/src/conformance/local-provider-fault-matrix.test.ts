@@ -109,7 +109,6 @@ function executionInput(
   return {
     schema: "paperclip.native-execution-input.v1",
     binding: {
-      companyId: "company-local-integrity",
       runId,
       issueId: "issue-local-integrity",
       agentId: `agent-${profile.key}`,
@@ -187,7 +186,6 @@ function nativeIdentity(
   return {
     runId,
     sessionId: normalizedSessionId,
-    companyId: "company-local-integrity",
     issueId: "issue-local-integrity",
     agentId: `agent-${profile.key}`,
   };
@@ -199,7 +197,6 @@ function prpIdentity(
 ): PrpIdentity {
   return {
     schema: "paperclip.prp.identity.v1",
-    companyId: identity.companyId,
     issueId: identity.issueId,
     runId: identity.runId,
     environmentLeaseId: "lease-local-integrity",

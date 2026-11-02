@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -40,23 +39,19 @@ describeEmbeddedPostgres("folder service", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedCompany() {
-    const companyId = randomUUID();
+  async function seedOrganization() {
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "TEST",
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
-    return companyId;
   }
 
-  async function seedRoutine(companyId: string, title: string, folderId?: string | null) {
+  async function seedRoutine(title: string, folderId?: string | null) {
     const [routine] = await db
       .insert(routines)
       .values({
-        companyId,
         title,
         folderId: folderId ?? null,
         responsibleUserId: "responsible-user",
@@ -65,13 +60,12 @@ describeEmbeddedPostgres("folder service", () => {
     return routine!;
   }
 
-  async function seedSkill(companyId: string, slug: string, folderId?: string | null) {
+  async function seedSkill(slug: string, folderId?: string | null) {
     const [skill] = await db
       .insert(companySkills)
       .values({
-        companyId,
         folderId: folderId ?? null,
-        key: `company/${companyId}/${slug}`,
+        key: `local/${slug}`,
         slug,
         name: slug,
         markdown: `# ${slug}`,
@@ -81,31 +75,31 @@ describeEmbeddedPostgres("folder service", () => {
   }
 
   it("creates, updates, reorders, and lists routine folders with counts", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
 
-    const reporting = await svc.create(companyId, {
+    const reporting = await svc.create({
       kind: "routine",
       name: "Reporting",
       color: "green",
     });
-    const cleanup = await svc.create(companyId, {
+    const cleanup = await svc.create({
       kind: "routine",
       name: "Cleanup",
       color: null,
     });
-    await seedRoutine(companyId, "Filed", reporting.id);
-    await seedRoutine(companyId, "Unfiled");
+    await seedRoutine("Filed", reporting.id);
+    await seedRoutine("Unfiled");
 
-    const renamed = await svc.update(companyId, cleanup.id, { name: "Ops", color: "cyan" });
+    const renamed = await svc.update(cleanup.id, { name: "Ops", color: "cyan" });
     expect(renamed).toMatchObject({ id: cleanup.id, name: "Ops", color: "cyan" });
-    const cleared = await svc.update(companyId, cleanup.id, { color: null });
+    const cleared = await svc.update(cleanup.id, { color: null });
     expect(cleared).toMatchObject({ id: cleanup.id, color: null });
 
-    const movedFolder = await svc.moveFolder(companyId, reporting.id, { position: 10 });
+    const movedFolder = await svc.moveFolder(reporting.id, { position: 10 });
     expect(movedFolder).toMatchObject({ id: reporting.id, position: 10 });
 
-    const listed = await svc.list(companyId, "routine");
+    const listed = await svc.list("routine");
     expect(listed.allCount).toBe(2);
     expect(listed.unfiledCount).toBe(1);
     expect(listed.folders).toEqual([
@@ -115,25 +109,25 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("moves routines and skills to folders and back to virtual Unfiled", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const routineFolder = await svc.create(companyId, { kind: "routine", name: "Reports" });
-    const skillFolder = await svc.create(companyId, { kind: "skill", name: "Runtime" });
-    const routine = await seedRoutine(companyId, "Daily report");
-    const skill = await seedSkill(companyId, "review");
+    const routineFolder = await svc.create({ kind: "routine", name: "Reports" });
+    const skillFolder = await svc.create({ kind: "skill", name: "Runtime" });
+    const routine = await seedRoutine("Daily report");
+    const skill = await seedSkill("review");
 
-    await expect(svc.moveItem(companyId, {
+    await expect(svc.moveItem({
       kind: "routine",
       itemId: routine.id,
       folderId: routineFolder.id,
     })).resolves.toEqual({ kind: "routine", itemId: routine.id, folderId: routineFolder.id });
-    await expect(svc.moveItem(companyId, {
+    await expect(svc.moveItem({
       kind: "skill",
       itemId: skill.id,
       folderId: skillFolder.id,
     })).resolves.toEqual({ kind: "skill", itemId: skill.id, folderId: skillFolder.id });
 
-    await expect(svc.moveItem(companyId, {
+    await expect(svc.moveItem({
       kind: "routine",
       itemId: routine.id,
       folderId: null,
@@ -146,12 +140,12 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("rejects moving an item into a folder of the wrong kind", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const skillFolder = await svc.create(companyId, { kind: "skill", name: "Runtime" });
-    const routine = await seedRoutine(companyId, "Daily report");
+    const skillFolder = await svc.create({ kind: "skill", name: "Runtime" });
+    const routine = await seedRoutine("Daily report");
 
-    await expect(svc.moveItem(companyId, {
+    await expect(svc.moveItem({
       kind: "routine",
       itemId: routine.id,
       folderId: skillFolder.id,
@@ -162,12 +156,12 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("deletes folders without deleting contents by moving items to Unfiled", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const folder = await svc.create(companyId, { kind: "routine", name: "Reports" });
-    const routine = await seedRoutine(companyId, "Daily report", folder.id);
+    const folder = await svc.create({ kind: "routine", name: "Reports" });
+    const routine = await seedRoutine("Daily report", folder.id);
 
-    const deleted = await svc.deleteFolder(companyId, folder.id);
+    const deleted = await svc.deleteFolder(folder.id);
     expect(deleted).toMatchObject({ id: folder.id, name: "Reports" });
 
     const [updatedRoutine] = await db.select().from(routines).where(eq(routines.id, routine.id));
@@ -176,21 +170,21 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("computes canonical paths and updates descendant paths after rename and move", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const root = await svc.create(companyId, { kind: "skill", name: "Engineering" });
-    const child = await svc.create(companyId, { kind: "skill", parentId: root.id, name: "Code Review" });
-    const destination = await svc.create(companyId, { kind: "skill", name: "Operations" });
+    const root = await svc.create({ kind: "skill", name: "Engineering" });
+    const child = await svc.create({ kind: "skill", parentId: root.id, name: "Code Review" });
+    const destination = await svc.create({ kind: "skill", name: "Operations" });
 
     expect(child).toMatchObject({ path: "engineering/code-review", depth: 2 });
-    await svc.update(companyId, root.id, { name: "Product Engineering" });
-    expect(await svc.getFolder(companyId, child.id)).toMatchObject({
+    await svc.update(root.id, { name: "Product Engineering" });
+    expect(await svc.getFolder(child.id)).toMatchObject({
       path: "product-engineering/code-review",
       depth: 2,
     });
 
-    await svc.moveFolder(companyId, child.id, { parentId: destination.id, position: 0 });
-    expect(await svc.getFolder(companyId, child.id)).toMatchObject({
+    await svc.moveFolder(child.id, { parentId: destination.id, position: 0 });
+    expect(await svc.getFolder(child.id)).toMatchObject({
       parentId: destination.id,
       path: "operations/code-review",
       depth: 2,
@@ -202,48 +196,48 @@ describeEmbeddedPostgres("folder service", () => {
     expect(folderSlugSchema.safeParse("Valid Slug").success).toBe(false);
     expect(folderSlugSchema.safeParse("valid-slug-2").success).toBe(true);
 
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const level1 = await svc.create(companyId, { kind: "skill", name: "Level 1" });
-    const level2 = await svc.create(companyId, { kind: "skill", parentId: level1.id, name: "Level 2" });
-    const level3 = await svc.create(companyId, { kind: "skill", parentId: level2.id, name: "Level 3" });
-    const level4 = await svc.create(companyId, { kind: "skill", parentId: level3.id, name: "Level 4" });
+    const level1 = await svc.create({ kind: "skill", name: "Level 1" });
+    const level2 = await svc.create({ kind: "skill", parentId: level1.id, name: "Level 2" });
+    const level3 = await svc.create({ kind: "skill", parentId: level2.id, name: "Level 3" });
+    const level4 = await svc.create({ kind: "skill", parentId: level3.id, name: "Level 4" });
 
-    await expect(svc.create(companyId, {
+    await expect(svc.create({
       kind: "skill",
       parentId: level4.id,
       name: "Level 5",
     })).rejects.toMatchObject({ status: 422, message: "Folder depth cannot exceed 4" });
-    await expect(svc.moveFolder(companyId, level1.id, {
+    await expect(svc.moveFolder(level1.id, {
       parentId: level3.id,
       position: 0,
     })).rejects.toMatchObject({ status: 422, message: "A folder cannot be moved into its own subtree" });
   });
 
   it("creates stable personal roots and protects bundled folders", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const personal = await svc.ensureMyFolder(companyId, "user-1", "Ada Lovelace");
-    const repeated = await svc.ensureMyFolder(companyId, "user-1", "Ada Lovelace");
-    const bundled = await svc.ensureBundledCategory(companyId, "software-development");
+    const personal = await svc.ensureMyFolder("user-1", "Ada Lovelace");
+    const repeated = await svc.ensureMyFolder("user-1", "Ada Lovelace");
+    const bundled = await svc.ensureBundledCategory("software-development");
 
     expect(repeated.id).toBe(personal.id);
     expect(personal).toMatchObject({ systemKey: "my:user-1", path: "my/ada-lovelace", depth: 2 });
     expect(bundled.path).toBe("bundled/software-development");
-    await expect(svc.create(companyId, {
+    await expect(svc.create({
       kind: "skill",
       parentId: bundled.id,
       name: "Nested",
     })).rejects.toMatchObject({ status: 403, message: "Bundled folders are read-only" });
-    await expect(svc.update(companyId, bundled.id, { name: "Changed" })).rejects.toMatchObject({ status: 403 });
+    await expect(svc.update(bundled.id, { name: "Changed" })).rejects.toMatchObject({ status: 403 });
   });
 
   it("heals legacy bundled category names without changing folder identity", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const legacy = await svc.ensureBundledCategory(companyId, "software-development");
+    const legacy = await svc.ensureBundledCategory("software-development");
 
-    const reconciled = await svc.ensureBundledCategory(companyId, "Software Development");
+    const reconciled = await svc.ensureBundledCategory("Software Development");
 
     expect(reconciled).toMatchObject({
       id: legacy.id,
@@ -254,20 +248,20 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("creates reserved folders idempotently under concurrent requests", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
 
     const [personalA, personalB] = await Promise.all([
-      svc.ensureMyFolder(companyId, "user-1", "Ada Lovelace"),
-      svc.ensureMyFolder(companyId, "user-1", "Ada Lovelace"),
+      svc.ensureMyFolder("user-1", "Ada Lovelace"),
+      svc.ensureMyFolder("user-1", "Ada Lovelace"),
     ]);
     const [projectA, projectB] = await Promise.all([
-      svc.ensureProjectFolder(companyId, "project-1", "Core App"),
-      svc.ensureProjectFolder(companyId, "project-1", "Core App"),
+      svc.ensureProjectFolder("project-1", "Core App"),
+      svc.ensureProjectFolder("project-1", "Core App"),
     ]);
     const [bundledA, bundledB] = await Promise.all([
-      svc.ensureBundledCategory(companyId, "software-development"),
-      svc.ensureBundledCategory(companyId, "software-development"),
+      svc.ensureBundledCategory("software-development"),
+      svc.ensureBundledCategory("software-development"),
     ]);
 
     expect(personalA.id).toBe(personalB.id);
@@ -276,64 +270,64 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("reserves system skill roots from manual create, update, and move", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
 
     for (const slug of ["bundled", "my", "projects"]) {
-      await expect(svc.create(companyId, {
+      await expect(svc.create({
         kind: "skill",
         name: slug,
         slug,
       })).rejects.toMatchObject({ status: 403, message: "Reserved skill folders are system-managed" });
     }
 
-    const editable = await svc.create(companyId, { kind: "skill", name: "Editable" });
-    await expect(svc.update(companyId, editable.id, { slug: "bundled" })).rejects.toMatchObject({ status: 403 });
+    const editable = await svc.create({ kind: "skill", name: "Editable" });
+    await expect(svc.update(editable.id, { slug: "bundled" })).rejects.toMatchObject({ status: 403 });
 
-    const parent = await svc.create(companyId, { kind: "skill", name: "Parent" });
-    const nestedReserved = await svc.create(companyId, { kind: "skill", parentId: parent.id, name: "Projects" });
-    await expect(svc.moveFolder(companyId, nestedReserved.id, { parentId: null, position: 0 })).rejects.toMatchObject({
+    const parent = await svc.create({ kind: "skill", name: "Parent" });
+    const nestedReserved = await svc.create({ kind: "skill", parentId: parent.id, name: "Projects" });
+    await expect(svc.moveFolder(nestedReserved.id, { parentId: null, position: 0 })).rejects.toMatchObject({
       status: 403,
       message: "Reserved skill folders are system-managed",
     });
   });
 
   it("allows only system helpers to create children under personal and project roots", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const personal = await svc.ensureMyFolder(companyId, "user-1", "Ada Lovelace");
-    const project = await svc.ensureProjectFolder(companyId, "project-1", "Core App");
-    const myRoot = await svc.getFolder(companyId, personal.parentId!);
-    const projectsRoot = await svc.getFolder(companyId, project.parentId!);
-    const movable = await svc.create(companyId, { kind: "skill", name: "Movable" });
+    const personal = await svc.ensureMyFolder("user-1", "Ada Lovelace");
+    const project = await svc.ensureProjectFolder("project-1", "Core App");
+    const myRoot = await svc.getFolder(personal.parentId!);
+    const projectsRoot = await svc.getFolder(project.parentId!);
+    const movable = await svc.create({ kind: "skill", name: "Movable" });
 
     expect(myRoot?.systemKey).toBe("my");
     expect(projectsRoot?.systemKey).toBe("projects");
-    await expect(svc.create(companyId, {
+    await expect(svc.create({
       kind: "skill",
       parentId: myRoot!.id,
       name: "Spoofed User",
     })).rejects.toMatchObject({ status: 403 });
-    await expect(svc.moveFolder(companyId, movable.id, {
+    await expect(svc.moveFolder(movable.id, {
       parentId: projectsRoot!.id,
       position: 0,
     })).rejects.toMatchObject({ status: 403 });
   });
 
   it("moves squatted roots aside instead of adopting them as system containers", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
     const [squattedMy, squattedProjects] = await db.insert(folders).values([
-      { companyId, kind: "skill", parentId: null, name: "Attacker My", slug: "my", position: 0 },
-      { companyId, kind: "skill", parentId: null, name: "Attacker Projects", slug: "projects", position: 1 },
+      { kind: "skill", parentId: null, name: "Attacker My", slug: "my", position: 0 },
+      { kind: "skill", parentId: null, name: "Attacker Projects", slug: "projects", position: 1 },
     ]).returning();
 
-    const personal = await svc.ensureMyFolder(companyId, "user-1", "Ada Lovelace");
-    const project = await svc.ensureProjectFolder(companyId, "project-1", "Core App");
-    const myRoot = await svc.getFolder(companyId, personal.parentId!);
-    const projectsRoot = await svc.getFolder(companyId, project.parentId!);
-    const repairedMy = await svc.getFolder(companyId, squattedMy!.id);
-    const repairedProjects = await svc.getFolder(companyId, squattedProjects!.id);
+    const personal = await svc.ensureMyFolder("user-1", "Ada Lovelace");
+    const project = await svc.ensureProjectFolder("project-1", "Core App");
+    const myRoot = await svc.getFolder(personal.parentId!);
+    const projectsRoot = await svc.getFolder(project.parentId!);
+    const repairedMy = await svc.getFolder(squattedMy!.id);
+    const repairedProjects = await svc.getFolder(squattedProjects!.id);
 
     expect(myRoot).toMatchObject({ slug: "my", systemKey: "my" });
     expect(projectsRoot).toMatchObject({ slug: "projects", systemKey: "projects" });
@@ -344,31 +338,30 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   it("suffixes system children when legacy rows squat personal and project slugs", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const initialPersonal = await svc.ensureMyFolder(companyId, "seed-user", "Seed User");
-    const initialProject = await svc.ensureProjectFolder(companyId, "seed-project", "Seed Project");
+    const initialPersonal = await svc.ensureMyFolder("seed-user", "Seed User");
+    const initialProject = await svc.ensureProjectFolder("seed-project", "Seed Project");
     const myRootId = initialPersonal.parentId!;
     const projectsRootId = initialProject.parentId!;
     await db.insert(folders).values([
-      { companyId, kind: "skill", parentId: myRootId, name: "Ada Squat", slug: "ada-lovelace", position: 1 },
-      { companyId, kind: "skill", parentId: projectsRootId, name: "Core Squat", slug: "core-app", position: 1 },
+      { kind: "skill", parentId: myRootId, name: "Ada Squat", slug: "ada-lovelace", position: 1 },
+      { kind: "skill", parentId: projectsRootId, name: "Core Squat", slug: "core-app", position: 1 },
     ]);
 
-    const personal = await svc.ensureMyFolder(companyId, "user-12345678", "Ada Lovelace");
-    const project = await svc.ensureProjectFolder(companyId, "project-12345678", "Core App");
+    const personal = await svc.ensureMyFolder("user-12345678", "Ada Lovelace");
+    const project = await svc.ensureProjectFolder("project-12345678", "Core App");
 
     expect(personal).toMatchObject({ path: "my/ada-lovelace-user-12345678", systemKey: "my:user-12345678" });
     expect(project).toMatchObject({ path: "projects/core-app-project-12345678", systemKey: "project:project-12345678" });
   });
 
   it("does not adopt a legacy category row under the bundled root", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
-    const initialCategory = await svc.ensureBundledCategory(companyId, "initial");
+    const initialCategory = await svc.ensureBundledCategory("initial");
     const bundledRootId = initialCategory.parentId!;
     const [squatted] = await db.insert(folders).values({
-      companyId,
       kind: "skill",
       parentId: bundledRootId,
       name: "User Software Development",
@@ -376,23 +369,22 @@ describeEmbeddedPostgres("folder service", () => {
       position: 1,
     }).returning();
 
-    const category = await svc.ensureBundledCategory(companyId, "software-development");
+    const category = await svc.ensureBundledCategory("software-development");
 
     expect(category).toMatchObject({
       path: "bundled/software-development-bundled",
       systemKey: "bundled:software-development",
     });
-    expect(await svc.getFolder(companyId, squatted!.id)).toMatchObject({
+    expect(await svc.getFolder(squatted!.id)).toMatchObject({
       path: "bundled/software-development",
       systemKey: null,
     });
   });
 
   it("serializes concurrent system folder ensures", async () => {
-    const companyId = await seedCompany();
+    await seedOrganization();
     const svc = folderService(db);
     await db.insert(folders).values({
-      companyId,
       kind: "skill",
       name: "Squatted My",
       slug: "my",
@@ -400,25 +392,25 @@ describeEmbeddedPostgres("folder service", () => {
     });
 
     const personalFolders = await Promise.all(
-      Array.from({ length: 8 }, () => svc.ensureMyFolder(companyId, "user-123", "Ada Lovelace")),
+      Array.from({ length: 8 }, () => svc.ensureMyFolder("user-123", "Ada Lovelace")),
     );
 
     expect(new Set(personalFolders.map((folder) => folder.id)).size).toBe(1);
-    const rows = await db.select().from(folders).where(eq(folders.companyId, companyId));
+    const rows = await db.select().from(folders);
     expect(rows.filter((row) => row.systemKey === "my")).toHaveLength(1);
     expect(rows.filter((row) => row.systemKey === "my:user-123")).toHaveLength(1);
     expect(rows.find((row) => row.systemKey === null)).toMatchObject({ name: "Squatted My" });
   });
 
-  it("rechecks nested folders after waiting for the company mutation lock", async () => {
-    const companyId = await seedCompany();
+  it("rechecks nested folders after waiting for the folder mutation lock", async () => {
+    await seedOrganization();
     const svc = folderService(db);
-    const parent = await svc.create(companyId, { kind: "routine", name: "Parent" });
+    const parent = await svc.create({ kind: "routine", name: "Parent" });
     let releaseLock!: () => void;
     let markLockAcquired!: () => void;
     const lockAcquired = new Promise<void>((resolve) => { markLockAcquired = resolve; });
     const holdLock = new Promise<void>((resolve) => { releaseLock = resolve; });
-    const lockKey = `paperclip:folders:${companyId}`;
+    const lockKey = "paperclip:folders";
     const blocker = db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
       markLockAcquired();
@@ -426,9 +418,8 @@ describeEmbeddedPostgres("folder service", () => {
     });
     await lockAcquired;
 
-    const deletion = svc.deleteFolder(companyId, parent.id);
+    const deletion = svc.deleteFolder(parent.id);
     await db.insert(folders).values({
-      companyId,
       kind: "routine",
       parentId: parent.id,
       name: "Child",
@@ -442,6 +433,6 @@ describeEmbeddedPostgres("folder service", () => {
       status: 409,
       message: "Move or delete nested folders first",
     });
-    await expect(svc.getFolder(companyId, parent.id)).resolves.toMatchObject({ id: parent.id });
+    await expect(svc.getFolder(parent.id)).resolves.toMatchObject({ id: parent.id });
   });
 });

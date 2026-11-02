@@ -17,7 +17,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { taskCollectionPreferencesStorageKey } from "../lib/task-collection-preferences";
 
 const companyState = vi.hoisted(() => ({
-  selectedCompanyId: "company-1",
 }));
 
 const dialogState = vi.hoisted(() => ({
@@ -54,8 +53,8 @@ const mockExternalObjectsApi = vi.hoisted(() => ({
   getIssueSummaries: vi.fn(),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => companyState,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => companyState,
 }));
 
 vi.mock("../context/DialogContext", () => ({
@@ -209,7 +208,6 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-1",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,
@@ -384,12 +382,10 @@ describe("IssuesList", () => {
     });
     localStorage.setItem(
       taskCollectionPreferencesStorageKey({
-        companyId: "company-1",
         collectionKey: "paperclip:test-issues",
       }),
       JSON.stringify({
         version: 1,
-        companyId: "company-1",
         collectionKey: "paperclip:test-issues",
         viewState: { viewMode: "board" },
         columns: [],
@@ -453,7 +449,7 @@ describe("IssuesList", () => {
     );
 
     await waitForAssertion(() => {
-      expect(mockExternalObjectsApi.getIssueSummaries).toHaveBeenCalledWith("company-1", ["issue-1"]);
+      expect(mockExternalObjectsApi.getIssueSummaries).toHaveBeenCalledWith(["issue-1"]);
       expect(container.querySelector("[data-testid='external-object-summary']")?.textContent).toBe("2");
     });
 
@@ -568,7 +564,7 @@ describe("IssuesList", () => {
     const failedIssue = createIssue({ id: "issue-failed", identifier: "PAP-10", title: "Failed external object" });
     const freshIssue = createIssue({ id: "issue-fresh", identifier: "PAP-11", title: "Fresh external object" });
     const noObjectIssue = createIssue({ id: "issue-none", identifier: "PAP-12", title: "No external object" });
-    localStorage.setItem("paperclip:test-issues:company-1", JSON.stringify({ externalObjectStatuses: ["failed"] }));
+    localStorage.setItem("paperclip:test-issues", JSON.stringify({ externalObjectStatuses: ["failed"] }));
     mockExternalObjectsApi.getIssueSummaries.mockResolvedValue({
       summaries: {
         "issue-failed": {
@@ -608,7 +604,6 @@ describe("IssuesList", () => {
 
     await waitForAssertion(() => {
       expect(mockExternalObjectsApi.getIssueSummaries).toHaveBeenCalledWith(
-        "company-1",
         ["issue-failed", "issue-fresh", "issue-none"],
       );
       expect(container.textContent).toContain("Failed external object");
@@ -640,7 +635,7 @@ describe("IssuesList", () => {
     );
 
     await waitForAssertion(() => {
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
+      expect(mockIssuesApi.list).toHaveBeenCalledWith({
         q: "server",
         projectId: undefined,
         limit: 200,
@@ -674,7 +669,7 @@ describe("IssuesList", () => {
     );
 
     await waitForAssertion(() => {
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
+      expect(mockIssuesApi.list).toHaveBeenCalledWith({
         q: "server",
         projectId: undefined,
         parentId: "parent-1",
@@ -730,7 +725,7 @@ describe("IssuesList", () => {
 
   it("uses workspace group defaults when creating an issue from a grouped section", async () => {
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ groupBy: "workspace", sortField: "updated", sortDir: "desc" }),
     );
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: true });
@@ -1295,7 +1290,7 @@ describe("IssuesList", () => {
     );
 
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ statuses: ["done"] }),
     );
     mockIssuesApi.list.mockResolvedValue(serverIssues);
@@ -1323,7 +1318,7 @@ describe("IssuesList", () => {
 
   it("loads board issues with a separate result limit for each status column", async () => {
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ viewMode: "board" }),
     );
 
@@ -1343,7 +1338,7 @@ describe("IssuesList", () => {
       status: "done",
     });
 
-    mockIssuesApi.list.mockImplementation((_companyId, filters) => {
+    mockIssuesApi.list.mockImplementation((filters) => {
       if (filters?.status === "backlog") return Promise.resolve([backlogIssue]);
       if (filters?.status === "done") return Promise.resolve([doneIssue]);
       return Promise.resolve([]);
@@ -1362,12 +1357,12 @@ describe("IssuesList", () => {
     );
 
     await waitForAssertion(() => {
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(mockIssuesApi.list).toHaveBeenCalledWith(expect.objectContaining({
         status: "backlog",
         limit: 200,
         includeRoutineExecutions: true,
       }), { signal: expect.any(AbortSignal) });
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(mockIssuesApi.list).toHaveBeenCalledWith(expect.objectContaining({
         status: "done",
         limit: 200,
         includeRoutineExecutions: true,
@@ -1390,7 +1385,7 @@ describe("IssuesList", () => {
 
   it("uses compact cards and collapsed cold lanes for high-volume boards", async () => {
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ viewMode: "board" }),
     );
 
@@ -1403,7 +1398,7 @@ describe("IssuesList", () => {
       }),
     );
 
-    mockIssuesApi.list.mockImplementation((_companyId, filters) => {
+    mockIssuesApi.list.mockImplementation((filters) => {
       if (filters?.status === "backlog") return Promise.resolve(backlogIssues);
       return Promise.resolve([]);
     });
@@ -1435,7 +1430,7 @@ describe("IssuesList", () => {
 
   it("lets board users choose the per-column page size", async () => {
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ viewMode: "board" }),
     );
 
@@ -1485,7 +1480,7 @@ describe("IssuesList", () => {
       }));
     });
 
-    expect(localStorage.getItem("paperclip:test-issues:company-1")).toContain("\"boardColumnPageSize\":25");
+    expect(localStorage.getItem("paperclip:test-issues")).toContain("\"boardColumnPageSize\":25");
 
     act(() => {
       root.unmount();
@@ -1494,7 +1489,7 @@ describe("IssuesList", () => {
 
   it("shows a refinement hint when a board column hits its server cap", async () => {
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ viewMode: "board" }),
     );
 
@@ -1507,7 +1502,7 @@ describe("IssuesList", () => {
       }),
     );
 
-    mockIssuesApi.list.mockImplementation((_companyId, filters) => {
+    mockIssuesApi.list.mockImplementation((filters) => {
       if (filters?.status === "backlog") return Promise.resolve(cappedBacklogIssues);
       return Promise.resolve([]);
     });
@@ -1746,7 +1741,7 @@ describe("IssuesList", () => {
   });
 
   it("uses context-scoped persisted column visibility", async () => {
-    localStorage.setItem("paperclip:test-issues:company-1:issue-columns", JSON.stringify(["id", "assignee"]));
+    localStorage.setItem("paperclip:test-issues:issue-columns", JSON.stringify(["id", "assignee"]));
 
     const assignedIssue = createIssue({
       id: "issue-assigned",
@@ -1782,7 +1777,7 @@ describe("IssuesList", () => {
   });
 
   it("shows human assignee names from company member profiles", async () => {
-    localStorage.setItem("paperclip:test-issues:company-1:issue-columns", JSON.stringify(["id", "assignee"]));
+    localStorage.setItem("paperclip:test-issues:issue-columns", JSON.stringify(["id", "assignee"]));
     mockAccessApi.listUserDirectory.mockResolvedValue({
       users: [
         {
@@ -1827,7 +1822,7 @@ describe("IssuesList", () => {
 
   it("preserves stored grouping across refresh when initial assignees are applied", async () => {
     localStorage.setItem(
-      "paperclip:test-issues:company-1",
+      "paperclip:test-issues",
       JSON.stringify({ groupBy: "status", sortField: "updated", sortDir: "desc" }),
     );
 
@@ -1859,7 +1854,7 @@ describe("IssuesList", () => {
   });
 
   it("filters the list to a single workspace when a workspace name is clicked", async () => {
-    localStorage.setItem("paperclip:test-issues:company-1:issue-columns", JSON.stringify(["id", "workspace"]));
+    localStorage.setItem("paperclip:test-issues:issue-columns", JSON.stringify(["id", "workspace"]));
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: true });
     mockExecutionWorkspacesApi.listSummaries.mockResolvedValue([
       {
@@ -2115,7 +2110,7 @@ describe("IssuesList", () => {
     );
 
     await waitForAssertion(() => {
-      expect(mockExecutionWorkspacesApi.listSummaries).toHaveBeenCalledWith("company-1");
+      expect(mockExecutionWorkspacesApi.listSummaries).toHaveBeenCalledWith();
       expect(mockExecutionWorkspacesApi.list).not.toHaveBeenCalled();
     });
 
@@ -2200,12 +2195,10 @@ describe("IssuesList", () => {
     const collectionKey = "paperclip:test-issues";
     localStorage.setItem(
       taskCollectionPreferencesStorageKey({
-        companyId: "company-1",
         collectionKey,
       }),
       JSON.stringify({
         version: 1,
-        companyId: "company-1",
         collectionKey,
         viewState: { showDateGroupSeparators: false },
         columns: ["status", "id", "updated"],

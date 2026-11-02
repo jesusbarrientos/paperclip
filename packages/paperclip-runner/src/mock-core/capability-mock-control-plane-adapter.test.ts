@@ -17,7 +17,6 @@ const OPEN = {
   identity: {
     runId: "run-1",
     sessionId: "session-1",
-    companyId: "company-1",
     issueId: "task-1",
     agentId: "actor-1",
   },
@@ -348,7 +347,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Blocking task",
           description: null,
@@ -364,7 +362,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-2",
-          companyId: "company-1",
           identifier: "MCK-2",
           title: "Dependent task",
           description: null,
@@ -640,7 +637,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Active task",
           description: null,
@@ -656,7 +652,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-2",
-          companyId: "company-1",
           identifier: "MCK-2",
           title: "Other task",
           description: null,
@@ -707,7 +702,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       actors: [
         {
           id: "actor-1",
-          companyId: "company-1",
           name: "Mock Approver",
           role: "approver",
           status: "active",
@@ -716,7 +710,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "actor-2",
-          companyId: "company-1",
           name: "Other Requester",
           role: "engineer",
           status: "active",
@@ -727,7 +720,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Active task",
           description: null,
@@ -743,7 +735,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-2",
-          companyId: "company-1",
           identifier: "MCK-2",
           title: "Other task",
           description: null,
@@ -759,7 +750,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-3",
-          companyId: "company-1",
           identifier: "MCK-3",
           title: "Terminal requester task",
           description: null,
@@ -775,7 +765,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-4",
-          companyId: "company-1",
           identifier: "MCK-4",
           title: "Owned requester task",
           description: null,
@@ -791,7 +780,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-5",
-          companyId: "company-1",
           identifier: "MCK-5",
           title: "Parked requester task",
           description: null,
@@ -809,7 +797,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       approvals: [
         {
           id: "approval-active-task",
-          companyId: "company-1",
           taskIds: ["task-1"],
           type: "request_board_approval",
           status: "pending",
@@ -822,7 +809,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "approval-other-task",
-          companyId: "company-1",
           taskIds: ["task-1", "task-2"],
           type: "request_board_approval",
           status: "pending",
@@ -835,7 +821,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "approval-unlinked",
-          companyId: "company-1",
           taskIds: ["task-2"],
           type: "request_board_approval",
           status: "pending",
@@ -848,7 +833,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "approval-terminal-requester",
-          companyId: "company-1",
           taskIds: ["task-1", "task-3"],
           type: "request_board_approval",
           status: "pending",
@@ -861,7 +845,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "approval-owned-requester",
-          companyId: "company-1",
           taskIds: ["task-1", "task-4"],
           type: "request_board_approval",
           status: "pending",
@@ -874,7 +857,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "approval-backlog-requester",
-          companyId: "company-1",
           taskIds: ["task-1", "task-5"],
           type: "request_board_approval",
           status: "pending",
@@ -1048,7 +1030,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       actors: [
         {
           id: "actor-1",
-          companyId: "company-1",
           name: "Mock Approver",
           role: "approver",
           status: "active",
@@ -1057,7 +1038,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "actor-2",
-          companyId: "company-1",
           name: "Blocked Requester",
           role: "engineer",
           status: "active",
@@ -1068,7 +1048,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Approval task",
           description: null,
@@ -1084,7 +1063,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-2",
-          companyId: "company-1",
           identifier: "MCK-2",
           title: "Blocked requester task",
           description: null,
@@ -1100,7 +1078,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-3",
-          companyId: "company-1",
           identifier: "MCK-3",
           title: "Unfinished dependency",
           description: null,
@@ -1117,7 +1094,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       ],
       approvals: [{
         id: "approval-blocked-requester",
-        companyId: "company-1",
         taskIds: ["task-1", "task-2"],
         type: "request_board_approval",
         status: "pending",
@@ -1262,7 +1238,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Active task",
           description: null,
@@ -1278,7 +1253,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-2",
-          companyId: "company-1",
           identifier: "MCK-2",
           title: "Candidate dependency",
           description: null,
@@ -1294,7 +1268,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "task-3",
-          companyId: "company-1",
           identifier: "MCK-3",
           title: "Completed dependency",
           description: null,
@@ -1345,7 +1318,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       actors: [
         {
           id: "actor-1",
-          companyId: "company-1",
           name: "Mock Approver",
           role: "approver",
           status: "active",
@@ -1354,7 +1326,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "actor-2",
-          companyId: "company-1",
           name: "Paused Requester",
           role: "engineer",
           status: "paused",
@@ -1364,7 +1335,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       ],
       approvals: [{
         id: "approval-paused-requester",
-        companyId: "company-1",
         taskIds: ["task-1"],
         type: "request_board_approval",
         status: "pending",
@@ -1401,7 +1371,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       actors: [
         {
           id: "actor-1",
-          companyId: "company-1",
           name: "Mock Approver",
           role: "approver",
           status: "active",
@@ -1410,7 +1379,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         },
         {
           id: "actor-2",
-          companyId: "company-1",
           name: "Budgetless Requester",
           role: "engineer",
           status: "active",
@@ -1428,7 +1396,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       }],
       approvals: [{
         id: "approval-budgetless-requester",
-        companyId: "company-1",
         taskIds: ["task-1"],
         type: "request_board_approval",
         status: "pending",
@@ -1473,7 +1440,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Invalid assignee",
           description: null,
@@ -1494,7 +1460,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       approvals: [
         {
           id: "approval-invalid-requester",
-          companyId: "company-1",
           taskIds: ["task-1"],
           type: "request_board_approval",
           status: "pending",
@@ -1619,7 +1584,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
     const identity = CONTROL_PLANE_CONFORMANCE_OPEN.identity;
     const adapter = new CapabilityMockControlPlaneAdapter({
       company: {
-        id: identity.companyId,
         name: "Conformance Company",
         issuePrefix: "CNF",
         status: "active",
@@ -1628,7 +1592,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       actors: [
         {
           id: identity.agentId,
-          companyId: identity.companyId,
           name: "Conformance Actor",
           role: "engineer",
           status: "active",
@@ -1639,7 +1602,6 @@ describe("CapabilityMockControlPlaneAdapter", () => {
       tasks: [
         {
           id: identity.issueId,
-          companyId: identity.companyId,
           identifier: "CNF-1",
           title: "Conformance task",
           description: null,
@@ -1658,7 +1620,7 @@ describe("CapabilityMockControlPlaneAdapter", () => {
         {
           id: "budget-company-conformance",
           scope: "company",
-          scopeId: identity.companyId,
+          scopeId: "company-1",
           limitCents: 100,
           spentCents: 0,
           hardStop: true,

@@ -118,7 +118,6 @@ export interface ProviderTraceInspection {
 export const heartbeatsApi = {
   executionForIssue: (issueId: string) => api.get<{ runId: string; agentId: string; recoveryAction: IssueRecoveryAction | null; execution: HeartbeatRun["execution"] } | null>(`/issues/${issueId}/execution`),
   list: (
-    companyId: string,
     agentId?: string,
     limit?: number,
     options: HeartbeatRunListOptions = {},
@@ -129,7 +128,7 @@ export const heartbeatsApi = {
     if (options.summary) searchParams.set("summary", "true");
     const qs = searchParams.toString();
     return api.get<HeartbeatRun[]>(
-      `/companies/${companyId}/heartbeat-runs${qs ? `?${qs}` : ""}`,
+      `/heartbeat-runs${qs ? `?${qs}` : ""}`,
     );
   },
   get: (runId: string) => api.get<HeartbeatRun>(`/heartbeat-runs/${runId}`),
@@ -155,10 +154,10 @@ export const heartbeatsApi = {
     ),
   providerTrace: (runId: string) =>
     api.get<ProviderTraceInspection>(`/heartbeat-runs/${runId}/provider-trace`),
-  providerTraceMetadata: (companyId: string, runIds: string[]) => {
+  providerTraceMetadata: (runIds: string[]) => {
     const params = new URLSearchParams({ runIds: runIds.slice(0, 100).join(",") });
     return api.get<ProviderTraceMetadata[]>(
-      `/companies/${companyId}/provider-traces?${params.toString()}`,
+      `/provider-traces?${params.toString()}`,
     );
   },
   revealProviderTraceFrame: (runId: string, frameId: number) =>
@@ -231,7 +230,6 @@ export const heartbeatsApi = {
   activeRunForIssue: (issueId: string) =>
     api.get<ActiveRunForIssue | null>(`/issues/${issueId}/active-run`),
   liveRunsForCompany: (
-    companyId: string,
     options?: number | { minCount?: number; limit?: number; distinctTasks?: boolean },
   ) => {
     const searchParams = new URLSearchParams();
@@ -245,7 +243,7 @@ export const heartbeatsApi = {
     }
     const qs = searchParams.toString();
     return api.get<LiveRunForIssue[]>(
-      `/companies/${companyId}/live-runs${qs ? `?${qs}` : ""}`,
+      `/live-runs${qs ? `?${qs}` : ""}`,
     );
   },
 };

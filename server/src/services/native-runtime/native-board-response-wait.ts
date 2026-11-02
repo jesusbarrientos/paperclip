@@ -17,7 +17,6 @@ import { nativeSha256 } from "./canonical.js";
 import { isConversation } from "../agent-conversations.js";
 
 type Binding = {
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -71,7 +70,6 @@ export async function readNativeBoardResponseWaitOrigin(
       agentWakeupRequests,
       and(
         eq(agentWakeupRequests.id, heartbeatRuns.wakeupRequestId),
-        eq(agentWakeupRequests.companyId, binding.companyId),
         eq(agentWakeupRequests.agentId, binding.agentId),
         eq(agentWakeupRequests.runId, binding.runId),
         eq(agentWakeupRequests.source, "automation"),
@@ -83,7 +81,6 @@ export async function readNativeBoardResponseWaitOrigin(
       nativeRunFinalizations,
       and(
         eq(nativeRunFinalizations.runId, binding.runId),
-        eq(nativeRunFinalizations.companyId, binding.companyId),
         eq(nativeRunFinalizations.issueId, binding.issueId),
       ),
     )
@@ -92,7 +89,6 @@ export async function readNativeBoardResponseWaitOrigin(
       and(
         eq(nativeRunResults.id, nativeRunFinalizations.resultId),
         eq(nativeRunResults.runId, binding.runId),
-        eq(nativeRunResults.companyId, binding.companyId),
         eq(nativeRunResults.issueId, binding.issueId),
         eq(
           nativeRunResults.completionContractId,
@@ -105,14 +101,12 @@ export async function readNativeBoardResponseWaitOrigin(
       completionContracts,
       and(
         eq(completionContracts.id, heartbeatRuns.completionContractId),
-        eq(completionContracts.companyId, binding.companyId),
         eq(completionContracts.issueId, binding.issueId),
       ),
     )
     .where(
       and(
         eq(heartbeatRuns.id, binding.runId),
-        eq(heartbeatRuns.companyId, binding.companyId),
         eq(heartbeatRuns.agentId, binding.agentId),
         eq(heartbeatRuns.nativeIssueId, binding.issueId),
         eq(heartbeatRuns.runtimeMode, "native"),
@@ -151,7 +145,6 @@ export async function readNativeBoardResponseWaitOrigin(
     return null;
   return {
     schema: "paperclip.native_board_response_wait_origin.v1",
-    companyId: binding.companyId,
     issueId: binding.issueId,
     runId: binding.runId,
     agentId: binding.agentId,
@@ -182,7 +175,6 @@ export async function readNativeBoardResponseWaitSource(
     .where(
       and(
         eq(heartbeatRuns.id, binding.runId),
-        eq(heartbeatRuns.companyId, binding.companyId),
         eq(heartbeatRuns.agentId, binding.agentId),
         eq(heartbeatRuns.nativeIssueId, binding.issueId),
         eq(heartbeatRuns.runtimeMode, "native"),
@@ -200,7 +192,6 @@ export async function readNativeBoardResponseWaitSource(
     .where(
       and(
         eq(agentWakeupRequests.id, run.wakeupRequestId),
-        eq(agentWakeupRequests.companyId, binding.companyId),
         eq(agentWakeupRequests.agentId, binding.agentId),
         eq(agentWakeupRequests.runId, binding.runId),
         eq(agentWakeupRequests.source, "automation"),
@@ -226,7 +217,6 @@ export async function readNativeBoardResponseWaitSource(
     .where(
       and(
         eq(issues.id, binding.issueId),
-        eq(issues.companyId, binding.companyId),
         eq(issues.assigneeAgentId, binding.agentId),
         eq(issues.status, "in_progress"),
         isNull(issues.hiddenAt),
@@ -240,7 +230,6 @@ export async function readNativeBoardResponseWaitSource(
     .where(
       and(
         eq(issueComments.id, payload.commentId),
-        eq(issueComments.companyId, binding.companyId),
         eq(issueComments.issueId, binding.issueId),
         eq(issueComments.authorType, "user"),
         eq(issueComments.authorUserId, wake.requestedByActorId),
@@ -264,7 +253,6 @@ export async function readNativeBoardResponseWaitSource(
       .from(issueComments)
       .where(
         and(
-          eq(issueComments.companyId, binding.companyId),
           eq(issueComments.issueId, binding.issueId),
           eq(issueComments.authorType, "user"),
           isNull(issueComments.createdByRunId),
@@ -278,7 +266,6 @@ export async function readNativeBoardResponseWaitSource(
       .from(issueThreadInteractions)
       .where(
         and(
-          eq(issueThreadInteractions.companyId, binding.companyId),
           eq(issueThreadInteractions.issueId, binding.issueId),
           eq(issueThreadInteractions.status, "pending"),
         ),
@@ -290,9 +277,7 @@ export async function readNativeBoardResponseWaitSource(
       .innerJoin(approvals, eq(approvals.id, issueApprovals.approvalId))
       .where(
         and(
-          eq(issueApprovals.companyId, binding.companyId),
           eq(issueApprovals.issueId, binding.issueId),
-          eq(approvals.companyId, binding.companyId),
           inArray(approvals.status, ["pending", "revision_requested"]),
         ),
       )
@@ -306,7 +291,6 @@ export async function readNativeBoardResponseWaitSource(
       nativeRunResults,
       and(
         eq(nativeRunResults.id, nativeRunFinalizations.resultId),
-        eq(nativeRunResults.companyId, binding.companyId),
         eq(nativeRunResults.issueId, binding.issueId),
         eq(nativeRunResults.runId, binding.runId),
         eq(nativeRunResults.completionContractId, run.completionContractId),
@@ -317,14 +301,12 @@ export async function readNativeBoardResponseWaitSource(
       completionContracts,
       and(
         eq(completionContracts.id, run.completionContractId),
-        eq(completionContracts.companyId, binding.companyId),
         eq(completionContracts.issueId, binding.issueId),
       ),
     )
     .where(
       and(
         eq(nativeRunFinalizations.runId, run.id),
-        eq(nativeRunFinalizations.companyId, binding.companyId),
         eq(nativeRunFinalizations.issueId, binding.issueId),
       ),
     )
@@ -356,7 +338,6 @@ export async function readNativeBoardResponseWaitSource(
   return {
     source: {
       schema: "paperclip.native_board_response_wait.v1",
-      companyId: binding.companyId,
       issueId: binding.issueId,
       runId: binding.runId,
       agentId: binding.agentId,
@@ -394,7 +375,6 @@ export async function hasCommittedNativeBoardResponseWait(
       nativeRunResults,
       and(
         eq(nativeRunResults.id, nativeRunFinalizations.resultId),
-        eq(nativeRunResults.companyId, binding.companyId),
         eq(nativeRunResults.issueId, binding.issueId),
         eq(nativeRunResults.runId, binding.runId),
         eq(nativeRunResults.schemaStatus, "accepted"),
@@ -405,7 +385,6 @@ export async function hasCommittedNativeBoardResponseWait(
       and(
         eq(statusDecisions.id, nativeRunFinalizations.decisionId),
         eq(statusDecisions.assessmentId, nativeRunFinalizations.assessmentId),
-        eq(statusDecisions.companyId, binding.companyId),
         eq(statusDecisions.issueId, binding.issueId),
         eq(statusDecisions.runId, binding.runId),
         eq(statusDecisions.applicationState, "applied"),
@@ -419,14 +398,12 @@ export async function hasCommittedNativeBoardResponseWait(
       issues,
       and(
         eq(issues.id, binding.issueId),
-        eq(issues.companyId, binding.companyId),
         eq(issues.assigneeAgentId, binding.agentId),
         eq(issues.status, "in_progress"),
       ),
     )
     .where(
       and(
-        eq(nativeRunFinalizations.companyId, binding.companyId),
         eq(nativeRunFinalizations.issueId, binding.issueId),
         eq(nativeRunFinalizations.runId, binding.runId),
         eq(nativeRunFinalizations.phase, "committed"),

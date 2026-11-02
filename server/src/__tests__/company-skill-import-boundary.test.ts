@@ -54,9 +54,8 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
       issuePrefix: `B${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(projects).values({ id: projectId, companyId, name: "Approved project" });
+    await db.insert(projects).values({ id: projectId, name: "Approved project" });
     await db.insert(projectWorkspaces).values({
-      companyId,
       projectId,
       name: "Primary",
       cwd: workspace,
@@ -64,22 +63,22 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
     });
 
     const service = companySkillService(db);
-    await expect(service.importFromSource(companyId, allowedSkill)).resolves.toMatchObject({
+    await expect(service.importFromSource(allowedSkill)).resolves.toMatchObject({
       imported: [expect.objectContaining({ slug: "allowed" })],
     });
-    await expect(service.importFromSource(companyId, outside)).rejects.toMatchObject({
+    await expect(service.importFromSource(outside)).rejects.toMatchObject({
       status: 403,
       details: { code: "skill_workspace_boundary_denied" },
     });
-    await expect(service.importFromSource(companyId, symlink)).rejects.toMatchObject({
+    await expect(service.importFromSource(symlink)).rejects.toMatchObject({
       status: 403,
       details: { code: "skill_workspace_boundary_denied" },
     });
-    await expect(service.importFromSource(companyId, "ftp://example.com/skill")).rejects.toMatchObject({
+    await expect(service.importFromSource("ftp://example.com/skill")).rejects.toMatchObject({
       status: 422,
       details: { code: "skill_source_validation_failed" },
     });
-    await expect(service.importFromSource(companyId, "http://example.com/skill")).rejects.toMatchObject({
+    await expect(service.importFromSource("http://example.com/skill")).rejects.toMatchObject({
       status: 422,
       details: { code: "skill_source_validation_failed" },
     });
@@ -104,10 +103,10 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
         requireBoardApprovalForNewAgents: false,
       });
       // No projectWorkspaces row => origin "managed_checkout", primaryWorkspace null,
-      // managedFolder = resolveManagedProjectWorkspaceDir({ companyId, projectId }) (server-derived).
-      await db.insert(projects).values({ id: projectId, companyId, name: "Managed project" });
+      // managedFolder = resolveManagedProjectWorkspaceDir({ projectId }) (server-derived).
+      await db.insert(projects).values({ id: projectId, name: "Managed project" });
 
-      const managedFolder = resolveManagedProjectWorkspaceDir({ companyId, projectId });
+      const managedFolder = resolveManagedProjectWorkspaceDir({ projectId });
       const allowedSkill = path.join(managedFolder, ".agents", "skills", "managed-allowed");
       await fs.mkdir(allowedSkill, { recursive: true });
       await fs.writeFile(
@@ -128,10 +127,10 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
       );
 
       const service = companySkillService(db);
-      await expect(service.importFromSource(companyId, allowedSkill)).resolves.toMatchObject({
+      await expect(service.importFromSource(allowedSkill)).resolves.toMatchObject({
         imported: [expect.objectContaining({ slug: "managed-allowed" })],
       });
-      await expect(service.importFromSource(companyId, prefixAdjacent)).rejects.toMatchObject({
+      await expect(service.importFromSource(prefixAdjacent)).rejects.toMatchObject({
         status: 403,
         details: { code: "skill_workspace_boundary_denied" },
       });

@@ -103,7 +103,6 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Allowed agent",
       role: "engineer",
       adapterType: "codex_local",
@@ -111,29 +110,27 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
       runtimeConfig: {},
       permissions: {},
     });
-    return { companyId, userId, otherUserId, agentId };
+    return { userId, otherUserId, agentId };
   }
 
-  function boardActor(companyId: string, userId: string): Express.Request["actor"] {
+  function boardActor(userId: string): Express.Request["actor"] {
     return {
       type: "board",
       source: "session",
       userId,
-      companyIds: [companyId],
-      memberships: [{ companyId, membershipRole: "operator", status: "active" }],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       isInstanceAdmin: false,
     };
   }
 
   it("returns the open default and lets users update their own policy", async () => {
     const seeded = await seed();
-    const app = appFor(boardActor(seeded.companyId, seeded.userId));
+    const app = appFor(boardActor(seeded.userId));
 
     await request(app)
-      .get(`/companies/${seeded.companyId}/users/me/inbox-agent-policy`)
+      .get(`/users/me/inbox-agent-policy`)
       .expect(200)
       .expect(({ body }) => expect(body).toMatchObject({
-        companyId: seeded.companyId,
         userId: seeded.userId,
         mode: "open",
         allowedAgentIds: [],
@@ -141,7 +138,7 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
       }));
 
     await request(app)
-      .put(`/companies/${seeded.companyId}/users/me/inbox-agent-policy`)
+      .put(`/users/me/inbox-agent-policy`)
       .send({ mode: "allowlist", allowedAgentIds: [seeded.agentId] })
       .expect(200)
       .expect(({ body }) => expect(body).toMatchObject({
@@ -167,11 +164,11 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
 
   it("gates the admin variant with users:manage_permissions", async () => {
     const seeded = await seed();
-    const actor = boardActor(seeded.companyId, seeded.userId);
+    const actor = boardActor(seeded.userId);
     const app = appFor(actor);
 
     await request(app)
-      .put(`/companies/${seeded.companyId}/users/${seeded.otherUserId}/inbox-agent-policy`)
+      .put(`/users/${seeded.otherUserId}/inbox-agent-policy`)
       .send({ mode: "disabled", allowedAgentIds: [] })
       .expect(403)
       .expect(({ body }) => expect(body.code).toBe("inbox_agent_policy_admin_required"));
@@ -183,7 +180,7 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     });
 
     await request(app)
-      .put(`/companies/${seeded.companyId}/users/${seeded.otherUserId}/inbox-agent-policy`)
+      .put(`/users/${seeded.otherUserId}/inbox-agent-policy`)
       .send({ mode: "disabled", allowedAgentIds: [] })
       .expect(200)
       .expect(({ body }) => expect(body).toMatchObject({
@@ -195,7 +192,7 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
 
   it("rejects admin policies for users without an active company membership", async () => {
     const seeded = await seed();
-    const actor = boardActor(seeded.companyId, seeded.userId);
+    const actor = boardActor(seeded.userId);
     await db.insert(principalPermissionGrants).values({
       principalType: "user",
       principalId: seeded.userId,
@@ -203,23 +200,23 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     });
 
     await request(appFor(actor))
-      .put(`/companies/${seeded.companyId}/users/user-missing/inbox-agent-policy`)
+      .put(`/users/user-missing/inbox-agent-policy`)
       .send({ mode: "disabled", allowedAgentIds: [] })
       .expect(404);
   });
 
   it("rejects agent IDs outside allowlist mode", async () => {
     const seeded = await seed();
-    await request(appFor(boardActor(seeded.companyId, seeded.userId)))
-      .put(`/companies/${seeded.companyId}/users/me/inbox-agent-policy`)
+    await request(appFor(boardActor(seeded.userId)))
+      .put(`/users/me/inbox-agent-policy`)
       .send({ mode: "disabled", allowedAgentIds: [seeded.agentId] })
       .expect(400);
   });
 
-  it("rejects allowlist agents from another company", async () => {
+  it("rejects unknown allowlist agents", async () => {
     const seeded = await seed();
-    await request(appFor(boardActor(seeded.companyId, seeded.userId)))
-      .put(`/companies/${seeded.companyId}/users/me/inbox-agent-policy`)
+    await request(appFor(boardActor(seeded.userId)))
+      .put(`/users/me/inbox-agent-policy`)
       .send({ mode: "allowlist", allowedAgentIds: [randomUUID()] })
       .expect(422)
       .expect(({ body }) => expect(body.code).toBe("inbox_agent_policy_invalid_agents"));

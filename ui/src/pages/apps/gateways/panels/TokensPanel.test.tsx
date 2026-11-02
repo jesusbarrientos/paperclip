@@ -46,7 +46,6 @@ async function flushReact() {
 function token(overrides: Partial<ToolMcpGatewayToken> = {}): ToolMcpGatewayToken {
   return {
     id: "token-1",
-    companyId: "company-1",
     gatewayId: "gateway-1",
     name: "cto-cursor",
     tokenPrefix: "pcgw_live_8x4Pa",
@@ -73,7 +72,6 @@ function token(overrides: Partial<ToolMcpGatewayToken> = {}): ToolMcpGatewayToke
 function gateway(overrides: Partial<ToolMcpGatewayWithTokens> = {}): ToolMcpGatewayWithTokens {
   return {
     id: "gateway-1",
-    companyId: "company-1",
     gatewayPublicId: "gw",
     name: "CTO agents",
     displaySlug: "cto-agents",
@@ -162,7 +160,7 @@ describe("TokensPanel", () => {
   }
 
   it("masks existing tokens and never renders the full secret at rest", async () => {
-    await render(<TokensPanel companyId="company-1" gateway={gateway({ tokens: [token()] })} />);
+    await render(<TokensPanel gateway={gateway({ tokens: [token()] })} />);
     expect(container.textContent).not.toContain("pcgw_live_8x4Pa•••");
     expect(container.textContent).toContain("fresh one-hour runtime token");
     expect(container.textContent).toContain("one run may leave two revoked rows");
@@ -178,7 +176,7 @@ describe("TokensPanel", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    await render(<TokensPanel companyId="company-1" gateway={gateway()} />);
+    await render(<TokensPanel gateway={gateway()} />);
 
     await clickButton("Issue token");
     const form = container.querySelector("form");
@@ -193,7 +191,6 @@ describe("TokensPanel", () => {
 
     expect(createGatewayTokenMock).toHaveBeenCalledTimes(1);
     expect(createGatewayTokenMock).toHaveBeenCalledWith(
-      "company-1",
       "gateway-1",
       expect.objectContaining({
         name: nameInput.value,
@@ -211,7 +208,7 @@ describe("TokensPanel", () => {
 
   it("gates revoke behind a typed confirmation matching the token name", async () => {
     revokeGatewayTokenMock.mockResolvedValue(token({ revokedAt: "2026-06-16T12:00:00.000Z" }));
-    await render(<TokensPanel companyId="company-1" gateway={gateway({ tokens: [token()] })} />);
+    await render(<TokensPanel gateway={gateway({ tokens: [token()] })} />);
 
     await clickButtonContaining("Token history");
     await clickButton("Revoke");
@@ -225,7 +222,7 @@ describe("TokensPanel", () => {
 
     await clickButton("Revoke token");
     await flushReact();
-    expect(revokeGatewayTokenMock).toHaveBeenCalledWith("company-1", "token-1");
+    expect(revokeGatewayTokenMock).toHaveBeenCalledWith("token-1");
   });
 
   it("paginates the folded token log and labels past expiry as expired", async () => {
@@ -237,7 +234,7 @@ describe("TokensPanel", () => {
       revokedAt: index === 0 ? "2026-06-10T00:00:00.000Z" : null,
       createdAt: new Date(Date.UTC(2026, 5, index + 1)).toISOString(),
     }));
-    await render(<TokensPanel companyId="company-1" gateway={gateway({ tokens })} />);
+    await render(<TokensPanel gateway={gateway({ tokens })} />);
 
     expect(container.textContent).not.toContain("client-10");
     await clickButtonContaining("Token history");

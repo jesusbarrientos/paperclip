@@ -42,7 +42,6 @@ const companyAgents: Agent[] = [
 function makeAgent(id: string, name: string, role: string): Agent {
   return {
     id,
-    companyId: "company-storybook",
     name,
     urlKey: name.toLowerCase().replace(/\s+/g, "-"),
     role: role as Agent["role"],

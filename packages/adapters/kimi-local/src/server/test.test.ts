@@ -54,7 +54,6 @@ describe("kimi_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "kimi_local",
       config: {
         engine: "cli",
@@ -111,7 +110,6 @@ describe("kimi_local testEnvironment", () => {
       });
 
     await testEnvironment({
-      companyId: "company-1",
       adapterType: "kimi_local",
       config: {
         engine: "cli",
@@ -144,7 +142,6 @@ describe("kimi_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "kimi_local",
       config: {
         engine: "cli",

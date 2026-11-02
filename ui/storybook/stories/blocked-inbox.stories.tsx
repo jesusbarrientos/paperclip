@@ -168,7 +168,7 @@ const fixtureIssues: Issue[] = [
 function PrimeBlockedFixtures({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   useMemo(() => {
-    queryClient.setQueryData(queryKeys.issues.listBlockedAttention(companyId), fixtureIssues);
+    queryClient.setQueryData(queryKeys.issues.listBlockedAttention(), fixtureIssues);
   }, [queryClient]);
   return <>{children}</>;
 }
@@ -183,7 +183,6 @@ function BlockedTabSurface({ search = "" }: { search?: string }) {
         <div className="rounded-lg border border-border bg-background p-4">
           <BlockedInboxView
             {...blockedViewDefaults}
-            companyId={companyId}
             searchQuery={search}
             agentNameById={new Map()}
             issueLinkState={null}
@@ -256,7 +255,6 @@ function BlockedTabEmptyState() {
     <div className="rounded-lg border border-border bg-background p-4">
       <BlockedInboxView
         {...blockedViewDefaults}
-        companyId="company-empty"
         searchQuery=""
         agentNameById={new Map()}
         issueLinkState={null}

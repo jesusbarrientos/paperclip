@@ -1,51 +1,40 @@
 ---
-title: Companies
-summary: Company CRUD endpoints
+title: Organization
+summary: Organization endpoints (one organization per instance)
 ---
 
-Manage companies within your Paperclip instance.
+Each Paperclip instance serves exactly one organization: its company. These
+endpoints read and update it. There are no endpoints to list, archive, or delete
+companies, and no other route carries a company id.
 
-## List Companies
-
-```
-GET /api/companies
-```
-
-Requires a board user. Returns companies where the user has active membership.
-Instance administrators and the local trusted board can list all companies.
-
-For navigation and company selectors, use `GET /api/companies?scope=accessible`.
-This returns only companies the caller can enter through company-scoped routes,
-including for instance administrators. Instance administrator status alone does
-not grant access to a company's contents. The local trusted board can still
-enter all companies. The board UI uses this scope for its company list, so it
-does not select companies the user cannot open.
-The Instance Access screen uses the unscoped directory so administrators can
-manage membership for all companies. A supplied `scope` must be a single
-`accessible` value; empty, unknown, or repeated values return `400`.
-
-## Get Company
+## Get Organization
 
 ```
-GET /api/companies/{companyId}
+GET /api/organization
 ```
 
-Returns company details including name, description, budget, and status.
+Returns the organization: name, description, issue prefix, budget, status, and
+governance flags. Returns `404` with `code: "organization_missing"` before
+onboarding has created it.
 
-## Create Company
+## Create Organization
 
 ```
-POST /api/companies
+POST /api/organization
 {
   "name": "My AI Company",
   "description": "An autonomous marketing agency"
 }
 ```
 
-## Update Company
+Only valid during onboarding, while the instance has no organization yet. Once
+an organization exists the request is rejected. On a Paperclip Cloud-managed
+instance it returns `403` with `code: "cloud_managed"`.
+
+## Update Organization
 
 ```
-PATCH /api/companies/{companyId}
+PATCH /api/organization
 {
   "name": "Updated Name",
   "description": "Updated description",
@@ -54,12 +43,14 @@ PATCH /api/companies/{companyId}
 }
 ```
 
-## Upload Company Logo
+`PATCH /api/organization/branding` updates only the branding fields (`name`, `description`, `logoAssetId`) and is also open to the CEO agent.
 
-Upload an image for a company icon and store it as that company’s logo.
+## Upload Organization Logo
+
+Upload an image for the organization icon and store it as its logo.
 
 ```
-POST /api/companies/{companyId}/logo
+POST /api/organization/logo
 Content-Type: multipart/form-data
 ```
 
@@ -72,25 +63,17 @@ Valid image content types:
 - `image/gif`
 - `image/svg+xml`
 
-Company logo uploads use the normal Paperclip attachment size limit.
+Logo uploads use the normal Paperclip attachment size limit.
 
-Then set the company logo by PATCHing the returned `assetId` into `logoAssetId`.
+Then set the logo by PATCHing the returned `assetId` into `logoAssetId`.
 
-## Archive Company
-
-```
-POST /api/companies/{companyId}/archive
-```
-
-Archives a company. Archived companies are hidden from default listings.
-
-## Company Fields
+## Organization Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique identifier |
-| `name` | string | Company name |
-| `description` | string | Company description |
+| `name` | string | Organization name |
+| `description` | string | Organization description |
 | `status` | string | `active`, `paused`, `archived` |
 | `logoAssetId` | string | Optional asset id for the stored logo image |
 | `logoUrl` | string | Optional Paperclip asset content path for the stored logo image |

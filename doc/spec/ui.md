@@ -85,26 +85,22 @@ Top of sidebar. Always visible.
 
 ```
 ┌─────────────────────────┐
-│ [icon] Acme Corp      ▼ │  ← Company switcher dropdown
+│ [icon] Acme Corp      ▼ │  ← Organization menu
 ├─────────────────────────┤
 │ [🔍]  [✏️]              │  ← Search + New Issue
 └─────────────────────────┘
 ```
 
-**Company switcher** is a dropdown button that occupies the full width of the sidebar header. It shows:
-- Company icon (first letter avatar with company color, or uploaded icon)
-- Company name (truncated with ellipsis if long)
+**Organization menu** is a dropdown button that occupies the full width of the sidebar header. An instance serves exactly one organization, so this is not a company switcher. It shows:
+- Organization icon (first letter avatar with its color, or uploaded icon)
+- Organization name (truncated with ellipsis if long)
 - Chevron-down icon
 
-Clicking opens a dropdown with:
-- List of all companies (with status dot: green=active, yellow=paused, gray=archived)
-- Search field at top of dropdown (for users with many companies)
-- Divider
-- `+ Create company` action at the bottom
+Clicking opens a dropdown with organization actions (settings and similar). An installed plugin may contribute to the `organizationSwitcher` slot; core itself lists no other companies and offers no `Create company` action after onboarding.
 
 Below the company name, a row of icon buttons:
 - **Search** (magnifying glass icon) — opens Cmd+K search modal
-- **New Issue** (pencil/square-pen icon) — opens new issue modal in the current company context
+- **New Issue** (pencil/square-pen icon) — opens new issue modal
 
 ### 3.2 Personal Section
 
@@ -130,7 +126,7 @@ Section header: **Work** (collapsible, with a chevron toggle)
     Views
 ```
 
-- **Issues** — main task list for the selected company. This is the workhorse view.
+- **Issues** — main task list for the organization. This is the workhorse view.
 - **Projects** — project list. Projects group issues and link to goals.
 - **Goals** — company goal hierarchy.
 - **Views** — saved filter/sort configurations (e.g., "Critical bugs", "Unassigned tasks", "CEO's tasks"). Users can create, name, and pin custom views here.
@@ -902,7 +898,7 @@ Every list view should have a thoughtful empty state:
 
 - **No issues:** "No issues yet. Create your first issue to start tracking work." with a `[Create issue]` button.
 - **No agents:** "No agents in this company. Create an agent to start building your team." with a `[Create agent]` button.
-- **No company selected:** "Select a company to get started." with a company switcher or `[Create company]` button.
+- **No organization yet:** the onboarding flow, which creates the instance's single organization.
 
 Empty states should use a muted illustration (simple line art, not cartoons) and a single call-to-action.
 
@@ -937,7 +933,7 @@ Build on top of shadcn/ui components with these customizations:
 
 ## 21. URL Structure
 
-All routes are company-scoped after company selection (company context stored in React context, not URL):
+Routes carry no company prefix; the instance serves exactly one organization (for example `/issues/PAP-12`):
 
 ```
 /                           → redirects to /dashboard
@@ -958,8 +954,7 @@ All routes are company-scoped after company selection (company context stored in
 /approvals/:approvalId      → approval detail
 /costs                      → cost dashboard
 /activity                   → activity log
-/companies                  → company management (list/create)
-/settings                   → company settings
+/settings                   → organization settings
 ```
 
 ---
@@ -967,7 +962,7 @@ All routes are company-scoped after company selection (company context stored in
 ## 22. Implementation Priority
 
 ### Phase 1: Shell and Navigation
-1. Sidebar redesign (grouped sections, icons, company switcher, badges)
+1. Sidebar redesign (grouped sections, icons, organization menu, badges)
 2. Breadcrumb bar component
 3. Three-pane layout system
 4. Cmd+K search modal

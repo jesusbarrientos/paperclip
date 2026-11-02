@@ -3195,7 +3195,6 @@ export function buildInvocationEnvForLogs(
 
 export function buildPaperclipEnv(agent: {
   id: string;
-  companyId: string;
 }): Record<string, string> {
   const resolveHostForUrl = (rawHost: string): string => {
     const host = rawHost.trim();
@@ -3206,7 +3205,6 @@ export function buildPaperclipEnv(agent: {
   };
   const vars: Record<string, string> = {
     PAPERCLIP_AGENT_ID: agent.id,
-    PAPERCLIP_COMPANY_ID: agent.companyId,
   };
   const runtimeHost = resolveHostForUrl(
     process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",

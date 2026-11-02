@@ -25,9 +25,9 @@ import { agentRunWritesRevoked } from "../agent-run-cancellation.js";
 import { isUuidLike, normalizeAgentApiKeyScope, type DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "./logger.js";
+import { organizationService } from "../services/organization.js";
 import { captureRunIdentity } from "../services/run-identity.js";
 import { boardAuthService } from "../services/board-auth.js";
-import { organizationService } from "../services/organization.js";
 import { retryIdempotentDatabaseOperation } from "../database-retry.js";
 
 export {
@@ -92,7 +92,7 @@ function invalidAgentTokenMessage(token: string) {
 
 async function resolveLegacyRunResponsibleUserId(
   db: Db,
-  input: { companyId: string; agentId: string; runId: string },
+  input: { agentId: string; runId: string },
 ) {
   if (!isUuidLike(input.runId)) return null;
   const run = await db
@@ -101,7 +101,6 @@ async function resolveLegacyRunResponsibleUserId(
     .where(
       and(
         eq(heartbeatRuns.id, input.runId),
-        eq(heartbeatRuns.companyId, input.companyId),
         eq(heartbeatRuns.agentId, input.agentId),
       ),
     )
@@ -114,7 +113,7 @@ async function loadResponsibleUserMemberships(
   input: { userId: string | null },
 ) {
   if (!input.userId) return [];
-  const [user, memberships, organizationId] = await Promise.all([
+  const [user, memberships] = await Promise.all([
     db
       .select({ id: authUsers.id })
       .from(authUsers)
@@ -133,21 +132,12 @@ async function loadResponsibleUserMemberships(
           eq(companyMemberships.status, "active"),
         ),
       ),
-    organizationService(db).findId(),
   ]);
-  if (!user || !organizationId) return [];
-  return memberships.map((row) => ({ ...row, companyId: organizationId }));
+  return user ? memberships : [];
 }
 
-/**
- * The user's own active company memberships — the exact company scope a
- * locally authenticated session actor carries. Shared by the session path
- * and the Cloud trusted-header path so both resolve the same access set.
- */
-async function loadActiveUserCompanyMemberships(db: Db, userId: string) {
-  const organizationId = await organizationService(db).findId();
-  if (!organizationId) return [];
-  const rows = await db
+async function loadActiveUserMemberships(db: Db, userId: string) {
+  return db
     .select({
       membershipRole: companyMemberships.membershipRole,
       status: companyMemberships.status,
@@ -160,16 +150,14 @@ async function loadActiveUserCompanyMemberships(db: Db, userId: string) {
         eq(companyMemberships.status, "active"),
       ),
     );
-  return rows.map((row) => ({ ...row, companyId: organizationId }));
 }
 
 async function auditAgentJwtRunHeaderMismatch(
   db: Db,
-  input: { companyId: string; agentId: string; claimRunId: string; headerRunId: string; method: string; url: string },
+  input: { agentId: string; claimRunId: string; headerRunId: string; method: string; url: string },
 ) {
   try {
     await db.insert(activityLog).values({
-      companyId: input.companyId,
       actorType: "agent",
       actorId: input.agentId,
       action: "auth.agent_jwt_run_header_mismatch",
@@ -186,7 +174,7 @@ async function auditAgentJwtRunHeaderMismatch(
     });
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId, agentId: input.agentId, claimRunId: input.claimRunId },
+      { err, agentId: input.agentId, claimRunId: input.claimRunId },
       "Failed to audit rejected agent JWT run header mismatch",
     );
   }
@@ -194,11 +182,10 @@ async function auditAgentJwtRunHeaderMismatch(
 
 async function auditAgentKeyMissingResponsibleUser(
   db: Db,
-  input: { companyId: string; agentId: string; keyId: string; method: string; url: string },
+  input: { agentId: string; keyId: string; method: string; url: string },
 ) {
   try {
     await db.insert(activityLog).values({
-      companyId: input.companyId,
       actorType: "agent",
       actorId: input.agentId,
       action: "auth.agent_key_missing_responsible_user",
@@ -212,7 +199,7 @@ async function auditAgentKeyMissingResponsibleUser(
     });
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId, agentId: input.agentId, keyId: input.keyId },
+      { err, agentId: input.agentId, keyId: input.keyId },
       "Failed to audit rejected agent key without responsible user binding",
     );
   }
@@ -296,7 +283,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
               .from(instanceUserRoles)
               .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
               .then((rows) => rows[0] ?? null),
-            loadActiveUserCompanyMemberships(db, userId),
+            loadActiveUserMemberships(db, userId),
           ]);
           req.actor = {
             type: "board",
@@ -304,7 +291,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
             sessionId: session.session.id,
             userName: session.user.name ?? null,
             userEmail: session.user.email ?? null,
-            companyIds: memberships.map((row) => row.companyId),
             memberships,
             isInstanceAdmin: Boolean(roleRow),
             runId: runIdHeader ?? undefined,
@@ -335,7 +321,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
           userId: boardKey.userId,
           userName: access.user?.name ?? null,
           userEmail: access.user?.email ?? null,
-          companyIds: access.companyIds,
           memberships: access.memberships,
           isInstanceAdmin: access.isInstanceAdmin,
           keyId: boardKey.id,
@@ -367,8 +352,8 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         .where(eq(agents.id, claims.sub))
         .then((rows) => rows[0] ?? null);
 
-      if (!agentRecord || agentRecord.companyId !== claims.company_id) {
-        next(unauthorized("Agent record is missing or belongs to another company; obtain fresh credentials and retry"));
+      if (!agentRecord) {
+        next(unauthorized("Agent record is missing; obtain fresh credentials and retry"));
         return;
       }
 
@@ -384,7 +369,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       const normalizedRunIdHeader = normalizeOptionalString(runIdHeader);
       if (normalizedRunIdHeader && normalizedRunIdHeader !== claims.run_id) {
         await auditAgentJwtRunHeaderMismatch(db, {
-          companyId: claims.company_id,
           agentId: claims.sub,
           claimRunId: claims.run_id,
           headerRunId: normalizedRunIdHeader,
@@ -404,7 +388,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       const [identityRun] = await db.select({ activeIdentityContextId: heartbeatRuns.activeIdentityContextId,
         responsibleUserId: heartbeatRuns.responsibleUserId, status: heartbeatRuns.status, resultJson: heartbeatRuns.resultJson,
         contextSnapshot: heartbeatRuns.contextSnapshot }).from(heartbeatRuns).where(and(
-          eq(heartbeatRuns.id, claims.run_id), eq(heartbeatRuns.companyId, claims.company_id), eq(heartbeatRuns.agentId, claims.sub),
+          eq(heartbeatRuns.id, claims.run_id), eq(heartbeatRuns.agentId, claims.sub),
         ));
       if (agentRunWritesRevoked(identityRun)
         && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
@@ -414,7 +398,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         return;
       }
       if (identityRun?.activeIdentityContextId && identityRun.status === "running") {
-        const captured = await captureRunIdentity(db, { companyId: claims.company_id, agentId: claims.sub, runId: claims.run_id });
+        const captured = await captureRunIdentity(db, { agentId: claims.sub, runId: claims.run_id });
         identityRun.activeIdentityContextId = captured.context?.id ?? null;
         identityRun.responsibleUserId = captured.context?.responsibleUserId ?? null;
       }
@@ -423,7 +407,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         : claims.responsible_user_id !== undefined
         ? normalizeOptionalString(claims.responsible_user_id)
         : await resolveLegacyRunResponsibleUserId(db, {
-            companyId: claims.company_id,
             agentId: claims.sub,
             runId: claims.run_id,
           });
@@ -434,7 +417,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       req.actor = {
         type: "agent",
         agentId: claims.sub,
-        companyId: claims.company_id,
         keyId: undefined,
         keyScope: normalizeAgentApiKeyScope(claims.key_scope),
         runId: claims.run_id,
@@ -474,7 +456,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     const responsibleUserId = normalizeOptionalString(key.responsibleUserId);
     if (!responsibleUserId) {
       await auditAgentKeyMissingResponsibleUser(db, {
-        companyId: agentRecord.companyId,
         agentId: key.agentId,
         keyId: key.id,
         method: req.method,
@@ -489,7 +470,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     req.actor = {
       type: "agent",
       agentId: key.agentId,
-      companyId: agentRecord.companyId,
       keyId: key.id,
       keyScope: normalizeAgentApiKeyScope(key.scopeConfig),
       onBehalfOfUserId: responsibleUserId,
@@ -585,7 +565,6 @@ async function resolveCloudTenantActorOnce(
   const paperclipCompanyName = req
     .header("x-paperclip-cloud-paperclip-company-name")
     ?.trim();
-  const companyId = cloudTenantCompanyId(stackId);
   const companyName = paperclipCompanyName || humanizeCloudStackSlug(stackId);
   const now = new Date();
   const membershipRole = stackRole === "owner" || stackRole === "admin" ? "owner" : stackRole;
@@ -595,8 +574,7 @@ async function resolveCloudTenantActorOnce(
   const previousSync = cloudTenantWriteDebounce.get(userId);
   const shouldSync = previousSync?.fingerprint !== syncFingerprint
     || previousSync.syncedAt <= now.getTime() - CLOUD_TENANT_WRITE_DEBOUNCE_MS;
-  let effectiveMembership: { companyId: string; membershipRole: string | null; status: string } = {
-    companyId,
+  let effectiveMembership: { membershipRole: string | null; status: string } = {
     membershipRole,
     status: "active",
   };
@@ -631,11 +609,10 @@ async function resolveCloudTenantActorOnce(
     .delete(instanceUserRoles)
     .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")));
 
-  if (shouldSync) await insertCloudTenantCompany(db, { companyId, companyName, now });
+  if (shouldSync) await insertCloudTenantCompany(db, { stackId, companyName, now });
 
   if (shouldSync && paperclipCompanyName) {
     await repairCloudTenantCompanyName(db, {
-      companyId,
       paperclipCompanyId,
       paperclipCompanyName,
       now,
@@ -646,7 +623,7 @@ async function resolveCloudTenantActorOnce(
   // The helper self-gates on the legacy markers, so it is a no-op once the
   // company has been repaired or was claimed by a current build.
   if (shouldSync) {
-    await repairCloudTenantCompanyProvisionDefaults(db, { companyId, stackId, now });
+    await repairCloudTenantCompanyProvisionDefaults(db, { stackId, now });
   }
 
   effectiveMembership = shouldSync ? await db
@@ -671,10 +648,9 @@ async function resolveCloudTenantActorOnce(
     })
     .returning()
     .then((rows) => ({
-      companyId,
       membershipRole: rows[0]?.membershipRole ?? membershipRole,
       status: rows[0]?.status ?? "active",
-    })) : { companyId, membershipRole, status: "active" as const };
+    })) : { membershipRole, status: "active" as const };
 
   // Without instance-admin elevation, cloud tenant users are authorized purely
   // through company-scoped permission grants — seed the same role defaults the
@@ -695,10 +671,8 @@ async function resolveCloudTenantActorOnce(
     userId,
     userName,
     userEmail,
-    companyIds: [companyId],
     memberships: [
       {
-        companyId,
         membershipRole: effectiveMembership.membershipRole ?? membershipRole,
         status: effectiveMembership.status,
       },
@@ -753,13 +727,12 @@ export function humanizeCloudStackSlug(stackId: string): string {
 
 export function isKnownBadCloudCompanyName(
   name: string,
-  ids: { companyId: string; paperclipCompanyId?: string },
+  ids: { paperclipCompanyId?: string },
 ): boolean {
   const normalized = name.trim();
   return (
     /^paperclip-stack-.+/i.test(normalized) ||
     /^stack-.+\s+paperclip$/i.test(normalized) ||
-    normalized === ids.companyId ||
     (ids.paperclipCompanyId !== undefined &&
       normalized === ids.paperclipCompanyId)
   );
@@ -768,7 +741,6 @@ export function isKnownBadCloudCompanyName(
 async function repairCloudTenantCompanyName(
   db: Db,
   input: {
-    companyId: string;
     paperclipCompanyId?: string;
     paperclipCompanyName: string;
     now: Date;
@@ -778,12 +750,11 @@ async function repairCloudTenantCompanyName(
     const existing = await db
       .select({ name: companies.name })
       .from(companies)
-      .where(eq(companies.id, input.companyId))
+      .limit(1)
       .then((rows) => rows[0]);
     if (
       !existing ||
       !isKnownBadCloudCompanyName(existing.name, {
-        companyId: input.companyId,
         paperclipCompanyId: input.paperclipCompanyId,
       })
     ) {
@@ -795,10 +766,6 @@ async function repairCloudTenantCompanyName(
         .set({ name: input.paperclipCompanyName, updatedAt: input.now })
         .where(
           and(
-            eq(companies.id, input.companyId),
-            // A user may rename the company between the read above and this
-            // repair. Match the exact observed machine name so that concurrent
-            // genuine renames always win.
             eq(companies.name, existing.name),
           ),
         )
@@ -806,12 +773,11 @@ async function repairCloudTenantCompanyName(
       if (!updated) return;
 
       await tx.insert(activityLog).values({
-        companyId: input.companyId,
         actorType: "system",
         actorId: "cloud-tenant-auth",
         action: "company.updated",
         entityType: "company",
-        entityId: input.companyId,
+        entityId: updated.id,
         details: {
           source: "cloud_tenant_auth",
           reason: "legacy_machine_name_repair",
@@ -822,14 +788,15 @@ async function repairCloudTenantCompanyName(
     });
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId },
+      { err },
       "Failed to repair legacy Cloud tenant company name",
     );
   }
 }
 
 /**
- * Claims the tenant company row for this stack.
+ * Claims the organization row for this stack unless the instance already has
+ * one; an instance holds a single organization.
  *
  * The prefix derives from the company name, exactly as it does for a
  * self-hosted company. Each attempt is a standalone INSERT, so a failed
@@ -840,15 +807,16 @@ async function repairCloudTenantCompanyName(
  */
 async function insertCloudTenantCompany(
   db: Db,
-  input: { companyId: string; companyName: string; now: Date },
+  input: { stackId: string; companyName: string; now: Date },
 ): Promise<void> {
+  if (await organizationService(db).findId()) return;
   const base = deriveIssuePrefixBase(input.companyName);
   for (let attempt = 1; attempt <= MAX_ISSUE_PREFIX_ATTEMPTS; attempt += 1) {
     try {
       await db
         .insert(companies)
         .values({
-          id: input.companyId,
+          id: cloudTenantCompanyId(input.stackId),
           name: input.companyName,
           description: null,
           status: "active",
@@ -891,7 +859,7 @@ const LEGACY_PROVISIONED_DESCRIPTION_PREFIX = "Provisioned by Paperclip Cloud fo
  */
 async function repairCloudTenantCompanyProvisionDefaults(
   db: Db,
-  input: { companyId: string; stackId: string; now: Date },
+  input: { stackId: string; now: Date },
 ): Promise<void> {
   try {
     const existing = await db
@@ -901,7 +869,7 @@ async function repairCloudTenantCompanyProvisionDefaults(
         description: companies.description,
       })
       .from(companies)
-      .where(eq(companies.id, input.companyId))
+      .limit(1)
       .then((rows) => rows[0]);
     if (!existing) return;
 
@@ -916,7 +884,6 @@ async function repairCloudTenantCompanyProvisionDefaults(
         .update(companies)
         .set({ description: null, updatedAt: input.now })
         .where(and(
-          eq(companies.id, input.companyId),
           eq(companies.description, legacyDescription),
         ));
       return;
@@ -934,28 +901,22 @@ async function repairCloudTenantCompanyProvisionDefaults(
           updatedAt: input.now,
         })
         .where(and(
-          eq(companies.id, input.companyId),
-          // A user may rename the company between the read above and this
-          // repair. Match the exact observed legacy prefix so that concurrent
-          // genuine renames always win.
           eq(companies.issuePrefix, legacyPrefix),
         ))
         .returning({ id: companies.id });
       if (!updated) return;
 
       const rekeyed = await rekeyCompanyIssueIdentifiers(tx, {
-        companyId: input.companyId,
         fromPrefix: legacyPrefix,
         toPrefix: candidate,
       });
 
       await tx.insert(activityLog).values({
-        companyId: input.companyId,
         actorType: "system",
         actorId: "cloud-tenant-auth",
         action: "company.updated",
         entityType: "company",
-        entityId: input.companyId,
+        entityId: updated.id,
         details: {
           source: "cloud_tenant_auth",
           reason: "legacy_provision_defaults_repair",
@@ -969,7 +930,7 @@ async function repairCloudTenantCompanyProvisionDefaults(
     });
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId },
+      { err },
       "Failed to repair legacy tenant company provisioning defaults",
     );
   }

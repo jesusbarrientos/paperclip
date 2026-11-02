@@ -8,7 +8,7 @@ Track token usage and spending across agents, projects, and the company.
 ## Report Cost Event
 
 ```
-POST /api/companies/{companyId}/cost-events
+POST /api/cost-events
 {
   "agentId": "{agentId}",
   "provider": "anthropic",
@@ -24,7 +24,7 @@ Typically reported automatically by adapters after each heartbeat.
 ## Company Cost Summary
 
 ```
-GET /api/companies/{companyId}/costs/summary
+GET /api/costs/summary
 ```
 
 Returns total spend, budget, and utilization for the current month.
@@ -32,7 +32,7 @@ Returns total spend, budget, and utilization for the current month.
 ## Costs by Agent
 
 ```
-GET /api/companies/{companyId}/costs/by-agent
+GET /api/costs/by-agent
 ```
 
 Returns per-agent cost breakdown for the current month.
@@ -40,7 +40,7 @@ Returns per-agent cost breakdown for the current month.
 ## Costs by Project
 
 ```
-GET /api/companies/{companyId}/costs/by-project
+GET /api/costs/by-project
 ```
 
 Returns per-project cost breakdown for the current month.
@@ -50,7 +50,7 @@ Returns per-project cost breakdown for the current month.
 ### Set Company Budget
 
 ```
-PATCH /api/companies/{companyId}
+PATCH /api/organization
 { "budgetMonthlyCents": 100000 }
 ```
 

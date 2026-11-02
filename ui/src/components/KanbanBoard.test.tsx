@@ -33,7 +33,6 @@ function createIssue(index: number, status: IssueStatus): Issue {
   return {
     id: `issue-${status}-${index}`,
     identifier: `PAP-${index}`,
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,

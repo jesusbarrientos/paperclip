@@ -40,11 +40,8 @@ describeEmbeddedPostgres(
         "paperclip-native-boundary-",
       );
       const db = createDb(temporary.connectionString);
-      const companyId = "73000000-0000-4000-8000-000000000001";
-
       try {
         await db.insert(companies).values({
-          id: companyId,
           name: "Native boundary fixture",
           issuePrefix: "NBG",
         });
@@ -53,12 +50,10 @@ describeEmbeddedPostgres(
           const agentId = `73000000-0000-4000-8000-${String(profileIndex + 201).padStart(12, "0")}`;
           await db.insert(agents).values({
             id: agentId,
-            companyId,
             name: profile.id,
           });
           await db.insert(heartbeatRuns).values({
             id: profile.runId,
-            companyId,
             agentId,
             status: "running",
           });
@@ -71,7 +66,6 @@ describeEmbeddedPostgres(
               issues: [],
             });
             await appendHeartbeatRunEvent(db, {
-              companyId,
               runId: profile.runId,
               agentId,
               eventType: event.eventType,

@@ -40,10 +40,9 @@ function makeDuplexHandle(extra?: Record<string, unknown>) {
 // The test directive rides in `providerLeaseId`, an opaque field the manager
 // forwards to the worker unchanged. The duplex channel is generic, so the
 // command is a plain fixed string with no allowlist.
-function duplexOpenInput(directive: unknown, companyId = "company-1") {
+function duplexOpenInput(directive: unknown) {
   return {
     driverKey: "daytona",
-    companyId,
     environmentId: "env-1",
     providerLeaseId: JSON.stringify(directive),
     command: "bridge-callback",
@@ -296,10 +295,10 @@ describe("plugin worker manager duplex channel route", () => {
     try {
       await handle.start();
       const routeA = await handle.openDuplexChannel(
-        duplexOpenInput({ workerSessionId: "ws-A", data: [{ chunk: "a-1" }], exitCode: 0 }, "company-A"),
+        duplexOpenInput({ workerSessionId: "ws-A", data: [{ chunk: "a-1" }], exitCode: 0 }),
       );
       const routeB = await handle.openDuplexChannel(
-        duplexOpenInput({ workerSessionId: "ws-B", data: [{ chunk: "b-1" }], exitCode: 0 }, "company-B"),
+        duplexOpenInput({ workerSessionId: "ws-B", data: [{ chunk: "b-1" }], exitCode: 0 }),
       );
       const aChunks: string[] = [];
       const bChunks: string[] = [];

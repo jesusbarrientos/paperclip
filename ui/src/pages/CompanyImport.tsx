@@ -8,12 +8,12 @@ import type {
   CompanyPortabilitySource,
   CompanyPortabilityAdapterOverride,
 } from "@paperclipai/shared";
-import { useCompany } from "../context/CompanyContext";
+import { useOrganization } from "../context/OrganizationContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
-import { companiesApi, type CompanyImportJobAccepted } from "../api/companies";
+import { organizationApi, type OrganizationImportJobAccepted } from "../api/organization";
 import { adaptersApi } from "../api/adapters";
 import { agentsApi } from "../api/agents";
 import { routinesApi } from "../api/routines";
@@ -398,10 +398,10 @@ async function applyImportedSidebarOrder(
     .filter((id): id is string => Boolean(id));
 
   if (orderedAgentIds.length > 0) {
-    writeAgentOrder(getAgentOrderStorageKey(result.company.id, userId), orderedAgentIds);
+    writeAgentOrder(getAgentOrderStorageKey(userId), orderedAgentIds);
   }
   if (orderedProjectIds.length > 0) {
-    await sidebarPreferencesApi.updateProjectOrder(result.company.id, { orderedIds: orderedProjectIds });
+    await sidebarPreferencesApi.updateProjectOrder({ orderedIds: orderedProjectIds });
   }
 }
 
@@ -752,7 +752,7 @@ function formatTransferProgress(progress: ImportTransferProgress): string {
 // longer knows (restart, retention expiry) polls as 404.
 
 /** A 409 on submit means this user's previous import is still running; adopt it instead of importing twice. */
-function runningImportJobFromError(err: unknown): CompanyImportJobAccepted | null {
+function runningImportJobFromError(err: unknown): OrganizationImportJobAccepted | null {
   if (!(err instanceof ApiError) || err.status !== 409) return null;
   const body = err.body as { job?: { id?: unknown }; statusUrl?: unknown } | null;
   const jobId = body?.job?.id;
@@ -776,7 +776,7 @@ function runningImportJobFromError(err: unknown): CompanyImportJobAccepted | nul
  */
 type CompanyImportWatchOutcome =
   | { status: "completed"; result: CompanyPortabilityImportResult }
-  | { status: "completed-expired"; companyId: string | null };
+  | { status: "completed-expired" };
 
 /** Poll a job to a terminal state; resolves with the outcome or throws the job's error. */
 async function watchImportJob(
@@ -784,9 +784,9 @@ async function watchImportJob(
   storageKey: string,
 ): Promise<CompanyImportWatchOutcome> {
   for (;;) {
-    let job: Awaited<ReturnType<typeof companiesApi.getImportJob>>["job"] | null = null;
+    let job: Awaited<ReturnType<typeof organizationApi.getImportJob>>["job"] | null = null;
     try {
-      job = (await companiesApi.getImportJob(jobId)).job;
+      job = (await organizationApi.getImportJob(jobId)).job;
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         // The server has no record of this job. The retention sweep only drops
@@ -826,11 +826,8 @@ async function watchImportJob(
       if (!job.importResult) {
         // The server confirmed success but retained only the compact summary
         // (a cloud tenant job, or a board job whose full result aged out of
-        // memory). Still a success — navigate by the summary's company id.
-        return {
-          status: "completed-expired",
-          companyId: job.result?.companyId ?? null,
-        };
+        // memory). Still a success.
+        return { status: "completed-expired" };
       }
       return { status: "completed", result: job.importResult };
     }
@@ -845,11 +842,7 @@ async function watchImportJob(
 // ── Main page ─────────────────────────────────────────────────────────
 
 export function CompanyImport() {
-  const {
-    selectedCompanyId,
-    selectedCompany,
-    setSelectedCompanyId,
-  } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
@@ -944,7 +937,7 @@ export function CompanyImport() {
    */
   async function uploadImportTransfer(file: File): Promise<string> {
     const manifest = await ensureTransferManifest(file);
-    const created = await companiesApi.importTransferCreate(manifest);
+    const created = await organizationApi.importTransferCreate(manifest);
     if (created.alreadyCompleted) {
       // The server keys transfers by content, and this exact zip already
       // finished an apply — its parts are gone, so it cannot be re-run. Name
@@ -973,7 +966,7 @@ export function CompanyImport() {
         let uploaded = false;
         for (let attempt = 0; attempt < IMPORT_TRANSFER_PART_ATTEMPTS && !uploaded; attempt += 1) {
           try {
-            await companiesApi.importTransferUploadPart(created.transferId, part.index, bytes);
+            await organizationApi.importTransferUploadPart(created.transferId, part.index, bytes);
             uploaded = true;
           } catch (err) {
             lastError = err;
@@ -1003,9 +996,8 @@ export function CompanyImport() {
 
   // Fetch current company agents to find CEO adapter type
   const { data: companyAgents } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const ceoAdapterType = useMemo(() => {
     if (!companyAgents) return "claude_local";
@@ -1046,11 +1038,11 @@ export function CompanyImport() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
-      { label: "Settings", href: "/company/settings" },
+      { label: organization?.name ?? "Organization", href: "/dashboard" },
+      { label: "Settings", href: "/organization/settings" },
       { label: "Import" },
     ]);
-  }, [selectedCompany?.name, setBreadcrumbs]);
+  }, [organization?.name, setBreadcrumbs]);
 
   // The GitHub/URL source still travels inline (it is just a URL, so it never
   // hits the inline-size ceiling). The local .zip source uploads its raw
@@ -1070,7 +1062,7 @@ export function CompanyImport() {
       target:
         targetMode === "new"
           ? { mode: "new_company" as const, newCompanyName: newCompanyName || null }
-          : { mode: "existing_company" as const, companyId: selectedCompanyId! },
+          : { mode: "existing_company" as const },
       collisionStrategy,
     };
   }
@@ -1092,15 +1084,15 @@ export function CompanyImport() {
           // Too large for one request: upload (or resume) the chunked
           // transfer, then preview against the server-side assembled spool.
           const transferId = await uploadImportTransfer(localPackage.file);
-          return companiesApi.importTransferPreview(transferId, meta);
+          return organizationApi.importTransferPreview(transferId, meta);
         }
         // Upload the raw compressed zip; the server unzips it into the same
         // inline bundle the importer consumes.
-        return companiesApi.importPreviewPackage(localPackage.file, meta);
+        return organizationApi.importPreviewPackage(localPackage.file, meta);
       }
       const source = buildGithubSource();
       if (!source) throw new Error("No source configured.");
-      return companiesApi.importPreview({ source, ...meta });
+      return organizationApi.importPreview({ source, ...meta });
     },
     onSuccess: (result, generation) => {
       if (generation !== previewGenerationRef.current) return;
@@ -1197,7 +1189,7 @@ export function CompanyImport() {
       sourceMode === "local"
         ? localPackage?.name ?? "package"
         : importUrl.trim() || "package";
-    return importJobStorageKey(selectedCompanyId ?? "unknown-company", packageName);
+    return importJobStorageKey(packageName);
   }
 
   // Apply mutation. The preview the import was started from and the
@@ -1229,17 +1221,17 @@ export function CompanyImport() {
         throw new Error("No source configured.");
       }
       const storageKey = currentImportJobStorageKey();
-      let accepted: CompanyImportJobAccepted;
+      let accepted: OrganizationImportJobAccepted;
       try {
         if (localFile && usesChunkedTransfer(localFile)) {
           // Same transfer the preview uploaded: re-declaring resumes it, so
           // normally no parts travel again and this goes straight to apply.
           const transferId = await uploadImportTransfer(localFile);
-          accepted = await companiesApi.importTransferApply(transferId, meta);
+          accepted = await organizationApi.importTransferApply(transferId, meta);
         } else {
           accepted = localFile
-            ? await companiesApi.importBundlePackageAsync(localFile, meta)
-            : await companiesApi.importBundleAsync({ source: githubSource!, ...meta });
+            ? await organizationApi.importBundlePackageAsync(localFile, meta)
+            : await organizationApi.importBundleAsync({ source: githubSource!, ...meta });
         }
       } catch (err) {
         // 409: this user's previous import is still running. Adopt that job
@@ -1256,28 +1248,21 @@ export function CompanyImport() {
     },
     onSuccess: async (outcome, { previewForImport, pauseAutomations: submittedPauseAutomations }) => {
       setResumedWatchJobId(null);
-      // The company list powers the switcher; refresh it on every success path
-      // so the imported company appears immediately without a manual reload.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.organization });
 
       if (outcome.status === "completed-expired") {
         // The import finished and wrote all its data, but the job's result
         // expired (or was never retained) before we could read it. This is a
-        // success, not a failure: keep the landed company's identity so the
-        // outcome screen can take the user straight there instead of leaving
-        // them to hunt through the switcher.
+        // success, not a failure.
         let expiredCompanyName: string | null = null;
         let expiredDashboardPath: string | null = null;
-        if (outcome.companyId) {
-          try {
-            const importedCompany = await companiesApi.get(outcome.companyId);
-            setSelectedCompanyId(importedCompany.id);
-            expiredCompanyName = importedCompany.name;
-            expiredDashboardPath = `/${importedCompany.issuePrefix}/dashboard`;
-          } catch {
-            // The company id may be unreadable (permissions, race); the
-            // refreshed company list still surfaces the import.
-          }
+        try {
+          const importedCompany = await organizationApi.get();
+          expiredCompanyName = importedCompany.name;
+          expiredDashboardPath = "/dashboard";
+        } catch {
+          // The organization may be unreadable (permissions, race); the
+          // outcome screen still reports the import as completed.
         }
         setImportOutcome({
           kind: "expired",
@@ -1294,7 +1279,6 @@ export function CompanyImport() {
       }
 
       const result = outcome.result;
-      const importedCompany = await companiesApi.get(result.company.id);
       const refreshedSession = currentUserId
         ? null
         : await queryClient.fetchQuery({
@@ -1307,14 +1291,13 @@ export function CompanyImport() {
         ?? refreshedSession?.session?.userId
         ?? null;
       await applyImportedSidebarOrder(previewForImport, result, sidebarOrderUserId);
-      setSelectedCompanyId(importedCompany.id);
       setActivationChecked(new Set(buildActivationItems(result).map((item) => item.key)));
       setActivatedKeys(new Set());
       setActivationFailures({});
       setImportOutcome({
         kind: "full",
         result,
-        dashboardPath: `/${importedCompany.issuePrefix}/dashboard`,
+        dashboardPath: "/dashboard",
         pausedAutomations: submittedPauseAutomations,
       });
     },
@@ -1333,9 +1316,9 @@ export function CompanyImport() {
   // server-side, so resume watching it instead of showing the stale form.
   const resumeImportWatch = importMutation.mutate;
   useEffect(() => {
-    if (resumeAttemptedRef.current || !selectedCompanyId) return;
+    if (resumeAttemptedRef.current) return;
     resumeAttemptedRef.current = true;
-    const stored = readStoredImportJob(selectedCompanyId);
+    const stored = readStoredImportJob();
     if (!stored) return;
     setResumedWatchJobId(stored.jobId);
     resumeImportWatch({
@@ -1343,7 +1326,7 @@ export function CompanyImport() {
       pauseAutomations: stored.pauseAutomations,
       resume: { jobId: stored.jobId, storageKey: stored.storageKey },
     });
-  }, [selectedCompanyId, resumeImportWatch]);
+  }, [resumeImportWatch]);
 
   // Any change to the import configuration supersedes the request a settled
   // progress/error panel describes, so it clears settled mutation state. A
@@ -1836,9 +1819,6 @@ export function CompanyImport() {
     );
   }
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Download} message="Select an organization to import into." />;
-  }
 
   return (
     <div className="max-w-6xl">
@@ -1946,7 +1926,7 @@ export function CompanyImport() {
           >
             <option value="new">Create new organization</option>
             <option value="existing">
-              Existing company: {selectedCompany?.name}
+              Existing company: {organization?.name}
             </option>
           </select>
         </Field>

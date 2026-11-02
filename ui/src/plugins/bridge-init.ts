@@ -173,7 +173,6 @@ type PluginIssuesListFilters = {
 };
 
 type PluginIssuesListProps = {
-  companyId: string | null;
   projectId?: string | null;
   filters?: PluginIssuesListFilters;
   viewStateKey?: string;
@@ -188,7 +187,6 @@ type PluginAssigneePickerSelection = {
 };
 
 type PluginAssigneePickerProps = {
-  companyId?: string | null;
   value: string;
   onChange: (value: string, selection: PluginAssigneePickerSelection) => void;
   placeholder?: string;
@@ -202,7 +200,6 @@ type PluginAssigneePickerProps = {
 };
 
 type PluginProjectPickerProps = {
-  companyId?: string | null;
   value: string;
   onChange: (projectId: string) => void;
   placeholder?: string;
@@ -248,7 +245,6 @@ function compactIssueFilters(filters: PluginIssuesListFilters): PluginIssuesList
 }
 
 function PluginSdkIssuesList({
-  companyId,
   projectId = null,
   filters,
   viewStateKey = "paperclip:plugin-issues-view",
@@ -267,41 +263,36 @@ function PluginSdkIssuesList({
   const originKindPrefix = issueFilters.originKindPrefix ?? null;
   const resolvedProjectId = issueFilters.projectId ?? projectId ?? null;
   const issuesQueryKey = useMemo(
-    () => ["plugins", "sdk-ui", "issues-list", companyId ?? "__no-company__", issueFilters] as const,
-    [companyId, issueFilters],
+    () => ["plugins", "sdk-ui", "issues-list", issueFilters] as const,
+    [issueFilters],
   );
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(companyId ?? "__no-company__"),
-    queryFn: () => agentsApi.list(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(companyId ?? "__no-company__", { includeArchived: true }),
-    queryFn: () => projectsApi.list(companyId!, { includeArchived: true }),
-    enabled: !!companyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
-  const liveRunsQueryKey = queryKeys.liveRuns(companyId ?? "__no-company__");
+  const liveRunsQueryKey = queryKeys.liveRuns();
   const sharedLiveRuns = useSharedPollingQuery({
-    companyId,
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
-    enabled: !!companyId,
     // Event-sourced via LiveUpdatesProvider (#9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
   const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
     queryKey: liveRunsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(companyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedLiveRuns.enabled,
     refetchInterval: sharedLiveRuns.refetchInterval,
   });
   usePublishSharedQueryData(sharedLiveRuns, liveRuns, liveRunsUpdatedAt);
   const { data: issues, isLoading, error } = useQuery({
     queryKey: issuesQueryKey,
-    queryFn: () => issuesApi.list(companyId!, issueFilters),
-    enabled: !!companyId,
+    queryFn: () => issuesApi.list(issueFilters),
   });
   const liveIssueIds = useMemo(() => collectLiveIssueIds(liveRuns, issues), [issues, liveRuns]);
 
@@ -309,23 +300,18 @@ function PluginSdkIssuesList({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       issuesApi.update(id, data),
     onSuccess: () => {
-      if (!companyId) return;
-      queryClient.invalidateQueries({ queryKey: ["plugins", "sdk-ui", "issues-list", companyId] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: ["plugins", "sdk-ui", "issues-list"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() });
       if (resolvedProjectId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, resolvedProjectId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(resolvedProjectId) });
         if (originKindPrefix) {
           queryClient.invalidateQueries({
-            queryKey: queryKeys.issues.listPluginOperationsByProject(companyId, resolvedProjectId, originKindPrefix),
+            queryKey: queryKeys.issues.listPluginOperationsByProject(resolvedProjectId, originKindPrefix),
           });
         }
       }
     },
   });
-
-  if (!companyId) {
-    return createElement("div", { className: "text-sm text-muted-foreground" }, "Select an organization to view tasks.");
-  }
 
   return createElement(HostIssuesList, {
     issues: issues ?? [],
@@ -344,7 +330,6 @@ function PluginSdkIssuesList({
 }
 
 function PluginSdkAssigneePicker({
-  companyId,
   value,
   onChange,
   placeholder = "Responsible",
@@ -356,8 +341,6 @@ function PluginSdkAssigneePicker({
   className,
   onConfirm,
 }: PluginAssigneePickerProps) {
-  const hostContext = useHostContext();
-  const resolvedCompanyId = companyId ?? hostContext.companyId ?? null;
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
@@ -365,14 +348,13 @@ function PluginSdkAssigneePicker({
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(resolvedCompanyId ?? "__no-company__"),
-    queryFn: () => agentsApi.list(resolvedCompanyId!),
-    enabled: !!resolvedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const { data: companyMembers } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(resolvedCompanyId ?? "__no-company__"),
-    queryFn: () => accessApi.listUserDirectory(resolvedCompanyId!),
-    enabled: !!resolvedCompanyId && includeUsers,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
+    enabled: includeUsers,
   });
   const recentAssigneeSelectionIds = useMemo(() => getRecentAssigneeSelectionIds(), []);
   const recentAssigneeIds = useMemo(
@@ -454,7 +436,6 @@ function PluginSdkAssigneePicker({
 }
 
 function PluginSdkProjectPicker({
-  companyId,
   value,
   onChange,
   placeholder = "Project",
@@ -465,17 +446,14 @@ function PluginSdkProjectPicker({
   className,
   onConfirm,
 }: PluginProjectPickerProps) {
-  const hostContext = useHostContext();
-  const resolvedCompanyId = companyId ?? hostContext.companyId ?? null;
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(resolvedCompanyId ?? "__no-company__", { includeArchived }),
-    queryFn: () => projectsApi.list(resolvedCompanyId!, { includeArchived }),
-    enabled: !!resolvedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived }),
+    queryFn: () => projectsApi.list({ includeArchived }),
   });
   const visibleProjects = useMemo(
     () => (projects ?? []).filter((project) => includeArchived || !project.archivedAt),
@@ -483,7 +461,6 @@ function PluginSdkProjectPicker({
   );
   const { orderedProjects } = useProjectOrder({
     projects: visibleProjects,
-    companyId: resolvedCompanyId,
     userId: currentUserId,
   });
   const recentProjectIds = useMemo(() => getRecentProjectIds(), []);

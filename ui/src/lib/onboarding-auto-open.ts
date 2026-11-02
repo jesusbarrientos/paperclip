@@ -1,30 +1,28 @@
 /**
- * Which companies have already been offered onboarding automatically.
+ * Whether onboarding has already been offered automatically.
  *
- * The dashboard opens onboarding for a company that has no agent. That is an
- * offer, and an offer that reappears after it is declined is not one, so each
- * company gets at most one.
+ * The dashboard opens onboarding when the organization has no agent. That is
+ * an offer, and an offer that reappears after it is declined is not one.
  *
- * Module scope rather than state inside the dashboard, on purpose. A ref dies
- * with the component, so navigating away and back would offer again, and it
- * holds one company, so visiting a second agentless company and returning to
- * the first would too. A page reload does offer again, which is the right
- * scope: that is a new visit rather than the same one continuing.
+ * Module scope rather than state inside the dashboard, on purpose: a ref dies
+ * with the component, so navigating away and back would offer again. A page
+ * reload does offer again, which is the right scope: that is a new visit
+ * rather than the same one continuing.
  */
-const offeredCompanyIds = new Set<string>();
+let offered = false;
 
 /**
- * Records an offer, and reports whether it is the first one for this company.
- * Returns false when onboarding has already been offered, in which case the
- * caller must not open it again.
+ * Records an offer, and reports whether it is the first one. Returns false
+ * when onboarding has already been offered, in which case the caller must not
+ * open it again.
  */
-export function claimOnboardingOffer(companyId: string): boolean {
-  if (offeredCompanyIds.has(companyId)) return false;
-  offeredCompanyIds.add(companyId);
+export function claimOnboardingOffer(): boolean {
+  if (offered) return false;
+  offered = true;
   return true;
 }
 
-/** Forget every offer. For tests, which must not inherit each other's state. */
+/** Forget the offer. For tests, which must not inherit each other's state. */
 export function resetOnboardingOffers(): void {
-  offeredCompanyIds.clear();
+  offered = false;
 }

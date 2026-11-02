@@ -198,7 +198,6 @@ async function flush() {
 function createIssueDocument(overrides: Partial<IssueDocument> = {}): IssueDocument {
   return {
     id: "document-1",
-    companyId: "company-1",
     issueId: "issue-1",
     key: "plan",
     title: "Plan",
@@ -222,7 +221,6 @@ function createIssueDocument(overrides: Partial<IssueDocument> = {}): IssueDocum
 function createRevision(overrides: Partial<DocumentRevision> = {}): DocumentRevision {
   return {
     id: "revision-3",
-    companyId: "company-1",
     documentId: "document-1",
     issueId: "issue-1",
     key: "plan",
@@ -242,7 +240,6 @@ function createIssue(): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-807",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,

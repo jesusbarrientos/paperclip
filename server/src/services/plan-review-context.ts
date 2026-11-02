@@ -28,7 +28,6 @@ export const PLAN_REVIEW_CONTEXT_LIMITS = {
 
 type BuildPlanReviewContextInput = {
   db: Db;
-  companyId: string;
   issueId: string;
   issueWorkMode?: string | null;
   includeForIssueComment?: boolean;
@@ -93,7 +92,6 @@ function readResult(value: unknown): PlanReviewInteractionResultContext | null {
 
 async function getPlanInteractionContext(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   interactionId: string | null;
 }): Promise<PlanReviewInteractionContext | null> {
@@ -114,7 +112,6 @@ async function getPlanInteractionContext(input: {
     .from(issueThreadInteractions)
     .where(and(
       eq(issueThreadInteractions.id, input.interactionId),
-      eq(issueThreadInteractions.companyId, input.companyId),
       eq(issueThreadInteractions.issueId, input.issueId),
     ))
     .then((rows) => rows[0] ?? null);
@@ -142,7 +139,6 @@ async function getPlanInteractionContext(input: {
 export async function buildPlanReviewContext(input: BuildPlanReviewContextInput): Promise<PlanReviewContext | null> {
   const interaction = await getPlanInteractionContext({
     db: input.db,
-    companyId: input.companyId,
     issueId: input.issueId,
     interactionId: nonEmptyString(input.interactionId),
   });
@@ -162,10 +158,8 @@ export async function buildPlanReviewContext(input: BuildPlanReviewContextInput)
     .from(issueDocuments)
     .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
     .where(and(
-      eq(issueDocuments.companyId, input.companyId),
       eq(issueDocuments.issueId, input.issueId),
-      eq(issueDocuments.key, "plan"),
-      eq(documents.companyId, input.companyId),
+      eq(issueDocuments.key, "plan")
     ))
     .then((rows) => rows[0] ?? null);
   if (!planDocument) return null;
@@ -174,7 +168,6 @@ export async function buildPlanReviewContext(input: BuildPlanReviewContextInput)
     .select({ count: sql<number>`count(*)::int` })
     .from(documentAnnotationThreads)
     .where(and(
-      eq(documentAnnotationThreads.companyId, input.companyId),
       eq(documentAnnotationThreads.issueId, input.issueId),
       eq(documentAnnotationThreads.documentId, planDocument.documentId),
       eq(documentAnnotationThreads.documentKey, "plan"),
@@ -201,7 +194,6 @@ export async function buildPlanReviewContext(input: BuildPlanReviewContextInput)
     })
     .from(documentAnnotationThreads)
     .where(and(
-      eq(documentAnnotationThreads.companyId, input.companyId),
       eq(documentAnnotationThreads.issueId, input.issueId),
       eq(documentAnnotationThreads.documentId, planDocument.documentId),
       eq(documentAnnotationThreads.documentKey, "plan"),
@@ -226,7 +218,6 @@ export async function buildPlanReviewContext(input: BuildPlanReviewContextInput)
       })
       .from(documentAnnotationComments)
       .where(and(
-        eq(documentAnnotationComments.companyId, input.companyId),
         eq(documentAnnotationComments.issueId, input.issueId),
         eq(documentAnnotationComments.documentId, planDocument.documentId),
         inArray(documentAnnotationComments.threadId, threadIds),
@@ -239,10 +230,8 @@ export async function buildPlanReviewContext(input: BuildPlanReviewContextInput)
     .from(documentAnnotationComments)
     .innerJoin(documentAnnotationThreads, eq(documentAnnotationComments.threadId, documentAnnotationThreads.id))
     .where(and(
-      eq(documentAnnotationComments.companyId, input.companyId),
       eq(documentAnnotationComments.issueId, input.issueId),
       eq(documentAnnotationComments.documentId, planDocument.documentId),
-      eq(documentAnnotationThreads.companyId, input.companyId),
       eq(documentAnnotationThreads.issueId, input.issueId),
       eq(documentAnnotationThreads.documentId, planDocument.documentId),
       eq(documentAnnotationThreads.documentKey, "plan"),
@@ -361,9 +350,7 @@ export async function buildDocumentReviewContext(
     .from(issueDocuments)
     .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
     .where(and(
-      eq(issueDocuments.companyId, input.companyId),
       eq(issueDocuments.issueId, input.issueId),
-      eq(documents.companyId, input.companyId),
       sql`${issueDocuments.key} <> 'plan'`,
     ))
     .orderBy(desc(issueDocuments.updatedAt), desc(issueDocuments.id));
@@ -384,7 +371,6 @@ export async function buildDocumentReviewContext(
       .select({ count: sql<number>`count(*)::int` })
       .from(documentAnnotationThreads)
       .where(and(
-        eq(documentAnnotationThreads.companyId, input.companyId),
         eq(documentAnnotationThreads.issueId, input.issueId),
         eq(documentAnnotationThreads.documentId, document.documentId),
         eq(documentAnnotationThreads.documentKey, document.documentKey),
@@ -413,7 +399,6 @@ export async function buildDocumentReviewContext(
       })
       .from(documentAnnotationThreads)
       .where(and(
-        eq(documentAnnotationThreads.companyId, input.companyId),
         eq(documentAnnotationThreads.issueId, input.issueId),
         eq(documentAnnotationThreads.documentId, document.documentId),
         eq(documentAnnotationThreads.documentKey, document.documentKey),
@@ -437,7 +422,6 @@ export async function buildDocumentReviewContext(
       })
       .from(documentAnnotationComments)
       .where(and(
-        eq(documentAnnotationComments.companyId, input.companyId),
         eq(documentAnnotationComments.issueId, input.issueId),
         eq(documentAnnotationComments.documentId, document.documentId),
         inArray(documentAnnotationComments.threadId, threadIds),
@@ -450,10 +434,8 @@ export async function buildDocumentReviewContext(
       .from(documentAnnotationComments)
       .innerJoin(documentAnnotationThreads, eq(documentAnnotationComments.threadId, documentAnnotationThreads.id))
       .where(and(
-        eq(documentAnnotationComments.companyId, input.companyId),
         eq(documentAnnotationComments.issueId, input.issueId),
         eq(documentAnnotationComments.documentId, document.documentId),
-        eq(documentAnnotationThreads.companyId, input.companyId),
         eq(documentAnnotationThreads.issueId, input.issueId),
         eq(documentAnnotationThreads.documentId, document.documentId),
         eq(documentAnnotationThreads.documentKey, document.documentKey),

@@ -16,7 +16,6 @@ Detailed reference for the Paperclip control plane API. For the core heartbeat p
   "name": "BackendEngineer",
   "role": "engineer",
   "title": "Senior Backend Engineer",
-  "companyId": "company-1",
   "reportsTo": "mgr-1",
   "capabilities": "Node.js, PostgreSQL, API design",
   "status": "running",
@@ -45,10 +44,10 @@ Detailed reference for the Paperclip control plane API. For the core heartbeat p
 
 CEO-safe package routes are company-scoped:
 
-- `POST /api/companies/:companyId/imports/preview`
-- `POST /api/companies/:companyId/imports/apply`
-- `POST /api/companies/:companyId/exports/preview`
-- `POST /api/companies/:companyId/exports`
+- `POST /api/imports/preview`
+- `POST /api/imports/apply`
+- `POST /api/exports/preview`
+- `POST /api/exports`
 
 Rules:
 
@@ -62,11 +61,11 @@ Rules:
 Example safe import preview:
 
 ```json
-POST /api/companies/company-1/imports/preview
+POST /api/imports/preview
 {
   "source": { "type": "github", "url": "https://github.com/acme/agent-company" },
   "include": { "company": true, "agents": true, "projects": true, "issues": true },
-  "target": { "mode": "existing_company", "companyId": "company-1" },
+  "target": { "mode": "existing_company" },
   "collisionStrategy": "rename"
 }
 ```
@@ -74,7 +73,7 @@ POST /api/companies/company-1/imports/preview
 Example new-company safe import:
 
 ```json
-POST /api/companies/company-1/imports/apply
+POST /api/imports/apply
 {
   "source": { "type": "github", "url": "https://github.com/acme/agent-company" },
   "include": { "company": true, "agents": true, "projects": true, "issues": false },
@@ -86,7 +85,7 @@ POST /api/companies/company-1/imports/apply
 Example export preview without tasks:
 
 ```json
-POST /api/companies/company-1/exports/preview
+POST /api/exports/preview
 {
   "include": { "company": true, "agents": true, "projects": true }
 }
@@ -95,7 +94,7 @@ POST /api/companies/company-1/exports/preview
 Example narrowed export with explicit tasks:
 
 ```json
-POST /api/companies/company-1/exports
+POST /api/exports
 {
   "include": { "company": true, "agents": true, "projects": true, "issues": true },
   "selectedFiles": [
@@ -458,10 +457,10 @@ A concrete example of what a single heartbeat looks like for an individual contr
 ```
 # 1. Identity (skip if already in context)
 GET /api/agents/me
--> { id: "agent-42", companyId: "company-1", ... }
+-> { id: "agent-42", ... }
 
 # 2. Check inbox
-GET /api/companies/company-1/issues?assigneeAgentId=agent-42&status=todo,in_progress,in_review,blocked
+GET /api/issues?assigneeAgentId=agent-42&status=todo,in_progress,in_review,blocked
 -> [
     { id: "issue-101", title: "Fix rate limiter bug", status: "in_progress", priority: "high" },
     { id: "issue-99", title: "Implement login API", status: "todo", priority: "medium" }
@@ -517,7 +516,7 @@ GET /api/agents/me/inbox/mine?userId=user-7
 
 # Summarize it back to the board in a comment or document.
 PATCH /api/issues/issue-200
-{ "comment": "Your Mine inbox has 1 unread issue: [PAP-310](/PAP/issues/PAP-310)." }
+{ "comment": "Your Mine inbox has 1 unread issue: [PAP-310](/issues/PAP-310)." }
 ```
 
 ### Worked Example: Archive A Resolved Inbox Item
@@ -588,13 +587,13 @@ Paperclip converts that into a `changes_requested` decision, reassigns the issue
 ```
 # 1. Identity (skip if already in context)
 GET /api/agents/me
--> { id: "mgr-1", role: "manager", companyId: "company-1", ... }
+-> { id: "mgr-1", role: "manager", ... }
 
 # 2. Check team status
-GET /api/companies/company-1/agents
+GET /api/agents
 -> [ { id: "agent-42", name: "BackendEngineer", reportsTo: "mgr-1", status: "idle" }, ... ]
 
-GET /api/companies/company-1/issues?assigneeAgentId=agent-42&status=in_progress,blocked
+GET /api/issues?assigneeAgentId=agent-42&status=in_progress,blocked
 -> [ { id: "issue-55", status: "blocked", title: "Needs DB migration reviewed" } ]
 
 # 3. Agent-42 is blocked. Read comments.
@@ -606,17 +605,17 @@ PATCH /api/issues/issue-55
 { "assigneeAgentId": "dba-agent-1", "comment": "@DBAAgent Please review the migration in PR #38." }
 
 # 5. Check own assignments.
-GET /api/companies/company-1/issues?assigneeAgentId=mgr-1&status=todo,in_progress
+GET /api/issues?assigneeAgentId=mgr-1&status=todo,in_progress
 -> [ { id: "issue-30", title: "Break down Q2 roadmap into tasks", status: "todo" } ]
 
 POST /api/issues/issue-30/checkout
 { "agentId": "mgr-1", "expectedStatuses": ["todo", "backlog", "blocked", "in_review"] }
 
 # 6. Create subtasks and delegate.
-POST /api/companies/company-1/issues
+POST /api/issues
 { "title": "Implement caching layer", "assigneeAgentId": "agent-42", "parentId": "issue-30", "status": "todo", "priority": "high", "goalId": "goal-1" }
 
-POST /api/companies/company-1/issues
+POST /api/issues
 { "title": "Write load test suite", "assigneeAgentId": "agent-55", "parentId": "issue-30", "status": "blocked", "priority": "medium", "goalId": "goal-1", "blockedByIssueIds": ["<caching-layer-issue-id>"] }
 # ^ Load tests depend on caching layer being done first. Paperclip will auto-wake agent-55 when the blocker resolves.
 
@@ -624,7 +623,7 @@ PATCH /api/issues/issue-30
 { "status": "done", "comment": "Broke down into subtasks for caching layer and load testing." }
 
 # 7. Dashboard for health check.
-GET /api/companies/company-1/dashboard
+GET /api/dashboard
 ```
 
 ---
@@ -638,16 +637,16 @@ Use markdown formatting and include links to related entities when they exist:
 ```md
 ## Update
 
-- Approval: [APPROVAL_ID](/<prefix>/approvals/<approval-id>)
-- Pending agent: [AGENT_NAME](/<prefix>/agents/<agent-url-key-or-id>)
-- Source issue: [ISSUE_ID](/<prefix>/issues/<issue-identifier-or-id>)
+- Approval: [APPROVAL_ID](/approvals/<approval-id>)
+- Pending agent: [AGENT_NAME](/agents/<agent-url-key-or-id>)
+- Source issue: [ISSUE_ID](/issues/<issue-identifier-or-id>)
 ```
 
 Where `<prefix>` is the company prefix derived from the issue identifier (e.g., `PAP-123` → prefix is `PAP`).
 
 **@-mentions are context only.** They identify a relevant agent for the reader, without waking that agent, assigning work, or forwarding the comment to another task. This applies to standalone comments and the `comment` field of `PATCH /api/issues/{issueId}`.
 
-For machine-authored comments, resolve the agent’s ID with `GET /api/companies/{companyId}/agents` and use a structured link:
+For machine-authored comments, resolve the agent’s ID with `GET /api/agents` and use a structured link:
 
 ```
 POST /api/issues/{issueId}/comments
@@ -687,11 +686,11 @@ If you are stuck or blocked:
 ## Company Context
 
 ```
-GET /api/companies/{companyId}          — company name, description, budget
-GET /api/companies/{companyId}/goals    — goal hierarchy (company > team > agent > task)
-GET /api/companies/{companyId}/projects — projects (group issues toward a deliverable)
+GET /api/organization          — company name, description, budget
+GET /api/goals    — goal hierarchy (company > team > agent > task)
+GET /api/projects — projects (group issues toward a deliverable)
 GET /api/projects/{projectId}           — single project details
-GET /api/companies/{companyId}/dashboard — health summary: agent/task counts, spend, stale tasks
+GET /api/dashboard — health summary: agent/task counts, spend, stale tasks
 ```
 
 Use the dashboard for situational awareness, especially if you're a manager or CEO.
@@ -701,9 +700,9 @@ Use the dashboard for situational awareness, especially if you're a manager or C
 CEO agents can update branding fields on their own company. Board users can update all fields.
 
 ```
-GET  /api/companies/{companyId}          — read company (CEO agents + board)
-PATCH /api/companies/{companyId}         — update company fields
-POST /api/companies/{companyId}/logo     — upload logo (multipart, field: "file")
+GET  /api/organization          — read company (CEO agents + board)
+PATCH /api/organization         — update company fields
+POST /api/organization/logo     — upload logo (multipart, field: "file")
 ```
 
 **CEO-allowed fields:** `name`, `description`, `logoAssetId` (UUID or null).
@@ -713,15 +712,15 @@ POST /api/companies/{companyId}/logo     — upload logo (multipart, field: "fil
 **Not updateable:** `issuePrefix` (used as company slug/identifier — protected from changes).
 
 **Logo workflow:**
-1. `POST /api/companies/{companyId}/logo` with file upload → returns `{ assetId }`.
-2. `PATCH /api/companies/{companyId}` with `{ "logoAssetId": "<assetId>" }`.
+1. `POST /api/organization/logo` with file upload → returns `{ assetId }`.
+2. `PATCH /api/organization` with `{ "logoAssetId": "<assetId>" }`.
 
 ## OpenClaw Invite Prompt (CEO)
 
 Use this endpoint to generate a short-lived OpenClaw onboarding invite prompt:
 
 ```
-POST /api/companies/{companyId}/openclaw/invite-prompt
+POST /api/openclaw/invite-prompt
 {
   "agentMessage": "optional note for the joining OpenClaw agent"
 }
@@ -773,7 +772,7 @@ PATCH /api/agents/{agentId}/instructions-path
 When a CEO/manager task asks you to "set up a new project" and wire local + GitHub context, use this sequence.
 
 For repository-based projects, prefer one atomic create with `repositoryIds` from
-`GET /api/companies/{companyId}/project-repositories`, `repositoryUrls` for existing
+`GET /api/project-repositories`, `repositoryUrls` for existing
 GitHub repositories absent from that catalog, or both. These arrays support
 multiple repositories. URLs register project workspaces; they do not create
 remote GitHub repositories or grant credentials. Use HTTPS URLs without credentials.
@@ -781,7 +780,7 @@ Do not combine either array with an explicit `workspace`. Reuse the same
 `idempotencyKey` and body when retrying a creation.
 
 ```
-POST /api/companies/{companyId}/projects
+POST /api/projects
 {
   "name": "Web and API",
   "repositoryUrls": ["https://github.com/acme/web", "https://github.com/acme/api"],
@@ -795,7 +794,7 @@ below remain available when local workspace configuration is needed.
 ### Option A: One-call create with workspace
 
 ```
-POST /api/companies/{companyId}/projects
+POST /api/projects
 {
   "name": "Paperclip Mobile App",
   "description": "Ship iOS + Android client",
@@ -814,7 +813,7 @@ POST /api/companies/{companyId}/projects
 ### Option B: Two calls (project first, then workspace)
 
 ```
-POST /api/companies/{companyId}/projects
+POST /api/projects
 {
   "name": "Paperclip Mobile App",
   "description": "Ship iOS + Android client",
@@ -856,7 +855,7 @@ not copied. Existing hiring permissions and company approval policy still apply.
 The equivalent native API request is:
 
 ```
-POST /api/companies/{companyId}/agent-hires
+POST /api/agent-hires
 {
   "name": "Marketing Analyst",
   "role": "researcher",
@@ -880,7 +879,7 @@ For other adapters or a deliberately different runner configuration, use an
 explicit configuration, for example:
 
 ```
-POST /api/companies/{companyId}/agent-hires
+POST /api/agent-hires
 {
   "name": "Marketing Analyst",
   "role": "researcher",
@@ -914,7 +913,7 @@ Use `paperclip-create-agent` for the full hiring workflow (reflection + config c
 If you are the CEO, your first strategic plan must be approved before you can move tasks to `in_progress`:
 
 ```
-POST /api/companies/{companyId}/approvals
+POST /api/approvals
 { "type": "approve_ceo_strategy", "requestedByAgentId": "{your-agent-id}", "payload": { "plan": "..." } }
 ```
 
@@ -1065,7 +1064,7 @@ POST /api/issues/{issueId}/interactions
 Resolver governance:
 
 - **Omit `resolverPolicy` for a normal interaction.** The open default is deliberate: it lets any teammate — a board user or an agent — pick the card up instead of stranding the thread on one person. Send a policy only when the restriction is the point (`not_creator` for independent review, `human_only` when a person must decide), or set `addresseeAgentId` when one named agent owns the response.
-- Create accepts optional canonical `resolverPolicy: "anyone" | "not_creator" | "human_only"`. Every interaction kind defaults to `anyone` when omitted. Deprecated `board_or_agents` and `board_only` inputs remain compatibility aliases for new writes and normalize to `anyone` and `human_only`. The response snapshots immutable canonical `requestedResolverPolicy` and `effectiveResolverPolicy`, `resolverPolicyProvenance` (`explicit | inherited | legacy_inherited_restriction`), `effectiveResolverPolicySource` (`requested | company_cap | governed_action`), and `legacyResolverPolicyAliases`; later governance edits never widen an existing pending card. `PATCH /api/companies/{companyId}` accepts `interactionResolverGovernance` keyed by kind, with optional `defaultPolicy` and `cap`; a cap can narrow but never widen the requested audience.
+- Create accepts optional canonical `resolverPolicy: "anyone" | "not_creator" | "human_only"`. Every interaction kind defaults to `anyone` when omitted. Deprecated `board_or_agents` and `board_only` inputs remain compatibility aliases for new writes and normalize to `anyone` and `human_only`. The response snapshots immutable canonical `requestedResolverPolicy` and `effectiveResolverPolicy`, `resolverPolicyProvenance` (`explicit | inherited | legacy_inherited_restriction`), `effectiveResolverPolicySource` (`requested | company_cap | governed_action`), and `legacyResolverPolicyAliases`; later governance edits never widen an existing pending card. `PATCH /api/organization` accepts `interactionResolverGovernance` keyed by kind, with optional `defaultPolicy` and `cap`; a cap can narrow but never widen the requested audience.
 - Create also accepts optional `addresseeAgentId` (an invokable same-company agent other than the creator) for structured agent-to-agent asks: Paperclip wakes the addressee with reason `interaction_pending`, only the addressee or a board user may resolve, and the pending card is omitted from the company attention feed. Not allowed with `request_confirmation.payload.toolAction` (`400`).
 - Under `anyone`, an eligible in-company agent resolves through the same `accept`/`reject`/`respond`/`verdicts` routes with run-authenticated identity, including the creator agent or creating run. `not_creator` explicitly excludes those creators; `human_only` excludes agents. Low-trust/task-bridge containment, issue access, named addressees, staleness, and exact-once checks still apply. A task-watchdog run receives no special resolver audience or kind/purpose exception: it is evaluated as an ordinary agent. `payload.toolAction` confirmations remain `human_only` regardless of the requested policy.
 - Historical rows with unprovable explicit-vs-default provenance are migrated fail-closed: old `board_or_agents` semantics become `not_creator`, old `board_only` becomes `human_only`, and the row is marked `legacy_inherited_restriction`. Resolved outcomes and attribution are not rewritten.
@@ -1314,7 +1313,7 @@ Expiration results preserve already resolved items and omit undecided items:
 ### Checking approval status
 
 ```
-GET /api/companies/{companyId}/approvals?status=pending
+GET /api/approvals?status=pending
 ```
 
 ### Approval follow-up (requesting agent)
@@ -1388,16 +1387,16 @@ Terminal states: `done`, `cancelled`
 | GET    | `/api/agents/me`                   | Your agent record + chain of command |
 | GET    | `/api/agents/me/inbox/mine?userId=:userId` | Mine-tab issue list for a specific board user |
 | GET    | `/api/agents/:agentId`             | Agent details + chain of command     |
-| GET    | `/api/companies/:companyId/agents` | List all agents in company           |
-| POST   | `/api/companies/:companyId/agents` | Create agent directly (no approval)  |
+| GET    | `/api/agents` | List all agents in company           |
+| POST   | `/api/agents` | Create agent directly (no approval)  |
 | PATCH  | `/api/agents/:agentId`             | Update agent config or budget        |
 | POST   | `/api/agents/:agentId/pause`       | Temporarily stop heartbeats          |
 | POST   | `/api/agents/:agentId/resume`      | Resume a paused agent                |
 | POST   | `/api/agents/:agentId/terminate`   | Permanently deactivate agent (irreversible) |
 | POST   | `/api/agents/:agentId/keys`        | Create long-lived API key (full value shown once) |
 | POST   | `/api/agents/:agentId/heartbeat/invoke` | Manually trigger a heartbeat    |
-| GET    | `/api/companies/:companyId/org`    | Org chart tree                       |
-| GET    | `/api/companies/:companyId/adapters/:adapterType/models` | List selectable models for an adapter type |
+| GET    | `/api/org`    | Org chart tree                       |
+| GET    | `/api/adapters/:adapterType/models` | List selectable models for an adapter type |
 | PATCH  | `/api/agents/:agentId/instructions-path` | Set/clear instructions path (`AGENTS.md`) |
 | GET    | `/api/agents/:agentId/config-revisions` | List config revisions            |
 | POST   | `/api/agents/:agentId/config-revisions/:revisionId/rollback` | Roll back config |
@@ -1406,13 +1405,13 @@ Terminal states: `done`, `cancelled`
 
 | Method | Path                               | Description                                                                              |
 | ------ | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| GET    | `/api/companies/:companyId/issues` | List issues, sorted by priority. Filters: `?status=`, `?assigneeAgentId=`, `?assigneeUserId=`, `?projectId=`, `?labelId=`, `?q=` (full-text search across title, identifier, description, comments) |
+| GET    | `/api/issues` | List issues, sorted by priority. Filters: `?status=`, `?assigneeAgentId=`, `?assigneeUserId=`, `?projectId=`, `?labelId=`, `?q=` (full-text search across title, identifier, description, comments) |
 | GET    | `/api/issues/:issueId`             | Issue details + ancestors                                                                |
 | GET    | `/api/issues/:issueId/heartbeat-context` | Compact context for heartbeat: issue state, ancestor summaries, comment cursor  |
 | GET    | `/api/issues/:issueId/diagnostics/blockers` | Read-only blocker diagnostic with `diagnosis`, readiness, and bounded anomaly flags |
 | GET    | `/api/issues/:issueId/diagnostics/wakes` | Read-only wake-history diagnostic with `diagnosis`, bounded events, and Case-B inference |
 | GET    | `/api/issues/:issueId/diagnostics/subtree` | Read-only subtree diagnostic combining visible child, blocker, and wake edges with `diagnosis` |
-| POST   | `/api/companies/:companyId/issues` | Create issue (supports `blockedByIssueIds: string[]` for dependencies)                   |
+| POST   | `/api/issues` | Create issue (supports `blockedByIssueIds: string[]` for dependencies)                   |
 | PATCH  | `/api/issues/:issueId`             | Update issue; response is authoritative and includes `changes` + `comment` (`Prefer: return=minimal` supported); `blockedByIssueIds` replaces blocker set |
 | POST   | `/api/issues/:issueId/checkout`    | Atomic checkout (claim + start). Idempotent if you already own it.                       |
 | POST   | `/api/issues/:issueId/release`     | Release execution locks; preserve terminal task ownership                                 |
@@ -1443,37 +1442,34 @@ Terminal states: `done`, `cancelled`
 | POST   | `/api/execution-workspaces/:workspaceId/runtime-services/restart` | Restart configured workspace services |
 | POST   | `/api/execution-workspaces/:workspaceId/runtime-services/stop` | Stop workspace runtime services |
 
-### Companies, Projects, Goals
+### Organization, Projects, Goals
 
 | Method | Path                                 | Description        |
 | ------ | ------------------------------------ | ------------------ |
-| GET    | `/api/companies`                     | List all companies |
-| POST   | `/api/companies`                     | Create company     |
-| GET    | `/api/companies/:companyId`          | Company details    |
-| PATCH  | `/api/companies/:companyId`          | Update company fields                |
-| POST   | `/api/companies/:companyId/logo`     | Upload company logo (multipart)      |
-| POST   | `/api/companies/:companyId/archive`  | Archive company    |
-| GET    | `/api/companies/:companyId/projects` | List projects      |
+| GET    | `/api/organization`          | Organization details    |
+| PATCH  | `/api/organization`          | Update organization fields                |
+| POST   | `/api/organization/logo` | Upload organization logo (multipart) |
+| GET    | `/api/projects` | List projects      |
 | GET    | `/api/projects/:projectId`           | Project details    |
-| POST   | `/api/companies/:companyId/projects` | Create project (`repositoryIds`/`repositoryUrls` arrays or inline `workspace`; optional `idempotencyKey`) |
+| POST   | `/api/projects` | Create project (`repositoryIds`/`repositoryUrls` arrays or inline `workspace`; optional `idempotencyKey`) |
 | PATCH  | `/api/projects/:projectId`           | Update project     |
 | GET    | `/api/projects/:projectId/workspaces` | List project workspaces |
 | POST   | `/api/projects/:projectId/workspaces` | Create project workspace |
 | PATCH  | `/api/projects/:projectId/workspaces/:workspaceId` | Update project workspace |
 | DELETE | `/api/projects/:projectId/workspaces/:workspaceId` | Delete project workspace |
-| GET    | `/api/companies/:companyId/goals`    | List goals         |
+| GET    | `/api/goals`    | List goals         |
 | GET    | `/api/goals/:goalId`                 | Goal details       |
-| POST   | `/api/companies/:companyId/goals`    | Create goal        |
+| POST   | `/api/goals`    | Create goal        |
 | PATCH  | `/api/goals/:goalId`                 | Update goal        |
-| POST   | `/api/companies/:companyId/openclaw/invite-prompt` | Generate OpenClaw invite prompt (CEO/board only) |
+| POST   | `/api/openclaw/invite-prompt` | Generate OpenClaw invite prompt (CEO/board only) |
 
 ### Routines
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| GET    | `/api/companies/:companyId/routines` | List all routines in company |
+| GET    | `/api/routines` | List all routines in company |
 | GET    | `/api/routines/:routineId` | Routine details including triggers |
-| POST   | `/api/companies/:companyId/routines` | Create routine (`assigneeAgentId` + `projectId` required; agents: own only) |
+| POST   | `/api/routines` | Create routine (`assigneeAgentId` + `projectId` required; agents: own only) |
 | PATCH  | `/api/routines/:routineId` | Update routine (agents: own only, cannot reassign) |
 | POST   | `/api/routines/:routineId/triggers` | Add trigger (`schedule`, `webhook`, or `api` kind) |
 | PATCH  | `/api/routine-triggers/:triggerId` | Update trigger (e.g. disable, change cron) |
@@ -1487,9 +1483,9 @@ Terminal states: `done`, `cancelled`
 
 | Method | Path                                         | Description                        |
 | ------ | -------------------------------------------- | ---------------------------------- |
-| GET    | `/api/companies/:companyId/approvals`        | List approvals (`?status=pending`) |
-| POST   | `/api/companies/:companyId/approvals`        | Create approval request            |
-| POST   | `/api/companies/:companyId/agent-hires`      | Create hire request/agent draft    |
+| GET    | `/api/approvals`        | List approvals (`?status=pending`) |
+| POST   | `/api/approvals`        | Create approval request            |
+| POST   | `/api/agent-hires`      | Create hire request/agent draft    |
 | GET    | `/api/approvals/:approvalId`                 | Approval details                   |
 | GET    | `/api/approvals/:approvalId/issues`          | Issues linked to approval          |
 | GET    | `/api/approvals/:approvalId/comments`        | Approval comments                  |
@@ -1498,19 +1494,19 @@ Terminal states: `done`, `cancelled`
 | POST   | `/api/approvals/:approvalId/reject`          | Reject approval request            |
 | POST   | `/api/approvals/:approvalId/request-revision`| Board asks for revision            |
 | POST   | `/api/approvals/:approvalId/resubmit`        | Resubmit revised approval          |
-| POST   | `/api/companies/:companyId/cost-events`      | Report cost event                  |
-| GET    | `/api/companies/:companyId/costs/summary`    | Company cost summary               |
-| GET    | `/api/companies/:companyId/costs/by-agent`   | Costs by agent                     |
-| GET    | `/api/companies/:companyId/costs/by-project` | Costs by project                   |
-| GET    | `/api/companies/:companyId/activity`         | Activity log                       |
-| GET    | `/api/companies/:companyId/dashboard`        | Company health summary             |
+| POST   | `/api/cost-events`      | Report cost event                  |
+| GET    | `/api/costs/summary`    | Company cost summary               |
+| GET    | `/api/costs/by-agent`   | Costs by agent                     |
+| GET    | `/api/costs/by-project` | Costs by project                   |
+| GET    | `/api/activity`         | Activity log                       |
+| GET    | `/api/dashboard`        | Company health summary             |
 
 ### Secrets
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| GET    | `/api/companies/:companyId/secrets` | List secrets (metadata only)        |
-| POST   | `/api/companies/:companyId/secrets` | Create secret                       |
+| GET    | `/api/secrets` | List secrets (metadata only)        |
+| POST   | `/api/secrets` | Create secret                       |
 | PATCH  | `/api/secrets/:secretId`            | Update secret value (creates new version) |
 | POST   | `/api/agents/me/secret-proposals`   | Propose a secret or agent binding for board approval |
 | GET    | `/api/agents/me/secret-proposals`   | List proposals created by the agent and incoming bindings targeting it |

@@ -139,7 +139,6 @@ describe("provider trace retention", () => {
     return {
       id: "trace-1",
       runId: "run-1",
-      companyId: "company-1",
       status: "complete",
       provider: "codex",
       traceRef: "11111111-1111-4111-8111-111111111111.ndjson",
@@ -306,7 +305,6 @@ describe("provider trace retention", () => {
 
     await expect(store.prepare({
       runId: "run-1",
-      companyId: "company-1",
       provider: "codex",
       requestedBy: "user-1",
     })).rejects.toThrow("provider_trace_unavailable");

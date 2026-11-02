@@ -57,7 +57,7 @@ export function getConfigSchema(): AdapterConfigSchema {
         key: "stateDir",
         label: "ACP state directory",
         type: "text",
-        hint: "Optional ACP session state directory. Defaults to Paperclip-managed company/agent scoped storage.",
+        hint: "Optional ACP session state directory. Defaults to Paperclip-managed agent-scoped storage.",
         meta: acpVisible,
       },
       {

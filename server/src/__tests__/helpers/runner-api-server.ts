@@ -55,10 +55,14 @@ export async function startRunnerApiTestServer(options: {
       // deadlock victim (observed against TRUNCATE in CI on 2026-09-10). The
       // loser's transaction rolls back the moment it is chosen, so a short
       // bounded retry makes the reset deterministic instead of flaky.
+      // Domain tables no longer reference companies, so TRUNCATE companies
+      // CASCADE would leave every prior attempt's rows in place.
       if (options.reset) {
+        const tables = await db.execute<{ tablename: string }>(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`);
+        const truncateAll = sql.raw(`TRUNCATE ${[...tables].map(row => `"public"."${row.tablename}"`).join(", ")} CASCADE`);
         for (let attempt = 0; ; attempt += 1) {
           try {
-            await db.execute(sql`TRUNCATE companies CASCADE`);
+            await db.execute(truncateAll);
             break;
           } catch (error) {
             const code =
@@ -90,23 +94,23 @@ export async function startRunnerApiTestServer(options: {
         await db.insert(authUsers).values({ id: responsibleUserId, name: "Eval responsible user", email: `${responsibleUserId}@fixture.invalid`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() }).onConflictDoNothing();
         await db.insert(companyMemberships).values({ principalType: "user", principalId: responsibleUserId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
       }
-      await db.insert(agents).values({ id: agentId, companyId, name: "API eval agent", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", cwd: workspace }, runtimeConfig: { heartbeat: { enabled: false, ...(options.disableWakeOnDemand ? { wakeOnDemand: false } : {}) } }, status: "active" });
+      await db.insert(agents).values({ id: agentId, name: "API eval agent", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", cwd: workspace }, runtimeConfig: { heartbeat: { enabled: false, ...(options.disableWakeOnDemand ? { wakeOnDemand: false } : {}) } }, status: "active" });
       await db.insert(projects).values([
-        { id: projectId, companyId, name: "Aurora", description: "The project verification code is violet-otter.", status: "in_progress" },
-        { id: foreignProjectId, companyId: foreignCompanyId, name: "Private project", description: "foreign-data-must-not-leak" },
+        { id: projectId, name: "Aurora", description: "The project verification code is violet-otter.", status: "in_progress" },
+        { id: foreignProjectId, name: "Private project", description: "foreign-data-must-not-leak" },
       ]);
-      await db.insert(projectWorkspaces).values({ id: projectWorkspaceId, companyId, projectId, name: "Fixture workspace", cwd: workspace, isPrimary: true });
-      await db.insert(goals).values({ id: goalId, companyId, title: "Ship Aurora", level: "company", status: "active" });
+      await db.insert(projectWorkspaces).values({ id: projectWorkspaceId, projectId, name: "Fixture workspace", cwd: workspace, isPrimary: true });
+      await db.insert(goals).values({ id: goalId, title: "Ship Aurora", level: "company", status: "active" });
       for (const [id, body, contentType, filename] of [[artifactId, Buffer.from("API escape hatch fixture\n"), "text/plain", "sample.txt"], [binaryArtifactId, Buffer.alloc(32_000, 65), "application/octet-stream", "large.bin"]] as const) {
-        const saved = await storage.putFile({ companyId, namespace: "eval", originalFilename: filename, contentType, body });
-        await db.insert(assets).values({ id, companyId, ...saved, createdByAgentId: agentId });
+        const saved = await storage.putFile({ namespace: "eval", originalFilename: filename, contentType, body });
+        await db.insert(assets).values({ id, ...saved, createdByAgentId: agentId });
       }
-      await db.insert(issues).values({ id: issueId, companyId, projectId, projectWorkspaceId, issueNumber: 1, identifier: "E" + companyId.replaceAll("-", "").slice(0, 8) + "-1", ...(options.conversation ? { conversationAgentId: agentId, conversationUserId: responsibleUserId, conversationState: "active" as const } : {}), title: "Verify runner API tools", description: "Fixture marker: amber-fox.", status: "in_progress", workMode: options.mode ?? "standard", assigneeAgentId: agentId });
-      await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", responsibleUserId, runtimeMode: "native", nativeIssueId: issueId, invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId, ...(options.conversation ? { conversationSessionGeneration: 0 } : {}), ...options.contextSnapshot } });
+      await db.insert(issues).values({ id: issueId, projectId, projectWorkspaceId, issueNumber: 1, identifier: "E" + companyId.replaceAll("-", "").slice(0, 8) + "-1", ...(options.conversation ? { conversationAgentId: agentId, conversationUserId: responsibleUserId, conversationState: "active" as const } : {}), title: "Verify runner API tools", description: "Fixture marker: amber-fox.", status: "in_progress", workMode: options.mode ?? "standard", assigneeAgentId: agentId });
+      await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running", responsibleUserId, runtimeMode: "native", nativeIssueId: issueId, invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId, ...(options.conversation ? { conversationSessionGeneration: 0 } : {}), ...options.contextSnapshot } });
       await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
-      if (responsibleUserId) await initializeRunIdentity(db, { companyId, runId, issueId, responsibleUserId, cause: "instruction" });
-      await db.insert(issues).values({ id: blockerId, companyId, projectId, issueNumber: 2, identifier: "E" + companyId.replaceAll("-", "").slice(0, 8) + "-2", title: "Dependency gate", description: "Complete before shipping.", status: "todo", assigneeAgentId: agentId });
-      await db.insert(approvals).values({ id: approvalId, companyId, type: "runner_review", status: "pending", requestedByAgentId: agentId, payload: { title: "Launch review" } });
+      if (responsibleUserId) await initializeRunIdentity(db, { runId, issueId, responsibleUserId, cause: "instruction" });
+      await db.insert(issues).values({ id: blockerId, projectId, issueNumber: 2, identifier: "E" + companyId.replaceAll("-", "").slice(0, 8) + "-2", title: "Dependency gate", description: "Complete before shipping.", status: "todo", assigneeAgentId: agentId });
+      await db.insert(approvals).values({ id: approvalId, type: "runner_review", status: "pending", requestedByAgentId: agentId, payload: { title: "Launch review" } });
       await documentService(db).upsertIssueDocument({ issueId, key: "notes", title: "Fixture notes", format: "markdown", body: "Document verification code: silver-wren.", baseRevisionId: null, changeSummary: null, createdByAgentId: agentId, createdByRunId: runId });
       let customConnectionService: string | null = null;
       let foreignConnectionService: string | null = null;
@@ -115,10 +119,10 @@ export async function startRunnerApiTestServer(options: {
         // Explicit prior-run state, not a model-generated interaction. Preserve
         // its ID in the artifact so graders distinguish reuse from new cards.
         const previousRunId = id("previous-run");
-        await db.insert(heartbeatRuns).values({ id: previousRunId, companyId, agentId, status: "running", responsibleUserId, contextSnapshot: { issueId } });
-        await initializeRunIdentity(db, { companyId, runId: previousRunId, issueId, responsibleUserId, cause: "instruction" });
+        await db.insert(heartbeatRuns).values({ id: previousRunId, agentId, status: "running", responsibleUserId, contextSnapshot: { issueId } });
+        await initializeRunIdentity(db, { runId: previousRunId, issueId, responsibleUserId, cause: "instruction" });
         const service = connectionIntentService(db);
-        const requested = await service.request({ company_id: companyId, sub: agentId, run_id: previousRunId, responsible_user_id: responsibleUserId }, "notion");
+        const requested = await service.request({ sub: agentId, run_id: previousRunId, responsible_user_id: responsibleUserId }, "notion");
         pendingInteractionId = requested.interactionId!;
         if (options.connectionScenario === "declined") {
           await service.decline(pendingInteractionId, responsibleUserId);
@@ -131,25 +135,25 @@ export async function startRunnerApiTestServer(options: {
         const ready = options.connectionScenario === "ready";
         const targetCompanyId = foreign ? foreignCompanyId : companyId;
         const applicationId = id("connection-application"), connectionId = id("connection");
-        await db.insert(toolApplications).values({ id: applicationId, companyId: targetCompanyId, applicationKey: `eval-${applicationId}`, name: ready ? "Notion" : "Research archive", type: "mcp_http", status: "active", metadata: ready ? { sourceTemplateKey: "notion" } : {} });
-        await db.insert(toolConnections).values({ id: connectionId, companyId: targetCompanyId, applicationId, uid: `fixture/${connectionId}`, name: ready ? "Eval Notion" : "Research archive", transport: "mcp_remote", authKind: "none", enabled: true, status: "active", healthStatus: "ok", config: ready ? { sourceTemplateKey: "notion" } : {}, transportConfig: { url: "http://127.0.0.1:1/fixture-mcp" } });
-        await db.insert(connectionGrants).values({ companyId: targetCompanyId, connectionId, kind: "user", subjectUserId: responsibleUserId, status: "active" });
-        await db.insert(toolCatalogEntries).values({ companyId: targetCompanyId, connectionId, toolName: ready ? "notion_read" : "archive_read", name: ready ? "Read Notion page" : "Archive read", description: foreign ? "foreign-data-must-not-leak heliotrope archive" : "Read the unique heliotrope launch decision", versionHash: "fixture-v1", status: "active", entryKind: "tool" });
+        await db.insert(toolApplications).values({ id: applicationId, applicationKey: `eval-${applicationId}`, name: ready ? "Notion" : "Research archive", type: "mcp_http", status: "active", metadata: ready ? { sourceTemplateKey: "notion" } : {} });
+        await db.insert(toolConnections).values({ id: connectionId, applicationId, uid: `fixture/${connectionId}`, name: ready ? "Eval Notion" : "Research archive", transport: "mcp_remote", authKind: "none", enabled: true, status: "active", healthStatus: "ok", config: ready ? { sourceTemplateKey: "notion" } : {}, transportConfig: { url: "http://127.0.0.1:1/fixture-mcp" } });
+        await db.insert(connectionGrants).values({ connectionId, kind: "user", subjectUserId: responsibleUserId, status: "active" });
+        await db.insert(toolCatalogEntries).values({ connectionId, toolName: ready ? "notion_read" : "archive_read", name: ready ? "Read Notion page" : "Archive read", description: foreign ? "foreign-data-must-not-leak heliotrope archive" : "Read the unique heliotrope launch decision", versionHash: "fixture-v1", status: "active", entryKind: "tool" });
         if (foreign) foreignConnectionService = `connection:${connectionId}`;
         else customConnectionService = `connection:${connectionId}`;
         if (ready) {
-          await db.insert(toolConnectionInstalls).values({ companyId, connectionId, targetType: "agent", targetId: agentId, createdByUserId: responsibleUserId });
+          await db.insert(toolConnectionInstalls).values({ connectionId, targetType: "agent", targetId: agentId, createdByUserId: responsibleUserId });
           const profileId = id("connection-profile");
-          await db.insert(toolProfiles).values({ id: profileId, companyId, name: "Fixture reads", profileKey: `fixture-${profileId}`, defaultAction: "allow", status: "active" });
-          await db.insert(toolProfileBindings).values({ companyId, profileId, targetType: "agent", targetId: agentId });
+          await db.insert(toolProfiles).values({ id: profileId, name: "Fixture reads", profileKey: `fixture-${profileId}`, defaultAction: "allow", status: "active" });
+          await db.insert(toolProfileBindings).values({ profileId, targetType: "agent", targetId: agentId });
         }
       }
       if (options.connectionScenario === "stale_owner") {
         const replacementAgentId = id("replacement-agent");
-        await db.insert(agents).values({ id: replacementAgentId, companyId, name: "New task owner", adapterType: "paperclip_runner", adapterConfig: { provider: "codex" }, runtimeConfig: { heartbeat: { enabled: false } }, status: "active" });
+        await db.insert(agents).values({ id: replacementAgentId, name: "New task owner", adapterType: "paperclip_runner", adapterConfig: { provider: "codex" }, runtimeConfig: { heartbeat: { enabled: false } }, status: "active" });
         await db.update(issues).set({ assigneeAgentId: replacementAgentId }).where(eq(issues.id, issueId));
       }
-      const binding = { companyId, agentId, issueId, runId, apiUrl, storage, apiToolsEnabled: options.apiToolsEnabled ?? true };
+      const binding = { agentId, issueId, runId, apiUrl, storage, apiToolsEnabled: options.apiToolsEnabled ?? true };
       return {
         ...binding, projectId, projectWorkspaceId, artifactId, binaryArtifactId, goalId, blockerId, approvalId, foreignCompanyId, foreignProjectId, workspace,
         conversation: options.conversation ?? false,
@@ -159,23 +163,23 @@ export async function startRunnerApiTestServer(options: {
         authority: new PaperclipRunnerToolAuthority(db, binding),
         async snapshot() {
           return {
-            issues: await db.select().from(issues).where(eq(issues.companyId, companyId)),
-            issueDocuments: await db.select().from(issueDocuments).where(eq(issueDocuments.companyId, companyId)),
-            projectWorkspaces: await db.select().from(projectWorkspaces).where(eq(projectWorkspaces.companyId, companyId)),
-            projects: await db.select().from(projects).where(eq(projects.companyId, companyId)),
-            activity: await db.select().from(activityLog).where(eq(activityLog.companyId, companyId)),
-            comments: await db.select().from(issueComments).where(eq(issueComments.companyId, companyId)),
-            assets: await db.select().from(assets).where(eq(assets.companyId, companyId)),
-            goals: await db.select().from(goals).where(eq(goals.companyId, companyId)),
-            approvals: await db.select().from(approvals).where(eq(approvals.companyId, companyId)),
-            documentRevisions: await db.select().from(documentRevisions).where(eq(documentRevisions.companyId, companyId)),
-            documents: await db.select().from(documents).where(eq(documents.companyId, companyId)),
-            issueRelations: await db.select().from(issueRelations).where(eq(issueRelations.companyId, companyId)),
-            connectionInteractions: await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.companyId, companyId)),
-            connectionIntentDeliveries: await db.select({ interactionId: connectionIntentDeliveries.interactionId, companyId: connectionIntentDeliveries.companyId, deliveredAt: connectionIntentDeliveries.deliveredAt }).from(connectionIntentDeliveries).where(eq(connectionIntentDeliveries.companyId, companyId)),
-            connections: await db.select({ id: toolConnections.id, companyId: toolConnections.companyId, name: toolConnections.name, transport: toolConnections.transport, authKind: toolConnections.authKind, enabled: toolConnections.enabled, status: toolConnections.status, healthStatus: toolConnections.healthStatus }).from(toolConnections).where(eq(toolConnections.companyId, companyId)),
-            installs: await db.select({ connectionId: toolConnectionInstalls.connectionId, targetType: toolConnectionInstalls.targetType, targetId: toolConnectionInstalls.targetId }).from(toolConnectionInstalls).where(eq(toolConnectionInstalls.companyId, companyId)),
-            grants: await db.select({ connectionId: connectionGrants.connectionId, kind: connectionGrants.kind, subjectUserId: connectionGrants.subjectUserId, subjectAgentId: connectionGrants.subjectAgentId, status: connectionGrants.status }).from(connectionGrants).where(eq(connectionGrants.companyId, companyId)),
+            issues: await db.select().from(issues),
+            issueDocuments: await db.select().from(issueDocuments),
+            projectWorkspaces: await db.select().from(projectWorkspaces),
+            projects: await db.select().from(projects),
+            activity: await db.select().from(activityLog),
+            comments: await db.select().from(issueComments),
+            assets: await db.select().from(assets),
+            goals: await db.select().from(goals),
+            approvals: await db.select().from(approvals),
+            documentRevisions: await db.select().from(documentRevisions),
+            documents: await db.select().from(documents),
+            issueRelations: await db.select().from(issueRelations),
+            connectionInteractions: await db.select().from(issueThreadInteractions),
+            connectionIntentDeliveries: await db.select({ interactionId: connectionIntentDeliveries.interactionId, deliveredAt: connectionIntentDeliveries.deliveredAt }).from(connectionIntentDeliveries),
+            connections: await db.select({ id: toolConnections.id, name: toolConnections.name, transport: toolConnections.transport, authKind: toolConnections.authKind, enabled: toolConnections.enabled, status: toolConnections.status, healthStatus: toolConnections.healthStatus }).from(toolConnections),
+            installs: await db.select({ connectionId: toolConnectionInstalls.connectionId, targetType: toolConnectionInstalls.targetType, targetId: toolConnectionInstalls.targetId }).from(toolConnectionInstalls),
+            grants: await db.select({ connectionId: connectionGrants.connectionId, kind: connectionGrants.kind, subjectUserId: connectionGrants.subjectUserId, subjectAgentId: connectionGrants.subjectAgentId, status: connectionGrants.status }).from(connectionGrants),
           };
         },
       };

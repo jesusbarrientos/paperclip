@@ -7,7 +7,6 @@ const validResult = {
   runtimeMode: "native",
   runId: "10000000-0000-4000-8000-000000000001",
   issueId: "10000000-0000-4000-8000-000000000002",
-  companyId: "10000000-0000-4000-8000-000000000003",
   result: { summary: "Completed the requested work" },
   terminal: {
     schema: "paperclip.prp.terminal.v1",

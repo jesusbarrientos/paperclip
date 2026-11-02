@@ -31,7 +31,7 @@ async function executeFailure(
   const execute = createCodexAcpExecutor({ now: () => now.getTime(), createRuntime });
   const result = await execute({
     runId: "typed-quota",
-    agent: { id: "quota-agent", companyId: "quota-company" },
+    agent: { id: "quota-agent" },
     runtime: {},
     config: {
       agentCommand: `${JSON.stringify(process.execPath.replaceAll("\\", "/"))} ${JSON.stringify(fixture.replaceAll("\\", "/"))}`,

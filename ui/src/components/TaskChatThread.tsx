@@ -513,7 +513,6 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     composerPause,
     composerDisabledReason,
     emptyMessage = "No messages yet.",
-    companyId,
     linkedRuns,
     liveRuns,
     activeRun,
@@ -596,7 +595,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
       : onRetryFailedRun;
   const canRetryFailedRun = Boolean(retryFailedRunHandler);
   const queryClient = useQueryClient();
-  const createdProjectItems = useProjectCreatedItems(props.creationActivity ?? [], companyId);
+  const createdProjectItems = useProjectCreatedItems(props.creationActivity ?? []);
   const createdSkillItems = useMemo(() => skillCreatedItems(props.creationActivity ?? []), [props.creationActivity]);
   const [pendingComposerAssignee, setPendingComposerAssignee] = useState<
     string | null
@@ -939,7 +938,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     hydratedRunIds: hydratedLogRunIds,
     errorsByRun: logErrorsByRun,
     retry: retryLogs,
-  } = useLiveRunTranscripts({ runs: logRuns, companyId });
+  } = useLiveRunTranscripts({ runs: logRuns });
   const fallbackByRunRef = useRef(
     new Map<string, NonNullable<ReturnType<typeof logTranscriptByRun.get>>>(),
   );
@@ -3202,7 +3201,6 @@ export function TaskChatThread(props: TaskChatThreadProps) {
                       modelAgents={agentMap}
                       userProfileMap={userProfileMap}
                       currentAssigneeValue={currentAssigneeValue}
-                      companyId={companyId}
                       assigneeAdapterOverrides={assigneeAdapterOverrides}
                       onPendingAssigneeChange={setPendingComposerAssignee}
                       issueStatus={issueStatus}

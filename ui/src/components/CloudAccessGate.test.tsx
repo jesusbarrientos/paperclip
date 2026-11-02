@@ -24,7 +24,7 @@ const responses: Record<string, unknown> = {
     user: { id: "user", name: "Operator", email: "operator@example.com", image: null },
     sentryDsn: null,
   },
-  "/api/cli-auth/me": { isInstanceAdmin: false, companyIds: ["company"] },
+  "/api/cli-auth/me": { isInstanceAdmin: false, memberships: [{ membershipRole: "member", status: "active" }] },
 };
 const checks = [
   ["/api/health", queryKeys.health],

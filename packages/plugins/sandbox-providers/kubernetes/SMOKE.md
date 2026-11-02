@@ -48,13 +48,9 @@ npx paperclipai plugin install \
 
 Expected: `✓ Installed paperclip.kubernetes-sandbox-provider v0.1.0 (ready)`.
 
-### 4. Create a company and a kubernetes sandbox environment
+### 4. Create a kubernetes sandbox environment
 
 ```bash
-CO_ID=$(curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"name":"SmokeCo"}' \
-  http://127.0.0.1:3100/api/companies | jq -r '.id')
-
 KUBECONFIG_CONTENT=$(cat ~/.kube/config | jq -Rs .)
 
 curl -s -X POST -H "Content-Type: application/json" \
@@ -64,12 +60,12 @@ curl -s -X POST -H "Content-Type: application/json" \
     \"config\": {
       \"provider\": \"kubernetes\",
       \"kubeconfig\": $KUBECONFIG_CONTENT,
-      \"companySlug\": \"smoke\",
+      \"namespaceSlug\": \"smoke\",
       \"adapterType\": \"claude_local\",
       \"imageAllowList\": [\"ghcr.io/paperclipai/agent-runtime-claude:v1\"]
     }
   }" \
-  http://127.0.0.1:3100/api/companies/$CO_ID/environments | jq
+  http://127.0.0.1:3100/api/environments | jq
 ```
 
 Expected: HTTP 201 with the new environment row.
@@ -77,7 +73,7 @@ Expected: HTTP 201 with the new environment row.
 ### 5. Probe the environment
 
 ```bash
-ENV_ID=$(curl -s http://127.0.0.1:3100/api/companies/$CO_ID/environments | jq -r '.[0].id')
+ENV_ID=$(curl -s http://127.0.0.1:3100/api/environments | jq -r '.[0].id')
 curl -s -X POST -d '{}' -H "Content-Type: application/json" \
   http://127.0.0.1:3100/api/environments/$ENV_ID/probe | jq
 ```

@@ -11,7 +11,7 @@ import { toolsApi } from "@/api/tools";
  *
  * Two modes:
  *
- * 1. **Data-driven** (default) — pass only `companyId`. Renders the standing
+ * 1. **Data-driven** (default) — pass no props. Renders the standing
  *    "enforcement is server-side" message and tints to `denied-detected` when
  *    governed tool calls were denied or failed in the last hour. This is an
  *    *observability* banner — enforcement itself lives in the tool gateway.
@@ -46,7 +46,6 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 export type EnforcementTone = "info" | "warning" | "error";
 
 export interface EnforcementBannerProps extends VariantProps<typeof enforcementBanner> {
-  companyId?: string;
   className?: string;
   /** Override the computed variant (used by the design guide). */
   forceVariant?: "default" | "denied-detected";
@@ -101,19 +100,18 @@ function PresentationalBanner({
 }
 
 export function EnforcementBanner(props: EnforcementBannerProps) {
-  const { companyId, className, forceVariant, recentDenialCount, tone, title, body, icon, action } = props;
+  const { className, forceVariant, recentDenialCount, tone, title, body, icon, action } = props;
 
   // Presentational mode short-circuits the data hook below.
   const isPresentational = tone !== undefined;
 
   const audit = useQuery({
-    queryKey: queryKeys.tools.audit(companyId ?? "", 100),
-    queryFn: () => toolsApi.listAudit(companyId ?? "", 100),
+    queryKey: queryKeys.tools.audit(100),
+    queryFn: () => toolsApi.listAudit(100),
     enabled:
       !isPresentational &&
       forceVariant === undefined &&
-      recentDenialCount === undefined &&
-      !!companyId,
+      recentDenialCount === undefined,
     refetchInterval: 30_000,
   });
 

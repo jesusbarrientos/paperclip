@@ -26,14 +26,14 @@ describe("registered run instruction copies", () => {
   let revisions: ReturnType<typeof agentInstructionRevisionService>;
   const previousHome = process.env.PAPERCLIP_HOME;
   let home: string;
-  let companyId: string, agentId: string, userId: string, root: string;
+  let agentId: string, userId: string, root: string;
   const entryFile = "policy/INSTRUCTIONS.txt";
   const initial = "\uFEFF# Original\r\n☃\n";
-  const target = () => ({ companyId, agentId });
+  const target = () => ({ agentId });
   const board = () => ({ type: "board" as const, userId, source: "session" as const });
   async function run() {
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, invocationSource: "on_demand", responsibleUserId: userId });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, invocationSource: "on_demand", responsibleUserId: userId });
     return (await copies.prepare({ legacy: true, ...target(), runId, cwd: home }))!;
   }
   beforeAll(async () => {
@@ -43,6 +43,7 @@ describe("registered run instruction copies", () => {
     db = createDb(database.connectionString);
     copies = agentInstructionWorkingCopyService(db);
     revisions = agentInstructionRevisionService(db);
+    await db.insert(companies).values({ name: "Instruction tests", issuePrefix: "INS" });
   }, 90_000);
   afterAll(async () => {
     if (previousHome === undefined) delete process.env.PAPERCLIP_HOME; else process.env.PAPERCLIP_HOME = previousHome;
@@ -57,11 +58,10 @@ describe("registered run instruction copies", () => {
     }
   });
   beforeEach(async () => {
-    companyId = randomUUID(); agentId = randomUUID(); userId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Instruction tests", issuePrefix: randomUUID().slice(0, 8) });
+    agentId = randomUUID(); userId = randomUUID();
     await db.insert(authUsers).values({ id: userId, name: "Editor", email: `${userId}@example.test`, createdAt: new Date(), updatedAt: new Date() });
     root = resolveManagedInstructionsRoot({ ...target(), id: agentId, name: "Target", adapterConfig: {} });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Target", adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: entryFile } });
+    await db.insert(agents).values({ id: agentId, name: "Target", adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: entryFile } });
     await db.insert(companyMemberships).values([
       { principalType: "user", principalId: userId, membershipRole: "operator" },
       { principalType: "agent", principalId: agentId, membershipRole: "member" },
@@ -79,11 +79,11 @@ describe("registered run instruction copies", () => {
     await fs.writeFile(replacement, edited);
     await fs.rename(replacement, path.join(copy.localRoot, entryFile));
     expect(await fs.readFile(path.join(root, entryFile), "utf8")).toBe(initial);
-    const saved = await copies.collectStopped({ companyId, runId: copy.runId });
+    const saved = await copies.collectStopped({ runId: copy.runId });
     expect(saved).toMatchObject({ state: "saved", candidateHash: expect.any(String), processStoppedAt: expect.any(Date) });
     expect(await fs.readFile(path.join(root, entryFile), "utf8")).toBe(edited);
     copies = agentInstructionWorkingCopyService(db);
-    expect((await copies.collectStopped({ companyId, runId: copy.runId }))?.receipt).toEqual(saved?.receipt);
+    expect((await copies.collectStopped({ runId: copy.runId }))?.receipt).toEqual(saved?.receipt);
     expect((await revisions.history({ ...target(), entryFile }, board())).revisions).toHaveLength(0);
     const next = await run();
     expect(await fs.readFile(path.join(next.localRoot, entryFile), "utf8")).toBe(edited);
@@ -93,7 +93,7 @@ describe("registered run instruction copies", () => {
     const copy = await run();
     await fs.writeFile(path.join(copy.localRoot, entryFile), status);
     await db.update(heartbeatRuns).set({ status, finishedAt: new Date() }).where(eq(heartbeatRuns.id, copy.runId));
-    expect((await copies.collectStopped({ companyId, runId: copy.runId }))?.state).toBe("saved");
+    expect((await copies.collectStopped({ runId: copy.runId }))?.state).toBe("saved");
     expect((await revisions.readCurrent(target(), board()))?.content).toBe(status);
     const [unchangedRun] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, copy.runId));
     expect(unchangedRun.status).toBe(status);
@@ -102,22 +102,22 @@ describe("registered run instruction copies", () => {
   it.each(["saved", "unchanged"])("refreshes a stopped %s copy from the current canonical revision before retry", async (state) => {
     const copy = await run();
     if (state === "saved") await fs.writeFile(path.join(copy.localRoot, entryFile), "previous saved turn");
-    expect((await copies.collectStopped({ companyId, runId: copy.runId }))?.state).toBe(state);
+    expect((await copies.collectStopped({ runId: copy.runId }))?.state).toBe(state);
     const before = (await revisions.readCurrent(target(), board()))!;
     const current = await revisions.commit({ ...target(), entryFile, baseRevisionId: before.revision.id, content: "new board instructions", source: "api" }, board());
     const retried = (await copies.prepare({ legacy: true, ...target(), runId: copy.runId, cwd: home }))!;
     expect(retried).toMatchObject({ state: "prepared", baseRevisionId: current.revision.id, baseHash: current.revision.contentHash, processStoppedAt: null });
     expect(await fs.readFile(path.join(retried.localRoot, entryFile), "utf8")).toBe("new board instructions");
     await fs.writeFile(path.join(retried.localRoot, entryFile), "retry adds a change");
-    expect((await copies.collectStopped({ companyId, runId: copy.runId }))?.state).toBe("saved");
+    expect((await copies.collectStopped({ runId: copy.runId }))?.state).toBe("saved");
   });
 
   it("never rebases uncollected private bytes or a live warm copy onto a newer head", async () => {
     const stopped = await run();
-    await copies.collectStopped({ companyId, runId: stopped.runId });
+    await copies.collectStopped({ runId: stopped.runId });
     await fs.writeFile(path.join(stopped.localRoot, entryFile), "uncollected private edit");
     const warm = await run();
-    expect(await copies.hasChanges({ companyId, runId: warm.runId })).toBe(false);
+    expect(await copies.hasChanges({ runId: warm.runId })).toBe(false);
     const prior = (await revisions.readCurrent(target(), board()))!;
     await revisions.commit({ ...target(), entryFile, baseRevisionId: prior.revision.id, content: "board change", source: "api" }, board());
     for (const copy of [stopped, warm]) {
@@ -126,14 +126,14 @@ describe("registered run instruction copies", () => {
     }
     expect(await fs.readFile(path.join(stopped.localRoot, entryFile), "utf8")).toBe("uncollected private edit");
     expect(await fs.readFile(path.join(warm.localRoot, entryFile), "utf8")).toBe(initial);
-    expect((await copies.collectStopped({ companyId, runId: stopped.runId }))?.state).toBe("conflict");
+    expect((await copies.collectStopped({ runId: stopped.runId }))?.state).toBe("conflict");
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("board change");
   });
 
   it.each(["before replacement", "after replacement"])("preserves the completed receipt when retry staging fails %s", async (point) => {
     const copy = await run();
     await fs.writeFile(path.join(copy.localRoot, entryFile), "completed turn");
-    const saved = (await copies.collectStopped({ companyId, runId: copy.runId }))!;
+    const saved = (await copies.collectStopped({ runId: copy.runId }))!;
     expect(saved.state).toBe("saved");
     const prior = (await revisions.readCurrent(target(), board()))!;
     const current = await revisions.commit({ ...target(), entryFile, baseRevisionId: prior.revision.id, content: "new board instructions", source: "api" }, board());
@@ -150,10 +150,10 @@ describe("registered run instruction copies", () => {
     try {
       await expect(copies.prepare({ legacy: true, ...target(), runId: copy.runId, cwd: home })).rejects.toThrow("retry staging failed");
     } finally { mkdir.mockRestore(); chmod.mockRestore(); }
-    expect(await copies.get(companyId, copy.runId)).toEqual(saved);
+    expect(await copies.get(copy.runId)).toEqual(saved);
     copies = agentInstructionWorkingCopyService(db);
     await copies.recoverStopped();
-    expect(await copies.get(companyId, copy.runId)).toEqual(saved);
+    expect(await copies.get(copy.runId)).toEqual(saved);
     expect((await revisions.readCurrent(target(), board()))?.revision.id).toBe(current.revision.id);
     const retried = (await copies.prepare({ legacy: true, ...target(), runId: copy.runId, cwd: home }))!;
     expect(retried).toMatchObject({ state: "prepared", baseRevisionId: current.revision.id, processStoppedAt: null });
@@ -164,7 +164,7 @@ describe("registered run instruction copies", () => {
     expect((await revisions.readCommittedForRuntime(target()))?.content).toBe(initial);
     const copy = await run();
     await fs.writeFile(path.join(copy.localRoot, entryFile), "saved runtime content");
-    await copies.collectStopped({ companyId, runId: copy.runId });
+    await copies.collectStopped({ runId: copy.runId });
     const current = (await revisions.readCurrent(target(), board()))!;
     await fs.writeFile(path.join(root, entryFile), "current filesystem contents");
     expect((await revisions.readCommittedForRuntime(target()))?.content).toBe("current filesystem contents");
@@ -187,7 +187,6 @@ describe("registered run instruction copies", () => {
     }
     expect(await fs.readFile(path.join(root, entryFile), "utf8")).toBe("current filesystem contents");
     expect((await revisions.history({ ...target(), entryFile }, board())).revisions).toHaveLength(0);
-    await expect(revisions.readCommittedForRuntime({ companyId: randomUUID(), agentId })).rejects.toThrow("Agent not found");
   });
 
   it("preserves a competing stale candidate and requires explicit resolution against the new head", async () => {
@@ -195,17 +194,17 @@ describe("registered run instruction copies", () => {
     const second = await run();
     await fs.writeFile(path.join(first.localRoot, entryFile), "first run");
     await fs.writeFile(path.join(second.localRoot, entryFile), "second run");
-    await copies.collectStopped({ companyId, runId: first.runId });
-    const conflict = await copies.collectStopped({ companyId, runId: second.runId });
+    await copies.collectStopped({ runId: first.runId });
+    const conflict = await copies.collectStopped({ runId: second.runId });
     expect(conflict).toMatchObject({ state: "conflict", errorCode: "INSTRUCTION_REVISION_CONFLICT" });
     expect(Buffer.from(conflict!.candidateBase64!, "base64").toString("utf8")).toBe("second run");
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("first run");
     copies = agentInstructionWorkingCopyService(db);
-    expect(await copies.list(companyId, agentId, board())).toHaveLength(1);
+    expect(await copies.list(agentId, board())).toHaveLength(1);
     const current = (await revisions.readCurrent(target(), board()))!;
     await copies.resolve({ ...target(), runId: second.runId, baseRevisionId: current.revision.id, content: "explicitly combined" }, board());
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("explicitly combined");
-    expect((await copies.collectStopped({ companyId, runId: second.runId }))?.state).toBe("resolved");
+    expect((await copies.collectStopped({ runId: second.runId }))?.state).toBe("resolved");
     const resumed = (await copies.prepare({ legacy: true, ...target(), runId: second.runId, cwd: home }))!;
     const resolved = (await revisions.readCurrent(target(), board()))!;
     expect(resumed.baseRevisionId).toBe(resolved.revision.id);
@@ -216,7 +215,7 @@ describe("registered run instruction copies", () => {
     const copy = await run();
     await fs.writeFile(path.join(copy.localRoot, entryFile), "candidate after revocation");
     await db.update(companyMemberships).set({ status: "suspended" }).where(eq(companyMemberships.principalId, userId));
-    const denied = await copies.collectStopped({ companyId, runId: copy.runId });
+    const denied = await copies.collectStopped({ runId: copy.runId });
     expect(denied).toMatchObject({ state: "conflict", errorCode: "RESPONSIBLE_USER_UNAVAILABLE" });
     expect(denied?.candidateBase64).not.toBeNull();
     expect(await fs.readFile(path.join(root, entryFile), "utf8")).toBe(initial);
@@ -227,9 +226,9 @@ describe("registered run instruction copies", () => {
     await fs.writeFile(path.join(copy.localRoot, entryFile), "Unauthorized persistent edit");
     await db.update(agents).set({ permissions: {
       trustPreset: "low_trust_review",
-      authorizationPolicy: { trustBoundary: { mode: "low_trust_review", companyId, rootIssueId: randomUUID() } },
+      authorizationPolicy: { trustBoundary: { mode: "low_trust_review", rootIssueId: randomUUID() } },
     } }).where(eq(agents.id, agentId));
-    const denied = await copies.collectStopped({ companyId, runId: copy.runId });
+    const denied = await copies.collectStopped({ runId: copy.runId });
     expect(denied?.state).toBe("conflict");
     expect(denied?.errorMessage).toContain("This low-trust run cannot change persistent agent instructions, including AGENTS.md");
     expect(denied?.candidateBase64).not.toBeNull();
@@ -240,23 +239,23 @@ describe("registered run instruction copies", () => {
     const linked = await run();
     await fs.unlink(path.join(linked.localRoot, entryFile));
     await fs.symlink(path.join(home, "AGENTS.md"), path.join(linked.localRoot, entryFile));
-    expect((await copies.collectStopped({ companyId, runId: linked.runId }))?.state).toBe("pending_collection");
+    expect((await copies.collectStopped({ runId: linked.runId }))?.state).toBe("pending_collection");
     const missing = await run();
     await fs.unlink(path.join(missing.localRoot, entryFile));
-    expect((await copies.collectStopped({ companyId, runId: missing.runId }))?.state).toBe("unavailable");
+    expect((await copies.collectStopped({ runId: missing.runId }))?.state).toBe("unavailable");
     const empty = await run();
     await fs.writeFile(path.join(empty.localRoot, entryFile), "");
-    expect((await copies.collectStopped({ companyId, runId: empty.runId }))?.state).toBe("saved");
+    expect((await copies.collectStopped({ runId: empty.runId }))?.state).toBe("saved");
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("");
   });
 
   it("keeps unchanged warm copies reusable without a content revision", async () => {
     const copy = await run();
-    expect(await copies.hasChanges({ companyId, runId: copy.runId })).toBe(false);
-    expect((await copies.get(companyId, copy.runId))?.processStoppedAt).toBeNull();
+    expect(await copies.hasChanges({ runId: copy.runId })).toBe(false);
+    expect((await copies.get(copy.runId))?.processStoppedAt).toBeNull();
     expect((await revisions.history({ ...target(), entryFile }, board())).revisions).toHaveLength(0);
     await fs.writeFile(path.join(copy.localRoot, entryFile), "changed after turn");
-    expect(await copies.hasChanges({ companyId, runId: copy.runId })).toBe(true);
+    expect(await copies.hasChanges({ runId: copy.runId })).toBe(true);
     expect((await revisions.readCurrent(target(), board()))?.content).toBe(initial);
   });
 
@@ -267,16 +266,16 @@ describe("registered run instruction copies", () => {
     const first = await revisions.commit({ ...target(), entryFile, baseRevisionId: copy.baseRevisionId, content: "explicit self-save", source: "tool" }, board());
     await copies.acknowledgeExplicitSave({ ...target(), runId: copy.runId, entryFile, revisionId: first.revision.id, contentHash: first.revision.contentHash });
     await fs.writeFile(local, "local edit after explicit save");
-    expect((await copies.collectStopped({ companyId, runId: copy.runId }))?.state).toBe("saved");
+    expect((await copies.collectStopped({ runId: copy.runId }))?.state).toBe("saved");
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("local edit after explicit save");
 
     const competing = await run();
     await fs.writeFile(path.join(competing.localRoot, entryFile), "older local draft");
     const separate = await revisions.commit({ ...target(), entryFile, baseRevisionId: competing.baseRevisionId, content: "different explicit content", source: "tool" }, board());
     await copies.acknowledgeExplicitSave({ ...target(), runId: competing.runId, entryFile, revisionId: separate.revision.id, contentHash: separate.revision.contentHash });
-    expect((await copies.collectStopped({ companyId, runId: competing.runId }))?.state).toBe("conflict");
+    expect((await copies.collectStopped({ runId: competing.runId }))?.state).toBe("conflict");
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("different explicit content");
-    expect((await copies.list(companyId, agentId, board()))[0]).not.toHaveProperty("localRoot");
+    expect((await copies.list(agentId, board()))[0]).not.toHaveProperty("localRoot");
   });
 
   it("recovers captured bytes after restart and deduplicates concurrent cleanup callbacks", async () => {
@@ -288,8 +287,8 @@ describe("registered run instruction copies", () => {
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("captured before restart");
     const duplicate = await run();
     await fs.writeFile(path.join(duplicate.localRoot, entryFile), "one final edit");
-    await Promise.all([copies.collectStopped({ companyId, runId: duplicate.runId }), copies.collectStopped({ companyId, runId: duplicate.runId })]);
-    expect((await copies.get(companyId, duplicate.runId))?.state).toBe("saved");
+    await Promise.all([copies.collectStopped({ runId: duplicate.runId }), copies.collectStopped({ runId: duplicate.runId })]);
+    expect((await copies.get(duplicate.runId))?.state).toBe("saved");
     expect((await revisions.history({ ...target(), entryFile }, board())).revisions).toHaveLength(0);
   });
   it("requires durable stop evidence before recovering an uncaptured copy", async () => {
@@ -299,7 +298,7 @@ describe("registered run instruction copies", () => {
     copies = agentInstructionWorkingCopyService(db);
     await copies.recoverStopped();
     expect((await revisions.readCurrent(target(), board()))?.content).toBe(initial);
-    expect((await copies.list(companyId, agentId, board()))[0]).toMatchObject({ state: "pending_collection", content: null });
+    expect((await copies.list(agentId, board()))[0]).toMatchObject({ state: "pending_collection", content: null });
     await appendHeartbeatRunEvent(db, { ...target(), runId: copy.runId, eventType: "native.local_process_stopped", stream: "system" });
     await copies.recoverStopped();
     expect((await revisions.readCurrent(target(), board()))?.content).toBe("edit before controller restart");
@@ -313,7 +312,7 @@ describe("registered run instruction copies", () => {
     await appendHeartbeatRunEvent(db, { ...target(), runId: copy.runId, eventType: "native.process_start_requested", stream: "system" });
     await copies.recoverStopped();
     expect((await revisions.readCurrent(target(), board()))?.content).toBe(initial);
-    const lost = await copies.reportUnavailable(companyId, copy.runId);
+    const lost = await copies.reportUnavailable(copy.runId);
     expect(lost).toMatchObject({ state: "unavailable", candidateBase64: null, processStoppedAt: null });
     expect(lost?.errorMessage).not.toContain(copy.localRoot);
   });
@@ -324,7 +323,7 @@ describe("registered run instruction copies", () => {
     await execFile("git", ["init", workspace]);
     await execFile("git", ["-C", workspace, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-m", "fixture"]);
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, invocationSource: "on_demand", responsibleUserId: userId });
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, invocationSource: "on_demand", responsibleUserId: userId });
     const copy = (await copies.prepare({ legacy: true, ...target(), runId, cwd: workspace }))!;
     expect(copy.localRoot).toBe(path.join(workspace, ".paperclip-runtime", `instruction-edits-${runId}`, "instructions"));
     await fs.writeFile(path.join(workspace, "deliverable.txt"), "public work");

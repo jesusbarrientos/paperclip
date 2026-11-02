@@ -20,7 +20,6 @@ import {
 } from "../../vendor/paperclip-runner/index.js";
 
 export interface NativeRunStoreBinding {
-  readonly companyId: string;
   readonly issueId: string;
   readonly runId: string;
   readonly agentId: string;
@@ -133,7 +132,6 @@ export class NativeRunCoordinatorStore {
       .from(nativeRunResults)
       .where(
         and(
-          eq(nativeRunResults.companyId, this.#binding.companyId),
           eq(nativeRunResults.issueId, this.#binding.issueId),
           eq(nativeRunResults.runId, this.#binding.runId),
           eq(nativeRunResults.schemaStatus, "accepted"),
@@ -222,7 +220,6 @@ export class NativeRunCoordinatorStore {
         .where(
           and(
             eq(heartbeatRuns.id, this.#binding.runId),
-            eq(heartbeatRuns.companyId, this.#binding.companyId),
             eq(heartbeatRuns.agentId, this.#binding.agentId),
             eq(heartbeatRuns.nativeIssueId, this.#binding.issueId),
             eq(
@@ -294,7 +291,6 @@ export class NativeRunCoordinatorStore {
       const [inserted] = await tx
         .insert(heartbeatRunEvents)
         .values({
-          companyId: this.#binding.companyId,
           runId: this.#binding.runId,
           agentId: this.#binding.agentId,
           seq: cursor,
@@ -343,7 +339,7 @@ export class NativeRunCoordinatorStore {
       // Match task -> run lock ordering before the result's task foreign-key
       // check; a concurrent task mutation may also need this run row.
       await tx.select({ id: issues.id }).from(issues)
-        .where(and(eq(issues.id, this.#binding.issueId), eq(issues.companyId, this.#binding.companyId)))
+        .where(eq(issues.id, this.#binding.issueId))
         .for("key share");
       const [run] = await tx
         .select()
@@ -353,7 +349,6 @@ export class NativeRunCoordinatorStore {
         .limit(1);
       if (
         !run ||
-        run.companyId !== this.#binding.companyId ||
         run.agentId !== this.#binding.agentId ||
         run.nativeIssueId !== this.#binding.issueId ||
         run.runtimeMode !== "native" ||
@@ -383,7 +378,6 @@ export class NativeRunCoordinatorStore {
       const [inserted] = await tx
         .insert(nativeRunResults)
         .values({
-          companyId: this.#binding.companyId,
           issueId: this.#binding.issueId,
           runId: this.#binding.runId,
           turnId: input.turnId ?? null,
@@ -401,7 +395,6 @@ export class NativeRunCoordinatorStore {
         .insert(nativeRunFinalizations)
         .values({
           runId: this.#binding.runId,
-          companyId: this.#binding.companyId,
           issueId: this.#binding.issueId,
           phase: "workspace_finalizing",
           resultId: inserted.id,
@@ -494,7 +487,6 @@ export class NativeRunCoordinatorStore {
         .where(
           and(
             eq(nativeRunFinalizations.runId, this.#binding.runId),
-            eq(nativeRunFinalizations.companyId, this.#binding.companyId),
             eq(nativeRunFinalizations.issueId, this.#binding.issueId),
           ),
         )
@@ -567,7 +559,6 @@ export class NativeRunCoordinatorStore {
       .where(
         and(
           eq(nativeRunFinalizations.runId, this.#binding.runId),
-          eq(nativeRunFinalizations.companyId, this.#binding.companyId),
           eq(nativeRunFinalizations.issueId, this.#binding.issueId),
           eq(nativeRunFinalizations.leaseOwner, input.leaseOwner),
         ),

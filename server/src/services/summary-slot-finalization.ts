@@ -7,7 +7,6 @@ const TERMINAL_ISSUE_STATUSES = new Set<IssueStatus>(["done", "cancelled"]);
 
 interface TerminalGenerationIssue {
   id: string;
-  companyId: string;
   identifier: string | null;
   title: string;
   status: IssueStatus;
@@ -35,7 +34,6 @@ export async function finalizeSummarySlotsForTerminalIssue(
     })
     .where(
       and(
-        eq(summarySlots.companyId, issue.companyId),
         eq(summarySlots.generatingIssueId, issue.id),
         eq(summarySlots.status, "generating"),
       ),

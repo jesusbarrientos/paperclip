@@ -71,7 +71,7 @@ curl -fsS http://127.0.0.1:3100/api/health
 ```
 
 ### 2) Invite + join + approval
-- create invite prompt via `POST /api/companies/:companyId/openclaw/invite-prompt`
+- create invite prompt via `POST /api/openclaw/invite-prompt`
 - paste prompt to OpenClaw
 - approve join request
 - assert created agent:

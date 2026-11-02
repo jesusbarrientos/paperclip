@@ -7,8 +7,8 @@ import { api } from "./client";
  * `allowlist` restricts to the named agents, `disabled` turns it off.
  */
 export const inboxAgentPolicyApi = {
-  getMine: (companyId: string) =>
-    api.get<InboxAgentPolicy>(`/companies/${companyId}/users/me/inbox-agent-policy`),
-  updateMine: (companyId: string, input: UpdateInboxAgentPolicy) =>
-    api.put<InboxAgentPolicy>(`/companies/${companyId}/users/me/inbox-agent-policy`, input),
+  getMine: () =>
+    api.get<InboxAgentPolicy>(`/users/me/inbox-agent-policy`),
+  updateMine: (input: UpdateInboxAgentPolicy) =>
+    api.put<InboxAgentPolicy>(`/users/me/inbox-agent-policy`, input),
 };

@@ -24,7 +24,6 @@ export type CaseLinkRole = "origin" | "work" | "reference";
 /** A case row as returned by the list endpoint. */
 export interface CaseSummary {
   id: string;
-  companyId: string;
   projectId: string | null;
   caseNumber: number;
   identifier: string;
@@ -54,7 +53,6 @@ export interface CaseDocumentRef {
 
 export interface CaseDocument {
   id: string;
-  companyId: string;
   title: string | null;
   format: string;
   latestBody: string | null;
@@ -165,7 +163,6 @@ export interface CaseEvent {
 /** One revision of a case document, with author + via-issue attribution. */
 export interface CaseDocumentRevision {
   id: string;
-  companyId?: string;
   documentId?: string;
   revisionNumber: number;
   title: string;
@@ -252,7 +249,6 @@ export interface PatchCaseInput {
 export function caseDocumentToIssueDocument(caseId: string, key: string, document: CaseDocument): IssueDocument {
   return {
     id: document.id,
-    companyId: document.companyId,
     issueId: caseId,
     key,
     title: document.title,
@@ -276,7 +272,6 @@ export function caseDocumentToIssueDocument(caseId: string, key: string, documen
 export function caseRevisionToDocumentRevision(caseId: string, key: string, revision: CaseDocumentRevision): DocumentRevision {
   return {
     id: revision.id,
-    companyId: revision.companyId ?? "",
     documentId: revision.documentId ?? "",
     issueId: caseId,
     key,
@@ -292,15 +287,15 @@ export function caseRevisionToDocumentRevision(caseId: string, key: string, revi
 }
 
 export const casesApi = {
-  list: (companyId: string, params: ListCasesParams = {}) =>
-    api.get<CaseSummary[]>(`/companies/${companyId}/cases${toQuery(params)}`),
+  list: (params: ListCasesParams = {}) =>
+    api.get<CaseSummary[]>(`/cases${toQuery(params)}`),
   get: (idOrIdentifier: string) => api.get<CaseDetail>(`/cases/${idOrIdentifier}`),
   patch: (idOrIdentifier: string, input: PatchCaseInput) =>
     api.patch<CaseDetail>(`/cases/${idOrIdentifier}`, input),
   listEvents: (idOrIdentifier: string, limit = 100) =>
     api.get<CaseEvent[]>(`/cases/${idOrIdentifier}/events?limit=${limit}`),
-  listChildren: (companyId: string, parentId: string) =>
-    api.get<CaseSummary[]>(`/companies/${companyId}/cases${toQuery({ parent: parentId, limit: 200 })}`),
+  listChildren: (parentId: string) =>
+    api.get<CaseSummary[]>(`/cases${toQuery({ parent: parentId, limit: 200 })}`),
   getDocument: (idOrIdentifier: string, key: string) =>
     api.get<CaseDocument & { key: string; body: string }>(`/cases/${idOrIdentifier}/documents/${encodeURIComponent(key)}`),
   upsertDocument: (

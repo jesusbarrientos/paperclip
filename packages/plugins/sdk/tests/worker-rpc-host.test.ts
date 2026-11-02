@@ -10,13 +10,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { definePlugin } from "../src/define-plugin.js";
 import {
   createRequest,
-  createErrorResponse,
   createSuccessResponse,
   isJsonRpcRequest,
   isJsonRpcResponse,
   isJsonRpcNotification,
   parseMessage,
-  PLUGIN_RPC_ERROR_CODES,
   serializeMessage,
   type JsonRpcNotification,
   type JsonRpcResponse,
@@ -74,7 +72,7 @@ describe("isWorkerEntrypoint", () => {
 });
 
 describe("worker performAction context", () => {
-  it("does not derive context companyId from caller params without host actor context", async () => {
+  it("defaults the actor to system without host actor context", async () => {
     const hostToWorker = new PassThrough();
     const workerToHost = new PassThrough();
     const hostReadline = createInterface({ input: workerToHost });
@@ -82,10 +80,8 @@ describe("worker performAction context", () => {
     let nextRequestId = 1;
     const plugin = definePlugin({
       async setup(ctx) {
-        ctx.actions.register("inspect", async (params, context) => ({
-          paramsCompanyId: params.companyId,
-          actor: context.actor,
-          companyId: context.companyId,
+        ctx.actions.register("inspect", async (_params, context) => ({
+          actor: context.actor
         }));
       },
     });
@@ -136,17 +132,14 @@ describe("worker performAction context", () => {
 
       await expect(callWorker("performAction", {
         key: "inspect",
-        params: { companyId: "spoofed-company" },
+        params: {},
       })).resolves.toEqual({
-        paramsCompanyId: "spoofed-company",
         actor: {
           type: "system",
           userId: null,
           agentId: null,
-          runId: null,
-          companyId: null,
-        },
-        companyId: null,
+          runId: null
+        }
       });
     } finally {
       worker.stop();
@@ -157,18 +150,14 @@ describe("worker performAction context", () => {
   });
 });
 
-describe("worker invocation scope propagation", () => {
-  it("keeps overlapping company scopes local to each getData invocation", async () => {
+describe("worker invocation propagation", () => {
+  it("keeps overlapping invocation ids local to each getData invocation", async () => {
     const hostToWorker = new PassThrough();
     const workerToHost = new PassThrough();
     const hostReadline = createInterface({ input: workerToHost });
     const pending = new Map<string, (response: JsonRpcResponse) => void>();
     const nestedInvocationIds: string[] = [];
-    const invocationCompanies = new Map([
-      ["invocation-a", "company-a"],
-      ["invocation-b", "company-b"],
-    ]);
-    let releaseCompanyA: (() => void) | null = null;
+    let releaseA: (() => void) | null = null;
     let nextRequestId = 1;
 
     const plugin = definePlugin({
@@ -176,11 +165,11 @@ describe("worker invocation scope propagation", () => {
         ctx.data.register("probe", async (params) => {
           if (params.label === "a") {
             await new Promise<void>((resolve) => {
-              releaseCompanyA = resolve;
+              releaseA = resolve;
             });
           }
-          const company = await ctx.companies.get(String(params.requestedCompanyId));
-          return { label: params.label, company };
+          const config = await ctx.config.get();
+          return { label: params.label, config };
         });
       },
     });
@@ -219,27 +208,16 @@ describe("worker invocation scope propagation", () => {
       }
 
       if (!isJsonRpcRequest(message)) return;
-      if (message.method !== "companies.get") return;
+      if (message.method !== "config.get") return;
 
       const invocationId = (message as { paperclipInvocationId?: string }).paperclipInvocationId ?? "";
-      const requestedCompanyId = (message.params as { companyId?: string }).companyId;
-      const allowedCompanyId = invocationCompanies.get(invocationId);
       nestedInvocationIds.push(invocationId);
-      if (requestedCompanyId !== allowedCompanyId) {
-        hostToWorker.write(serializeMessage(createErrorResponse(
-          message.id,
-          PLUGIN_RPC_ERROR_CODES.CAPABILITY_DENIED,
-          `requested company "${requestedCompanyId}" but invocation "${invocationId}" is scoped to "${allowedCompanyId}"`,
-        )));
-        return;
-      }
-
       hostToWorker.write(serializeMessage(createSuccessResponse(message.id, {
-        id: requestedCompanyId,
+        invocationId,
       })));
 
       if (invocationId === "invocation-b") {
-        releaseCompanyA?.();
+        releaseA?.();
       }
     });
 
@@ -253,7 +231,7 @@ describe("worker invocation scope propagation", () => {
           description: "Scope test",
           author: "Paperclip",
           categories: ["automation"],
-          capabilities: ["companies.read"],
+          capabilities: [],
           entrypoints: { worker: "dist/worker.js" },
         },
         config: {},
@@ -261,33 +239,25 @@ describe("worker invocation scope propagation", () => {
         apiVersion: 1,
       });
 
-      const companyARequest = callWorker(
+      const requestA = callWorker(
         "getData",
-        {
-          key: "probe",
-          companyId: "company-a",
-          params: { label: "a", requestedCompanyId: "company-b" },
-        },
-        { id: "invocation-a", scope: { companyId: "company-a" } },
+        { key: "probe", params: { label: "a" } },
+        { id: "invocation-a" },
       );
-      const companyAExpectation = expect(companyARequest).rejects.toThrow(
-        /requested company "company-b"/,
-      );
-      const companyBRequest = callWorker(
+      const requestB = callWorker(
         "getData",
-        {
-          key: "probe",
-          companyId: "company-b",
-          params: { label: "b", requestedCompanyId: "company-b" },
-        },
-        { id: "invocation-b", scope: { companyId: "company-b" } },
+        { key: "probe", params: { label: "b" } },
+        { id: "invocation-b" },
       );
 
-      await expect(companyBRequest).resolves.toEqual({
+      await expect(requestB).resolves.toEqual({
         label: "b",
-        company: { id: "company-b" },
+        config: { invocationId: "invocation-b" },
       });
-      await companyAExpectation;
+      await expect(requestA).resolves.toEqual({
+        label: "a",
+        config: { invocationId: "invocation-a" },
+      });
 
       expect(nestedInvocationIds).toEqual(["invocation-b", "invocation-a"]);
     } finally {
@@ -299,7 +269,7 @@ describe("worker invocation scope propagation", () => {
   });
 });
 
-describe("worker configChanged cross-tenant guard", () => {
+describe("worker configChanged", () => {
   // Spin up a worker-rpc-host wired to in-memory streams and expose a
   // request/response `callWorker` plus `initialize`/`stop` helpers.
   function makeWorker(plugin: ReturnType<typeof definePlugin>) {
@@ -378,7 +348,7 @@ describe("worker configChanged cross-tenant guard", () => {
     try {
       const initialized = await worker.initialize() as { supportedMethods: string[] };
       expect(initialized.supportedMethods.includes("environmentStopLease")).toBe(supported);
-      const stopped = worker.callWorker("environmentStopLease", { driverKey: "fixture", companyId: "company", environmentId: "environment", providerLeaseId: "allocation", config: {} });
+      const stopped = worker.callWorker("environmentStopLease", { driverKey: "fixture", environmentId: "environment", providerLeaseId: "allocation", config: {} });
       if (supported) await expect(stopped).resolves.toEqual({ providerLeaseId: "allocation", state: "stopped" });
       else await expect(stopped).rejects.toThrow();
       expect(stops).toBe(supported ? 1 : 0);
@@ -386,93 +356,12 @@ describe("worker configChanged cross-tenant guard", () => {
     } finally { worker.stop(); }
   });
 
-  it("fails closed when a second, distinct company's config would overwrite a single-tenant worker", async () => {
-    const applied: Array<{ companyId: string | null; token: unknown }> = [];
+  it("delivers every configChanged update to onConfigChanged", async () => {
+    const applied: Array<{ token: unknown }> = [];
     const plugin = definePlugin({
       async setup() {},
-      async onConfigChanged(newConfig, context) {
+      async onConfigChanged(newConfig) {
         applied.push({
-          companyId: context?.companyId ?? null,
-          token: newConfig.slackBotToken,
-        });
-      },
-    });
-    const { callWorker, initialize, stop } = makeWorker(plugin);
-
-    try {
-      await initialize();
-
-      // Company A's config is delivered first (deterministic ORDER BY companyId
-      // in the loader) and applied.
-      await expect(
-        callWorker("configChanged", {
-          config: { companyId: "company-a", slackBotToken: "xoxb-A" },
-          companyId: "company-a",
-        }),
-      ).resolves.toBeNull();
-
-      // Company B's *distinct* config must be rejected rather than silently
-      // collapsing the single worker onto B's bot token (the vulnerability).
-      await expect(
-        callWorker("configChanged", {
-          config: { companyId: "company-b", slackBotToken: "xoxb-B" },
-          companyId: "company-b",
-        }),
-      ).rejects.toMatchObject({
-        code: PLUGIN_RPC_ERROR_CODES.CROSS_TENANT_CONFIG,
-      });
-
-      // The worker stayed bound to company A; company B never reached the
-      // plugin. Against the pre-fix code this array would be
-      // [company-a, company-b] (last-write-wins collapse).
-      expect(applied).toEqual([{ companyId: "company-a", token: "xoxb-A" }]);
-    } finally {
-      stop();
-    }
-  });
-
-  it("allows an idempotent replay of the same config under a different scope row", async () => {
-    // Mirrors the live single-tenant gateway: several plugin_config rows keyed
-    // by distinct row companyIds but all embedding the same config. Replaying
-    // them must be a no-op, not a fail-closed rejection.
-    const appliedScopes: Array<string | null> = [];
-    const plugin = definePlugin({
-      async setup() {},
-      async onConfigChanged(_newConfig, context) {
-        appliedScopes.push(context?.companyId ?? null);
-      },
-    });
-    const { callWorker, initialize, stop } = makeWorker(plugin);
-
-    try {
-      await initialize();
-      const embedded = { companyId: "company-a", slackBotToken: "xoxb-A" };
-
-      await callWorker("configChanged", {
-        config: { ...embedded },
-        companyId: "row-scope-1",
-      });
-      await expect(
-        callWorker("configChanged", {
-          config: { ...embedded },
-          companyId: "row-scope-2",
-        }),
-      ).resolves.toBeNull();
-
-      expect(appliedScopes).toEqual(["row-scope-1", "row-scope-2"]);
-    } finally {
-      stop();
-    }
-  });
-
-  it("threads per-company config to a plugin that opts into multiCompanyConfig", async () => {
-    const applied: Array<{ companyId: string | null; token: unknown }> = [];
-    const plugin = definePlugin({
-      multiCompanyConfig: true,
-      async setup() {},
-      async onConfigChanged(newConfig, context) {
-        applied.push({
-          companyId: context?.companyId ?? null,
           token: newConfig.slackBotToken,
         });
       },
@@ -483,20 +372,17 @@ describe("worker configChanged cross-tenant guard", () => {
       await initialize();
 
       await callWorker("configChanged", {
-        config: { companyId: "company-a", slackBotToken: "xoxb-A" },
-        companyId: "company-a",
+        config: { slackBotToken: "xoxb-A" }
       });
       await expect(
         callWorker("configChanged", {
-          config: { companyId: "company-b", slackBotToken: "xoxb-B" },
-          companyId: "company-b",
+          config: { slackBotToken: "xoxb-B" }
         }),
       ).resolves.toBeNull();
 
-      // Both companies' configs delivered, each tagged with its own scope.
       expect(applied).toEqual([
-        { companyId: "company-a", token: "xoxb-A" },
-        { companyId: "company-b", token: "xoxb-B" },
+        { token: "xoxb-A" },
+        { token: "xoxb-B" },
       ]);
     } finally {
       stop();
@@ -595,7 +481,7 @@ describe("worker provider tracer", () => {
         instanceInfo: { instanceId: "test", hostVersion: "0.0.0" },
         apiVersion: 1,
       });
-      await callWorker("getData", { key: "probe", companyId: "company-a", params: {} }, invocation);
+      await callWorker("getData", { key: "probe", params: {} }, invocation);
       // Let the fire-and-forget span.record flush.
       await new Promise((resolve) => setTimeout(resolve, 20));
       return spanRecords;
@@ -610,7 +496,6 @@ describe("worker provider tracer", () => {
   it("emits one span.record with the name and attributes when a host trace context is active", async () => {
     const spanRecords = await runSpanProbe({
       id: "invocation-a",
-      scope: { companyId: "company-a" },
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
     expect(spanRecords).toHaveLength(1);
@@ -628,7 +513,6 @@ describe("worker provider tracer", () => {
   it("sends a finite startTimeMs and endTimeMs with endTimeMs >= startTimeMs", async () => {
     const spanRecords = await runSpanProbe({
       id: "invocation-a",
-      scope: { companyId: "company-a" },
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
     expect(spanRecords).toHaveLength(1);
@@ -644,7 +528,6 @@ describe("worker provider tracer", () => {
   it("emits no span.record when the invocation carries no traceparent (tracing off)", async () => {
     const spanRecords = await runSpanProbe({
       id: "invocation-a",
-      scope: { companyId: "company-a" },
     });
     expect(spanRecords).toHaveLength(0);
   });
@@ -730,7 +613,7 @@ describe("worker execute.log emitter", () => {
         instanceInfo: { instanceId: "test", hostVersion: "0.0.0" },
         apiVersion: 1,
       });
-      await callWorker("getData", { key: "emit-logs", companyId: "company-a", params: {} }, invocation);
+      await callWorker("getData", { key: "emit-logs", params: {} }, invocation);
       // Let the fire-and-forget execute.log notifications flush.
       await new Promise((resolve) => setTimeout(resolve, 20));
       return logRecords;
@@ -744,7 +627,7 @@ describe("worker execute.log emitter", () => {
 
   it("stamps the active invocation id on each execute.log notification", async () => {
     const records = await runExecuteLogProbe(
-      { id: "invocation-a", scope: { companyId: "company-a" } },
+      { id: "invocation-a" },
       [
         { stream: "stdout", chunk: "one" },
         { stream: "stderr", chunk: "two" },
@@ -763,7 +646,7 @@ describe("worker execute.log emitter", () => {
 
   it("drops an empty chunk before it reaches the host", async () => {
     const records = await runExecuteLogProbe(
-      { id: "invocation-a", scope: { companyId: "company-a" } },
+      { id: "invocation-a" },
       [
         { stream: "stdout", chunk: "" },
         { stream: "stdout", chunk: "kept" },
@@ -887,7 +770,6 @@ describe("worker setup-token pseudo-terminal dispatch", () => {
         callWorker("loginPtyOpen", {
           hostRouteId: "route-1",
           driverKey: "daytona",
-          companyId: "company-1",
           environmentId: "env-1",
           providerLeaseId: "lease-1",
           loginCommandKey: "claude",
@@ -1023,7 +905,6 @@ describe("worker duplex channel dispatch", () => {
         callWorker("duplexChannelOpen", {
           hostRouteId: "route-1",
           driverKey: "daytona",
-          companyId: "company-1",
           environmentId: "env-1",
           providerLeaseId: "lease-1",
           command: ["paperclip-bridge"],
@@ -1121,7 +1002,7 @@ describe("AI connection router RPC", () => {
   it("advertises and calls only an implemented routing hook", async () => {
     const input = new PassThrough(), output = new PassThrough();
     const reader = createInterface({ input: output });
-    const request = { companyId: "company", taskKey: "task", candidates: [], memberOrder: [] };
+    const request = { taskKey: "task", candidates: [], memberOrder: [] };
     let received: unknown;
     const plugin = definePlugin({ async setup() {}, onRouteAiConnection(params) { received = params; return { kind: "selected", memberId: "authorized-member" }; } });
     const worker = startWorkerRpcHost({ plugin, stdin: input, stdout: output });

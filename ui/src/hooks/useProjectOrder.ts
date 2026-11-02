@@ -7,7 +7,6 @@ import { queryKeys } from "../lib/queryKeys";
 
 type UseProjectOrderParams = {
   projects: Project[];
-  companyId: string | null | undefined;
   userId: string | null | undefined;
 };
 
@@ -23,17 +22,17 @@ function buildOrderIds(projects: Project[], orderedIds: string[]) {
   return sortProjectsByStoredOrder(projects, orderedIds).map((project) => project.id);
 }
 
-export function useProjectOrder({ projects, companyId, userId }: UseProjectOrderParams) {
+export function useProjectOrder({ projects, userId }: UseProjectOrderParams) {
   const queryClient = useQueryClient();
   const queryKey = useMemo(
-    () => queryKeys.sidebarPreferences.projectOrder(companyId ?? "__none__", userId ?? "__anon__"),
-    [companyId, userId],
+    () => queryKeys.sidebarPreferences.projectOrder(userId ?? "__anon__"),
+    [userId],
   );
 
   const { data } = useQuery({
     queryKey,
-    queryFn: () => sidebarPreferencesApi.getProjectOrder(companyId!),
-    enabled: Boolean(companyId && userId),
+    queryFn: () => sidebarPreferencesApi.getProjectOrder(),
+    enabled: Boolean(userId),
   });
 
   const [orderedIds, setOrderedIds] = useState<string[]>(() => {
@@ -46,7 +45,7 @@ export function useProjectOrder({ projects, companyId, userId }: UseProjectOrder
   }, [data?.orderedIds, projects]);
 
   const mutation = useMutation({
-    mutationFn: (nextIds: string[]) => sidebarPreferencesApi.updateProjectOrder(companyId!, { orderedIds: nextIds }),
+    mutationFn: (nextIds: string[]) => sidebarPreferencesApi.updateProjectOrder({ orderedIds: nextIds }),
     onSuccess: (preference) => {
       queryClient.setQueryData(queryKey, preference);
     },
@@ -66,7 +65,7 @@ export function useProjectOrder({ projects, companyId, userId }: UseProjectOrder
       }
 
       setOrderedIds((current) => (areEqual(current, filtered) ? current : filtered));
-      if (!companyId || !userId) return;
+      if (!userId) return;
 
       queryClient.setQueryData(queryKey, (current: { orderedIds?: string[]; updatedAt?: Date | null } | undefined) => ({
         orderedIds: filtered,
@@ -74,7 +73,7 @@ export function useProjectOrder({ projects, companyId, userId }: UseProjectOrder
       }));
       mutation.mutate(filtered);
     },
-    [companyId, mutation, projects, queryClient, queryKey, userId],
+    [mutation, projects, queryClient, queryKey, userId],
   );
 
   return {

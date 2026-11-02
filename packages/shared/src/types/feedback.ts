@@ -16,7 +16,6 @@ export const DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION = "feedback-data-sharin
 
 export interface FeedbackVote {
   id: string;
-  companyId: string;
   issueId: string;
   targetType: FeedbackTargetType;
   targetId: string;
@@ -44,7 +43,6 @@ export interface FeedbackTraceTargetSummary {
 
 export interface FeedbackTrace {
   id: string;
-  companyId: string;
   feedbackVoteId: string;
   issueId: string;
   projectId: string | null;
@@ -103,7 +101,6 @@ export interface FeedbackTraceBundleFile {
 export interface FeedbackTraceBundle {
   traceId: string;
   exportId: string | null;
-  companyId: string;
   issueId: string;
   issueIdentifier: string | null;
   adapterType: string | null;

@@ -73,7 +73,7 @@ vi.mock("../services/workspace-runtime.js", async (importActual) => {
 function createApp(actor: Record<string, unknown> = {
   type: "board",
   userId: "local-board",
-  companyIds: ["company-1"],
+  memberships: [{ membershipRole: "owner", status: "active" }],
   source: "session",
   isInstanceAdmin: false,
 }) {
@@ -121,7 +121,7 @@ describe("execution workspace routes", () => {
 
   it("uses summary mode for lightweight workspace lookups", async () => {
     const res = await request(createApp())
-      .get("/api/companies/company-1/execution-workspaces?summary=true&reuseEligible=true");
+      .get("/api/execution-workspaces?summary=true&reuseEligible=true");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
@@ -132,7 +132,7 @@ describe("execution workspace routes", () => {
         projectWorkspaceId: null,
       },
     ]);
-    expect(mockExecutionWorkspaceService.listSummaries).toHaveBeenCalledWith("company-1", {
+    expect(mockExecutionWorkspaceService.listSummaries).toHaveBeenCalledWith({
       projectId: undefined,
       projectWorkspaceId: undefined,
       issueId: undefined,
@@ -144,7 +144,7 @@ describe("execution workspace routes", () => {
 
   it("delegates bounded workspace overview queries", async () => {
     const res = await request(createApp())
-      .get("/api/companies/company-1/workspace-overview?status=active,idle&limit=25&offset=10");
+      .get("/api/workspace-overview?status=active,idle&limit=25&offset=10");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -155,7 +155,7 @@ describe("execution workspace routes", () => {
       hasMore: false,
       nextOffset: null,
     });
-    expect(mockExecutionWorkspaceService.listOverview).toHaveBeenCalledWith("company-1", {
+    expect(mockExecutionWorkspaceService.listOverview).toHaveBeenCalledWith({
       status: ["active", "idle"],
       limit: 25,
       offset: 10,
@@ -164,7 +164,7 @@ describe("execution workspace routes", () => {
 
   it("rejects invalid workspace overview pagination", async () => {
     const res = await request(createApp())
-      .get("/api/companies/company-1/workspace-overview?limit=1000");
+      .get("/api/workspace-overview?limit=1000");
 
     expect(res.status).toBe(422);
     expect(mockExecutionWorkspaceService.listOverview).not.toHaveBeenCalled();
@@ -177,14 +177,12 @@ describe("execution workspace routes", () => {
   ])("rejects agent actors for %s branch reconciliation", async (_mode, body) => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
     });
 
     const res = await request(createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       source: "agent_jwt",
       runId: "run-1",
     }))
@@ -199,13 +197,11 @@ describe("execution workspace routes", () => {
   it("logs branch reconciliation activity after the service operation succeeds", async () => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
     });
     mockExecutionWorkspaceService.reconcileExecutionWorkspaceBranch.mockResolvedValue({
       workspace: {
         id: "workspace-1",
-        companyId: "company-1",
         sourceIssueId: "issue-1",
         branchName: "feature/current",
       },
@@ -265,13 +261,11 @@ describe("execution workspace routes", () => {
   it("accepts quarantine_restore, logs the rescue ref, and wakes the restored source issue", async () => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
     });
     mockExecutionWorkspaceService.reconcileExecutionWorkspaceBranch.mockResolvedValue({
       workspace: {
         id: "workspace-1",
-        companyId: "company-1",
         sourceIssueId: "issue-1",
         branchName: "feature/recorded",
       },
@@ -301,7 +295,6 @@ describe("execution workspace routes", () => {
       },
       restoredSourceIssue: {
         id: "issue-1",
-        companyId: "company-1",
         status: "todo",
         assigneeAgentId: "agent-1",
       },
@@ -363,13 +356,11 @@ describe("execution workspace routes", () => {
   it("wakes a restored in_review agent participant after quarantine_restore", async () => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
     });
     mockExecutionWorkspaceService.reconcileExecutionWorkspaceBranch.mockResolvedValue({
       workspace: {
         id: "workspace-1",
-        companyId: "company-1",
         sourceIssueId: "issue-1",
         branchName: "feature/recorded",
       },
@@ -393,7 +384,6 @@ describe("execution workspace routes", () => {
       rescueRef: null,
       restoredSourceIssue: {
         id: "issue-1",
-        companyId: "company-1",
         status: "in_review",
         assigneeAgentId: "reviewer-agent-1",
       },
@@ -431,7 +421,6 @@ describe("execution workspace routes", () => {
     // worktree.
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
       status: "active",
       mode: "isolated_workspace",
@@ -459,7 +448,6 @@ describe("execution workspace routes", () => {
     // so the reusable sandbox lease teardown runs with the worktree teardown.
     const archivedWorkspace = {
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
       status: "archived",
       mode: "isolated_workspace",
@@ -496,7 +484,6 @@ describe("execution workspace routes", () => {
     // failure reason and targets the archived row.
     expect(mockEnvironmentRuntimeService.destroyReusableSandboxLeases).toHaveBeenCalledWith(
       expect.objectContaining({
-        companyId: "company-1",
         executionWorkspaceId: "workspace-1",
         failureReason: "execution_workspace_closed",
       }),
@@ -510,7 +497,6 @@ describe("execution workspace routes", () => {
     // teardown ran before the fence, so an overlapping reopen lost its leases.
     const archivedWorkspace = {
       id: "workspace-1",
-      companyId: "company-1",
       sourceIssueId: "issue-1",
       status: "archived",
       mode: "isolated_workspace",

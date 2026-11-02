@@ -3,7 +3,6 @@
   "fixtureName": "Semantic tool conflict and duplicate retry",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_semantic_retry",
     "issueId": "issue_semantic_retry",
     "runId": "run_semantic_retry",
     "environmentLeaseId": "lease_semantic_retry",

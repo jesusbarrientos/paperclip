@@ -56,7 +56,6 @@ describe("buildIssuePropertiesPanelKey", () => {
       createIssue({
         watchdog: {
           id: "watchdog-1",
-          companyId: "company-1",
           issueId: "issue-1",
           watchdogAgentId: "agent-1",
           instructions: "Keep the tree moving.",
@@ -86,7 +85,6 @@ describe("buildIssuePropertiesPanelKey", () => {
         executionWorkspaceSettings: { mode: "isolated_workspace" },
         currentExecutionWorkspace: {
           id: "workspace-1",
-          companyId: "company-1",
           projectId: "project-1",
           projectWorkspaceId: "project-workspace-1",
           sourceIssueId: "issue-1",

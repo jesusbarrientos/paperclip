@@ -1,11 +1,11 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { Agent } from "@paperclipai/shared";
 const eventName = "paperclip:recent-agent-chats";
-const key = (company: string, user?: string | null) =>
-  `paperclip.recentAgentChats:${company}:${user ?? "__local_board__"}`;
+const key = (user?: string | null) =>
+  `paperclip.recentAgentChats:${user ?? "__local_board__"}`;
 const memory = new Map<string, string>();
-const issueKey = (company: string, user: string | null | undefined, agentId: string) =>
-  `paperclip.recentAgentChatIssue:${company}:${user ?? "__local_board__"}:${agentId}`;
+const issueKey = (user: string | null | undefined, agentId: string) =>
+  `paperclip.recentAgentChatIssue:${user ?? "__local_board__"}:${agentId}`;
 const rememberedIssues = new Map<string, string>();
 function read(storageKey: string): string {
   try {
@@ -29,12 +29,11 @@ export function parseRecentAgentChats(raw: string): string[] {
   }
 }
 export function recordAgentChatVisit(
-  company: string,
   user: string | null | undefined,
   agentId: string,
   issueId?: string | null,
 ) {
-  const storageKey = key(company, user);
+  const storageKey = key(user);
   const value = JSON.stringify(
     [
       agentId,
@@ -48,7 +47,7 @@ export function recordAgentChatVisit(
     /* In-tab navigation still works without storage. */
   }
   if (issueId !== undefined) {
-    const storageIssueKey = issueKey(company, user, agentId);
+    const storageIssueKey = issueKey(user, agentId);
     try {
       if (issueId) window.localStorage.setItem(storageIssueKey, issueId);
       else window.localStorage.removeItem(storageIssueKey);
@@ -62,8 +61,8 @@ export function recordAgentChatVisit(
   }
   window.dispatchEvent(new Event(eventName));
 }
-export function recordedAgentChatIssueId(company: string, user: string | null | undefined, agentId: string): string | null {
-  const storageIssueKey = issueKey(company, user, agentId);
+export function recordedAgentChatIssueId(user: string | null | undefined, agentId: string): string | null {
+  const storageIssueKey = issueKey(user, agentId);
   try {
     return window.localStorage.getItem(storageIssueKey) ?? rememberedIssues.get(storageIssueKey) ?? null;
   } catch {
@@ -78,10 +77,10 @@ function subscribe(callback: () => void) {
     window.removeEventListener("storage", callback);
   };
 }
-export function useRecentAgentChats(company: string, user?: string | null) {
+export function useRecentAgentChats(user?: string | null) {
   const getSnapshot = useCallback(
-    () => read(key(company, user)),
-    [company, user],
+    () => read(key(user)),
+    [user],
   );
   return parseRecentAgentChats(
     useSyncExternalStore(subscribe, getSnapshot, () => "[]"),

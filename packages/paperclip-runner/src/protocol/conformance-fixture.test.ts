@@ -24,7 +24,6 @@ describe("Conformance fixture validation", () => {
         run: {
           runId: "run_conformance_0001",
           sessionId: "session_conformance_0001",
-          companyId: "company_conformance",
           issueId: "issue_conformance",
           agentId: "agent_conformance",
         },

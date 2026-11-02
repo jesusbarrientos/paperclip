@@ -115,7 +115,6 @@ export interface DecisionStatsResponse {
 }
 
 export interface AttentionArchiveManifestEntry {
-  companyId: string;
   sourceKind: string;
   sourceId: string;
   expectedVersion: number;

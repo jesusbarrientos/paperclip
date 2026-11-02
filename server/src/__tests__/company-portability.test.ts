@@ -9,11 +9,6 @@ import type { CompanyPortabilityFileEntry } from "@paperclipai/shared";
 
 const companySvc = {
   getById: vi.fn(),
-  // Async-empty default (not a bare vi.fn()): every new-company import reads
-  // the existing names for de-duplication, including describes that never
-  // touch this mock.
-  list: vi.fn(async () => []),
-  create: vi.fn(),
   update: vi.fn(),
 };
 
@@ -90,10 +85,10 @@ const assetSvc = {
 const secretSvc = {
   create: vi.fn(async () => ({ id: "secret-created" })),
   remove: vi.fn(async () => true),
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  normalizeEnvBindingsForPersistence: vi.fn(async (_companyId: string, env: Record<string, unknown>) => env),
+  normalizeAdapterConfigForPersistence: vi.fn(async (config: Record<string, unknown>) => config),
+  normalizeEnvBindingsForPersistence: vi.fn(async (env: Record<string, unknown>) => env),
   syncEnvBindingsForTarget: vi.fn(async () => []),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config, secretKeys: new Set<string>() })),
+  resolveAdapterConfigForRuntime: vi.fn(async (config: Record<string, unknown>) => ({ config, secretKeys: new Set<string>() })),
 };
 
 const agentInstructionsSvc = {
@@ -115,6 +110,15 @@ const remoteAgentProfileSvc = {
 
 vi.mock("../services/companies.js", () => ({
   companyService: () => companySvc,
+}));
+
+vi.mock("../services/organization.js", () => ({
+  organizationService: () => ({
+    findId: async () => "company-1",
+    requireId: async () => "company-1",
+    count: async () => 1,
+  }),
+  assertCanCreateOrganization: async () => {},
 }));
 
 vi.mock("../services/agents.js", () => ({
@@ -185,7 +189,7 @@ vi.mock("../routes/org-chart-svg.js", () => ({
   renderOrgChartPng: vi.fn(async () => Buffer.from("png")),
 }));
 
-const { companyPortabilityService, dedupeImportedCompanyName, parseGitHubSourceUrl, renderYamlBlock, renderFrontmatter } = await import("../services/company-portability.js");
+const { companyPortabilityService, parseGitHubSourceUrl, renderYamlBlock, renderFrontmatter } = await import("../services/company-portability.js");
 
 function asTextFile(entry: CompanyPortabilityFileEntry | undefined) {
   expect(typeof entry).toBe("string");
@@ -201,20 +205,18 @@ describe("company portability", () => {
     instanceSettingsSvc.getExperimental.mockResolvedValue({ enableNativeRunner: false });
     managedAgentProfileSvc.requireQualified.mockResolvedValue({
       id: "managed-primary",
-      companyId: "company-1",
       enabled: true,
     });
     remoteAgentProfileSvc.requireQualified.mockResolvedValue({
       id: "agentcore-primary",
-      companyId: "company-1",
       enabled: true,
     });
     secretSvc.create.mockResolvedValue({ id: "secret-created" });
     secretSvc.remove.mockResolvedValue(true);
-    secretSvc.normalizeAdapterConfigForPersistence.mockImplementation(async (_companyId, config) => config);
-    secretSvc.normalizeEnvBindingsForPersistence.mockImplementation(async (_companyId, env) => env);
+    secretSvc.normalizeAdapterConfigForPersistence.mockImplementation(async (config) => config);
+    secretSvc.normalizeEnvBindingsForPersistence.mockImplementation(async (env) => env);
     secretSvc.syncEnvBindingsForTarget.mockResolvedValue([]);
-    secretSvc.resolveAdapterConfigForRuntime.mockImplementation(async (_companyId, config) => ({
+    secretSvc.resolveAdapterConfigForRuntime.mockImplementation(async (config) => ({
       config,
       secretKeys: new Set<string>(),
     }));
@@ -226,7 +228,6 @@ describe("company portability", () => {
       presentation: null,
       metadata: null,
     });
-    companySvc.list.mockResolvedValue([]);
     companySvc.getById.mockResolvedValue({
       id: "company-1",
       name: "Paperclip",
@@ -234,11 +235,6 @@ describe("company portability", () => {
       issuePrefix: "PAP",
       logoAssetId: null,
       logoUrl: null,
-      requireBoardApprovalForNewAgents: false,
-    });
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
       requireBoardApprovalForNewAgents: false,
     });
     agentSvc.list.mockResolvedValue([
@@ -321,9 +317,8 @@ describe("company portability", () => {
     issueSvc.getById.mockResolvedValue(null);
     issueSvc.getByIdentifier.mockResolvedValue(null);
     issueSvc.listLabels.mockResolvedValue([]);
-    issueSvc.createLabel.mockImplementation(async (_companyId: string, data: { name: string; color: string }) => ({
+    issueSvc.createLabel.mockImplementation(async (data: { name: string; color: string }) => ({
       id: `label-created-${data.name}`,
-      companyId: "company-imported",
       name: data.name,
       color: data.color,
     }));
@@ -339,9 +334,8 @@ describe("company portability", () => {
       const rows = await routineSvc.list();
       return rows.find((row: { id: string }) => row.id === id) ?? null;
     });
-    routineSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    routineSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "routine-created",
-      companyId: "company-1",
       projectId: input.projectId,
       goalId: null,
       parentIssueId: null,
@@ -363,7 +357,6 @@ describe("company portability", () => {
     }));
     routineSvc.createTrigger.mockImplementation(async (_routineId: string, input: Record<string, unknown>) => ({
       id: "trigger-created",
-      companyId: "company-1",
       routineId: "routine-created",
       kind: input.kind,
       label: input.label ?? null,
@@ -388,7 +381,6 @@ describe("company portability", () => {
     const companySkills = [
       {
         id: "skill-1",
-        companyId: "company-1",
         key: paperclipKey,
         slug: "paperclip",
         name: "paperclip",
@@ -414,7 +406,6 @@ describe("company portability", () => {
       },
       {
         id: "skill-2",
-        companyId: "company-1",
         key: companyPlaybookKey,
         slug: "company-playbook",
         name: "company-playbook",
@@ -436,7 +427,7 @@ describe("company portability", () => {
     ];
     companySkillSvc.list.mockResolvedValue(companySkills);
     companySkillSvc.listFull.mockResolvedValue(companySkills);
-    companySkillSvc.readFile.mockImplementation(async (_companyId: string, skillId: string, relativePath: string) => {
+    companySkillSvc.readFile.mockImplementation(async (skillId: string, relativePath: string) => {
       if (skillId === "skill-2") {
         return {
           skillId,
@@ -474,7 +465,6 @@ describe("company portability", () => {
     accessSvc.listActiveUserMemberships.mockResolvedValue([
       {
         id: "membership-1",
-        companyId: "company-1",
         principalType: "user",
         principalId: "user-1",
         membershipRole: "owner",
@@ -552,7 +542,7 @@ describe("company portability", () => {
   it("exports referenced skills as stubs by default with sanitized Paperclip extension data", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -596,7 +586,7 @@ describe("company portability", () => {
   it("does not load or emit skills when agents are included but skills are disabled", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -615,7 +605,6 @@ describe("company portability", () => {
   it("refuses to read external instruction roots without an instance-admin export grant", async () => {
     agentSvc.list.mockResolvedValue([{
       id: "external-agent",
-      companyId: "company-1",
       name: "ExternalAgent",
       status: "idle",
       role: "engineer",
@@ -634,7 +623,7 @@ describe("company portability", () => {
       metadata: null,
     }]);
 
-    await expect(companyPortabilityService({} as any).exportBundle("company-1", {
+    await expect(companyPortabilityService({} as any).exportBundle({
       include: {
         company: true,
         agents: true,
@@ -644,7 +633,7 @@ describe("company portability", () => {
     })).rejects.toMatchObject({ status: 403 });
     expect(agentInstructionsSvc.exportFiles).not.toHaveBeenCalled();
 
-    await expect(companyPortabilityService({} as any).exportBundle("company-1", {
+    await expect(companyPortabilityService({} as any).exportBundle({
       include: {
         company: true,
         agents: true,
@@ -661,6 +650,7 @@ describe("company portability", () => {
     const db = {
       select: vi.fn((selection: Record<string, unknown>) => ({
         from: vi.fn(() => ({
+          then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
           where: vi.fn(async () => {
             if (!selection.permissionKey) return [];
             return [
@@ -681,7 +671,7 @@ describe("company portability", () => {
     };
     const portability = companyPortabilityService(db as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -719,7 +709,7 @@ describe("company portability", () => {
       requireBoardApprovalForNewAgents: true,
     });
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: false,
@@ -770,7 +760,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -830,7 +820,6 @@ describe("company portability", () => {
     projectSvc.list.mockResolvedValue([
       {
         id: "project-2",
-        companyId: "company-1",
         name: "Zulu",
         urlKey: "zulu",
         description: null,
@@ -844,7 +833,6 @@ describe("company portability", () => {
       },
       {
         id: "project-1",
-        companyId: "company-1",
         name: "Alpha",
         urlKey: "alpha",
         description: null,
@@ -858,7 +846,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -885,7 +873,7 @@ describe("company portability", () => {
   it("expands referenced skills when requested", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -907,7 +895,6 @@ describe("company portability", () => {
     const originHash = "sha256:catalog-origin";
     const catalogSkill = {
       id: "skill-catalog",
-      companyId: "company-1",
       key: catalogKey,
       slug: "review",
       name: "review",
@@ -945,7 +932,7 @@ describe("company portability", () => {
       },
     };
     companySkillSvc.listFull.mockResolvedValue([catalogSkill]);
-    companySkillSvc.readFile.mockImplementation(async (_companyId: string, skillId: string, relativePath: string) => ({
+    companySkillSvc.readFile.mockImplementation(async (skillId: string, relativePath: string) => ({
       skillId,
       path: relativePath,
       kind: relativePath === "SKILL.md" ? "skill" : "reference",
@@ -957,7 +944,7 @@ describe("company portability", () => {
       editable: true,
     }));
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: false,
         agents: false,
@@ -1004,7 +991,7 @@ describe("company portability", () => {
   it("exports only selected skills when skills filter is provided", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -1022,7 +1009,7 @@ describe("company portability", () => {
   it("warns and exports all skills when skills filter matches nothing", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -1054,7 +1041,6 @@ describe("company portability", () => {
     });
     assetSvc.getById.mockResolvedValue({
       id: "logo-1",
-      companyId: "company-1",
       objectKey: "assets/companies/logo-1",
       contentType: "image/png",
       originalFilename: "logo.png",
@@ -1062,7 +1048,7 @@ describe("company portability", () => {
 
     const portability = companyPortabilityService({} as any, storage as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: false,
@@ -1071,7 +1057,7 @@ describe("company portability", () => {
       },
     });
 
-    expect(storage.getObject).toHaveBeenCalledWith("company-1", "assets/companies/logo-1");
+    expect(storage.getObject).toHaveBeenCalledWith("assets/companies/logo-1");
     expect(exported.files["images/company-logo.png"]).toEqual({
       encoding: "base64",
       data: Buffer.from("png-bytes").toString("base64"),
@@ -1083,7 +1069,7 @@ describe("company portability", () => {
   it("exports duplicate skill slugs into readable namespaced paths", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySkillSvc.readFile.mockImplementation(async (_companyId: string, skillId: string, relativePath: string) => {
+    companySkillSvc.readFile.mockImplementation(async (skillId: string, relativePath: string) => {
       if (skillId === "skill-local") {
         return {
           skillId,
@@ -1110,7 +1096,6 @@ describe("company portability", () => {
     companySkillSvc.listFull.mockResolvedValue([
       {
         id: "skill-local",
-        companyId: "company-1",
         key: "local/36dfd631da/release-changelog",
         slug: "release-changelog",
         name: "release-changelog",
@@ -1128,7 +1113,6 @@ describe("company portability", () => {
       },
       {
         id: "skill-paperclip",
-        companyId: "company-1",
         key: "paperclipai/paperclip/release-changelog",
         slug: "release-changelog",
         name: "release-changelog",
@@ -1151,7 +1135,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -1200,7 +1184,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const preview = await portability.previewExport("company-1", {
+    const preview = await portability.previewExport({
       include: {
         company: true,
         agents: true,
@@ -1212,7 +1196,7 @@ describe("company portability", () => {
     expect(preview.fileInventory.some((entry) => entry.path.startsWith("tasks/"))).toBe(false);
     expect(preview.fileInventory.some((entry) => entry.path === "images/org-chart.png")).toBe(false);
 
-    const downloaded = await portability.exportBundle("company-1", {
+    const downloaded = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -1255,7 +1239,7 @@ describe("company portability", () => {
       return [];
     });
 
-    const exportPromise = portability.exportBundle("company-1", {
+    const exportPromise = portability.exportBundle({
       include: {
         company: true,
         agents: false,
@@ -1310,7 +1294,6 @@ describe("company portability", () => {
         workspaces: [
           {
             id: "workspace-1",
-            companyId: "company-1",
             projectId: "project-1",
             name: "Main Repo",
             sourceType: "git_repo",
@@ -1333,7 +1316,6 @@ describe("company portability", () => {
           },
           {
             id: "workspace-2",
-            companyId: "company-1",
             projectId: "project-1",
             name: "Local Scratch",
             sourceType: "local_path",
@@ -1376,7 +1358,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: false,
@@ -1396,10 +1378,6 @@ describe("company portability", () => {
     expect(extension).not.toContain("workspace-1");
     expect(exported.warnings).toContain("Project launch workspace Local Scratch was omitted from export because it does not have a portable repoUrl.");
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
@@ -1416,7 +1394,6 @@ describe("company portability", () => {
     }));
     projectSvc.createWorkspace.mockImplementation(async (projectId: string, data: Record<string, unknown>) => ({
       id: "workspace-imported",
-      companyId: "company-imported",
       projectId,
       name: `${data.name ?? "Workspace"}`,
       sourceType: `${data.sourceType ?? "git_repo"}`,
@@ -1453,8 +1430,7 @@ describe("company portability", () => {
         issues: true,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       collisionStrategy: "rename",
     }, "user-1");
@@ -1474,10 +1450,10 @@ describe("company portability", () => {
         defaultProjectWorkspaceId: "workspace-imported",
       }),
     }));
-    expect(projectSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(projectSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       icon: "rocket",
     }));
-    expect(issueSvc.importIssues).toHaveBeenCalledWith("company-imported", expect.arrayContaining([
+    expect(issueSvc.importIssues).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({
         projectId: "project-imported",
         projectWorkspaceId: "workspace-imported",
@@ -1489,10 +1465,6 @@ describe("company portability", () => {
   it("normalizes invalid imported project icon names to null", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
@@ -1528,11 +1500,11 @@ describe("company portability", () => {
     await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: false, projects: true, issues: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       collisionStrategy: "rename",
     }, "user-1");
 
-    expect(projectSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(projectSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       icon: null,
     }));
   });
@@ -1565,7 +1537,6 @@ describe("company portability", () => {
         workspaces: [
           {
             id: "workspace-1",
-            companyId: "company-1",
             projectId: "project-1",
             name: "paperclip",
             sourceType: "local_path",
@@ -1606,7 +1577,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: false,
         agents: false,
@@ -1639,7 +1610,6 @@ describe("company portability", () => {
         workspaces: [
           {
             id: "workspace-1",
-            companyId: "company-1",
             projectId: "project-1",
             name: "Local Scratch",
             sourceType: "local_path",
@@ -1710,7 +1680,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: false,
         agents: false,
@@ -1731,20 +1701,20 @@ describe("company portability", () => {
     agentSvc.list.mockResolvedValue(source.map((agent: Record<string, unknown>) => ({ ...agent, appearance })));
     const portability = companyPortabilityService({} as any);
     const include = { company: true, agents: true, projects: false, issues: false, skills: false };
-    const exported = await portability.exportBundle("company-1", { include });
+    const exported = await portability.exportBundle({ include });
     expect(asTextFile(exported.files[".paperclip.yaml"])).toContain("arctic-blue");
     agentSvc.list.mockResolvedValue([]);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({ ...input, id: `imported-${input.name}` }));
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({ ...input, id: `imported-${input.name}` }));
     await portability.importBundle({ source: { type: "inline", files: exported.files, rootPath: exported.rootPath }, include,
-      target: { mode: "new_company", newCompanyName: "Imported personas" }, collisionStrategy: "rename", agents: "all" }, "user-1");
+      target: { mode: "existing_company" as const }, collisionStrategy: "rename", agents: "all" }, "user-1");
     expect(agentSvc.create).toHaveBeenCalled();
-    for (const [, input] of agentSvc.create.mock.calls) expect(input).toMatchObject({ appearance });
+    for (const [input] of agentSvc.create.mock.calls) expect(input).toMatchObject({ appearance });
   });
 
   it("reads env inputs back from .paperclip.yaml during preview import", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -1766,8 +1736,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
@@ -1801,7 +1770,7 @@ describe("company portability", () => {
   it("materializes required agent env inputs from import secretValues as company secrets", async () => {
     const portability = companyPortabilityService({} as any);
     agentSvc.list.mockResolvedValue([]);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "agent-imported",
       name: input.name,
       adapterType: input.adapterType,
@@ -1854,8 +1823,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       collisionStrategy: "rename",
       secretValues: {
@@ -1863,18 +1831,14 @@ describe("company portability", () => {
       },
     }, "user-1");
 
-    expect(secretSvc.create).toHaveBeenCalledWith(
-      "company-1",
-      expect.objectContaining({
+    expect(secretSvc.create).toHaveBeenCalledWith(expect.objectContaining({
         provider: "local_encrypted",
         value: "sk-imported",
         description: expect.stringContaining("OPENAI_API_KEY"),
       }),
       { userId: "user-1", agentId: null },
     );
-    expect(secretSvc.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(
-      "company-1",
-      expect.objectContaining({
+    expect(secretSvc.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(expect.objectContaining({
         env: {
           OPENAI_API_KEY: {
             type: "secret_ref",
@@ -1885,7 +1849,7 @@ describe("company portability", () => {
       }),
       { strictMode: false, adapterType: "codex_local" },
     );
-    expect(agentSvc.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterConfig: expect.objectContaining({
         env: {
           OPENAI_API_KEY: {
@@ -1896,9 +1860,7 @@ describe("company portability", () => {
         },
       }),
     }));
-    expect(secretSvc.syncEnvBindingsForTarget).toHaveBeenCalledWith(
-      "company-1",
-      { targetType: "agent", targetId: "agent-imported" },
+    expect(secretSvc.syncEnvBindingsForTarget).toHaveBeenCalledWith({ targetType: "agent", targetId: "agent-imported" },
       expect.objectContaining({
         OPENAI_API_KEY: expect.objectContaining({ secretId: "secret-created" }),
       }),
@@ -1908,7 +1870,7 @@ describe("company portability", () => {
   it("imports agent permission grants from package metadata", async () => {
     const portability = companyPortabilityService({} as any);
     agentSvc.list.mockResolvedValue([]);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "agent-imported",
       name: input.name,
       adapterType: input.adapterType,
@@ -1963,24 +1925,19 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       collisionStrategy: "rename",
     }, "user-1");
 
-    expect(accessSvc.setPrincipalPermission).toHaveBeenCalledWith(
-      "company-1",
-      "agent",
+    expect(accessSvc.setPrincipalPermission).toHaveBeenCalledWith("agent",
       "agent-imported",
       "agents:suggest-changes",
       true,
       "user-1",
       null,
     );
-    expect(accessSvc.setPrincipalPermission).toHaveBeenCalledWith(
-      "company-1",
-      "agent",
+    expect(accessSvc.setPrincipalPermission).toHaveBeenCalledWith("agent",
       "agent-imported",
       "skills:create",
       true,
@@ -2040,8 +1997,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       collisionStrategy: "rename",
       secretValues: {
@@ -2094,21 +2050,20 @@ describe("company portability", () => {
         },
       },
       include: { company: true, agents: true, projects: false, issues: false },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       collisionStrategy: "rename",
     }, "user-1")).rejects.toMatchObject({
       status: 422,
       details: { code: "import_payload_incomplete", expectedFileCount: 4, receivedFileCount: 3 },
     });
 
-    expect(companySvc.create).not.toHaveBeenCalled();
     expect(agentSvc.create).not.toHaveBeenCalled();
   });
 
   it("imports an inline bundle whose file count matches the declared count", async () => {
     const portability = companyPortabilityService({} as any);
     agentSvc.list.mockResolvedValue([]);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "agent-imported",
       name: input.name,
       adapterType: input.adapterType,
@@ -2149,7 +2104,7 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", expectedFileCount: Object.keys(files).length, files },
       include: { company: false, agents: true, projects: false, issues: false },
-      target: { mode: "existing_company", companyId: "company-1" },
+      target: { mode: "existing_company" },
       collisionStrategy: "rename",
     }, "user-1");
 
@@ -2173,7 +2128,7 @@ describe("company portability", () => {
         metadata: null,
       },
     ]);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: `${String(input.name).toLowerCase()}-created`,
       name: input.name,
       status: input.status,
@@ -2234,7 +2189,7 @@ describe("company portability", () => {
         },
       },
       include: { company: false, agents: true, projects: false, issues: false, skills: false },
-      target: { mode: "existing_company", companyId: "company-1" },
+      target: { mode: "existing_company" },
       collisionStrategy: "rename",
     }, "user-1");
 
@@ -2276,7 +2231,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: false,
         agents: false,
@@ -2322,7 +2277,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: false,
         agents: false,
@@ -2344,8 +2299,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
@@ -2384,7 +2338,6 @@ describe("company portability", () => {
     routineSvc.list.mockResolvedValue([
       {
         id: "routine-1",
-        companyId: "company-1",
         projectId: "project-1",
         goalId: null,
         parentIssueId: null,
@@ -2406,7 +2359,6 @@ describe("company portability", () => {
         triggers: [
           {
             id: "trigger-1",
-            companyId: "company-1",
             routineId: "routine-1",
             kind: "schedule",
             label: "Weekly cadence",
@@ -2430,7 +2382,6 @@ describe("company portability", () => {
           },
           {
             id: "trigger-2",
-            companyId: "company-1",
             routineId: "routine-1",
             kind: "webhook",
             label: "External nudge",
@@ -2458,7 +2409,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -2539,7 +2490,6 @@ describe("company portability", () => {
     routineSvc.list.mockResolvedValue([
       {
         id: "routine-built-in",
-        companyId: "company-1",
         projectId: null,
         goalId: null,
         parentIssueId: null,
@@ -2564,7 +2514,6 @@ describe("company portability", () => {
         triggers: [
           {
             id: "trigger-built-in",
-            companyId: "company-1",
             routineId: "routine-built-in",
             kind: "schedule",
             label: "Weekly review",
@@ -2592,7 +2541,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -2614,10 +2563,6 @@ describe("company portability", () => {
   it("imports recurring task packages as routines instead of one-time issues", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
@@ -2687,7 +2632,7 @@ describe("company portability", () => {
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: true, projects: true, issues: true, skills: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     });
@@ -2703,12 +2648,12 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: true, projects: true, issues: true, skills: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
-    expect(routineSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(routineSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       projectId: "project-created",
       title: "Monday Review",
       assigneeAgentId: "agent-created",
@@ -2738,99 +2683,9 @@ describe("company portability", () => {
     ]);
   });
 
-  it("suffixes a manifest-derived company name that collides with an existing company", async () => {
-    const portability = companyPortabilityService({} as any);
-
-    companySvc.list.mockResolvedValue([
-      { name: "Imported Paperclip" },
-      // Case-insensitive: an existing "(2)" in any casing blocks that suffix.
-      { name: "imported paperclip (2)" },
-    ]);
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip (3)",
-    });
-    accessSvc.ensureMembership.mockResolvedValue(undefined);
-
-    const files = {
-      "COMPANY.md": ["---", 'schema: "agentcompanies/v1"', 'name: "Imported Paperclip"', "---", ""].join("\n"),
-    };
-
-    await portability.importBundle({
-      source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: false, projects: false, issues: false },
-      // No newCompanyName: the manifest name is used and must be de-duplicated.
-      target: { mode: "new_company" },
-      collisionStrategy: "rename",
-    }, "user-1");
-
-    expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({
-      name: "Imported Paperclip (3)",
-    }));
-  });
-
-  it("skips name de-duplication for agent-safe imports so collisions stay unobservable", async () => {
-    const portability = companyPortabilityService({} as any);
-
-    companySvc.list.mockResolvedValue([{ name: "Imported Paperclip" }]);
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
-    accessSvc.listActiveUserMemberships.mockResolvedValue([{ userId: "user-1" }]);
-
-    const files = {
-      "COMPANY.md": ["---", 'schema: "agentcompanies/v1"', 'name: "Imported Paperclip"', "---", ""].join("\n"),
-    };
-
-    await portability.importBundle({
-      source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: false, projects: false, issues: false },
-      target: { mode: "new_company" },
-      collisionStrategy: "rename",
-    }, "user-1", { mode: "agent_safe", sourceCompanyId: "company-1" });
-
-    // The instance-wide name list must never be consulted for a
-    // company-scoped agent, and no suffix may reflect a collision back.
-    expect(companySvc.list).not.toHaveBeenCalled();
-    expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({
-      name: "Imported Paperclip",
-    }));
-  });
-
-  it("honors an explicitly typed company name even when it collides", async () => {
-    const portability = companyPortabilityService({} as any);
-
-    companySvc.list.mockResolvedValue([{ name: "Imported Paperclip" }]);
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
-    accessSvc.ensureMembership.mockResolvedValue(undefined);
-
-    const files = {
-      "COMPANY.md": ["---", 'schema: "agentcompanies/v1"', 'name: "Imported Paperclip"', "---", ""].join("\n"),
-    };
-
-    await portability.importBundle({
-      source: { type: "inline", rootPath: "paperclip-demo", files },
-      include: { company: true, agents: false, projects: false, issues: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
-      collisionStrategy: "rename",
-    }, "user-1");
-
-    expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({
-      name: "Imported Paperclip",
-    }));
-  });
-
   it("pauses imported agents and routines when pauseAutomations is requested", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
@@ -2875,19 +2730,19 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: true, projects: true, issues: true, skills: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1", { pauseAutomations: true });
 
-    expect(agentSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       status: "paused",
       // The dedicated "import" reason lets the UI explain the pause and offer
       // a scoped resume; "system" stays for platform-managed pauses.
       pauseReason: "import",
       pausedAt: expect.any(Date),
     }));
-    expect(routineSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(routineSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       title: "Monday Review",
       status: "paused",
     }), expect.any(Object));
@@ -2899,10 +2754,6 @@ describe("company portability", () => {
   it("leaves imported agents and routines active when pauseAutomations is absent", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
@@ -2946,17 +2797,17 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: true, projects: true, issues: true, skills: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     expect(agentSvc.create).toHaveBeenCalledTimes(1);
-    const [, createdAgentInput] = agentSvc.create.mock.calls[0]!;
+    const [createdAgentInput] = agentSvc.create.mock.calls[0]!;
     expect(createdAgentInput.status).toBe("idle");
     expect(createdAgentInput.pauseReason).toBeUndefined();
     expect(createdAgentInput.pausedAt).toBeUndefined();
-    expect(routineSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(routineSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       title: "Monday Review",
       status: "active",
     }), expect.any(Object));
@@ -2968,10 +2819,6 @@ describe("company portability", () => {
   it("migrates legacy schedule.recurrence imports into routine triggers", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
@@ -3012,7 +2859,7 @@ describe("company portability", () => {
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: true, projects: true, issues: true, skills: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     });
@@ -3026,7 +2873,7 @@ describe("company portability", () => {
     await portability.importBundle({
       source: { type: "inline", rootPath: "paperclip-demo", files },
       include: { company: true, agents: true, projects: true, issues: true, skills: false },
-      target: { mode: "new_company", newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
@@ -3042,10 +2889,6 @@ describe("company portability", () => {
   it("imports recurring tasks without a project or assignee as paused routines", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
@@ -3065,7 +2908,7 @@ describe("company portability", () => {
     const request = {
       source: { type: "inline" as const, rootPath: "paperclip-demo", files },
       include: { company: true, agents: false, projects: false, issues: true, skills: false },
-      target: { mode: "new_company" as const, newCompanyName: "Imported Paperclip" },
+      target: { mode: "existing_company" as const },
       collisionStrategy: "rename" as const,
     };
 
@@ -3076,7 +2919,7 @@ describe("company portability", () => {
     );
 
     const result = await portability.importBundle(request, "user-1");
-    expect(routineSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(routineSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       projectId: null,
       assigneeAgentId: null,
       title: "Monday Review",
@@ -3089,10 +2932,7 @@ describe("company portability", () => {
   it("imports a vendor-neutral package without .paperclip.yaml", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
+    agentSvc.list.mockResolvedValue([]);
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
@@ -3134,8 +2974,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
@@ -3187,18 +3026,17 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
-    expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(companySvc.update).toHaveBeenCalledWith("company-1", expect.objectContaining({
       name: "Imported Paperclip",
       description: "Portable company package",
     }));
-    expect(agentSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       name: "ClaudeCoder",
       adapterType: "process",
     }));
@@ -3233,7 +3071,7 @@ describe("company portability", () => {
         },
       },
       include: { company: true, agents: true, projects: false, issues: false },
-      target: { mode: "new_company", newCompanyName: "CEO Role Test" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     });
@@ -3286,7 +3124,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3308,10 +3146,6 @@ describe("company portability", () => {
   it("imports packaged skills and restores desired skill refs on agents", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
@@ -3330,7 +3164,7 @@ describe("company portability", () => {
       reason: "Existing skill matched; renamed to paperclip-2.",
     }]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3354,15 +3188,14 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     const textOnlyFiles = Object.fromEntries(Object.entries(exported.files).filter(([, v]) => typeof v === "string"));
-    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith("company-imported", textOnlyFiles, {
+    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith(textOnlyFiles, {
       onConflict: "rename",
     });
     expect(result.skills).toEqual([{
@@ -3374,7 +3207,7 @@ describe("company portability", () => {
       action: "renamed",
       reason: "Existing skill matched; renamed to paperclip-2.",
     }]);
-    expect(agentSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterConfig: expect.objectContaining({
         paperclipSkillSync: {
           desiredSkills: [paperclipKey],
@@ -3394,13 +3227,8 @@ describe("company portability", () => {
         originalFilename: "company-logo.png",
       }),
     };
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-      logoAssetId: null,
-    });
     companySvc.update.mockResolvedValue({
-      id: "company-imported",
+      id: "company-1",
       name: "Imported Paperclip",
       logoAssetId: "asset-created",
     });
@@ -3410,7 +3238,7 @@ describe("company portability", () => {
     });
 
     const portability = companyPortabilityService({} as any, storage as any);
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3447,26 +3275,24 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     expect(storage.putFile).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-imported",
       namespace: "assets/companies",
       originalFilename: "company-logo.png",
       contentType: "image/png",
       body: Buffer.from("png-bytes"),
     }));
-    expect(assetSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(assetSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       objectKey: "assets/companies/imported-logo",
       contentType: "image/png",
       createdByUserId: "user-1",
     }));
-    expect(companySvc.update).toHaveBeenCalledWith("company-imported", {
+    expect(companySvc.update).toHaveBeenCalledWith("company-1", {
       logoAssetId: "asset-created",
     });
   });
@@ -3474,11 +3300,7 @@ describe("company portability", () => {
   it("disables timer heartbeats and strips raw provider tracing on created imports", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: `agent-${String(input.name).toLowerCase()}`,
       name: input.name,
       adapterConfig: input.adapterConfig,
@@ -3495,7 +3317,7 @@ describe("company portability", () => {
     })));
     agentSvc.list.mockClear();
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3519,15 +3341,14 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
-    const createdClaude = agentSvc.create.mock.calls.find(([, input]) => input.name === "ClaudeCoder");
-    expect(createdClaude?.[1]).toMatchObject({
+    const createdClaude = agentSvc.create.mock.calls.find(([input]) => input.name === "ClaudeCoder");
+    expect(createdClaude?.[0]).toMatchObject({
       runtimeConfig: {
         debug: {
           retainedDebugSetting: true,
@@ -3538,7 +3359,7 @@ describe("company portability", () => {
         },
       },
     });
-    const createdRuntimeConfig = createdClaude?.[1].runtimeConfig as
+    const createdRuntimeConfig = createdClaude?.[0].runtimeConfig as
       | Record<string, unknown>
       | undefined;
     expect(createdRuntimeConfig?.debug).not.toHaveProperty("providerTrace");
@@ -3547,7 +3368,7 @@ describe("company portability", () => {
   it("imports only selected files and leaves unchecked company metadata alone", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3583,17 +3404,14 @@ describe("company portability", () => {
       },
       selectedFiles: ["agents/cmo/AGENTS.md"],
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     expect(companySvc.update).not.toHaveBeenCalled();
-    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith(
-      "company-1",
-      expect.objectContaining({
+    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith(expect.objectContaining({
         "COMPANY.md": expect.any(String),
         "agents/cmo/AGENTS.md": expect.any(String),
       }),
@@ -3601,9 +3419,7 @@ describe("company portability", () => {
         onConflict: "rename",
       },
     );
-    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith(
-      "company-1",
-      expect.not.objectContaining({
+    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith(expect.not.objectContaining({
         "agents/claudecoder/AGENTS.md": expect.any(String),
       }),
       {
@@ -3611,7 +3427,7 @@ describe("company portability", () => {
       },
     );
     expect(agentSvc.create).toHaveBeenCalledTimes(1);
-    expect(agentSvc.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       name: "CMO",
       runtimeConfig: {
         heartbeat: {
@@ -3635,17 +3451,13 @@ describe("company portability", () => {
   it("applies adapter overrides while keeping imported AGENTS content implicit", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
       name: "ClaudeCoder",
     });
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3669,8 +3481,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: "all",
       collisionStrategy: "rename",
@@ -3685,13 +3496,13 @@ describe("company portability", () => {
       },
     }, "user-1");
 
-    expect(agentSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterType: "codex_local",
       adapterConfig: expect.objectContaining({
         dangerouslyBypassApprovalsAndSandbox: true,
       }),
     }));
-    expect(agentSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterConfig: expect.not.objectContaining({
         instructionsFilePath: expect.anything(),
         promptTemplate: expect.anything(),
@@ -3715,19 +3526,15 @@ describe("company portability", () => {
   it("does not implicitly add local adapter permission bypass defaults on import", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "agent-created",
       name: String(input.name),
       adapterType: input.adapterType,
       adapterConfig: input.adapterConfig,
     }));
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -3751,15 +3558,14 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
     }, "user-1");
 
     // Imports must preserve safe-by-default local adapter settings unless the package says otherwise.
-    const firstCreateInput = agentSvc.create.mock.calls[0]?.[1] as Record<string, any>;
+    const firstCreateInput = agentSvc.create.mock.calls[0]?.[0] as Record<string, any>;
     expect(firstCreateInput?.adapterConfig).toBeTruthy();
     expect(firstCreateInput.adapterConfig?.dangerouslySkipPermissions).toBeUndefined();
 
@@ -3776,8 +3582,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
@@ -3792,14 +3597,14 @@ describe("company portability", () => {
       },
     }, "user-1");
 
-    expect(agentSvc.create).toHaveBeenLastCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenLastCalledWith(expect.objectContaining({
       adapterType: "codex_local",
       adapterConfig: expect.objectContaining({
         extraArgs: ["--skip-git-repo-check"],
         args: ["--legacy-arg"],
       }),
     }));
-    const lastCreateInput = agentSvc.create.mock.calls.at(-1)?.[1] as Record<string, any>;
+    const lastCreateInput = agentSvc.create.mock.calls.at(-1)?.[0] as Record<string, any>;
     expect(lastCreateInput?.adapterConfig).toBeTruthy();
     expect(lastCreateInput.adapterConfig?.dangerouslyBypassApprovalsAndSandbox).toBeUndefined();
   });
@@ -3838,11 +3643,11 @@ describe("company portability", () => {
       },
     ]);
     issueSvc.listLabels.mockResolvedValueOnce([
-      { id: "label-a", companyId: "company-1", name: "bug", color: "#ff0000" },
-      { id: "label-b", companyId: "company-1", name: "urgent", color: "#00ff00" },
+      { id: "label-a", name: "bug", color: "#ff0000" },
+      { id: "label-b", name: "urgent", color: "#00ff00" },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: true, issues: true },
     });
 
@@ -3863,7 +3668,6 @@ describe("company portability", () => {
     ]);
     expect(exported.manifest.issues[0]?.labelNames).toEqual(["bug", "urgent"]);
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
@@ -3874,18 +3678,16 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: true, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     expect(result.warnings.some((warning) => warning.includes("predates"))).toBe(false);
-    expect(issueSvc.createLabel).toHaveBeenCalledWith("company-imported", { name: "bug", color: "#ff0000" });
-    expect(issueSvc.createLabel).toHaveBeenCalledWith("company-imported", { name: "urgent", color: "#00ff00" });
+    expect(issueSvc.createLabel).toHaveBeenCalledWith({ name: "bug", color: "#ff0000" });
+    expect(issueSvc.createLabel).toHaveBeenCalledWith({ name: "urgent", color: "#00ff00" });
     expect(issueSvc.createLabel).toHaveBeenCalledTimes(2);
-    expect(issueSvc.importIssues).toHaveBeenCalledWith(
-      "company-imported",
-      expect.arrayContaining([
+    expect(issueSvc.importIssues).toHaveBeenCalledWith(expect.arrayContaining([
         expect.objectContaining({
           labelIds: ["label-created-bug", "label-created-urgent"],
         }),
@@ -3916,11 +3718,11 @@ describe("company portability", () => {
       },
     ]);
     issueSvc.listLabels.mockResolvedValueOnce([
-      { id: "label-a", companyId: "company-1", name: "bug", color: "#ff0000" },
-      { id: "label-b", companyId: "company-1", name: "urgent", color: "#00ff00" },
+      { id: "label-a", name: "bug", color: "#ff0000" },
+      { id: "label-b", name: "urgent", color: "#00ff00" },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -3928,22 +3730,20 @@ describe("company portability", () => {
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Labelled task" });
     // Import target already has a "bug" label with a different color.
     issueSvc.listLabels.mockResolvedValueOnce([
-      { id: "target-bug", companyId: "company-1", name: "bug", color: "#123456" },
+      { id: "target-bug", name: "bug", color: "#123456" },
     ]);
 
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: false, agents: false, projects: false, issues: true },
-      target: { mode: "existing_company", companyId: "company-1" },
+      target: { mode: "existing_company" },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     expect(issueSvc.createLabel).toHaveBeenCalledTimes(1);
-    expect(issueSvc.createLabel).toHaveBeenCalledWith("company-1", { name: "urgent", color: "#00ff00" });
-    expect(issueSvc.importIssues).toHaveBeenCalledWith(
-      "company-1",
-      expect.arrayContaining([
+    expect(issueSvc.createLabel).toHaveBeenCalledWith({ name: "urgent", color: "#00ff00" });
+    expect(issueSvc.importIssues).toHaveBeenCalledWith(expect.arrayContaining([
         expect.objectContaining({
           labelIds: ["target-bug", "label-created-urgent"],
         }),
@@ -3957,7 +3757,6 @@ describe("company portability", () => {
   it("drops unresolvable raw labelIds from old bundles with a warning instead of failing", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Legacy Import" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Kickoff" });
@@ -3995,15 +3794,13 @@ describe("company portability", () => {
         },
       },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Legacy Import" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     expect(issueSvc.createLabel).not.toHaveBeenCalled();
-    expect(issueSvc.importIssues).toHaveBeenCalledWith(
-      "company-imported",
-      expect.arrayContaining([
+    expect(issueSvc.importIssues).toHaveBeenCalledWith(expect.arrayContaining([
         expect.objectContaining({ labelIds: [] }),
       ]),
     );
@@ -4078,7 +3875,6 @@ describe("company portability", () => {
       ? [
           {
             id: "document-1",
-            companyId: "company-1",
             issueId: "issue-1",
             key: "spec",
             title: "Spec",
@@ -4093,7 +3889,6 @@ describe("company portability", () => {
       ? [
           {
             id: "work-product-1",
-            companyId: "company-1",
             projectId: null,
             issueId: "issue-1",
             executionWorkspaceId: "ws-1",
@@ -4146,7 +3941,7 @@ describe("company portability", () => {
     const portability = companyPortabilityService(db);
     mockTaskFidelityExportSources();
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -4190,20 +3985,19 @@ describe("company portability", () => {
     expect(alphaEntry?.blockedBy).toEqual([]);
     expect(betaEntry?.blockedBy).toEqual(["pap-1"]);
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
 
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     // Ids are pre-generated by the batched importer; correlate them by title.
-    const importedIssues = issueSvc.importIssues.mock.calls[0]![1] as Array<{
+    const importedIssues = issueSvc.importIssues.mock.calls[0]![0] as Array<{
       id: string;
       title: string;
       monitorNotes: string | null;
@@ -4228,7 +4022,6 @@ describe("company portability", () => {
       expect.arrayContaining([
         expect.objectContaining({
           issueId: alphaId,
-          companyId: "company-imported",
           type: "pull_request",
           provider: "github",
           externalId: "42",
@@ -4246,7 +4039,6 @@ describe("company portability", () => {
     );
     expect(insertedRelationValues).toEqual([
       {
-        companyId: "company-imported",
         issueId: alphaId,
         relatedIssueId: betaId,
         type: "blocks",
@@ -4273,11 +4065,10 @@ describe("company portability", () => {
     const portability = companyPortabilityService(db);
     mockTaskFidelityExportSources();
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported-2", title: "Beta task", projectId: null });
@@ -4285,16 +4076,14 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
       selectedFiles: ["COMPANY.md", ".paperclip.yaml", "tasks/pap-2/TASK.md"],
     }, "user-1");
 
-    expect(issueSvc.importIssues.mock.calls[0]![1]).toHaveLength(1);
-    expect(issueSvc.importIssues).toHaveBeenCalledWith(
-      "company-imported",
-      expect.arrayContaining([
+    expect(issueSvc.importIssues.mock.calls[0]![0]).toHaveLength(1);
+    expect(issueSvc.importIssues).toHaveBeenCalledWith(expect.arrayContaining([
         expect.objectContaining({ title: "Beta task" }),
       ]),
     );
@@ -4369,7 +4158,7 @@ describe("company portability", () => {
     const portability = companyPortabilityService(db);
     mockTaskHierarchyExportSources();
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -4399,19 +4188,18 @@ describe("company portability", () => {
     expect(deltaEntry?.parentSlug).toBeNull();
     expect(extension).not.toContain("issue-outside");
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
 
     await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
-    const importedRows = issueSvc.importIssues.mock.calls[0]![1] as Array<{
+    const importedRows = issueSvc.importIssues.mock.calls[0]![0] as Array<{
       id: string;
       title: string;
       parentId: string | null;
@@ -4473,19 +4261,18 @@ describe("company portability", () => {
       ].join("\n"),
     };
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Tampered Import" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
 
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: "tampered-package", files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Tampered Import" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
-    const importedRows = issueSvc.importIssues.mock.calls[0]![1] as Array<{
+    const importedRows = issueSvc.importIssues.mock.calls[0]![0] as Array<{
       title: string;
       parentId: string | null;
       createdAt: Date | null;
@@ -4520,7 +4307,7 @@ describe("company portability", () => {
 
   function fakeAttachmentStorage() {
     return {
-      getObject: vi.fn().mockImplementation(async (_companyId: string, objectKey: string) => {
+      getObject: vi.fn().mockImplementation(async (objectKey: string) => {
         const content = attachmentBytesByObjectKey[objectKey];
         if (content === undefined) throw new Error(`missing object ${objectKey}`);
         return { stream: Readable.from([Buffer.from(content)]) };
@@ -4617,7 +4404,7 @@ describe("company portability", () => {
     mockAttachmentExportSources();
     const sha = sha256Of("png-bytes");
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -4654,7 +4441,6 @@ describe("company portability", () => {
       "Attachment notes.bin on task pap-1 was exported under its recomputed content hash because the stored hash did not match.",
     );
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Attachment task", projectId: null });
@@ -4662,19 +4448,18 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
 
     // Ids are pre-generated, so capture them to resolve the storage namespace
     // and the comment-scoped attachment reference.
-    const importedIssueId = (issueSvc.importIssues.mock.calls[0]![1] as Array<{ id: string }>)[0]!.id;
+    const importedIssueId = (issueSvc.importIssues.mock.calls[0]![0] as Array<{ id: string }>)[0]!.id;
     const importedCommentIds = (issueSvc.addImportedComments.mock.calls[0]![0] as Array<{ id: string }>).map((row) => row.id);
 
     expect(storage.putFile).toHaveBeenCalledTimes(2);
     expect(storage.putFile).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-imported",
       namespace: `issues/${importedIssueId}`,
       originalFilename: "screenshot.png",
       contentType: "image/png",
@@ -4708,7 +4493,7 @@ describe("company portability", () => {
     const portability = companyPortabilityService({} as any);
     mockAttachmentExportSources();
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -4723,12 +4508,11 @@ describe("company portability", () => {
     const storage = fakeAttachmentStorage();
     const exporting = companyPortabilityService({} as any, storage as any);
     mockAttachmentExportSources();
-    const exported = await exporting.exportBundle("company-1", {
+    const exported = await exporting.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
     const importing = companyPortabilityService({} as any);
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Attachment task", projectId: null });
@@ -4736,7 +4520,7 @@ describe("company portability", () => {
     const result = await importing.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
@@ -4751,7 +4535,7 @@ describe("company portability", () => {
     mockAttachmentExportSources();
     const sha = sha256Of("png-bytes");
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
     exported.files[`blobs/${sha}`] = {
@@ -4760,7 +4544,6 @@ describe("company portability", () => {
       contentType: "application/octet-stream",
     };
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Attachment task", projectId: null });
@@ -4768,14 +4551,13 @@ describe("company portability", () => {
     await expect(portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1")).rejects.toThrow(/does not match its declared sha256/);
     expect(issueSvc.addImportedAttachments).not.toHaveBeenCalled();
     // Blob verification runs before any write, so a tampered package cannot
     // leave a partially imported company behind.
-    expect(companySvc.create).not.toHaveBeenCalled();
     expect(issueSvc.importIssues).not.toHaveBeenCalled();
   });
 
@@ -4806,13 +4588,12 @@ describe("company portability", () => {
       ]);
       const sha = sha256Of("png-bytes");
 
-      const exported = await portability.exportBundle("company-1", {
+      const exported = await portability.exportBundle({
         include: { company: true, agents: false, projects: false, issues: true },
       });
       delete exported.files[`blobs/${sha}`];
 
-      companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
-      companySvc.update.mockResolvedValue({ id: "company-imported", name: "Imported" });
+      companySvc.update.mockResolvedValue({ id: "company-1", name: "Imported" });
       accessSvc.ensureMembership.mockResolvedValue(undefined);
       agentSvc.list.mockResolvedValue([]);
       issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Attachment task", projectId: null });
@@ -4820,7 +4601,7 @@ describe("company portability", () => {
       const result = await portability.importBundle({
         source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
         include: { company: true, agents: false, projects: false, issues: true },
-        target: { mode: "new_company", newCompanyName: "Imported" },
+        target: { mode: "existing_company" as const },
         agents: "all",
         collisionStrategy: "rename",
       }, "user-1");
@@ -4892,7 +4673,6 @@ describe("company portability", () => {
       assetId === EMBEDDED_ASSET_ID
         ? {
             id: EMBEDDED_ASSET_ID,
-            companyId: "company-1",
             provider: "local_disk",
             objectKey: "assets/general/embed.png",
             contentType: "image/png",
@@ -4910,7 +4690,7 @@ describe("company portability", () => {
     mockEmbeddedAssetExportSources();
     const sha = sha256Of("embedded-image-bytes");
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -4937,7 +4717,6 @@ describe("company portability", () => {
       },
     ]);
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Embedded image task", projectId: null });
@@ -4946,7 +4725,7 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
@@ -4955,14 +4734,13 @@ describe("company portability", () => {
     // hash to the exported blob's address.
     expect(storage.putFile).toHaveBeenCalledTimes(1);
     expect(storage.putFile).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-imported",
       namespace: "assets/general",
       originalFilename: "embed.png",
       contentType: "image/png",
       body: Buffer.from("embedded-image-bytes"),
     }));
     expect(assetSvc.create).toHaveBeenCalledTimes(1);
-    expect(assetSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(assetSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       contentType: "image/png",
       originalFilename: "embed.png",
       sha256: sha,
@@ -4971,7 +4749,7 @@ describe("company portability", () => {
     }));
 
     // Every reference now points at the minted asset id, not the source id.
-    const importedDescription = (issueSvc.importIssues.mock.calls[0]![1] as Array<{ description: string }>)[0]!.description;
+    const importedDescription = (issueSvc.importIssues.mock.calls[0]![0] as Array<{ description: string }>)[0]!.description;
     expect(importedDescription).toContain(embeddedAssetUrl("asset-imported-1"));
     expect(importedDescription).not.toContain(EMBEDDED_ASSET_ID);
     const importedCommentBody = (issueSvc.addImportedComments.mock.calls[0]![0] as Array<{ body: string }>)[0]!.body;
@@ -4988,34 +4766,19 @@ describe("company portability", () => {
     expect(result.warnings.filter((warning) => warning.includes("embedded"))).toEqual([]);
   });
 
-  it("skips embedded image references that are foreign or dangling with one aggregate warning", async () => {
+  it("skips dangling embedded image references with one aggregate warning", async () => {
     const storage = fakeAttachmentStorage();
     const portability = companyPortabilityService({} as any, storage as any);
-    const foreignAssetId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
-    const missingAssetId = "12345678-1234-4123-8123-123456789abc";
+    const firstMissingAssetId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const secondMissingAssetId = "12345678-1234-4123-8123-123456789abc";
     mockEmbeddedAssetExportSources(
-      `![theirs](${embeddedAssetUrl(foreignAssetId)})\n\n![gone](${embeddedAssetUrl(missingAssetId)})`,
+      `![first](${embeddedAssetUrl(firstMissingAssetId)})\n\n![gone](${embeddedAssetUrl(secondMissingAssetId)})`,
     );
     issueSvc.listComments.mockResolvedValue([]);
     documentSvc.listIssueDocuments.mockResolvedValue([]);
-    // A crafted reference naming another company's asset id must not pull
-    // that asset's bytes into the bundle.
-    assetSvc.getById.mockImplementation(async (assetId: string) => (
-      assetId === foreignAssetId
-        ? {
-            id: foreignAssetId,
-            companyId: "company-2",
-            provider: "local_disk",
-            objectKey: "assets/general/secret.png",
-            contentType: "image/png",
-            byteSize: 6,
-            sha256: sha256Of("secret"),
-            originalFilename: "secret.png",
-          }
-        : null
-    ));
+    assetSvc.getById.mockResolvedValue(null);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -5034,12 +4797,11 @@ describe("company portability", () => {
     mockEmbeddedAssetExportSources();
     const sha = sha256Of("embedded-image-bytes");
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
     delete exported.files[`blobs/${sha}`];
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Embedded image task", projectId: null });
@@ -5047,7 +4809,7 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
@@ -5056,7 +4818,7 @@ describe("company portability", () => {
     expect(result.warnings).toContain(
       `Embedded image asset embed.png was skipped because its blob is missing from the package: blobs/${sha}; its references were left unchanged.`,
     );
-    const importedDescription = (issueSvc.importIssues.mock.calls[0]![1] as Array<{ description: string }>)[0]!.description;
+    const importedDescription = (issueSvc.importIssues.mock.calls[0]![0] as Array<{ description: string }>)[0]!.description;
     expect(importedDescription).toContain(embeddedAssetUrl(EMBEDDED_ASSET_ID));
     const importedCommentBody = (issueSvc.addImportedComments.mock.calls[0]![0] as Array<{ body: string }>)[0]!.body;
     expect(importedCommentBody).toContain(embeddedAssetUrl(EMBEDDED_ASSET_ID));
@@ -5068,14 +4830,14 @@ describe("company portability", () => {
     mockEmbeddedAssetExportSources();
     const sha = sha256Of("embedded-image-bytes");
 
-    const kept = await portability.exportBundle("company-1", {
+    const kept = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
       selectedFiles: ["COMPANY.md", ".paperclip.yaml", "tasks/pap-1/TASK.md", "tasks/pap-1/documents/spec.md", `blobs/${sha}`],
     });
     expect(asTextFile(kept.files[".paperclip.yaml"])).toContain("embeddedAssets:");
     expect(kept.files[`blobs/${sha}`]).toBeDefined();
 
-    const pruned = await portability.exportBundle("company-1", {
+    const pruned = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
       selectedFiles: ["COMPANY.md", ".paperclip.yaml"],
     });
@@ -5119,7 +4881,6 @@ describe("company portability", () => {
     const v5Warning =
       "This package declares schemaVersion 5 and predates label, blocker, document, work product, monitor, attachment, embedded image, task timestamp, and parent link transfer; that task data imports only if the bundle carries it.";
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Legacy Import" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Kickoff", projectId: null });
@@ -5127,7 +4888,7 @@ describe("company portability", () => {
     const request = {
       source: { type: "inline" as const, rootPath: "legacy-package", files: legacyPackageFiles([]) },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company" as const, newCompanyName: "Legacy Import" },
+      target: { mode: "existing_company" as const },
       agents: "all" as const,
       collisionStrategy: "rename" as const,
     };
@@ -5137,9 +4898,7 @@ describe("company portability", () => {
     expect(preview.warnings).toContain(v5Warning);
 
     const result = await portability.importBundle(request, "user-1");
-    expect(issueSvc.importIssues).toHaveBeenCalledWith(
-      "company-imported",
-      expect.arrayContaining([
+    expect(issueSvc.importIssues).toHaveBeenCalledWith(expect.arrayContaining([
         expect.objectContaining({ title: "Kickoff" }),
       ]),
     );
@@ -5152,7 +4911,7 @@ describe("company portability", () => {
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: "legacy-package", files: legacyPackageFiles(["schemaVersion: 1"]) },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Legacy Import" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     });
@@ -5165,7 +4924,6 @@ describe("company portability", () => {
   it("imports a legacy package carrying the retired brand color and attachment limit", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Legacy Import" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     issueSvc.create.mockResolvedValue({ id: "issue-imported", title: "Kickoff", projectId: null });
@@ -5181,7 +4939,7 @@ describe("company portability", () => {
         ]),
       },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company" as const, newCompanyName: "Legacy Import" },
+      target: { mode: "existing_company" as const },
       agents: "all" as const,
       collisionStrategy: "rename" as const,
     };
@@ -5193,10 +4951,10 @@ describe("company portability", () => {
 
     await portability.importBundle(request, "user-1");
 
-    expect(companySvc.create).toHaveBeenCalledWith(
+    expect(companySvc.update).toHaveBeenCalledWith("company-1", 
       expect.not.objectContaining({ brandColor: expect.anything() }),
     );
-    expect(companySvc.create).toHaveBeenCalledWith(
+    expect(companySvc.update).toHaveBeenCalledWith("company-1", 
       expect.not.objectContaining({ attachmentMaxBytes: expect.anything() }),
     );
   });
@@ -5207,7 +4965,7 @@ describe("company portability", () => {
     await expect(portability.importBundle({
       source: { type: "inline", rootPath: "future-package", files: legacyPackageFiles(["schemaVersion: 8"]) },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Future Import" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1")).rejects.toThrow(/newer Paperclip/);
@@ -5245,7 +5003,6 @@ describe("company portability", () => {
       {
         id: "comment-1",
         issueId: "issue-1",
-        companyId: "company-1",
         authorType: "system",
         authorAgentId: null,
         authorUserId: null,
@@ -5257,7 +5014,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -5266,7 +5023,6 @@ describe("company portability", () => {
     expect(extension).toContain("system_notice");
     expect(extension).toContain("successful_run_missing_state");
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
@@ -5275,7 +5031,7 @@ describe("company portability", () => {
     await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, "user-1");
@@ -5319,7 +5075,6 @@ describe("company portability", () => {
       {
         id: "comment-1",
         issueId: "issue-1",
-        companyId: "company-1",
         authorType: "user",
         authorAgentId: null,
         authorUserId: "local-board",
@@ -5331,7 +5086,7 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
@@ -5366,7 +5121,6 @@ describe("company portability", () => {
       {
         id: "comment-1",
         issueId: "issue-1",
-        companyId: "company-1",
         authorType: "user",
         authorAgentId: null,
         authorUserId: "local-board",
@@ -5378,11 +5132,10 @@ describe("company portability", () => {
       },
     ]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: false, projects: false, issues: true },
     });
 
-    companySvc.create.mockResolvedValue({ id: "company-imported", name: "Imported" });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.list.mockResolvedValue([]);
     projectSvc.list.mockResolvedValue([]);
@@ -5391,7 +5144,7 @@ describe("company portability", () => {
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: true, agents: false, projects: false, issues: true },
-      target: { mode: "new_company", newCompanyName: "Imported" },
+      target: { mode: "existing_company" as const },
       agents: "all",
       collisionStrategy: "rename",
     }, null);
@@ -5415,17 +5168,13 @@ describe("company portability", () => {
   it("strips root AGENTS frontmatter when importing a nested agent entry path", async () => {
     const portability = companyPortabilityService({} as any);
 
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
     accessSvc.ensureMembership.mockResolvedValue(undefined);
     agentSvc.create.mockResolvedValue({
       id: "agent-created",
       name: "ClaudeCoder",
     });
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -5456,8 +5205,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
@@ -5484,7 +5232,7 @@ describe("company portability", () => {
 
   it("rejects dangerous adapter types on agent-safe imports", async () => {
     const portability = companyPortabilityService({} as any);
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -5508,8 +5256,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
@@ -5524,7 +5271,6 @@ describe("company portability", () => {
       },
     }, "user-1", {
       mode: "agent_safe",
-      sourceCompanyId: "company-1",
     })).rejects.toThrow('Adapter type "process" is not allowed in safe imports');
 
     expect(agentSvc.create).not.toHaveBeenCalled();
@@ -5559,13 +5305,11 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       collisionStrategy: "rename",
     }, {
       mode: "agent_safe",
-      sourceCompanyId: "company-1",
     });
 
     expect(preview.errors).toContain("Safe import does not allow project app workspace default setupCommand.");
@@ -5606,13 +5350,11 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       collisionStrategy: "rename",
     }, {
       mode: "agent_safe",
-      sourceCompanyId: "company-1",
     });
 
     expect(preview.errors).toContain("Secret must belong to same company");
@@ -5653,13 +5395,11 @@ describe("company portability", () => {
         issues: true,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       collisionStrategy: "rename",
     }, "user-1", {
       mode: "agent_safe",
-      sourceCompanyId: "company-1",
     })).rejects.toThrow("Safe import does not allow task review executionWorkspaceSettings.");
 
     expect(issueSvc.importIssues).not.toHaveBeenCalled();
@@ -5668,7 +5408,7 @@ describe("company portability", () => {
 
   it("imports new agents as active while preserving future hire approval settings", async () => {
     const portability = companyPortabilityService({} as any);
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -5688,7 +5428,7 @@ describe("company portability", () => {
         },
       },
     });
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "agent-created",
       name: String(input.name),
       adapterType: input.adapterType,
@@ -5709,26 +5449,23 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
+        mode: "existing_company",
       },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
     }, "user-1");
 
-    expect(secretSvc.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(
-      "company-imported",
-      expect.anything(),
+    expect(secretSvc.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(expect.anything(),
       { strictMode: false, adapterType: "claude_local" },
     );
-    expect(agentSvc.create).toHaveBeenCalledWith("company-imported", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterType: "claude_local",
       adapterConfig: expect.objectContaining({
         normalized: true,
       }),
       status: "idle",
     }));
-    expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(companySvc.update).toHaveBeenCalledWith("company-1", expect.objectContaining({
       requireBoardApprovalForNewAgents: false,
     }));
   });
@@ -5744,7 +5481,7 @@ describe("company portability", () => {
       },
     })));
     agentSvc.list.mockClear();
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: {
         company: true,
         agents: true,
@@ -5776,8 +5513,7 @@ describe("company portability", () => {
         issues: false,
       },
       target: {
-        mode: "existing_company",
-        companyId: "company-1",
+        mode: "existing_company"
       },
       agents: ["claudecoder"],
       collisionStrategy: "replace",
@@ -5791,9 +5527,7 @@ describe("company portability", () => {
       },
     }, "user-1");
 
-    expect(secretSvc.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(
-      "company-1",
-      expect.objectContaining({
+    expect(secretSvc.normalizeAdapterConfigForPersistence).toHaveBeenCalledWith(expect.objectContaining({
         model: "gpt-5.4",
         extraArgs: ["--skip-git-repo-check"],
       }),
@@ -5823,7 +5557,7 @@ describe("company portability", () => {
   it("nameOverrides applied after collision detection do not re-validate uniqueness", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: false, agents: true, projects: false, issues: false },
     });
 
@@ -5835,7 +5569,7 @@ describe("company portability", () => {
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: false, agents: true, projects: false, issues: false },
-      target: { mode: "existing_company", companyId: "company-1" },
+      target: { mode: "existing_company" },
       agents: ["claudecoder"],
       collisionStrategy: "rename",
       nameOverrides: { claudecoder: "ClaudeCoder" },
@@ -5869,7 +5603,7 @@ describe("company portability", () => {
     });
 
     // Export should complete without infinite recursion in org chart building
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: true, projects: false, issues: false },
     });
 
@@ -5884,19 +5618,19 @@ describe("company portability", () => {
     const portability = companyPortabilityService({} as any);
 
     projectSvc.list.mockResolvedValue([{
-      id: "project-1", companyId: "company-1", name: "TestProject", urlKey: "testproject",
+      id: "project-1", name: "TestProject", urlKey: "testproject",
       description: null, leadAgentId: null, targetDate: null, color: null, status: "planned",
       executionWorkspacePolicy: null, archivedAt: null, workspaces: [],
     }]);
     issueSvc.list.mockResolvedValue([{
-      id: "issue-1", companyId: "company-1", title: "Test task", identifier: "PAP-1",
+      id: "issue-1", title: "Test task", identifier: "PAP-1",
       description: "A test task", status: "todo", priority: "medium",
       assigneeAgentId: "agent-1", projectId: "project-1", projectWorkspaceId: null,
       goalId: null, parentId: null, billingCode: null, labelIds: [],
       executionWorkspaceSettings: null, assigneeAdapterOverrides: null, metadata: null,
     }]);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: false, agents: true, projects: true, issues: true },
     });
 
@@ -5908,13 +5642,13 @@ describe("company portability", () => {
     ]);
     projectSvc.list.mockResolvedValue([]);
     issueSvc.list.mockResolvedValue([]);
-    projectSvc.create.mockResolvedValue({ id: "project-new", companyId: "company-1", urlKey: "testproject" });
+    projectSvc.create.mockResolvedValue({ id: "project-new", urlKey: "testproject" });
     issueSvc.create.mockResolvedValue({ id: "issue-new", identifier: "PAP-100" });
 
     const result = await portability.importBundle({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: false, agents: true, projects: true, issues: true },
-      target: { mode: "existing_company", companyId: "company-1" },
+      target: { mode: "existing_company" },
       agents: "all",
       collisionStrategy: "skip",
     }, "user-1");
@@ -5928,7 +5662,7 @@ describe("company portability", () => {
     expect(issueSvc.importIssues).toHaveBeenCalled();
     const issueImportCall = issueSvc.importIssues.mock.calls[0];
     // The assigneeAgentId should resolve to the existing agent via existingSlugToAgentId
-    expect(issueImportCall[1]).toEqual(expect.arrayContaining([
+    expect(issueImportCall[0]).toEqual(expect.arrayContaining([
       expect.objectContaining({
         assigneeAgentId: "agent-1",
       }),
@@ -5938,7 +5672,7 @@ describe("company portability", () => {
   it("handles a package with only skills (no agents or projects)", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: false, agents: false, projects: false, issues: false, skills: true },
       expandReferencedSkills: true,
     });
@@ -5953,7 +5687,7 @@ describe("company portability", () => {
   it("preview import detects no agents to import when agents are excluded", async () => {
     const portability = companyPortabilityService({} as any);
 
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: true, agents: true, projects: false, issues: false },
     });
 
@@ -5962,7 +5696,7 @@ describe("company portability", () => {
     const preview = await portability.previewImport({
       source: { type: "inline", rootPath: exported.rootPath, files: exported.files },
       include: { company: false, agents: false, projects: false, issues: false },
-      target: { mode: "existing_company", companyId: "company-1" },
+      target: { mode: "existing_company" },
       agents: "all",
       collisionStrategy: "rename",
     });
@@ -5974,11 +5708,11 @@ describe("company portability", () => {
 
   it("rejects runner imports while disabled and accepts the same selection when enabled", async () => {
     const portability = companyPortabilityService({} as any);
-    const exported = await portability.exportBundle("company-1", {
+    const exported = await portability.exportBundle({
       include: { company: false, agents: true, projects: false, issues: false },
     });
     agentSvc.list.mockResolvedValue([]);
-    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    agentSvc.create.mockImplementation(async (input: Record<string, unknown>) => ({
       id: "agent-created",
       ...input,
     }));
@@ -5989,7 +5723,7 @@ describe("company portability", () => {
         files: exported.files,
       },
       include: { company: false, agents: true, projects: false, issues: false },
-      target: { mode: "existing_company" as const, companyId: "company-1" },
+      target: { mode: "existing_company" as const },
       agents: "all" as const,
       collisionStrategy: "rename" as const,
       adapterOverrides: {
@@ -6019,13 +5753,13 @@ describe("company portability", () => {
         },
       },
     }, "user-1");
-    expect(agentSvc.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterType: "paperclip_runner",
       adapterConfig: expect.objectContaining({ provider: "opencode" }),
     }));
 
     await portability.importBundle(request, "user-1");
-    expect(agentSvc.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(agentSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       adapterType: "paperclip_runner",
       adapterConfig: expect.objectContaining({ provider: "codex" }),
     }));
@@ -6043,10 +5777,7 @@ describe("company portability", () => {
         },
       },
     }, "user-1");
-    expect(managedAgentProfileSvc.requireQualified).toHaveBeenCalledWith(
-      "company-1",
-      "managed-primary",
-    );
+    expect(managedAgentProfileSvc.requireQualified).toHaveBeenCalledWith("managed-primary");
 
     const createCallsBeforeInvalidProfile = agentSvc.create.mock.calls.length;
     const { notFound } = await import("../errors.js");
@@ -6066,27 +5797,7 @@ describe("company portability", () => {
         },
       },
     }, "user-1")).rejects.toMatchObject({ status: 404 });
-    expect(managedAgentProfileSvc.requireQualified).toHaveBeenLastCalledWith(
-      "company-1",
-      "managed-other-company",
-    );
+    expect(managedAgentProfileSvc.requireQualified).toHaveBeenLastCalledWith("managed-other-company");
     expect(agentSvc.create).toHaveBeenCalledTimes(createCallsBeforeInvalidProfile);
-  });
-});
-
-describe("dedupeImportedCompanyName", () => {
-  it("returns the base name when nothing collides", () => {
-    expect(dedupeImportedCompanyName("Paperclip", ["Other Co"])).toBe("Paperclip");
-    expect(dedupeImportedCompanyName("Paperclip", [])).toBe("Paperclip");
-  });
-
-  it("suffixes past every taken candidate, case-insensitively", () => {
-    expect(dedupeImportedCompanyName("Paperclip", ["paperclip"])).toBe("Paperclip (2)");
-    expect(dedupeImportedCompanyName("Paperclip", ["Paperclip", "Paperclip (2)"])).toBe("Paperclip (3)");
-    expect(dedupeImportedCompanyName("Paperclip", ["PAPERCLIP", "paperclip (2)"])).toBe("Paperclip (3)");
-  });
-
-  it("ignores surrounding whitespace in existing names", () => {
-    expect(dedupeImportedCompanyName("Paperclip", ["  Paperclip  "])).toBe("Paperclip (2)");
   });
 });

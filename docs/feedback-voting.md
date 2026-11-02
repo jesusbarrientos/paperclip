@@ -36,7 +36,7 @@ Shows a color-coded summary: vote counts, per-trace details with reasons, and ex
 paperclipai feedback report
 
 # Point to a different server or company
-npx paperclipai feedback report --api-base http://127.0.0.1:3000 --company-id <company-id>
+npx paperclipai feedback report --api-base http://127.0.0.1:3000
 
 # Include raw payload dumps in the report
 pnpm paperclipai feedback report --payloads
@@ -58,7 +58,7 @@ curl 'http://127.0.0.1:3102/api/issues/<issueId>/feedback-traces?includePayload=
 
 **List all traces company-wide:**
 ```bash
-curl 'http://127.0.0.1:3102/api/companies/<companyId>/feedback-traces?includePayload=true'
+curl 'http://127.0.0.1:3102/api/organization/feedback-traces?includePayload=true'
 ```
 
 **Get a single trace envelope record:**
@@ -112,7 +112,7 @@ Exports are full by default. `traces/` keeps the Paperclip envelope, while `full
 
 ```bash
 # Custom server and output directory
-npx paperclipai feedback export --api-base http://127.0.0.1:3000 --company-id <company-id> --out ./my-export
+npx paperclipai feedback export --api-base http://127.0.0.1:3000 --out ./my-export
 ```
 
 ### Reading an exported trace
@@ -163,7 +163,7 @@ The first time you vote, a consent dialog asks:
 - **Keep local** — vote is stored locally only (`sharedWithLabs: false`)
 - **Share this vote** — vote is marked for sharing (`sharedWithLabs: true`)
 
-Your preference is saved per-company. You can change it any time via the feedback settings. Votes marked "keep local" are never queued for export.
+Your preference is saved on the organization. You can change it any time via the feedback settings. Votes marked "keep local" are never queued for export.
 
 ## Data lifecycle
 
@@ -189,5 +189,5 @@ Votes you choose to share are sent to the Telemetry Backend immediately from the
 Exported objects use a deterministic key pattern so they are easy to inspect:
 
 ```text
-feedback-traces/<companyId>/YYYY/MM/DD/<exportId-or-traceId>.json
+feedback-traces/YYYY/MM/DD/<exportId-or-traceId>.json
 ```

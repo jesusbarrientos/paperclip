@@ -36,7 +36,7 @@ describe("GitHub commit details", () => {
       tokenProvider: async () => "secret-token",
     });
 
-    await expect(resolve("company-1", {
+    await expect(resolve({
       host: "github.com",
       owner: "acme",
       repo: "app",
@@ -57,7 +57,7 @@ describe("GitHub commit details", () => {
       fetch: async () => new Response(JSON.stringify({ files: [] }), { status: 200 }),
       tokenProvider: null,
     });
-    await expect(resolve("company-1", {
+    await expect(resolve({
       host: "github.com",
       owner: "acme",
       repo: "app",

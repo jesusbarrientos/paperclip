@@ -20,7 +20,6 @@ Environment:
   PAPERCLIP_BRIDGE_API_KEY
                        Task-bridge Paperclip API key with kind=task_bridge scope.
   PAPERCLIP_API_KEY    Fallback bridge key env var. Do not use a full agent key.
-  PAPERCLIP_COMPANY_ID Optional company id override.
   PAPERCLIP_AGENT_ID   Optional agent id override.
   PAPERCLIP_RUN_ID     Optional run id for X-Paperclip-Run-Id on mutations.
 
@@ -109,7 +108,6 @@ function getConfig() {
     apiBaseUrl: normalizeApiBaseUrl(process.env.PAPERCLIP_API_URL),
     apiKey,
     runId: process.env.PAPERCLIP_RUN_ID?.trim() || null,
-    companyId: process.env.PAPERCLIP_COMPANY_ID?.trim() || null,
     agentId: process.env.PAPERCLIP_AGENT_ID?.trim() || null,
   };
 }
@@ -160,14 +158,13 @@ async function apiFetch(config, path, options = {}) {
 }
 
 async function resolveIdentity(config) {
-  if (config.companyId && config.agentId) {
-    return { companyId: config.companyId, agentId: config.agentId, agent: null };
+  if (config.agentId) {
+    return { agentId: config.agentId, agent: null };
   }
   const agent = await apiFetch(config, "/agents/me");
-  const companyId = config.companyId || agent.companyId;
-  const agentId = config.agentId || agent.id;
-  if (!companyId || !agentId) throw new ApiError(500, { error: "Paperclip identity response did not include companyId and agent id" });
-  return { companyId, agentId, agent };
+  const agentId = agent.id;
+  if (!agentId) throw new ApiError(500, { error: "Paperclip identity response did not include an agent id" });
+  return { agentId, agent };
 }
 
 function issueSummary(issue) {
@@ -230,7 +227,6 @@ async function listAssigned(config, args) {
     : [];
   printJson({
     command: "list-assigned",
-    companyId: identity.companyId,
     agentId: identity.agentId,
     count: filteredIssues.length,
     issues: filteredIssues.map(issueSummary),
@@ -273,7 +269,7 @@ async function createTask(config, args) {
   const status = readStringFlag(args, "status");
   if (status) body.status = validateEnum(status, STATUSES, "status");
 
-  const issue = await apiFetch(config, `/companies/${encodeURIComponent(identity.companyId)}/issues`, {
+  const issue = await apiFetch(config, "/issues", {
     method: "POST",
     mutating: true,
     body,

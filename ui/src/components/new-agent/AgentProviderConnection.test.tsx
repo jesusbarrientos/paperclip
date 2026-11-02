@@ -69,18 +69,16 @@ async function mount(
     {
       definition: {
         id: "d1",
-        companyId: "c1",
         key: `${key}.setup.1`,
         name: "Personal key",
         status: "active",
       },
-      secret: { companyId: "c1", status: "active" },
+      secret: { status: "active" },
     },
   ]);
   mocks.organization.mockResolvedValue([
     {
       id: "s1",
-      companyId: "c1",
       key,
       name: "Company key",
       scope: "company",
@@ -90,7 +88,6 @@ async function mount(
       ? [
           {
             id: "codex-home",
-            companyId: "c1",
             name: "CODEX_HOME_team",
             scope: "company",
             status: "active",
@@ -104,7 +101,7 @@ async function mount(
   }
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (cachedClaudeLogin) {
-    client.setQueryData(["claude-oauth-token-status", "c1"], { secretId: "cached-claude", latestVersion: 1 });
+    client.setQueryData(["claude-oauth-token-status"], { secretId: "cached-claude", latestVersion: 1 });
     mocks.auth.mockResolvedValue({ status: "absent" });
   }
   client.setQueryData(["health"], { deploymentMode, localAiLoginSupported });
@@ -118,7 +115,6 @@ async function mount(
     root.render(
       <QueryClientProvider client={client}>
         <AgentProviderConnection
-          companyId="c1"
           adapterType={adapterType}
           environmentId="e1"
           canLogin={canLogin}
@@ -173,7 +169,7 @@ describe("AgentProviderConnection reuse", () => {
     });
     click("Connect");
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalled());
-    expect(managedApi.create).toHaveBeenCalledWith("c1", expect.objectContaining({ connectionId: "original", name: "Existing API account", method: "api_key" }));
+    expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({ connectionId: "original", name: "Existing API account", method: "api_key" }));
   });
   it("creates an API account when recovering a subscription with an API key", async () => {
     const onComplete = vi.fn();
@@ -191,9 +187,9 @@ describe("AgentProviderConnection reuse", () => {
     });
     click("Connect");
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalled());
-    const saved = managedApi.create.mock.calls.at(-1)! as unknown as [string, {connectionId?: string; name: string; method: string}];
-    expect(saved[1]).toMatchObject({ name: "dotta's Claude API account", method: "api_key" });
-    expect(saved[1].connectionId).toBeUndefined();
+    const saved = managedApi.create.mock.calls.at(-1)! as unknown as [{connectionId?: string; name: string; method: string}];
+    expect(saved[0]).toMatchObject({ name: "dotta's Claude API account", method: "api_key" });
+    expect(saved[0].connectionId).toBeUndefined();
   });
 
   it.each([false, true])("names the selected method automatically and preserves reconnect names (reconnect: %s)", async (reconnect) => {
@@ -215,7 +211,7 @@ describe("AgentProviderConnection reuse", () => {
     });
     click("Connect");
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalled());
-    expect(managedApi.create).toHaveBeenCalledWith("c1", expect.objectContaining({
+    expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({
       name: reconnect ? "Existing account" : "dotta's Claude API account", method: "api_key", apiKey: "test-api-key",
     }));
   });
@@ -242,11 +238,11 @@ describe("AgentProviderConnection reuse", () => {
     await vi.waitFor(() => expect(host.textContent).toContain(command));
     expect(host.textContent).toContain("Your existing terminal login stays separate");
     expect(host.textContent).not.toContain("Connect uses your local");
-    expect(managedApi.startLocalLogin).toHaveBeenCalledWith("c1", intent);
-    expect(managedApi.checkLocalLogin).toHaveBeenCalledWith("c1", { ...intent, localSessionId: "local-attempt" });
+    expect(managedApi.startLocalLogin).toHaveBeenCalledWith(intent);
+    expect(managedApi.checkLocalLogin).toHaveBeenCalledWith({ ...intent, localSessionId: "local-attempt" });
     click("Connect");
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalled());
-    expect(managedApi.connectLocal).toHaveBeenCalledWith("c1", { ...intent, localSessionId: "local-attempt" });
+    expect(managedApi.connectLocal).toHaveBeenCalledWith({ ...intent, localSessionId: "local-attempt" });
   });
   it.each(["claude_local", "codex_local"] as const)("connects a local subscription without a sandbox and supports retry: %s", async (adapterType) => {
     const onComplete = vi.fn();
@@ -263,12 +259,12 @@ describe("AgentProviderConnection reuse", () => {
     if (adapterType === "codex_local") {
       click("Start sign-in again");
       await vi.waitFor(() => expect(host.textContent).not.toContain("Run local login and try again"));
-      await vi.waitFor(() => expect(managedApi.cancelLocalLogin).toHaveBeenCalledWith("c1", "local-attempt"));
+      await vi.waitFor(() => expect(managedApi.cancelLocalLogin).toHaveBeenCalledWith("local-attempt"));
       await vi.waitFor(() => expect(host.textContent).toContain("codex login"));
     }
     click("Connect");
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalledWith({ connectionId: "local-account", grantId: "local-grant", method: "subscription" }));
-    expect(managedApi.connectLocal).toHaveBeenCalledWith("c1", adapterType === "codex_local" ? { ...intent, localSessionId: "local-attempt" } : intent);
+    expect(managedApi.connectLocal).toHaveBeenCalledWith(adapterType === "codex_local" ? { ...intent, localSessionId: "local-attempt" } : intent);
     expect(mocks.loginPanel).not.toHaveBeenCalled();
   });
   it("leaves a completed local account saved when its host is cancelled", async () => {
@@ -315,7 +311,7 @@ describe("AgentProviderConnection reuse", () => {
       expect(host.textContent).toContain("Waiting for code");
       flushSync(() => panel().onConnected("session-1"));
       await vi.waitFor(() => expect(onComplete).toHaveBeenCalledWith({ connectionId: "login-account", grantId: "login-grant", method: "subscription" }));
-      expect(managedApi.loginResult).toHaveBeenCalledWith("c1", "session-1");
+      expect(managedApi.loginResult).toHaveBeenCalledWith("session-1");
     } finally { open.mockRestore(); }
   });
 
@@ -483,7 +479,7 @@ describe("AgentProviderConnection reuse", () => {
   it.each(["claude_local", "codex_local"] as const)("uses a managed subscription through the upstream chooser for %s", async (adapterType) => {
     const provider = adapterType === "claude_local" ? "anthropic" : "openai";
     managedApi.list.mockResolvedValue({ currentUserId: "user-1", connections: [{
-      id: "account", grantId: "grant", companyId: "c1", provider,
+      id: "account", grantId: "grant", provider,
       method: "subscription", name: "My subscription", ownership: "personal",
       ownerUserId: "user-1", isDefault: true, status: "connected",
     }] } as never);

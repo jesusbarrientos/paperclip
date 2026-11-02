@@ -33,8 +33,8 @@ vi.mock("../api/budgets", () => ({
 
 vi.mock("../api/costs", () => ({ costsApi: costsApiMocks }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("../context/BreadcrumbContext", () => ({
@@ -80,7 +80,7 @@ describe("Costs embedded Audit surfaces", () => {
 
     await act(async () => {
       await vi.waitFor(() => {
-        expect(budgetOverviewMock).toHaveBeenCalledWith("company-1");
+        expect(budgetOverviewMock).toHaveBeenCalledWith();
         expect(container.textContent).toContain("Budget control plane");
       });
     });

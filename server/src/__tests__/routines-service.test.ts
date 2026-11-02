@@ -138,7 +138,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -150,7 +149,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Routines",
       status: "in_progress",
     });
@@ -174,7 +172,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
           const queuedRunId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: queuedRunId,
-            companyId,
             agentId: wakeupAgentId,
             invocationSource: wakeupOpts.source ?? "assignment",
             triggerDetail: wakeupOpts.triggerDetail ?? null,
@@ -195,7 +192,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
     const issueSvc = issueService(db);
     const routine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -211,7 +207,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       {},
     );
 
-    return { companyId, agentId, issueSvc, projectId, routine, svc, wakeups };
+    return { agentId, issueSvc, projectId, routine, svc, wakeups };
   }
 
   async function armWorktreeExecution(cutoff: Date, instanceId = "worktree-routines-test") {
@@ -227,7 +223,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   }
 
   async function insertDispatchedRun(input: {
-    companyId: string;
     routineId: string;
     triggeredAt: Date;
     source?: "schedule" | "manual" | "api" | "webhook";
@@ -235,7 +230,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     return db
       .insert(routineRuns)
       .values({
-        companyId: input.companyId,
         routineId: input.routineId,
         source: input.source ?? "schedule",
         status: "completed",
@@ -287,9 +281,9 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     "00000000-0000-0000-0000-000000000000",
     "ffffffff-ffff-ffff-ffff-ffffffffffff",
   ])("preserves PostgreSQL UUID lookup forms for %s", async (id) => {
-    const { companyId, svc } = await seedFixture();
-    await db.insert(routines).values({ id, companyId, title: "UUID lookup fixture" });
-    await db.insert(routineTriggers).values({ id, companyId, routineId: id, kind: "api" });
+    const { svc } = await seedFixture();
+    await db.insert(routines).values({ id, title: "UUID lookup fixture" });
+    await db.insert(routineTriggers).values({ id, routineId: id, kind: "api" });
     const compact = id.replaceAll("-", "");
     const forms = [
       id, id.toUpperCase(), `{${id}}`, compact,
@@ -297,16 +291,16 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       `{${compact.slice(0, 8)}-${compact.slice(8, 16)}-${compact.slice(16)}}`,
     ];
     for (const input of forms) {
-      await expect(svc.get(input)).resolves.toMatchObject({ id, companyId });
-      await expect(svc.getDetail(input)).resolves.toMatchObject({ id, companyId });
-      await expect(svc.getTrigger(input)).resolves.toMatchObject({ id, companyId, routineId: id });
+      await expect(svc.get(input)).resolves.toMatchObject({ id });
+      await expect(svc.getDetail(input)).resolves.toMatchObject({ id });
+      await expect(svc.getTrigger(input)).resolves.toMatchObject({ id, routineId: id });
     }
   });
 
   it("clears transient routine run failures when execution issues resume", async () => {
-    const { companyId, issueSvc, routine, svc } = await seedFixture();
+    const { issueSvc, routine, svc } = await seedFixture();
     const runId = randomUUID();
-    const executionIssue = await issueSvc.create(companyId, {
+    const executionIssue = await issueSvc.create({
       projectId: routine.projectId,
       title: routine.title,
       description: routine.description,
@@ -320,7 +314,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(routineRuns).values({
       id: runId,
-      companyId,
       routineId: routine.id,
       source: "manual",
       status: "issue_created",
@@ -380,9 +373,9 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("moves transient routine run failures into completion context", async () => {
-    const { companyId, issueSvc, routine, svc } = await seedFixture();
+    const { issueSvc, routine, svc } = await seedFixture();
     const runId = randomUUID();
-    const executionIssue = await issueSvc.create(companyId, {
+    const executionIssue = await issueSvc.create({
       projectId: routine.projectId,
       title: routine.title,
       description: routine.description,
@@ -396,7 +389,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(routineRuns).values({
       id: runId,
-      companyId,
       routineId: routine.id,
       source: "manual",
       status: "issue_created",
@@ -434,16 +426,14 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("filters listed routines by project", async () => {
-    const { companyId, agentId, projectId, routine, svc } = await seedFixture();
+    const { agentId, projectId, routine, svc } = await seedFixture();
     const otherProjectId = randomUUID();
     await db.insert(projects).values({
       id: otherProjectId,
-      companyId,
       name: "Other routines",
       status: "in_progress",
     });
     const otherRoutine = await svc.create(
-      companyId,
       {
         projectId: otherProjectId,
         goalId: null,
@@ -459,44 +449,11 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       {},
     );
 
-    const projectRoutines = await svc.list(companyId, { projectId });
-    const allRoutines = await svc.list(companyId);
+    const projectRoutines = await svc.list({ projectId });
+    const allRoutines = await svc.list();
 
     expect(projectRoutines.map((entry) => entry.id)).toEqual([routine.id]);
     expect(allRoutines.map((entry) => entry.id)).toEqual(expect.arrayContaining([routine.id, otherRoutine.id]));
-  });
-
-  it("does not reveal folders owned by another company", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
-    const otherCompanyId = randomUUID();
-    await db.insert(companies).values({
-      id: otherCompanyId,
-      name: "Other company",
-      issuePrefix: `T${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-      defaultResponsibleUserId: randomUUID(),
-      requireBoardApprovalForNewAgents: false,
-    });
-    const [otherFolder] = await db.insert(folders).values({
-      companyId: otherCompanyId,
-      kind: "routine",
-      name: "Private folder",
-      slug: "private-folder",
-      position: 0,
-    }).returning();
-
-    await expect(svc.create(companyId, {
-      projectId,
-      folderId: otherFolder!.id,
-      goalId: null,
-      parentIssueId: null,
-      title: "cross-company folder probe",
-      description: null,
-      assigneeAgentId: agentId,
-      priority: "medium",
-      status: "active",
-      concurrencyPolicy: "coalesce_if_active",
-      catchUpPolicy: "skip_missed",
-    }, {})).rejects.toMatchObject({ status: 404, message: "Folder not found" });
   });
 
   it("defaults activity gates to always at company scope", async () => {
@@ -517,15 +474,14 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("excludes activity from heartbeat runs executing the routine's own issue", async () => {
-    const { agentId, companyId, projectId, routine, svc } = await seedFixture();
+    const { agentId, projectId, routine, svc } = await seedFixture();
     const windowStart = new Date(Date.now() - 60_000);
     const now = new Date();
-    await insertDispatchedRun({ companyId, routineId: routine.id, triggeredAt: windowStart });
+    await insertDispatchedRun({ routineId: routine.id, triggeredAt: windowStart });
     const issueId = randomUUID();
     const runId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       projectId,
       title: "Routine execution",
       originKind: "routine_execution",
@@ -533,13 +489,11 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "completed",
       contextSnapshot: { issueId },
     });
     await db.insert(activityLog).values({
-      companyId,
       actorType: "agent",
       actorId: agentId,
       agentId,
@@ -558,14 +512,13 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("fires for another agent running a child of the routine issue", async () => {
-    const { agentId, companyId, projectId, routine, svc } = await seedFixture();
+    const { agentId, projectId, routine, svc } = await seedFixture();
     const windowStart = new Date(Date.now() - 60_000);
     const now = new Date();
-    await insertDispatchedRun({ companyId, routineId: routine.id, triggeredAt: windowStart });
+    await insertDispatchedRun({ routineId: routine.id, triggeredAt: windowStart });
     const otherAgentId = randomUUID();
     await db.insert(agents).values({
       id: otherAgentId,
-      companyId,
       name: "Worker",
       role: "engineer",
       status: "active",
@@ -579,7 +532,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     await db.insert(issues).values([
       {
         id: routineIssueId,
-        companyId,
         projectId,
         title: "Routine execution",
         originKind: "routine_execution",
@@ -587,7 +539,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       },
       {
         id: childIssueId,
-        companyId,
         projectId,
         parentId: routineIssueId,
         title: "Delegated child",
@@ -596,13 +547,11 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     const childRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: childRunId,
-      companyId,
       agentId: otherAgentId,
       status: "running",
       contextSnapshot: { issueId: childIssueId },
     });
     const [activity] = await db.insert(activityLog).values({
-      companyId,
       actorType: "agent",
       actorId: otherAgentId,
       agentId: otherAgentId,
@@ -622,15 +571,14 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("fires for a human comment and ignores inbox bookkeeping activity", async () => {
-    const { companyId, projectId, routine, svc } = await seedFixture();
+    const { projectId, routine, svc } = await seedFixture();
     const windowStart = new Date(Date.now() - 60_000);
     const now = new Date();
-    await insertDispatchedRun({ companyId, routineId: routine.id, triggeredAt: windowStart });
+    await insertDispatchedRun({ routineId: routine.id, triggeredAt: windowStart });
     const issueId = randomUUID();
-    await db.insert(issues).values({ id: issueId, companyId, projectId, title: "Board task" });
+    await db.insert(issues).values({ id: issueId, projectId, title: "Board task" });
     await db.insert(activityLog).values([
       {
-        companyId,
         actorType: "user",
         actorId: "user-1",
         action: "issue.read_marked",
@@ -639,7 +587,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
         createdAt: new Date(windowStart.getTime() + 1_000),
       },
       {
-        companyId,
         actorType: "user",
         actorId: "user-1",
         action: "issue.comment_added",
@@ -648,7 +595,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
         createdAt: new Date(windowStart.getTime() + 2_000),
       },
       {
-        companyId,
         actorType: "user",
         actorId: "user-1",
         action: "issue.inbox_touched",
@@ -666,7 +612,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     await db.delete(activityLog);
     await db.insert(activityLog).values([
       {
-        companyId,
         actorType: "user",
         actorId: "user-1",
         action: "issue.read_marked",
@@ -675,7 +620,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
         createdAt: new Date(windowStart.getTime() + 1_000),
       },
       {
-        companyId,
         actorType: "user",
         actorId: "user-1",
         action: "issue.inbox_archived",
@@ -684,7 +628,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
         createdAt: new Date(windowStart.getTime() + 2_000),
       },
       {
-        companyId,
         actorType: "user",
         actorId: "user-1",
         action: "issue.inbox_touched",
@@ -698,20 +641,19 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("limits project-scoped gates to activity in the routine project", async () => {
-    const { companyId, projectId, routine, svc } = await seedFixture();
+    const { projectId, routine, svc } = await seedFixture();
     const otherProjectId = randomUUID();
-    await db.insert(projects).values({ id: otherProjectId, companyId, name: "Other", status: "in_progress" });
+    await db.insert(projects).values({ id: otherProjectId, name: "Other", status: "in_progress" });
     const windowStart = new Date(Date.now() - 60_000);
     const now = new Date();
-    await insertDispatchedRun({ companyId, routineId: routine.id, triggeredAt: windowStart });
+    await insertDispatchedRun({ routineId: routine.id, triggeredAt: windowStart });
     const [otherIssue, ownIssue] = [randomUUID(), randomUUID()];
     await db.insert(issues).values([
-      { id: otherIssue, companyId, projectId: otherProjectId, title: "Other project" },
-      { id: ownIssue, companyId, projectId, title: "Routine project" },
+      { id: otherIssue, projectId: otherProjectId, title: "Other project" },
+      { id: ownIssue, projectId, title: "Routine project" },
     ]);
     const projectRoutine = { ...routine, activityGateScope: "project" };
     await db.insert(activityLog).values({
-      companyId,
       actorType: "user",
       actorId: "user-1",
       action: "issue.comment_added",
@@ -723,7 +665,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     await expect(svc.evaluateActivityGate(projectRoutine, now)).resolves.toMatchObject({ fire: false });
 
     await db.insert(activityLog).values({
-      companyId,
       actorType: "user",
       actorId: "user-1",
       action: "issue.comment_added",
@@ -735,9 +676,9 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("creates a fresh execution issue when the previous routine issue is open but idle", async () => {
-    const { companyId, issueSvc, routine, svc } = await seedFixture();
+    const { issueSvc, routine, svc } = await seedFixture();
     const previousRunId = randomUUID();
-    const previousIssue = await issueSvc.create(companyId, {
+    const previousIssue = await issueSvc.create({
       projectId: routine.projectId,
       title: routine.title,
       description: routine.description,
@@ -751,7 +692,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(routineRuns).values({
       id: previousRunId,
-      companyId,
       routineId: routine.id,
       triggerId: null,
       source: "manual",
@@ -782,10 +722,9 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("creates draft routines without a project or default assignee", async () => {
-    const { companyId, svc } = await seedFixture();
+    const { svc } = await seedFixture();
 
     const routine = await svc.create(
-      companyId,
       {
         projectId: null,
         goalId: null,
@@ -807,7 +746,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("serializes routine detail with assignee identity but without protected agent configuration", async () => {
-    const { agentId, companyId, routine, svc } = await seedFixture();
+    const { agentId, routine, svc } = await seedFixture();
     const sentinelSecret = "routine-assignee-secret-sentinel";
     await db
       .update(agents)
@@ -833,7 +772,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     expect(detail).toMatchObject({
       id: routine.id,
-      companyId,
       title: "ascii frog",
       assignee: {
         id: agentId,
@@ -914,16 +852,15 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("stores routine env in revisions, syncs routine secret bindings, and stamps runs with the dispatch revision", async () => {
-    const { agentId, companyId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const secrets = secretService(db);
-    const secret = await secrets.create(companyId, {
+    const secret = await secrets.create({
       name: `routine-api-${randomUUID()}`,
       provider: "local_encrypted",
       value: "secret-value",
     });
 
     const routine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -949,7 +886,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       .where(eq(companySecretBindings.targetId, routine.id));
     expect(bindings).toMatchObject([
       {
-        companyId,
         secretId: secret.id,
         targetType: "routine",
         configPath: "env.ROUTINE_API_KEY",
@@ -968,7 +904,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       .where(eq(companySecretBindings.targetId, routine.id));
     expect(repairedBindings).toMatchObject([
       {
-        companyId,
         secretId: secret.id,
         targetType: "routine",
         configPath: "env.ROUTINE_API_KEY",
@@ -1100,7 +1035,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("persists custom schedule cron expressions exactly", async () => {
-    const { companyId, routine, svc } = await seedFixture();
+    const { routine, svc } = await seedFixture();
     const cronExpression = "0 8-18/2 * * 1-5";
 
     const created = await svc.createTrigger(routine.id, {
@@ -1115,16 +1050,15 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     const storedTrigger = await svc.getTrigger(created.trigger.id);
     expect(storedTrigger?.cronExpression).toBe(cronExpression);
 
-    const [listed] = await svc.list(companyId);
+    const [listed] = await svc.list();
     expect(listed?.triggers[0]?.cronExpression).toBe(cronExpression);
   });
 
   it("blocks agents from restoring routine revisions assigned to another agent", async () => {
-    const { companyId, routine, svc } = await seedFixture();
+    const { routine, svc } = await seedFixture();
     const otherAgentId = randomUUID();
     await db.insert(agents).values({
       id: otherAgentId,
-      companyId,
       name: "OtherCoder",
       role: "engineer",
       status: "active",
@@ -1176,13 +1110,12 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("blocks routine reassignment to agents under terminated managers", async () => {
-    const { agentId, companyId, routine, svc } = await seedFixture();
+    const { agentId, routine, svc } = await seedFixture();
     const terminatedManagerId = randomUUID();
     const blockedAgentId = randomUUID();
     await db.insert(agents).values([
       {
         id: terminatedManagerId,
-        companyId,
         name: "TerminatedManager",
         role: "manager",
         status: "terminated",
@@ -1193,7 +1126,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       },
       {
         id: blockedAgentId,
-        companyId,
         name: "BlockedRoutineCoder",
         role: "engineer",
         status: "active",
@@ -1298,7 +1230,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("records the manual board runner on fresh routine issues so they appear in that user's inbox", async () => {
-    const { companyId, agentId, issueSvc, routine, svc } = await seedFixture();
+    const { agentId, issueSvc, routine, svc } = await seedFixture();
     const userId = randomUUID();
 
     const run = await svc.runRoutine(routine.id, { source: "manual" }, { userId });
@@ -1321,7 +1253,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       responsibleUserId: userId,
     });
 
-    const inboxIssues = await issueSvc.list(companyId, {
+    const inboxIssues = await issueSvc.list({
       touchedByUserId: userId,
       inboxArchivedByUserId: userId,
       includeRoutineExecutions: true,
@@ -1330,11 +1262,10 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("uses the routine revision responsible-user snapshot for automatic runs", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const responsibleUserId = randomUUID();
     const driftUserId = randomUUID();
     const routine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -1385,10 +1316,10 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("coalesces only when the existing routine issue has a live execution run", async () => {
-    const { agentId, companyId, issueSvc, routine, svc } = await seedFixture();
+    const { agentId, issueSvc, routine, svc } = await seedFixture();
     const previousRunId = randomUUID();
     const liveHeartbeatRunId = randomUUID();
-    const previousIssue = await issueSvc.create(companyId, {
+    const previousIssue = await issueSvc.create({
       projectId: routine.projectId,
       title: routine.title,
       description: routine.description,
@@ -1402,7 +1333,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(routineRuns).values({
       id: previousRunId,
-      companyId,
       routineId: routine.id,
       triggerId: null,
       source: "manual",
@@ -1413,7 +1343,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(heartbeatRuns).values({
       id: liveHeartbeatRunId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -1449,11 +1378,11 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("touches a coalesced routine issue for the manual runner's inbox", async () => {
-    const { agentId, companyId, issueSvc, routine, svc } = await seedFixture();
+    const { agentId, issueSvc, routine, svc } = await seedFixture();
     const userId = randomUUID();
     const previousRunId = randomUUID();
     const liveHeartbeatRunId = randomUUID();
-    const previousIssue = await issueSvc.create(companyId, {
+    const previousIssue = await issueSvc.create({
       projectId: routine.projectId,
       title: routine.title,
       description: routine.description,
@@ -1467,7 +1396,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(routineRuns).values({
       id: previousRunId,
-      companyId,
       routineId: routine.id,
       triggerId: null,
       source: "manual",
@@ -1477,7 +1405,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: liveHeartbeatRunId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -1494,7 +1421,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       })
       .where(eq(issues.id, previousIssue.id));
     await db.insert(issueInboxArchives).values({
-      companyId,
       issueId: previousIssue.id,
       userId,
       archivedAt: new Date("2026-03-20T12:02:00.000Z"),
@@ -1511,7 +1437,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       db.select().from(activityLog).where(eq(activityLog.entityId, previousIssue.id)),
     ).resolves.toEqual([
       expect.objectContaining({
-        companyId,
         actorType: "user",
         actorId: userId,
         action: "issue.inbox_touched",
@@ -1520,7 +1445,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       }),
     ]);
 
-    const inboxIssues = await issueSvc.list(companyId, {
+    const inboxIssues = await issueSvc.list({
       touchedByUserId: userId,
       inboxArchivedByUserId: userId,
       includeRoutineExecutions: true,
@@ -1529,7 +1454,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("touches a skipped active routine issue for the manual runner's inbox", async () => {
-    const { agentId, companyId, issueSvc, routine, svc } = await seedFixture();
+    const { agentId, issueSvc, routine, svc } = await seedFixture();
     const userId = randomUUID();
     const previousRunId = randomUUID();
     const liveHeartbeatRunId = randomUUID();
@@ -1539,7 +1464,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       .set({ concurrencyPolicy: "skip_if_active" })
       .where(eq(routines.id, routine.id));
 
-    const previousIssue = await issueSvc.create(companyId, {
+    const previousIssue = await issueSvc.create({
       projectId: routine.projectId,
       title: routine.title,
       description: routine.description,
@@ -1553,7 +1478,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     await db.insert(routineRuns).values({
       id: previousRunId,
-      companyId,
       routineId: routine.id,
       triggerId: null,
       source: "manual",
@@ -1563,7 +1487,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: liveHeartbeatRunId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -1580,7 +1503,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       })
       .where(eq(issues.id, previousIssue.id));
     await db.insert(issueInboxArchives).values({
-      companyId,
       issueId: previousIssue.id,
       userId,
       archivedAt: new Date("2026-03-20T12:02:00.000Z"),
@@ -1597,7 +1519,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       db.select().from(activityLog).where(eq(activityLog.entityId, previousIssue.id)),
     ).resolves.toEqual([
       expect.objectContaining({
-        companyId,
         actorType: "user",
         actorId: userId,
         action: "issue.inbox_touched",
@@ -1606,7 +1527,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       }),
     ]);
 
-    const inboxIssues = await issueSvc.list(companyId, {
+    const inboxIssues = await issueSvc.list({
       touchedByUserId: userId,
       inboxArchivedByUserId: userId,
       includeRoutineExecutions: true,
@@ -1615,9 +1536,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("does not coalesce live routine runs with different resolved variables", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const variableRoutine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -1669,9 +1589,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("interpolates routine variables into the execution issue and stores resolved values", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const variableRoutine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -1719,9 +1638,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("infers capital-Date variables, preserves builtin date, and validates submitted date values", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const dateRoutine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -1776,7 +1694,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("attaches the selected execution workspace to manually triggered routine issues", async () => {
-    const { companyId, projectId, routine, svc } = await seedFixture();
+    const { projectId, routine, svc } = await seedFixture();
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
@@ -1793,7 +1711,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       .where(eq(projects.id, projectId));
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary workspace",
       isPrimary: true,
@@ -1801,7 +1718,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       projectWorkspaceId,
       mode: "isolated_workspace",
@@ -1838,7 +1754,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("auto-populates workspaceBranch from a reused isolated workspace", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
@@ -1855,7 +1771,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       .where(eq(projects.id, projectId));
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary workspace",
       isPrimary: true,
@@ -1863,7 +1778,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
       projectId,
       projectWorkspaceId,
       mode: "isolated_workspace",
@@ -1875,7 +1789,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
 
     const branchRoutine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -1922,9 +1835,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("runs draft routines with one-off agent and project overrides", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const draftRoutine = await svc.create(
-      companyId,
       {
         projectId: null,
         goalId: null,
@@ -1965,9 +1877,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("rejects enabling automation for routines without a default agent", async () => {
-    const { companyId, svc } = await seedFixture();
+    const { svc } = await seedFixture();
     const draftRoutine = await svc.create(
-      companyId,
       {
         projectId: null,
         goalId: null,
@@ -1989,9 +1900,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("blocks schedule triggers when required variables do not have defaults", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const variableRoutine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -2021,9 +1931,8 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("treats malformed stored defaults as missing when validating schedule triggers", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
     const variableRoutine = await svc.create(
-      companyId,
       {
         projectId,
         goalId: null,
@@ -2069,11 +1978,10 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("rejects invalid date defaults before persisting routine variables", async () => {
-    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const { agentId, projectId, svc } = await seedFixture();
 
     await expect(
       svc.create(
-        companyId,
         {
           projectId,
           goalId: null,
@@ -2106,7 +2014,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
         const queuedRunId = randomUUID();
         await db.insert(heartbeatRuns).values({
           id: queuedRunId,
-          companyId: routine.companyId,
           agentId: wakeupAgentId,
           invocationSource: wakeupOpts.source ?? "assignment",
           triggerDetail: wakeupOpts.triggerDetail ?? null,
@@ -2596,7 +2503,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
   it("records suppressed automatic runs when worktree execution is disabled while allowing manual runs", async () => {
     const runtimeEnv = { PAPERCLIP_IN_WORKTREE: "yes", PAPERCLIP_INSTANCE_ID: "worktree-routines-test" };
-    const { companyId, routine, svc } = await seedFixture({ runtimeEnv });
+    const { routine, svc } = await seedFixture({ runtimeEnv });
     const { trigger: scheduleTrigger } = await svc.createTrigger(
       routine.id,
       { kind: "schedule", cronExpression: "0 0 * * *", timezone: "UTC" },
@@ -2622,15 +2529,15 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     expect(automatedRuns.filter((run) => run.linkedIssueId)).toHaveLength(1);
     const scheduleAfter = await db.select().from(routineTriggers).where(eq(routineTriggers.id, scheduleTrigger.id)).then((rows) => rows[0]);
     expect(scheduleAfter!.nextRunAt!.getTime()).toBeGreaterThan(pastDue.getTime());
-    expect((await db.select().from(issues).where(eq(issues.companyId, companyId))).filter((issue) => issue.originKind === "routine_execution")).toHaveLength(1);
+    expect((await db.select().from(issues)).filter((issue) => issue.originKind === "routine_execution")).toHaveLength(1);
   });
 
   it("dispatches only post-cutoff scheduled routines in an armed worktree", async () => {
     const runtimeEnv = { PAPERCLIP_IN_WORKTREE: "true", PAPERCLIP_INSTANCE_ID: "worktree-routines-test" };
-    const { companyId, agentId, projectId, routine: oldRoutine, svc } = await seedFixture({ runtimeEnv });
+    const { agentId, projectId, routine: oldRoutine, svc } = await seedFixture({ runtimeEnv });
     const cutoff = new Date("2025-01-01T00:00:00.000Z");
     await armWorktreeExecution(cutoff);
-    const newRoutine = await svc.create(companyId, {
+    const newRoutine = await svc.create({
       projectId,
       goalId: null,
       parentIssueId: null,
@@ -2778,7 +2685,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("suppresses scheduled ticks while the routine project is paused, then resumes when unpaused", async () => {
-    const { companyId, projectId, routine, svc } = await seedFixture();
+    const { projectId, routine, svc } = await seedFixture();
     const { trigger } = await svc.createTrigger(
       routine.id,
       {
@@ -2808,8 +2715,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     // No execution issue should be created while paused.
     const issuesWhilePaused = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     expect(issuesWhilePaused).toHaveLength(0);
 
     // One skipped routine run with pause-specific reason and no linked issue.
@@ -2849,8 +2755,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     const issuesAfterResume = await db
       .select()
-      .from(issues)
-      .where(eq(issues.companyId, companyId));
+      .from(issues);
     expect(issuesAfterResume).toHaveLength(1);
 
     const runsAfterResume = await db
@@ -2862,7 +2767,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
   });
 
   it("skips a gated scheduled tick when quiet without advancing the activity window", async () => {
-    const { companyId, routine, svc } = await seedFixture();
+    const { routine, svc } = await seedFixture();
     await db.update(routines).set({
       activityGatePolicy: "require_external_activity",
     }).where(eq(routines.id, routine.id));
@@ -2900,7 +2805,6 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
 
     const activityAt = new Date(firstRun!.triggeredAt.getTime() + 30_000);
     await db.insert(activityLog).values({
-      companyId,
       actorType: "user",
       actorId: "user-1",
       action: "issue.comment_added",

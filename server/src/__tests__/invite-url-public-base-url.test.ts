@@ -34,7 +34,6 @@ function registerModuleMocks() {
 function createDbStub() {
   const createdInvite = {
     id: "invite-1",
-    companyId: "company-1",
     inviteType: "company_join",
     allowedJoinTypes: "human",
     tokenHash: "hash",
@@ -66,7 +65,7 @@ function createDbStub() {
             leftJoin() {
               return query;
             },
-            where() {
+            limit() {
               return Promise.resolve([{
                 name: "Acme Robotics",
                 logoAssetId: null,
@@ -92,7 +91,6 @@ async function createApp(authPublicBaseUrl?: string) {
       type: "board",
       source: "local_implicit",
       userId: null,
-      companyIds: ["company-1"],
     };
     next();
   });
@@ -128,7 +126,7 @@ describe("invite URL: authPublicBaseUrl precedence", () => {
     );
 
     const res = await request(app)
-      .post("/api/companies/company-1/invites")
+      .post("/api/invites")
       .set("host", "127.0.0.1:3100")
       .set("x-forwarded-proto", "http")
       .send({ allowedJoinTypes: "human", humanRole: "viewer" });
@@ -144,7 +142,7 @@ describe("invite URL: authPublicBaseUrl precedence", () => {
     const app = await createApp(undefined);
 
     const res = await request(app)
-      .post("/api/companies/company-1/invites")
+      .post("/api/invites")
       .set("host", "paperclip.example")
       .set("x-forwarded-proto", "https")
       .send({ allowedJoinTypes: "human", humanRole: "viewer" });
@@ -161,7 +159,7 @@ describe("invite URL: authPublicBaseUrl precedence", () => {
     );
 
     const res = await request(app)
-      .post("/api/companies/company-1/invites")
+      .post("/api/invites")
       .set("host", "127.0.0.1:3100")
       .send({ allowedJoinTypes: "human", humanRole: "viewer" });
 

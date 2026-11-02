@@ -18,8 +18,8 @@ const mockDialog = vi.hoisted(() => ({
 }));
 
 const mockCompany = vi.hoisted(() => ({
-  companies: [] as Array<{ id: string; name: string; issuePrefix: string }>,
-  setSelectedCompanyId: vi.fn(),
+  organization: null,
+  createOrganization: vi.fn(),
   loading: false,
 }));
 
@@ -40,31 +40,32 @@ vi.mock("@/lib/router", () => ({
 vi.mock("../context/DialogContext", () => ({
   useDialog: () => mockDialog,
 }));
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => mockCompany,
-}));
-// The restore gate fetches the company list itself to verify draft ownership,
-// rather than trusting the shared cache, so this module now needs stubbing
-// here. An empty list is fine: the drafts in this file carry no
-// `createdCompanyId`, so there is no ownership question — but the fetch has to
-// succeed for the gate to treat the draft as decidable at all.
-// The company list is keyed by account, so it holds until the session query
-// *succeeds*. A seeded entry is stale under the test client and refetches, so
-// the refetch has to answer too — otherwise the identity errors and the list
-// never runs.
+vi.mock("../context/OrganizationContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../context/OrganizationContext")>();
+  return { ...actual, useOrganization: () => mockCompany };
+});
+// The restore gate fetches the organization itself to verify draft ownership,
+// so this module needs stubbing here. A missing organization (404) is fine: the
+// drafts in this file carry no `createdCompanyId`, so there is no ownership
+// question — but the fetch has to succeed for the gate to treat the draft as
+// decidable at all.
 const mockAuthApi = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock("../api/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/auth")>();
   return { ...actual, authApi: { ...actual.authApi, getSession: mockAuthApi.getSession } };
 });
 
-vi.mock("../api/companies", () => ({
-  companiesApi: {
-    create: vi.fn(),
-    list: vi.fn().mockResolvedValue([]),
-    detachInflightList: vi.fn(),
-  },
-}));
+vi.mock("../api/organization", async () => {
+  const { ApiError } = await import("../api/client");
+  return {
+    organizationApi: {
+      create: vi.fn(),
+      get: vi.fn(async () => {
+        throw new ApiError("organization_missing", 404, null);
+      }),
+    },
+  };
+});
 vi.mock("../adapters", () => ({
   listUIAdapters: () => mockAdapterRegistry.list,
   getUIAdapter: () => ({ buildAdapterConfig: () => ({}) }),
@@ -144,7 +145,6 @@ describe("OnboardingWizard adapter selection", () => {
     window.localStorage.clear();
     mockDialog.onboardingOpen = true;
     mockDialog.onboardingOptions = {};
-    mockCompany.companies = [];
     mockAdapterRegistry.list = [];
     mockAdapterRegistry.disabled = new Set<string>();
     mockAdapterRegistry.loaded = true;

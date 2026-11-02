@@ -30,7 +30,7 @@ export function InstanceGeneralSettings({ embedded = false }: { embedded?: boole
   useEffect(() => {
     if (embedded) return;
     setBreadcrumbs([
-      { label: "Settings", href: "/company/settings" },
+      { label: "Settings", href: "/organization/settings" },
       { label: "General" },
     ]);
   }, [embedded, setBreadcrumbs]);

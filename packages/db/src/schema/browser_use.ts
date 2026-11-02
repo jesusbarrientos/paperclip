@@ -8,7 +8,6 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
@@ -18,9 +17,6 @@ export const browserUseSettings = pgTable("browser_use_settings", {
   grantId: uuid("grant_id")
     .primaryKey()
     .references(() => connectionGrants.id),
-  companyId: uuid("company_id")
-    .notNull()
-    .references(() => companies.id),
   allowedProfileIds: jsonb("allowed_profile_ids")
     .$type<string[]>()
     .notNull()
@@ -31,9 +27,6 @@ export const browserUseSessions = pgTable(
   "browser_use_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id),
     issueId: uuid("issue_id")
       .notNull()
       .references(() => issues.id),
@@ -64,7 +57,7 @@ export const browserUseSessions = pgTable(
       .defaultNow(),
   },
   (t) => [
-    index("browser_use_sessions_task_idx").on(t.companyId, t.issueId),
+    index("browser_use_sessions_task_idx").on(t.issueId),
     uniqueIndex("browser_use_sessions_provider_uq").on(t.providerSessionId),
   ],
 );
@@ -72,9 +65,6 @@ export const browserUseRuns = pgTable(
   "browser_use_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id),
     sessionId: uuid("session_id")
       .notNull()
       .references(() => browserUseSessions.id),
@@ -105,9 +95,6 @@ export const browserUseBrowsers = pgTable(
   "browser_use_browsers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id")
-      .notNull()
-      .references(() => companies.id),
     sessionId: uuid("session_id")
       .notNull()
       .references(() => browserUseSessions.id),

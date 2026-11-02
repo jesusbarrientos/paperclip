@@ -6,7 +6,7 @@ Target specification for the Paperclip control plane. Living document — update
 
 ## 1. Company Model [DRAFT]
 
-A Company is a first-order object. One Paperclip instance runs multiple Companies. A Company does not have a standalone "goal" field — its direction is defined by its set of Initiatives (see Task Hierarchy Mapping).
+A Company is a first-order object. One Paperclip instance runs exactly one Company, which the product calls "the organization"; running another company means running another instance (see `SPEC-implementation.md` section 3.1). A Company does not have a standalone "goal" field — its direction is defined by its set of Initiatives (see Task Hierarchy Mapping).
 
 ### Fields (Draft)
 
@@ -76,7 +76,7 @@ The Board sets Company-level budgets. The CEO can set budgets for Agents below t
 
 - External revenue/expense tracking — future plugin. Token/LLM cost budgeting is core.
 - Company-level settings and configuration?
-- Company lifecycle (pause, archive, delete)?
+- Company lifecycle (pause; archive and delete are not part of V1, since the instance serves exactly one company)?
 - What governance-gated actions exist beyond hiring and CEO strategy approval?
 
 ---
@@ -119,7 +119,7 @@ A key goal: **the entire org's agent configurations are exportable.** You can ex
 
 - Sharing company templates ("here's a pre-built marketing agency org")
 - Version controlling your company configuration
-- Duplicating/forking companies
+- Duplicating/forking companies (by importing the package into another instance)
 
 #### Context Delivery
 
@@ -146,10 +146,10 @@ Paperclip ships **default agents** that demonstrate full integration: progress t
 
 Two export modes:
 
-1. **Template export** (default) — structure only: agent definitions, org chart, adapter configs, role descriptions. Optionally includes a few seed tasks to help get started. This is the blueprint for spinning up a new company.
+1. **Template export** (default) — structure only: agent definitions, org chart, adapter configs, role descriptions. Optionally includes a few seed tasks to help get started. This is the blueprint for spinning up a new company on a fresh instance.
 2. **Snapshot export** — full state: structure + current tasks, progress, agent status. A complete picture you could restore or fork.
 
-The usual workflow: export a template, create a new company from it, add a couple initial tasks, go.
+The usual workflow: export a template, import it into a fresh instance's organization, add a couple initial tasks, go.
 
 ---
 
@@ -312,7 +312,7 @@ saved. See `SPEC-implementation.md` §9.8.1 for the resolver contract.
 ### Implications
 
 - An agent's "inbox" is: tasks assigned to them + comments on tasks they're involved in
-- A human's Mine inbox and its badge include failed runs attributed to that human, not another user's runs. All retains company-wide failure visibility. Historical unattributed runs remain in the local single-user board's Mine view; see `SPEC-implementation.md` for the routing contract.
+- A human's Mine inbox and its badge include failed runs attributed to that human, not another user's runs. All retains organization-wide failure visibility. Historical unattributed runs remain in the local single-user board's Mine view; see `SPEC-implementation.md` for the routing contract.
 - The CEO delegates by creating tasks assigned to the CTO
 - The CTO breaks those down into sub-tasks assigned to engineers
 - Discussion happens in task comments, not a side channel
@@ -405,7 +405,7 @@ This skill is adapter-agnostic — it can be loaded into Claude Code, injected i
 
 ### Deployment Model
 
-**Single-tenant, self-hostable.** Not a SaaS. One instance = one operator's companies.
+**Single-tenant, self-hostable.** Not a SaaS. One instance = one organization (one company). An operator with several companies runs several instances.
 
 #### Development Path (Progressive Deployment)
 
@@ -533,7 +533,7 @@ Each is a distinct page/route:
 
 ### Must Have (V1)
 
-- [ ] **Company CRUD** — create a Company with Initiatives
+- [ ] **Organization setup** — create the instance's Company with Initiatives during onboarding, then edit it
 - [ ] **Agent CRUD** — create/edit/pause/resume Agents with Adapter config
 - [ ] **Org chart** — define reporting structure, visualize it
 - [ ] **Process adapter** — invoke(), status(), cancel() for local child processes
@@ -586,7 +586,7 @@ Things Paperclip explicitly does **not** do:
 ## 13. Principles (Consolidated)
 
 1. **Unopinionated about how you run your Agents.** Any language, any framework, any runtime. Paperclip is the control plane, not the execution plane.
-2. **Company is the unit of organization.** Everything lives under a Company.
+2. **Company is the unit of organization.** Everything lives under a Company, and each instance serves exactly one.
 3. **Tasks are the communication channel.** All Agent communication flows through tasks + comments. No side channels.
 4. **All work traces to the goal.** Hierarchical task management — nothing exists in isolation.
 5. **Board governs.** Humans retain control through the Board. Conservative defaults (human approval required).

@@ -15,13 +15,13 @@ const setSearchParamsMock = vi.hoisted(() => vi.fn());
 let currentSearch = "";
 
 vi.mock("@/api/agents", () => ({
-  agentsApi: { list: (companyId: string) => listAgentsMock(companyId) },
+  agentsApi: { list: () => listAgentsMock() },
 }));
 
 vi.mock("@/api/heartbeats", () => ({
   heartbeatsApi: {
-    list: (companyId: string, agentId?: string, limit?: number, options?: unknown) =>
-      listRunsMock(companyId, agentId, limit, options),
+    list: (agentId?: string, limit?: number, options?: unknown) =>
+      listRunsMock(agentId, limit, options),
   },
 }));
 
@@ -44,7 +44,6 @@ vi.mock("@/lib/router", () => ({
 function run(overrides: Partial<HeartbeatRun> = {}): HeartbeatRun {
   return {
     id: "run-12345678",
-    companyId: "company-1",
     agentId: "agent-1",
     invocationSource: "manual",
     status: "succeeded",
@@ -60,7 +59,6 @@ function run(overrides: Partial<HeartbeatRun> = {}): HeartbeatRun {
 function routineRun(overrides: Partial<RoutineRunSummary> = {}): RoutineRunSummary {
   return {
     id: "routine-run-1",
-    companyId: "company-1",
     routineId: "routine-1",
     triggerId: "trigger-1",
     source: "schedule",
@@ -112,7 +110,7 @@ describe("AuditRuns", () => {
     flushSync(() => {
       root.render(
         <QueryClientProvider client={queryClient}>
-          <AuditRuns companyId="company-1" routineId={routineId} />
+          <AuditRuns routineId={routineId} />
         </QueryClientProvider>,
       );
     });
@@ -122,7 +120,7 @@ describe("AuditRuns", () => {
   it("renders a filterable flat run list with existing run-detail links", async () => {
     await render();
 
-    expect(listRunsMock).toHaveBeenCalledWith("company-1", undefined, 200, { summary: true });
+    expect(listRunsMock).toHaveBeenCalledWith(undefined, 200, { summary: true });
     expect(container.textContent).toContain("Agent");
     expect(container.textContent).toContain("Status");
     expect(container.textContent).toContain("Reviewed the release checklist");
@@ -137,7 +135,7 @@ describe("AuditRuns", () => {
     currentSearch = "agentId=agent-1&runStatus=succeeded";
     await render();
 
-    expect(listRunsMock).toHaveBeenCalledWith("company-1", "agent-1", 200, { summary: true });
+    expect(listRunsMock).toHaveBeenCalledWith("agent-1", 200, { summary: true });
     expect(container.textContent).toContain("Clear filters");
   });
 

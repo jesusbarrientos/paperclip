@@ -6,8 +6,6 @@ import { describe, expect, it, vi } from "vitest";
 import { heartbeatService } from "../services/heartbeat.js";
 import { issueService } from "../services/issues.js";
 import { getAccessibleResource } from "../routes/authz.js";
-
-const companyId = "00000000-0000-4000-8000-000000000001";
 const agentId = "00000000-0000-4000-8000-000000000002";
 const issueId = "00000000-0000-4000-8000-000000000003";
 const dialect = new PgDialect();
@@ -30,16 +28,16 @@ function fixture(options: {
     order: string[];
     limit: number | undefined;
   }> = [];
-  const row = { id: issueId, companyId, identifier: "TEST-1", externalConversationState: "waiting" };
+  const row = { id: issueId, identifier: "TEST-1", externalConversationState: "waiting" };
   const select = vi.fn((fields: Record<string, unknown> = {}) => ({
     from(table: Parameters<typeof getTableName>[0]) {
       const name = getTableName(table);
-      let condition: SQL;
+      let condition: SQL | undefined;
       let order: SQL[] = [];
       let limit: number | undefined;
       let result: Promise<unknown[]> | undefined;
       const query = {
-        where(value: SQL) { condition = value; return query; },
+        where(value: SQL | undefined) { condition = value; return query; },
         innerJoin() { return query; },
         orderBy(...values: SQL[]) { order = values; return query; },
         limit(value: number) { limit = value; return query; },
@@ -47,7 +45,7 @@ function fixture(options: {
           // A failed query object stays failed. Recovery must build another one.
           result ??= Promise.resolve().then(() => {
             const attempt = attempts.filter((read) => read.table === name).length;
-            attempts.push({ table: name, fields, params: dialect.sqlToQuery(condition).params,
+            attempts.push({ table: name, fields, params: condition ? dialect.sqlToQuery(condition).params : [],
               order: order.map((value) => dialect.sqlToQuery(value).sql), limit });
             const error = options.failures?.[name]?.[attempt];
             if (error) throw error;
@@ -56,7 +54,7 @@ function fixture(options: {
             if (name === "issue_labels") return [{ issueId, label: { id: "label-1", name: "Ready" } }];
             if (name === "issue_watchdogs") return [];
             if (name === "heartbeat_runs") return [{
-              id: "run-1", companyId, agentId, status: "succeeded",
+              id: "run-1", agentId, status: "succeeded",
               contextIssueId: issueId, contextWakeReason: "issue_assigned", resultSummary: "Finished",
             }];
             throw new Error(`Unexpected read: ${name}`);
@@ -80,9 +78,9 @@ describe("heartbeat list connection recovery", () => {
   ])("rebuilds the scoped list with its projection and limit (%j)", async (options) => {
     const test = fixture({ encoding: options.encoding,
       failures: { heartbeat_runs: [disconnected(), disconnected("CONNECTION_ENDED")] } });
-    await expect(heartbeatService(test.db).list(companyId, options.agent, options.limit, options))
+    await expect(heartbeatService(test.db).list(options.agent, options.limit, options))
       .resolves.toEqual([{
-        id: "run-1", companyId, agentId, status: "succeeded",
+        id: "run-1", agentId, status: "succeeded",
         contextSnapshot: { issueId, wakeReason: "issue_assigned" },
         resultJson: options.summary || options.encoding === "SQL_ASCII" ? null : { summary: "Finished" },
       }]);
@@ -90,7 +88,7 @@ describe("heartbeat list connection recovery", () => {
     expect(test.execute).toHaveBeenCalledTimes(1);
     expect(test.attempts).toHaveLength(3);
     for (const attempt of test.attempts) {
-      expect(attempt.params).toEqual(options.agent ? [companyId, agentId] : [companyId]);
+      expect(attempt.params).toEqual(options.agent ? [agentId] : []);
       expect(attempt.limit).toBe(options.limit);
       expect(attempt.order).toEqual(['"heartbeat_runs"."created_at" desc']);
       expect("resultSummary" in attempt.fields).toBe(!options.summary && options.encoding === "UTF8");
@@ -101,7 +99,7 @@ describe("heartbeat list connection recovery", () => {
   it("propagates the final list error after three attempts", async () => {
     const failures = [disconnected(), disconnected(), disconnected()];
     const test = fixture({ failures: { heartbeat_runs: failures } });
-    await expect(heartbeatService(test.db).list(companyId)).rejects.toBe(failures[2]);
+    await expect(heartbeatService(test.db).list()).rejects.toBe(failures[2]);
     expect(test.select).toHaveBeenCalledTimes(3);
     expect(test.execute).toHaveBeenCalledTimes(1);
   });
@@ -109,14 +107,14 @@ describe("heartbeat list connection recovery", () => {
   it.each([new Error("CONNECTION_CLOSED"), disconnected("28P01"), disconnected("42501")])(
     "does not retry other list errors", async (error) => {
       const test = fixture({ failures: { heartbeat_runs: [error] } });
-      await expect(heartbeatService(test.db).list(companyId)).rejects.toBe(error);
+      await expect(heartbeatService(test.db).list()).rejects.toBe(error);
       expect(test.select).toHaveBeenCalledTimes(1);
     },
   );
 
   it("returns an empty list without retries", async () => {
     const test = fixture({ missing: true });
-    await expect(heartbeatService(test.db).list(companyId)).resolves.toEqual([]);
+    await expect(heartbeatService(test.db).list()).resolves.toEqual([]);
     expect(test.select).toHaveBeenCalledTimes(1);
   });
 });
@@ -138,7 +136,7 @@ describe.each([
       expect(attempt.fields).toHaveProperty("externalConversationState");
     }
     expect(test.attempts[3].params).toEqual([issueId]);
-    expect(test.attempts[4].params).toEqual([companyId, issueId, "active"]);
+    expect(test.attempts[4].params).toEqual([issueId, "active"]);
   });
 
   it("propagates the final lookup error without enrichment", async () => {
@@ -170,9 +168,9 @@ describe.each([
 });
 
 describe("issue access after lookup recovery", () => {
-  it.each([true, false])("retains the same not-found response for missing and inaccessible issues (missing=%s)", async (missing) => {
-    const test = fixture({ missing, failures: { issues: [disconnected()] } });
-    const req = { method: "GET", actor: { type: "agent", companyId: "other-company" } } as Request;
+  it("returns not-found for a missing issue", async () => {
+    const test = fixture({ missing: true, failures: { issues: [disconnected()] } });
+    const req = { method: "GET", actor: { type: "agent" } } as Request;
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
     await expect(getAccessibleResource(req, res, issueService(test.db).getById(issueId), "Issue not found"))
       .resolves.toBeNull();

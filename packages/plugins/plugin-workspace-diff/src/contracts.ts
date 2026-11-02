@@ -117,7 +117,6 @@ export const workspaceDiffStatsSchema = z.object({
 
 export const workspaceDiffResponseSchema = z.object({
   workspaceId: z.string(),
-  companyId: z.string(),
   view: workspaceDiffViewSchema,
   baseRef: z.string().nullable(),
   defaultBaseRef: z.string().nullable(),

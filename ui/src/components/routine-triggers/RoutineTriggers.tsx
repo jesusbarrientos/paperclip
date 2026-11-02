@@ -129,7 +129,6 @@ export function RoutineTriggers() {
         <TriggerSetup
           key={routine.id}
           routineId={routine.id}
-          companyId={routine.companyId}
           routineTitle={routine.title}
           trigger={trigger}
           onExit={closeSetup}
@@ -313,21 +312,19 @@ export function RoutineTriggers() {
 
 function TriggerSetup({
   routineId,
-  companyId,
   routineTitle,
   trigger,
   onExit,
   onRefresh,
 }: {
   routineId: string;
-  companyId: string;
   routineTitle: string;
   trigger?: RoutineTrigger;
   onExit: () => void;
   onRefresh: () => Promise<void>;
 }) {
   const [, setParams] = useSearchParams();
-  const storagePrefix = `routine-trigger-draft:${companyId}:${routineId}:`;
+  const storagePrefix = `routine-trigger-draft:${routineId}:`;
   const createdRef = useRef<RoutineTrigger | undefined>(trigger);
   const [created, setCreated] = useState(trigger);
   const [secret, setSecret] = useState("");

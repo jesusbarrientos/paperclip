@@ -126,7 +126,6 @@ interface IssueDocumentPutOptions extends BaseClientOptions {
 }
 
 interface IssueAttachmentUploadOptions extends BaseClientOptions {
-  companyId?: string;
   file: string;
   commentId?: string;
 }
@@ -136,7 +135,6 @@ interface IssueAttachmentDownloadOptions extends BaseClientOptions {
 }
 
 interface IssueLabelCreateOptions extends BaseClientOptions {
-  companyId?: string;
   name: string;
   color: string;
 }
@@ -174,22 +172,21 @@ export function registerIssueCommands(program: Command): void {
   addCommonClientOptions(
     issue
       .command("list")
-      .description("List issues for a company")
-      .option("-C, --company-id <id>", "Company ID")
+      .description("List issues")
       .option("--status <csv>", "Comma-separated statuses")
       .option("--assignee-agent-id <id>", "Filter by assignee agent ID")
       .option("--project-id <id>", "Filter by project ID")
       .option("--match <text>", "Local text match on identifier/title/description")
       .action(async (opts: IssueBaseOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const params = new URLSearchParams();
           if (opts.status) params.set("status", opts.status);
           if (opts.assigneeAgentId) params.set("assigneeAgentId", opts.assigneeAgentId);
           if (opts.projectId) params.set("projectId", opts.projectId);
 
           const query = params.toString();
-          const path = `${apiPath`/api/companies/${ctx.companyId}/issues`}${query ? `?${query}` : ""}`;
+          const path = `${apiPath`/api/issues`}${query ? `?${query}` : ""}`;
           const rows = (await ctx.api.get<Issue[]>(path)) ?? [];
 
           const filtered = filterIssueRows(rows, opts.match);
@@ -219,8 +216,7 @@ export function registerIssueCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -277,7 +273,6 @@ export function registerIssueCommands(program: Command): void {
     issue
       .command("create")
       .description("Create an issue")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--title <title>", "Issue title")
       .option("--description <text>", "Issue description")
       .option("--status <status>", "Issue status")
@@ -290,7 +285,7 @@ export function registerIssueCommands(program: Command): void {
       .option("--billing-code <code>", "Billing code")
       .action(async (opts: IssueCreateOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const payload = createIssueSchema.parse({
             title: opts.title,
             description: opts.description,
@@ -304,13 +299,12 @@ export function registerIssueCommands(program: Command): void {
             billingCode: opts.billingCode,
           });
 
-          const created = await ctx.api.post<Issue>(apiPath`/api/companies/${ctx.companyId}/issues`, payload);
+          const created = await ctx.api.post<Issue>(apiPath`/api/issues`, payload);
           printOutput(created, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -948,14 +942,12 @@ export function registerIssueCommands(program: Command): void {
       .command("attachment:upload")
       .description("Upload an issue attachment")
       .argument("<issueId>", "Issue ID")
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--file <path>", "File to upload")
       .option("--comment-id <id>", "Attach to an issue comment")
       .action(async (issueId: string, opts: IssueAttachmentUploadOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const attachment = await uploadAttachment(ctx.api.apiBase, ctx.api.apiKey, {
-            companyId: ctx.companyId ?? "",
             issueId,
             filePath: opts.file,
             commentId: opts.commentId,
@@ -965,8 +957,7 @@ export function registerIssueCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -1011,38 +1002,34 @@ export function registerIssueCommands(program: Command): void {
   addCommonClientOptions(
     issue
       .command("label:list")
-      .description("List issue labels in a company")
-      .option("-C, --company-id <id>", "Company ID")
+      .description("List issue labels")
       .action(async (opts: BaseClientOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const labels = await ctx.api.get(apiPath`/api/companies/${ctx.companyId}/labels`);
+          const ctx = resolveCommandContext(opts);
+          const labels = await ctx.api.get(apiPath`/api/labels`);
           printOutput(labels, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
     issue
       .command("label:create")
       .description("Create an issue label")
-      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--name <name>", "Label name")
       .requiredOption("--color <hex>", "Label color, e.g. #4f46e5")
       .action(async (opts: IssueLabelCreateOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const payload = createIssueLabelSchema.parse({ name: opts.name, color: opts.color });
-          const label = await ctx.api.post(apiPath`/api/companies/${ctx.companyId}/labels`, payload);
+          const label = await ctx.api.post(apiPath`/api/labels`, payload);
           printOutput(label, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -1399,7 +1386,7 @@ function buildApiUrl(apiBase: string, path: string): string {
 async function uploadAttachment(
   apiBase: string,
   apiKey: string | undefined,
-  input: { companyId: string; issueId: string; filePath: string; commentId?: string; runId?: string },
+  input: { issueId: string; filePath: string; commentId?: string; runId?: string },
 ): Promise<unknown> {
   const bytes = await readFile(input.filePath);
   const form = new FormData();
@@ -1412,7 +1399,7 @@ async function uploadAttachment(
   const headers: Record<string, string> = {};
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   if (input.runId) headers["x-paperclip-run-id"] = input.runId;
-  const response = await fetch(buildApiUrl(apiBase, apiPath`/api/companies/${input.companyId}/issues/${input.issueId}/attachments`), {
+  const response = await fetch(buildApiUrl(apiBase, apiPath`/api/issues/${input.issueId}/attachments`), {
     method: "POST",
     headers,
     body: form,

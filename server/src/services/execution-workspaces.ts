@@ -310,7 +310,6 @@ export type ExecutionWorkspaceBranchReconcileResult = {
   } | null;
   restoredSourceIssue: {
     id: string;
-    companyId: string;
     status: string;
     assigneeAgentId: string | null;
   } | null;
@@ -864,7 +863,6 @@ async function inspectGitCloseReadiness(workspace: ExecutionWorkspace): Promise<
         cwd: workspacePath,
         operation: "execution_workspaces.close_readiness_status",
         fairnessKeys: [
-          `company:${workspace.companyId}`,
           `workspace:${workspace.id}`,
           ...(workspace.sourceIssueId ? [`issue:${workspace.sourceIssueId}`] : []),
         ],
@@ -1028,7 +1026,6 @@ function toRuntimeService(
 ): WorkspaceRuntimeService {
   return {
     id: row.id,
-    companyId: row.companyId,
     projectId: row.projectId ?? null,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
@@ -1066,7 +1063,6 @@ function toExecutionWorkspace(
 ): ExecutionWorkspace {
   return {
     id: row.id,
-    companyId: row.companyId,
     projectId: row.projectId,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     sourceIssueId: row.sourceIssueId ?? null,
@@ -1153,7 +1149,6 @@ function noActiveRuntimeServicesForWorkspaceCondition(row: ExecutionWorkspaceRow
   const inheritedProjectWorkspaceId = usesInheritedProjectRuntimeServices(row) ? row.projectWorkspaceId : null;
   const activeServiceConditions = inheritedProjectWorkspaceId
     ? and(
-        eq(workspaceRuntimeServices.companyId, row.companyId),
         or(
           and(
             eq(workspaceRuntimeServices.projectWorkspaceId, inheritedProjectWorkspaceId),
@@ -1164,7 +1159,6 @@ function noActiveRuntimeServicesForWorkspaceCondition(row: ExecutionWorkspaceRow
         ne(workspaceRuntimeServices.status, "stopped"),
       )
     : and(
-        eq(workspaceRuntimeServices.companyId, row.companyId),
         eq(workspaceRuntimeServices.executionWorkspaceId, row.id),
         ne(workspaceRuntimeServices.status, "stopped"),
       );
@@ -1173,7 +1167,6 @@ function noActiveRuntimeServicesForWorkspaceCondition(row: ExecutionWorkspaceRow
 
 async function loadEffectiveRuntimeServicesByExecutionWorkspace(
   db: RuntimeServiceReadDb,
-  companyId: string,
   rows: ExecutionWorkspaceRow[],
 ) {
   const inheritedRows = rows.filter((row) => usesInheritedProjectRuntimeServices(row));
@@ -1184,12 +1177,10 @@ async function loadEffectiveRuntimeServicesByExecutionWorkspace(
   const [executionRuntimeServices, projectRuntimeServices, projectWorkspaceRows] = await Promise.all([
     listCurrentRuntimeServicesForExecutionWorkspaces(
       db,
-      companyId,
       rows.map((row) => row.id),
     ),
     listCurrentRuntimeServicesForProjectWorkspaces(
       db,
-      companyId,
       uniqueProjectWorkspaceIds,
     ),
     uniqueProjectWorkspaceIds.length > 0
@@ -1200,10 +1191,7 @@ async function loadEffectiveRuntimeServicesByExecutionWorkspace(
           })
           .from(projectWorkspaces)
           .where(
-            and(
-              eq(projectWorkspaces.companyId, companyId),
-              inArray(projectWorkspaces.id, uniqueProjectWorkspaceIds),
-            ),
+            inArray(projectWorkspaces.id, uniqueProjectWorkspaceIds),
           )
       : Promise.resolve([]),
   ]);
@@ -1321,7 +1309,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
   // flag lets only one sweep run at a time, so one sweep owns the shared state.
   let terminalSweepInProgress = false;
 
-  async function listWorkspaceIssueTree(workspace: Pick<ExecutionWorkspaceRow, "companyId" | "sourceIssueId">) {
+  async function listWorkspaceIssueTree(workspace: Pick<ExecutionWorkspaceRow, "sourceIssueId">) {
     if (!workspace.sourceIssueId) return [];
     return db
       .select({
@@ -1332,29 +1320,24 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         updatedAt: issues.updatedAt,
       })
       .from(issues)
-      .where(and(
-        eq(issues.companyId, workspace.companyId),
-        sql<boolean>`
+      .where(sql<boolean>`
           ${issues.id} IN (
             WITH RECURSIVE issue_tree(id) AS (
               SELECT ${issues.id}
               FROM ${issues}
-              WHERE ${issues.companyId} = ${workspace.companyId}
-                AND ${issues.id} = ${workspace.sourceIssueId}
+              WHERE ${issues.id} = ${workspace.sourceIssueId}
               UNION ALL
               SELECT child.id
               FROM ${issues} child
               JOIN issue_tree parent ON child.parent_id = parent.id
-              WHERE child.company_id = ${workspace.companyId}
             )
             SELECT id FROM issue_tree
           )
-        `,
-      ));
+        `);
   }
 
   async function listDeliveryPullRequestProducts(
-    workspace: Pick<ExecutionWorkspaceRow, "companyId" | "sourceIssueId">,
+    workspace: Pick<ExecutionWorkspaceRow, "sourceIssueId">,
   ) {
     if (!workspace.sourceIssueId) return [];
 
@@ -1369,7 +1352,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       })
       .from(issueWorkProducts)
       .where(and(
-        eq(issueWorkProducts.companyId, workspace.companyId),
         eq(issueWorkProducts.type, "pull_request"),
         eq(issueWorkProducts.issueId, workspace.sourceIssueId),
       ))
@@ -1417,13 +1399,13 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         if (references.length === 0) continue;
         for (const reference of references) {
           if (!pullRequestMatchesWorkspaceRepository(reference, workspace)) continue;
-          const key = `${workspace.companyId}:${reference.owner.toLowerCase()}/${reference.repo.toLowerCase()}#${reference.number}`;
+          const key = `${reference.owner.toLowerCase()}/${reference.repo.toLowerCase()}#${reference.number}`;
           const cached = pullRequestStateCache.get(key);
           let details;
           if (cached && now().getTime() - cached.checkedAtMs < pullRequestStateCacheTtlMs) {
             details = cached.details;
           } else {
-            details = await resolvePullRequestDetails(workspace.companyId, reference);
+            details = await resolvePullRequestDetails(reference);
             setBoundedPullRequestCacheEntry(
               pullRequestStateCache,
               key,
@@ -1501,19 +1483,16 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
     return toExecutionWorkspace(row, runtimeServices, assessment.deliveryState);
   }
 
-  async function workspaceHasActiveRun(workspace: Pick<ExecutionWorkspaceRow, "id" | "companyId" | "sourceIssueId">) {
+  async function workspaceHasActiveRun(workspace: Pick<ExecutionWorkspaceRow, "id" | "sourceIssueId">) {
     const linkedIssues = await db
       .select({
         checkoutRunId: issues.checkoutRunId,
         executionRunId: issues.executionRunId,
       })
       .from(issues)
-      .where(and(
-        eq(issues.companyId, workspace.companyId),
-        or(
-          eq(issues.executionWorkspaceId, workspace.id),
-          ...(workspace.sourceIssueId ? [eq(issues.id, workspace.sourceIssueId)] : []),
-        ),
+      .where(or(
+        eq(issues.executionWorkspaceId, workspace.id),
+        ...(workspace.sourceIssueId ? [eq(issues.id, workspace.sourceIssueId)] : []),
       ));
     const runIds = [...new Set(linkedIssues.flatMap((issue) => [
       issue.checkoutRunId,
@@ -1524,7 +1503,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
       .where(and(
-        eq(heartbeatRuns.companyId, workspace.companyId),
         inArray(heartbeatRuns.id, runIds),
         inArray(heartbeatRuns.status, ["queued", "running"]),
       ))
@@ -1713,16 +1691,13 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         ? db
             .select({ cwd: projectWorkspaces.cwd, cleanupCommand: projectWorkspaces.cleanupCommand })
             .from(projectWorkspaces)
-            .where(and(
-              eq(projectWorkspaces.companyId, workspace.companyId),
-              eq(projectWorkspaces.id, workspace.projectWorkspaceId),
-            ))
+            .where(eq(projectWorkspaces.id, workspace.projectWorkspaceId))
             .then((rows) => rows[0] ?? null)
         : null,
       db
         .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
         .from(projects)
-        .where(and(eq(projects.companyId, workspace.companyId), eq(projects.id, workspace.projectId)))
+        .where(eq(projects.id, workspace.projectId))
         .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy)),
     ]);
     const config = readExecutionWorkspaceConfig((workspace.metadata as Record<string, unknown> | null) ?? null);
@@ -1745,7 +1720,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         cleanupCommand: config?.cleanupCommand ?? null,
         teardownCommand: config?.teardownCommand ?? projectPolicy?.workspaceStrategy?.teardownCommand ?? null,
         recorder: workspaceOperationService(db).createRecorder({
-          companyId: workspace.companyId,
           executionWorkspaceId: workspace.id,
         }),
         assertSafeToCleanup: () => assertTerminalCleanupGitStateUnchanged(workspace, expectedHeadSha),
@@ -1762,10 +1736,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         await db
           .update(issues)
           .set({ executionWorkspaceId: null, updatedAt: now() })
-          .where(and(
-            eq(issues.companyId, workspace.companyId),
-            eq(issues.executionWorkspaceId, workspace.id),
-          ));
+          .where(eq(issues.executionWorkspaceId, workspace.id));
       }
       const cleanupReason = [ISSUE_TERMINAL_WORKSPACE_CLEANUP_REASON, ...cleanup.warnings].join(" | ");
       if (!cleanup.cleaned || cleanup.warnings.length > 0) {
@@ -1825,7 +1796,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
   }
 
   function buildListConditions(
-    companyId: string,
     filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
@@ -1834,7 +1804,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       reuseEligible?: boolean;
     },
   ) {
-    const conditions = [eq(executionWorkspaces.companyId, companyId)];
+    const conditions = [];
     if (filters?.projectId) conditions.push(eq(executionWorkspaces.projectId, filters.projectId));
     if (filters?.projectWorkspaceId) {
       conditions.push(eq(executionWorkspaces.projectWorkspaceId, filters.projectWorkspaceId));
@@ -1853,8 +1823,8 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
     return conditions;
   }
 
-  function buildOverviewConditions(companyId: string, filters: WorkspaceOverviewQuery) {
-    const conditions = [eq(executionWorkspaces.companyId, companyId)];
+  function buildOverviewConditions(filters: WorkspaceOverviewQuery) {
+    const conditions = [];
     if (filters.projectId) conditions.push(eq(executionWorkspaces.projectId, filters.projectId));
     if (filters.status && filters.status.length > 0) {
       if (filters.status.length === 1) conditions.push(eq(executionWorkspaces.status, filters.status[0]!));
@@ -1867,10 +1837,9 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
 
   return {
     listOverview: async (
-      companyId: string,
       filters: WorkspaceOverviewQuery,
     ): Promise<WorkspaceOverviewResponse> => {
-      const conditions = buildOverviewConditions(companyId, filters);
+      const conditions = buildOverviewConditions(filters);
       const whereClause = and(...conditions);
 
       const [totalRow, rows] = await Promise.all([
@@ -1879,17 +1848,13 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           .from(executionWorkspaces)
           .innerJoin(
             projects,
-            and(
-              eq(projects.id, executionWorkspaces.projectId),
-              eq(projects.companyId, companyId),
-            ),
+            eq(projects.id, executionWorkspaces.projectId),
           )
           .where(whereClause)
           .then((result) => result[0] ?? { count: 0 }),
         db
           .select({
             id: executionWorkspaces.id,
-            companyId: executionWorkspaces.companyId,
             projectId: executionWorkspaces.projectId,
             projectWorkspaceId: executionWorkspaces.projectWorkspaceId,
             sourceIssueId: executionWorkspaces.sourceIssueId,
@@ -1918,17 +1883,11 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           .from(executionWorkspaces)
           .innerJoin(
             projects,
-            and(
-              eq(projects.id, executionWorkspaces.projectId),
-              eq(projects.companyId, companyId),
-            ),
+            eq(projects.id, executionWorkspaces.projectId),
           )
           .leftJoin(
             projectWorkspaces,
-            and(
-              eq(projectWorkspaces.id, executionWorkspaces.projectWorkspaceId),
-              eq(projectWorkspaces.companyId, companyId),
-            ),
+            eq(projectWorkspaces.id, executionWorkspaces.projectWorkspaceId),
           )
           .where(whereClause)
           .orderBy(
@@ -1954,7 +1913,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
 
       const workspaceIds = pageRows.map((row) => row.id);
       const [runtimeServicesByWorkspaceId, linkedIssueCountRows, linkedIssueRows] = await Promise.all([
-        loadEffectiveRuntimeServicesByExecutionWorkspace(db, companyId, pageRows),
+        loadEffectiveRuntimeServicesByExecutionWorkspace(db, pageRows),
         db
           .select({
             executionWorkspaceId: issues.executionWorkspaceId,
@@ -1963,7 +1922,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           .from(issues)
           .where(
             and(
-              eq(issues.companyId, companyId),
               visibleIssueCondition(),
               inArray(issues.executionWorkspaceId, workspaceIds),
             ),
@@ -1992,8 +1950,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
                 order by ${issues.updatedAt} desc, ${issues.id} asc
               ) as row_number
             from ${issues}
-            where ${issues.companyId} = ${companyId}
-              and ${issues.hiddenAt} is null
+            where ${issues.hiddenAt} is null
               and ${issues.executionWorkspaceId} in (${sql.join(workspaceIds.map((id) => sql`${id}`), sql`, `)})
           ) ranked
           where ranked.row_number <= ${WORKSPACE_OVERVIEW_LINKED_ISSUE_LIMIT}
@@ -2075,20 +2032,20 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       };
     },
 
-    list: async (companyId: string, filters?: {
+    list: async (filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
       issueId?: string;
       status?: string;
       reuseEligible?: boolean;
     }) => {
-      const conditions = buildListConditions(companyId, filters);
+      const conditions = buildListConditions(filters);
       const rows = await db
         .select()
         .from(executionWorkspaces)
         .where(and(...conditions))
         .orderBy(desc(executionWorkspaces.lastUsedAt), desc(executionWorkspaces.createdAt));
-      const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, companyId, rows);
+      const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, rows);
       // Collection reads are deliberately DB-only. Delivery-state hydration
       // inspects git and may resolve pull requests, so doing it for every row
       // lets a large inventory launch an unbounded number of child processes.
@@ -2101,14 +2058,14 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       );
     },
 
-    listSummaries: async (companyId: string, filters?: {
+    listSummaries: async (filters?: {
       projectId?: string;
       projectWorkspaceId?: string;
       issueId?: string;
       status?: string;
       reuseEligible?: boolean;
     }) => {
-      const conditions = buildListConditions(companyId, filters);
+      const conditions = buildListConditions(filters);
       const rows = await db
         .select({
           id: executionWorkspaces.id,
@@ -2127,7 +2084,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
     },
 
     findGitWorktreeContention: async (input: {
-      companyId: string;
       worktreePath: string;
       liveBranchName: string | null;
       excludingExecutionWorkspaceId?: string | null;
@@ -2153,13 +2109,9 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         .from(executionWorkspaces)
         .leftJoin(
           issues,
-          and(
-            eq(issues.companyId, executionWorkspaces.companyId),
-            eq(issues.id, executionWorkspaces.sourceIssueId),
-          ),
+          eq(issues.id, executionWorkspaces.sourceIssueId),
         )
         .where(and(
-          eq(executionWorkspaces.companyId, input.companyId),
           isNull(executionWorkspaces.closedAt),
           ne(executionWorkspaces.status, "archived"),
           input.excludingExecutionWorkspaceId
@@ -2187,7 +2139,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           })
           .from(issues)
           .where(and(
-            eq(issues.companyId, input.companyId),
             isNull(issues.hiddenAt),
             linkedIssueConditions.length === 1 ? linkedIssueConditions[0]! : or(...linkedIssueConditions),
           ))
@@ -2210,7 +2161,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             })
             .from(heartbeatRuns)
             .where(and(
-              eq(heartbeatRuns.companyId, input.companyId),
               inArray(heartbeatRuns.id, runIds),
               inArray(heartbeatRuns.status, ["queued", "running"]),
             ))
@@ -2254,11 +2204,10 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       const { refreshPersistedRuntimeServiceHealth } = await import("./workspace-runtime.js");
       await refreshPersistedRuntimeServiceHealth({
         db,
-        companyId: row.companyId,
         executionWorkspaceId: row.id,
         projectWorkspaceId: row.projectWorkspaceId,
       });
-      const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, row.companyId, [row]);
+      const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, [row]);
       return hydrateWorkspace(
         row,
         (runtimeServicesByWorkspaceId.get(row.id) ?? []).map(toRuntimeService),
@@ -2273,7 +2222,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         .then((rows) => rows[0] ?? null);
       if (!workspace) return null;
 
-      const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, workspace.companyId, [workspace]);
+      const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(db, [workspace]);
       const runtimeServices = (runtimeServicesByWorkspaceId.get(workspace.id) ?? []).map(toRuntimeService);
 
       const linkedIssues = await db
@@ -2284,7 +2233,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           status: issues.status,
         })
         .from(issues)
-        .where(and(eq(issues.companyId, workspace.companyId), eq(issues.executionWorkspaceId, workspace.id)));
+        .where(eq(issues.executionWorkspaceId, workspace.id));
 
       const projectWorkspace = workspace.projectWorkspaceId
         ? await db
@@ -2296,10 +2245,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             })
             .from(projectWorkspaces)
             .where(
-              and(
-                eq(projectWorkspaces.companyId, workspace.companyId),
-                eq(projectWorkspaces.id, workspace.projectWorkspaceId),
-              ),
+              eq(projectWorkspaces.id, workspace.projectWorkspaceId),
             )
             .then((rows) => rows[0] ?? null)
         : null;
@@ -2312,7 +2258,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             .from(projectWorkspaces)
             .where(
               and(
-                eq(projectWorkspaces.companyId, workspace.companyId),
                 eq(projectWorkspaces.projectId, workspace.projectId),
                 eq(projectWorkspaces.isPrimary, true),
               ),
@@ -2326,7 +2271,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
               executionWorkspacePolicy: projects.executionWorkspacePolicy,
             })
             .from(projects)
-            .where(and(eq(projects.id, workspace.projectId), eq(projects.companyId, workspace.companyId)))
+            .where(eq(projects.id, workspace.projectId))
             .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy))
         : null;
 
@@ -2754,15 +2699,13 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             })
             .where(and(
               eq(executionWorkspaces.id, workspace.id),
-              eq(executionWorkspaces.companyId, workspace.companyId),
               inArray(executionWorkspaces.status, ["active", "idle", "in_review"]),
               isNull(executionWorkspaces.closedAt),
               sql<boolean>`(${executionWorkspaces.metadata} ->> ${EXECUTION_WORKSPACE_REOPEN_PENDING_METADATA_KEY}) IS DISTINCT FROM 'true'`,
               sql<boolean>`EXISTS (
                 SELECT 1
                 FROM ${issues} source_issue
-                WHERE source_issue.company_id = ${workspace.companyId}
-                  AND source_issue.id = ${workspace.sourceIssueId}
+                WHERE source_issue.id = ${workspace.sourceIssueId}
                   AND source_issue.status IN ('done', 'cancelled')
               )`,
               sql<boolean>`NOT EXISTS (
@@ -2771,25 +2714,21 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
                 JOIN ${heartbeatRuns} live_run
                   ON live_run.id = linked_issue.checkout_run_id
                   OR live_run.id = linked_issue.execution_run_id
-                WHERE linked_issue.company_id = ${workspace.companyId}
-                  AND (
+                WHERE (
                     linked_issue.execution_workspace_id = ${workspace.id}
                     OR linked_issue.id = ${workspace.sourceIssueId}
                   )
-                  AND live_run.company_id = ${workspace.companyId}
                   AND live_run.status IN ('queued', 'running')
               )`,
               sql<boolean>`NOT EXISTS (
                 WITH RECURSIVE issue_tree(id, status) AS (
                   SELECT root.id, root.status
                   FROM ${issues} root
-                  WHERE root.company_id = ${workspace.companyId}
-                    AND root.id = ${workspace.sourceIssueId}
+                  WHERE root.id = ${workspace.sourceIssueId}
                   UNION ALL
                   SELECT child.id, child.status
                   FROM ${issues} child
                   JOIN issue_tree parent ON child.parent_id = parent.id
-                  WHERE child.company_id = ${workspace.companyId}
                 )
                 SELECT 1 FROM issue_tree WHERE status NOT IN ('done', 'cancelled')
               )`,
@@ -2803,13 +2742,11 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
                 WITH RECURSIVE cooldown_tree(id, status, completed_at, cancelled_at, updated_at) AS (
                   SELECT root.id, root.status, root.completed_at, root.cancelled_at, root.updated_at
                   FROM ${issues} root
-                  WHERE root.company_id = ${workspace.companyId}
-                    AND root.id = ${workspace.sourceIssueId}
+                  WHERE root.id = ${workspace.sourceIssueId}
                   UNION ALL
                   SELECT child.id, child.status, child.completed_at, child.cancelled_at, child.updated_at
                   FROM ${issues} child
                   JOIN cooldown_tree parent ON child.parent_id = parent.id
-                  WHERE child.company_id = ${workspace.companyId}
                 )
                 SELECT 1 FROM cooldown_tree
                 WHERE COALESCE(
@@ -2831,7 +2768,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         }
 
         await logActivity(db, {
-          companyId: archived.companyId,
           actorType: "system",
           actorId: "workspace_terminality_reaper",
           action: "execution_workspace.issue_terminal_archived",
@@ -2867,7 +2803,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             cleanupReason: `${ISSUE_TERMINAL_WORKSPACE_CLEANUP_REASON} | ${failure}`,
           });
           await logActivity(db, {
-            companyId: archived.companyId,
             actorType: "system",
             actorId: "workspace_terminality_reaper",
             action: "execution_workspace.issue_terminal_cleanup_failed",
@@ -2910,7 +2845,8 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
     // error, so the caller never dispatches a run against a broken workspace.
     reopenClosedIsolatedExecutionWorkspaceForIssue: async (input: {
       workspaceId: string;
-      issue: { id: string; companyId: string; projectId: string | null };
+      issue: { id: string;
+ projectId: string | null };
       actor: { agentId: string | null; actorType: string };
     }): Promise<ReopenClosedIsolatedExecutionWorkspaceResult> => {
       const { issue, actor } = input;
@@ -2928,7 +2864,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           .from(executionWorkspaces)
           .where(and(
             eq(executionWorkspaces.id, input.workspaceId),
-            eq(executionWorkspaces.companyId, issue.companyId),
             projectIdCondition,
             eq(executionWorkspaces.mode, "isolated_workspace"),
           ))
@@ -2967,16 +2902,13 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             ? db
                 .select({ cwd: projectWorkspaces.cwd })
                 .from(projectWorkspaces)
-                .where(and(
-                  eq(projectWorkspaces.companyId, row.companyId),
-                  eq(projectWorkspaces.id, row.projectWorkspaceId),
-                ))
+                .where(eq(projectWorkspaces.id, row.projectWorkspaceId))
                 .then((rows) => rows[0] ?? null)
             : null,
           db
             .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
             .from(projects)
-            .where(and(eq(projects.companyId, row.companyId), eq(projects.id, row.projectId)))
+            .where(eq(projects.id, row.projectId))
             .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy)),
         ]);
         // Resolve the base checkout that the rebuild spawns git in. A
@@ -2989,10 +2921,9 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         let resolvedBaseCwd = projectWorkspace?.cwd ?? null;
         if (resolvedBaseCwd == null && row.strategyType === "git_worktree" && row.projectId) {
           const managedWorkspace = await ensureManagedProjectWorkspace({
-            companyId: row.companyId,
             projectId: row.projectId,
             repoUrl: row.repoUrl,
-            resolveGitAuth: createGitRemoteAuthProvider(db, row.companyId, {
+            resolveGitAuth: createGitRemoteAuthProvider(db, {
               issueId: row.sourceIssueId ?? issue.id,
             }),
           });
@@ -3006,7 +2937,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           row.metadata as Record<string, unknown> | null,
         );
         const recorder = workspaceOperationService(db).createRecorder({
-          companyId: row.companyId,
           executionWorkspaceId: row.id,
         });
 
@@ -3047,8 +2977,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
               : null,
             agent: {
               id: actor.agentId ?? null,
-              name: actor.actorType === "user" ? "Board" : "Agent",
-              companyId: row.companyId,
+              name: actor.actorType === "user" ? "Board" : "Agent"
             },
             recorder,
           });
@@ -3082,7 +3011,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
               outcome: "rebuild_failed",
               executionWorkspaceId: row.id,
               issueId: issue.id,
-              companyId: row.companyId,
               actorType: actor.actorType,
               actorAgentId: actor.agentId ?? null,
               generation: nextGeneration,
@@ -3091,7 +3019,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             "execution workspace reopen rebuild failed",
           );
           await logActivity(tx as unknown as Db, {
-            companyId: row.companyId,
             actorType: actor.actorType === "user" ? "user" : "agent",
             actorId: actor.agentId ?? "system",
             agentId: actor.actorType === "user" ? null : actor.agentId,
@@ -3137,7 +3064,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             outcome: "reopened",
             executionWorkspaceId: row.id,
             issueId: issue.id,
-            companyId: row.companyId,
             actorType: actor.actorType,
             actorAgentId: actor.agentId ?? null,
             generation: nextGeneration,
@@ -3145,7 +3071,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           "execution workspace reopened",
         );
         await logActivity(tx as unknown as Db, {
-          companyId: row.companyId,
           actorType: actor.actorType === "user" ? "user" : "agent",
           actorId: actor.agentId ?? "system",
           agentId: actor.actorType === "user" ? null : actor.agentId,
@@ -3193,7 +3118,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
 
     clearReopenPendingConsumptionForUnconsumedReopen: async (input: {
       workspaceId: string;
-      issue: { id: string; companyId: string };
+      issue: { id: string; };
       actor: { agentId: string | null; actorType: string };
       // The generation the reopen published the active row at. It owns the flag.
       // The clear runs only while the current generation still matches, so it never
@@ -3210,14 +3135,12 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             outcome: "unconsumed_reopen_cleared",
             executionWorkspaceId: input.workspaceId,
             issueId: input.issue.id,
-            companyId: input.issue.companyId,
             actorType: input.actor.actorType,
             actorAgentId: input.actor.agentId ?? null,
           },
           "execution workspace reopen-pending flag cleared after an unconsumed reopen",
         );
         await logActivity(db, {
-          companyId: input.issue.companyId,
           actorType: input.actor.actorType === "user" ? "user" : "agent",
           actorId: input.actor.agentId ?? "system",
           agentId: input.actor.actorType === "user" ? null : input.actor.agentId,
@@ -3432,7 +3355,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
         ? await (async () => {
             const runtimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(
               db,
-              existing.companyId,
               [existingRow],
             );
             assertBranchReconcileRuntimeServicesStopped({
@@ -3480,10 +3402,7 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             .select({ id: projectWorkspaces.id })
             .from(projectWorkspaces)
             .where(
-              and(
-                eq(projectWorkspaces.companyId, lockedRow.companyId),
-                eq(projectWorkspaces.id, lockedRow.projectWorkspaceId!),
-              ),
+              eq(projectWorkspaces.id, lockedRow.projectWorkspaceId!),
             )
             .for("update");
         }
@@ -3493,26 +3412,19 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           .from(workspaceRuntimeServices)
           .where(
             usesInheritedProjectRuntimeServices(lockedRow)
-              ? and(
-                  eq(workspaceRuntimeServices.companyId, lockedRow.companyId),
-                  or(
-                    and(
-                      eq(workspaceRuntimeServices.projectWorkspaceId, lockedRow.projectWorkspaceId!),
-                      eq(workspaceRuntimeServices.scopeType, "project_workspace"),
-                    ),
-                    eq(workspaceRuntimeServices.executionWorkspaceId, lockedRow.id),
-                  ),
-                )
-              : and(
-                  eq(workspaceRuntimeServices.companyId, lockedRow.companyId),
-                  eq(workspaceRuntimeServices.executionWorkspaceId, lockedRow.id),
-                ),
+              ? or(
+                                      and(
+                                        eq(workspaceRuntimeServices.projectWorkspaceId, lockedRow.projectWorkspaceId!),
+                                        eq(workspaceRuntimeServices.scopeType, "project_workspace"),
+                                      ),
+                                      eq(workspaceRuntimeServices.executionWorkspaceId, lockedRow.id),
+                                    )
+              : eq(workspaceRuntimeServices.executionWorkspaceId, lockedRow.id),
           )
           .for("update");
 
         const lockedRuntimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(
           txDb,
-          lockedRow.companyId,
           [lockedRow],
         );
         const lockedRuntimeServices = (lockedRuntimeServicesByWorkspaceId.get(lockedRow.id) ?? []).map(toRuntimeService);
@@ -3561,7 +3473,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           if (!branchUpdatedRow) {
             const latestRuntimeServicesByWorkspaceId = await loadEffectiveRuntimeServicesByExecutionWorkspace(
               txDb,
-              lockedRow.companyId,
               [lockedRow],
             );
             const latestRuntimeServices = (latestRuntimeServicesByWorkspaceId.get(lockedRow.id) ?? []).map(toRuntimeService);
@@ -3580,7 +3491,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
 
         let recoveryAction = await recoveryActionsSvc.resolveActiveForIssue(
           {
-            companyId: lockedWorkspace.companyId,
             sourceIssueId: lockedWorkspace.sourceIssueId,
             kind: "workspace_validation",
             cause: WORKSPACE_VALIDATION_RECOVERY_CAUSE,
@@ -3598,7 +3508,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
             if (!alternateFingerprint || alternateFingerprint === inspection.fingerprint) continue;
             recoveryAction = await recoveryActionsSvc.resolveActiveForIssue(
               {
-                companyId: existing.companyId,
                 sourceIssueId: existing.sourceIssueId!,
                 kind: "workspace_validation",
                 cause: WORKSPACE_VALIDATION_RECOVERY_CAUSE,
@@ -3621,7 +3530,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           const [sourceBefore] = await tx
             .select({
               id: issues.id,
-              companyId: issues.companyId,
               status: issues.status,
               assigneeAgentId: issues.assigneeAgentId,
               assigneeUserId: issues.assigneeUserId,
@@ -3667,7 +3575,6 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
           if (!updatedIssue) throw notFound("Source issue not found");
           restoredSourceIssue = {
             id: updatedIssue.id,
-            companyId: updatedIssue.companyId,
             status: updatedIssue.status,
             assigneeAgentId: updatedIssue.assigneeAgentId,
           };
@@ -3712,15 +3619,14 @@ export function executionWorkspaceService(db: Db, opts: ExecutionWorkspaceServic
       });
     },
 
-    clearEnvironmentSelection: async (companyId: string, environmentId: string) => {
+    clearEnvironmentSelection: async (environmentId: string) => {
       return db.transaction(async (tx) => {
         const rows = await tx
           .select({
             id: executionWorkspaces.id,
             metadata: executionWorkspaces.metadata,
           })
-          .from(executionWorkspaces)
-          .where(eq(executionWorkspaces.companyId, companyId));
+          .from(executionWorkspaces);
 
         let cleared = 0;
         const updatedAt = new Date();

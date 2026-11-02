@@ -163,7 +163,7 @@ async function runExecutor(
 
   const result = await execute({
     runId: "run-1",
-    agent: { id: "agent-1", companyId: "company-1" },
+    agent: { id: "agent-1" },
     runtime: {},
     config,
     context: options.context ?? {},
@@ -271,7 +271,7 @@ function remoteArgs(
   overrides: Record<string, unknown> = {},
 ) {
   return {
-    agent: { id: "agent-1", companyId: "company-1" },
+    agent: { id: "agent-1" },
     runtime: {},
     config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
     context: {},
@@ -480,7 +480,7 @@ describe("ACP settlement — Layer A: engine teardown orchestration", () => {
 
     const result = await execute({
       runId: "warm-save",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -521,7 +521,7 @@ describe("ACP settlement — Layer A: engine teardown orchestration", () => {
 
     const result = await execute({
       runId: "clean-close",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},
@@ -619,7 +619,7 @@ describe("ACP settlement — Layer A: engine teardown orchestration", () => {
 
       const result = await execute({
         runId: `preturn-${scenario.name}`,
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: {
           agent: "custom",
@@ -682,7 +682,7 @@ describe("ACP settlement — Layer A: engine teardown orchestration", () => {
 
     const first = await execute({
       runId: "warm-handshake-1",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -697,7 +697,7 @@ describe("ACP settlement — Layer A: engine teardown orchestration", () => {
 
     const second = await execute({
       runId: "warm-handshake-2",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: first.sessionParams },
       config,
       context: {},
@@ -756,7 +756,7 @@ describe("ACP settlement — Layer A: engine teardown orchestration", () => {
 
       const result = await execute({
         runId: `terminal-${testCase.status}`,
-        agent: { id: "agent-1", companyId: "company-1" },
+        agent: { id: "agent-1" },
         runtime: {},
         config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
         context: {},

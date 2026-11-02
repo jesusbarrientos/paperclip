@@ -22,7 +22,6 @@ export interface LowTrustOutputPromotionTarget {
 
 export interface LowTrustBoundary {
   mode: typeof LOW_TRUST_REVIEW_PRESET;
-  companyId?: string;
   projectIds?: string[];
   rootIssueId?: string;
   issueIds?: string[];

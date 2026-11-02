@@ -58,18 +58,14 @@ export function sidebarPreferenceService(db: Db) {
       return toPreference(row?.companyOrder ?? normalized, row?.updatedAt ?? now);
     },
 
-    async getProjectOrder(companyId: string, userId: string): Promise<SidebarOrderPreference> {
+    async getProjectOrder(userId: string): Promise<SidebarOrderPreference> {
       const row = await db.query.companyUserSidebarPreferences.findFirst({
-        where: and(
-          eq(companyUserSidebarPreferences.companyId, companyId),
-          eq(companyUserSidebarPreferences.userId, userId),
-        ),
+        where: eq(companyUserSidebarPreferences.userId, userId),
       });
       return toPreference(row?.projectOrder ?? [], row?.updatedAt ?? null);
     },
 
     async upsertProjectOrder(
-      companyId: string,
       userId: string,
       orderedIds: string[],
     ): Promise<SidebarOrderPreference> {
@@ -78,13 +74,12 @@ export function sidebarPreferenceService(db: Db) {
       const [row] = await db
         .insert(companyUserSidebarPreferences)
         .values({
-          companyId,
           userId,
           projectOrder: normalized,
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: [companyUserSidebarPreferences.companyId, companyUserSidebarPreferences.userId],
+          target: [companyUserSidebarPreferences.userId],
           set: {
             projectOrder: normalized,
             updatedAt: now,

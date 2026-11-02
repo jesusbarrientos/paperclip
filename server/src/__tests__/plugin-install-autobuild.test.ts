@@ -99,7 +99,7 @@ async function createBundledPluginFixture(
     description: "Bundled plugin fixture for install-time auto-build coverage.",
     author: "Paperclip",
     categories: ["automation"],
-    capabilities: ["companies.read"],
+    capabilities: ["projects.read"],
     entrypoints: {
       worker: "./dist/worker.js",
     },
@@ -155,8 +155,7 @@ async function createInstallApp(db: ReturnType<typeof createDb>) {
       userId: "admin-1",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [],
-    } as typeof req.actor;
+          } as typeof req.actor;
     next();
   });
   app.use("/api", pluginRoutes(db as never, loader as never, {} as never, undefined, {} as never, {} as never));
@@ -318,7 +317,7 @@ describeEmbeddedPostgres("plugin install auto-build route", () => {
       .post("/api/plugins/install")
       .send({ packageName: fixture.packageRoot, isLocalPath: true });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.packageName).toBe(fixture.packageName);
     expect(res.body.pluginKey).toBe(fixture.pluginKey);
     expect(existsSync(path.join(fixture.distDir, "manifest.js"))).toBe(true);

@@ -14,7 +14,6 @@ import {
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: overrides.id ?? "issue-1",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,

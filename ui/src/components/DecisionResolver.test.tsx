@@ -13,7 +13,6 @@ vi.mock("@tanstack/react-query", () => ({
     ? {
         data: {
           id: "decision-1",
-          companyId: "company-1",
           originAgentId: "agent-1",
           originIssueId: "origin-1",
           status: "open",
@@ -53,8 +52,8 @@ vi.mock("@tanstack/react-query", () => ({
   },
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompany: { issuePrefix: "PAP" } }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { issuePrefix: "PAP" } }),
 }));
 
 vi.mock("./DecisionCard", () => ({
@@ -89,11 +88,11 @@ describe("DecisionResolver", () => {
 
   it("refreshes resolved target status when an issue query changes", () => {
     const root = createRoot(container);
-    flushSync(() => root.render(<DecisionResolver companyId="company-1" decisionId="decision-1" />));
+    flushSync(() => root.render(<DecisionResolver decisionId="decision-1" />));
     expect(container.querySelector('[data-testid="resolved-status"]')?.textContent).toBe("todo");
 
     state.issueStatus = "done";
-    flushSync(() => root.render(<DecisionResolver companyId="company-1" decisionId="decision-1" />));
+    flushSync(() => root.render(<DecisionResolver decisionId="decision-1" />));
     expect(container.querySelector('[data-testid="resolved-status"]')?.textContent).toBe("done");
 
     flushSync(() => root.unmount());
@@ -101,7 +100,7 @@ describe("DecisionResolver", () => {
 
   it("loads every primary and secondary effect target", () => {
     const root = createRoot(container);
-    flushSync(() => root.render(<DecisionResolver companyId="company-1" decisionId="decision-1" />));
+    flushSync(() => root.render(<DecisionResolver decisionId="decision-1" />));
 
     expect(state.queriedIssueIds).toEqual(expect.arrayContaining([
       "target-1",

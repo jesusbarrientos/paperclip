@@ -47,9 +47,9 @@ function dedicatedTools(method: string, path: string): string[] {
   if (/\/agents\/\{[^}]+\}\/instructions-bundle\/history$/.test(path) && method === "GET") return ["get_agent_instruction_history"];
   if (/\/agents\/\{[^}]+\}\/instructions-bundle\/revision\/\{[^}]+\}$/.test(path) && method === "GET") return ["read_agent_instructions"];
   if (/\/agents\/\{[^}]+\}\/instructions-bundle\/restore$/.test(path) && method === "POST") return ["restore_agent_instructions"];
-  if (/\/companies\/\{[^}]+\}\/skills$/.test(path) && method === "POST") return ["create_skill"];
-  if (/\/companies\/\{[^}]+\}\/skills\/\{[^}]+\}\/files$/.test(path) && method === "PATCH") return ["update_skill"];
-  if (/\/companies\/\{[^}]+\}\/agent-hires$/.test(path) && method === "POST") return ["hire_agent"];
+  if (/^\/api\/skills$/.test(path) && method === "POST") return ["create_skill"];
+  if (/^\/api\/skills\/\{[^}]+\}\/files$/.test(path) && method === "PATCH") return ["update_skill"];
+  if (/^\/api\/agent-hires$/.test(path) && method === "POST") return ["hire_agent"];
   if (/\/projects$/.test(path)) return method === "GET" ? ["list_projects"] : method === "POST" ? ["create_project"] : [];
   if (/\/project-repositories$/.test(path) && method === "GET") return ["list_project_repositories"];
   if (/\/issues\/\{[^}]+\}\/comments$/.test(path)) return method === "GET" ? ["get_task_history"] : ["report_progress"];
@@ -119,7 +119,7 @@ export function buildRunnerApiCatalog(document: Json = buildOpenApiDocument()): 
     }
   }
   for (const [path, summary, actor] of [
-    ["/api/companies/{companyId}/events/ws", "Live company events WebSocket; use the existing event client", "board_or_agent"],
+    ["/api/events/ws", "Live company events WebSocket; use the existing event client", "board_or_agent"],
     ["/api/runner/v1/connect/{runId}", "Authenticated runner PRP WebSocket; runner-owned transport", "runner"],
     ["/api/environment-custom-image-setup-sessions/{sessionId}/terminal/ws", "Image setup terminal WebSocket; use the existing terminal client", "board"],
   ]) {

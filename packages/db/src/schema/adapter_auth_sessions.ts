@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import type { AdapterAuthSessionInternalStatus, AgentAdapterType } from "@paperclipai/shared";
-import { companies } from "./companies.js";
 import { environments } from "./environments.js";
 
 // The merged state set for the unified login table. One column holds the state
@@ -46,7 +45,6 @@ export const adapterAuthSessions = pgTable(
   "adapter_auth_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     environmentId: uuid("environment_id").notNull().references(() => environments.id, { onDelete: "cascade" }),
     aiConnection: jsonb("ai_connection").$type<import("@paperclipai/shared").AiConnectionLoginIntent>(),
     connectionId: uuid("connection_id"),
@@ -99,7 +97,6 @@ export const adapterAuthSessions = pgTable(
   },
   (table) => ({
     companyStatusIdx: index("adapter_auth_sessions_company_status_idx").on(
-      table.companyId,
       table.status,
     ),
     // Serialize on the company credential slot. Only one active session can hold
@@ -107,7 +104,7 @@ export const adapterAuthSessions = pgTable(
     // states of the merged set. It does not include the environment; the board
     // rule scopes the slot to the owner, not the environment.
     companyOwnerAdapterActiveUq: uniqueIndex("adapter_auth_sessions_company_owner_adapter_active_uq")
-      .on(table.companyId, table.startedByUserId, table.adapterType)
+      .on(table.startedByUserId, table.adapterType)
       .where(
         sql`${table.status} IN ('starting', 'waiting_for_user', 'promoting', 'awaiting_code', 'submitting')`,
       ),

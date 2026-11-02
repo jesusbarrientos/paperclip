@@ -9,7 +9,6 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
@@ -17,7 +16,6 @@ export const agentTaskSessions = pgTable(
   "agent_task_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     agentId: uuid("agent_id").notNull().references(() => agents.id),
     adapterType: text("adapter_type").notNull(),
     taskKey: text("task_key").notNull(),
@@ -38,18 +36,15 @@ export const agentTaskSessions = pgTable(
   },
   (table) => ({
     companyAgentTaskUniqueIdx: uniqueIndex("agent_task_sessions_company_agent_adapter_task_uniq").on(
-      table.companyId,
       table.agentId,
       table.adapterType,
       table.taskKey,
     ),
     companyAgentUpdatedIdx: index("agent_task_sessions_company_agent_updated_idx").on(
-      table.companyId,
       table.agentId,
       table.updatedAt,
     ),
     companyTaskUpdatedIdx: index("agent_task_sessions_company_task_updated_idx").on(
-      table.companyId,
       table.taskKey,
       table.updatedAt,
     ),
@@ -60,7 +55,6 @@ export const agentSessionGoalActions = pgTable(
   "agent_session_goal_actions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     sessionId: uuid("session_id")
       .notNull()
       .references(() => agentTaskSessions.id, { onDelete: "cascade" }),
@@ -81,7 +75,6 @@ export const agentSessionGoalActions = pgTable(
       table.requestId,
     ),
     companyStatusCreatedIdx: index("agent_session_goal_actions_company_status_created_idx").on(
-      table.companyId,
       table.status,
       table.createdAt,
     ),

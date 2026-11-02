@@ -12,7 +12,7 @@ vi.mock("./execute.js", async (original) => ({ ...await original<typeof import("
 
 const config = { apiUrl: "https://createos.example.test", apiKey: "secret", shape: "test", timeoutMs: 5000 };
 const client = () => new CreateosClient(parseConfig(config));
-const params = { driverKey: "createos", companyId: "c", environmentId: "e", config, lease: { providerLeaseId: "sb_test" } };
+const params = { driverKey: "createos", environmentId: "e", config, lease: { providerLeaseId: "sb_test" } };
 let temp: string;
 let downloads: Buffer;
 let uploads: Buffer[];

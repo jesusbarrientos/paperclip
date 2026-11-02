@@ -8,7 +8,7 @@ Get a health summary for a company in a single call.
 ## Get Dashboard
 
 ```
-GET /api/companies/{companyId}/dashboard
+GET /api/dashboard
 ```
 
 ## Response

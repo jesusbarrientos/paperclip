@@ -6,7 +6,6 @@ import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { collectLiveIssueIds } from "../lib/liveIssueIds";
 import { usePublishSharedQueryData, useSharedPollingQuery } from "@/hooks/useSharedPolling";
@@ -100,9 +99,8 @@ export function Issues() {
 function StreamlinedTasks() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialogActions();
-  const inboxBadge = useInboxBadge(selectedCompanyId);
+  const inboxBadge = useInboxBadge();
 
   const requestedView = searchParams.get(TASK_VIEW_PARAM);
   const hasOrganizationScopedParam = ORGANIZATION_SCOPED_PARAMS.some(
@@ -164,7 +162,6 @@ function OrganizationIssues({
 }: { toolbarContext?: ReactNode; initialStatuses?: string[] } = {}) {
   const { enabled: streamlinedUiEnabled } = useStreamlinedUiEnabled();
   const issuesPresentation = resolveIssuesPresentation(streamlinedUiEnabled);
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -193,30 +190,26 @@ function OrganizationIssues({
   }, []);
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
 
-  const liveRunsQueryKey = queryKeys.liveRuns(selectedCompanyId!);
+  const liveRunsQueryKey = queryKeys.liveRuns();
   const sharedLiveRuns = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
-    enabled: !!selectedCompanyId,
     // Event-sourced via LiveUpdatesProvider (GitHub issue 9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
   const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
     queryKey: liveRunsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedLiveRuns.enabled,
     refetchInterval: sharedLiveRuns.refetchInterval,
   });
@@ -247,7 +240,7 @@ function OrganizationIssues({
     fetchNextPage,
   } = useInfiniteQuery({
     queryKey: [
-      ...queryKeys.issues.list(selectedCompanyId!),
+      ...queryKeys.issues.list(),
       "participant-agent",
       participantAgentId ?? "__all__",
       "workspace",
@@ -257,7 +250,7 @@ function OrganizationIssues({
       "infinite",
       issuePageSize,
     ],
-    queryFn: ({ pageParam, signal }) => issuesApi.listCompact(selectedCompanyId!, {
+    queryFn: ({ pageParam, signal }) => issuesApi.listCompact({
       participantAgentId,
       workspaceId: workspaceIdFilter,
       includeRoutineExecutions: true,
@@ -269,7 +262,6 @@ function OrganizationIssues({
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
       getNextIssuesPageOffset(lastPage.length, lastPageParam, issuePageSize),
-    enabled: !!selectedCompanyId,
     placeholderData: (previousData) => previousData,
   });
 
@@ -289,20 +281,10 @@ function OrganizationIssues({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       issuesApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() });
     },
   });
 
-  if (!selectedCompanyId) {
-    return (
-      <EmptyState
-        icon={CircleDot}
-        message={streamlinedUiEnabled
-          ? "Select an organization to view tasks."
-          : "Select a company to view tasks."}
-      />
-    );
-  }
 
   return (
     <IssuesList

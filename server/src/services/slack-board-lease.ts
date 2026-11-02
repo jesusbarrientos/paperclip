@@ -17,7 +17,6 @@ export class SlackBoardLeaseLost extends Error {
 export async function withSlackBoardLease<T>(
   db: Db,
   scope: {
-    companyId: string;
     endpointId: string;
     actionId: string;
   },
@@ -33,7 +32,6 @@ export async function withSlackBoardLease<T>(
   const [claimed] = await db
     .insert(chatEndpointLeases)
     .values({
-      companyId: scope.companyId,
       endpointId: scope.endpointId,
       leaseKey,
       token,
@@ -42,10 +40,7 @@ export async function withSlackBoardLease<T>(
     .onConflictDoUpdate({
       target: [chatEndpointLeases.endpointId, chatEndpointLeases.leaseKey],
       set: { token, expiresAt, updatedAt: sql`now()` },
-      setWhere: and(
-        eq(chatEndpointLeases.companyId, scope.companyId),
-        lte(chatEndpointLeases.expiresAt, sql`now()`),
-      ),
+      setWhere: lte(chatEndpointLeases.expiresAt, sql`now()`),
     })
     .returning({ id: chatEndpointLeases.id });
   if (!claimed) return;
@@ -54,7 +49,6 @@ export async function withSlackBoardLease<T>(
   let lost = false;
   const ownership = and(
     eq(chatEndpointLeases.id, claimed.id),
-    eq(chatEndpointLeases.companyId, scope.companyId),
     eq(chatEndpointLeases.token, token),
     gt(chatEndpointLeases.expiresAt, sql`now()`),
   );

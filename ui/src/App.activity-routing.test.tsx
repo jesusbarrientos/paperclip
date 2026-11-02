@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 // Regression guard for the Audit hub: Activity remains the canonical root,
-// while Runs, Costs, and Budgets live beneath it. Company-prefixed and bare
-// legacy routes must keep resolving with their query filters intact; `/audit`
+// while Runs, Costs, and Budgets live beneath it. Legacy routes must keep
+// resolving with their query filters intact; `/audit`
 // specifically retains the historical Agent Actions preset. This drives the
 // real <App> route table so removing either registration fails loudly.
 
@@ -45,9 +45,8 @@ vi.hoisted(() => {
   }
 });
 
-// Real Layout renders the full authenticated shell (sidebar, data queries) and
-// owns the "No company matches prefix" NotFound. For routing we only need it to
-// resolve the :companyPrefix segment and render its nested routes.
+// Real Layout renders the full authenticated shell (sidebar, data queries).
+// For routing we only need it to render its nested routes.
 vi.mock("./components/Layout", async () => {
   const { Outlet } = await import("react-router-dom");
   return { Layout: () => <Outlet /> };
@@ -108,41 +107,21 @@ vi.mock("./pages/Costs.production", () => ({
 }));
 
 vi.mock("./pages/NotFound", () => ({
-  NotFoundPage: ({ scope }: { scope: string }) => <div>{`NOT_FOUND:${scope}`}</div>,
+  NotFoundPage: () => <div>NOT_FOUND</div>,
 }));
 
 vi.mock("./pages/PluginPage", () => ({
   PluginPage: () => <div>PRODUCTION_PLUGIN_FALLBACK</div>,
 }));
 
-const PAP_COMPANY = {
-  id: "company-1",
-  name: "Paperclip",
-  issuePrefix: "PAP",
-  status: "active",
-};
-const ACME_COMPANY = {
-  id: "company-2",
-  name: "Acme",
-  issuePrefix: "ACME",
-  status: "active",
-};
-
-// Mutable so a test can put the *selected* company out of step with the company
-// in the URL — that mismatch is what catches a redirect that re-resolves the
-// company from context instead of keeping the one the deep link named.
-let companyState = {
-  companies: [PAP_COMPANY] as Array<typeof PAP_COMPANY>,
-  selected: PAP_COMPANY as typeof PAP_COMPANY | null,
-};
-vi.mock("./context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: companyState.companies,
-    selectedCompanyId: companyState.selected?.id ?? null,
-    selectedCompany: companyState.selected,
+vi.mock("./context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "org-1", name: "Paperclip", issuePrefix: "PAP" },
     loading: false,
+    error: null,
+    reload: async () => undefined,
   }),
-  CompanyProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  OrganizationProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 function renderAppAt(container: HTMLElement, path: string) {
@@ -175,7 +154,6 @@ describe("App Activity routing (PAP-16302)", () => {
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    companyState = { companies: [PAP_COMPANY], selected: PAP_COMPANY };
     streamlinedUiState.enabled = true;
     streamlinedUiState.loaded = true;
   });
@@ -186,101 +164,78 @@ describe("App Activity routing (PAP-16302)", () => {
     vi.clearAllMocks();
   });
 
-  it("serves the merged Activity page at /:company/activity", async () => {
-    const root = renderAppAt(container, "/PAP/activity");
-    await waitForRoute(container, "ACTIVITY_PAGE@/PAP/activity");
-    expect(container.textContent).not.toContain("No organization matches prefix");
+  it("serves the merged Activity page at /activity", async () => {
+    const root = renderAppAt(container, "/activity");
+    await waitForRoute(container, "ACTIVITY_PAGE@/activity");
     flushSync(() => root.unmount());
   });
 
   it("serves organization and entity-scoped run history beneath Activity", async () => {
     const root = renderAppAt(
       container,
-      "/PAP/activity/runs?entityType=routine&entityId=routine-1",
+      "/activity/runs?entityType=routine&entityId=routine-1",
     );
     await waitForRoute(
       container,
-      "AUDIT_RUNS@/PAP/activity/runs?entityType=routine&entityId=routine-1",
+      "AUDIT_RUNS@/activity/runs?entityType=routine&entityId=routine-1",
     );
     flushSync(() => root.unmount());
   });
 
-  it("redirects /:company/audit to Activity with the agent-actions mode preset", async () => {
-    const root = renderAppAt(container, "/PAP/audit");
-    await waitForRoute(container, "ACTIVITY_PAGE@/PAP/activity?mode=agents");
+  it("redirects /audit to Activity with the agent-actions mode preset", async () => {
+    const root = renderAppAt(container, "/audit");
+    await waitForRoute(container, "ACTIVITY_PAGE@/activity?mode=agents");
     flushSync(() => root.unmount());
   });
 
   it("serves each canonical Audit section under Activity", async () => {
-    const root = renderAppAt(container, "/PAP/activity/runs?agentId=agent-1");
-    await waitForRoute(container, "AUDIT_RUNS@/PAP/activity/runs?agentId=agent-1");
+    const root = renderAppAt(container, "/activity/runs?agentId=agent-1");
+    await waitForRoute(container, "AUDIT_RUNS@/activity/runs?agentId=agent-1");
     flushSync(() => root.unmount());
   });
 
   it("redirects legacy costs and preserves its deep-link filters", async () => {
-    const root = renderAppAt(container, "/PAP/costs?range=30d#usage");
-    await waitForRoute(container, "AUDIT_COSTS@/PAP/activity/costs?range=30d");
+    const root = renderAppAt(container, "/costs?range=30d#usage");
+    await waitForRoute(container, "AUDIT_COSTS@/activity/costs?range=30d");
     flushSync(() => root.unmount());
   });
 
   it("redirects legacy Audit sections to their canonical destination", async () => {
-    const root = renderAppAt(container, "/PAP/audit/budgets?projectId=project-1");
+    const root = renderAppAt(container, "/audit/budgets?projectId=project-1");
     await waitForRoute(
       container,
-      "AUDIT_BUDGETS@/PAP/activity/budgets?projectId=project-1",
+      "AUDIT_BUDGETS@/activity/budgets?projectId=project-1",
     );
     flushSync(() => root.unmount());
   });
 
-  it("keeps the company from the URL when /:company/audit is not the selected company", async () => {
-    // A shared /ACME/audit link opened by someone whose selected company is PAP
-    // must still show ACME's activity. The redirect target is written absolute
-    // (`/activity?mode=agents`) and relies on `@/lib/router`'s prefix-aware
-    // <Navigate>, which resolves the company from the route param ahead of the
-    // selected company. Importing <Navigate> from `react-router-dom` instead —
-    // the import most files use — would send this deep link to the *viewer's*
-    // company, so pin the behaviour here.
-    companyState = { companies: [PAP_COMPANY, ACME_COMPANY], selected: PAP_COMPANY };
-    const root = renderAppAt(container, "/ACME/audit");
-    await waitForRoute(container, "ACTIVITY_PAGE@/ACME/activity?mode=agents");
-    expect(container.textContent).not.toContain("ACTIVITY_PAGE@/PAP/activity");
-    flushSync(() => root.unmount());
-  });
-
-  it("redirects the bare /audit deep link through to the prefixed Activity page", async () => {
-    const root = renderAppAt(container, "/audit");
-    await waitForRoute(container, "ACTIVITY_PAGE@/PAP/activity?mode=agents");
-    expect(container.textContent).not.toContain("No organization matches prefix");
-    flushSync(() => root.unmount());
-  });
-
-  it("redirects the bare /tasks post-login target to the real task list", async () => {
+  it("redirects the /tasks post-login target to the real task list", async () => {
     const root = renderAppAt(container, "/tasks");
-    await waitForRoute(container, "TASKS_PAGE@/PAP/issues");
+    await waitForRoute(container, "TASKS_PAGE@/issues");
     expect(container.textContent).not.toContain("/tasks/dashboard");
     flushSync(() => root.unmount());
   });
 
-  it("redirects a bare legacy section through to the prefixed Audit hub", async () => {
+  it("redirects a legacy section to the Audit hub", async () => {
     const root = renderAppAt(container, "/runs?runStatus=succeeded");
-    await waitForRoute(container, "AUDIT_RUNS@/PAP/activity/runs?runStatus=succeeded");
+    await waitForRoute(container, "AUDIT_RUNS@/activity/runs?runStatus=succeeded");
     flushSync(() => root.unmount());
   });
 
   it("uses the production Activity and Costs routes when Streamlined UI is disabled", async () => {
     streamlinedUiState.enabled = false;
-    const activityRoot = renderAppAt(container, "/PAP/activity");
-    await waitForRoute(container, "PRODUCTION_ACTIVITY@/PAP/activity");
+    const activityRoot = renderAppAt(container, "/activity");
+    await waitForRoute(container, "PRODUCTION_ACTIVITY@/activity");
     flushSync(() => activityRoot.unmount());
 
-    const costsRoot = renderAppAt(container, "/PAP/costs?range=30d");
-    await waitForRoute(container, "PRODUCTION_COSTS@/PAP/costs?range=30d");
+    const costsRoot = renderAppAt(container, "/costs?range=30d");
+    await waitForRoute(container, "PRODUCTION_COSTS@/costs?range=30d");
     flushSync(() => costsRoot.unmount());
   });
 
   it("omits streamlined-only Audit routes when Streamlined UI is disabled", async () => {
     streamlinedUiState.enabled = false;
-    const root = renderAppAt(container, "/PAP/activity/runs");
+    const root = renderAppAt(container, "/activity/runs");
     await waitForRoute(container, "PRODUCTION_PLUGIN_FALLBACK");
     expect(container.textContent).not.toContain("AUDIT_RUNS");
     flushSync(() => root.unmount());
@@ -288,7 +243,7 @@ describe("App Activity routing (PAP-16302)", () => {
 
   it("does not mount streamlined routes before the experiment setting loads", async () => {
     streamlinedUiState.loaded = false;
-    const root = renderAppAt(container, "/PAP/activity");
+    const root = renderAppAt(container, "/activity");
     expect(container.textContent).not.toContain("ACTIVITY_PAGE");
     expect(container.textContent).not.toContain("PRODUCTION_ACTIVITY");
 
@@ -296,12 +251,12 @@ describe("App Activity routing (PAP-16302)", () => {
     streamlinedUiState.loaded = true;
     flushSync(() => {
       root.render(
-        <MemoryRouter initialEntries={["/PAP/activity"]}>
+        <MemoryRouter initialEntries={["/activity"]}>
           <App />
         </MemoryRouter>,
       );
     });
-    await waitForRoute(container, "PRODUCTION_ACTIVITY@/PAP/activity");
+    await waitForRoute(container, "PRODUCTION_ACTIVITY@/activity");
     flushSync(() => root.unmount());
   });
 });

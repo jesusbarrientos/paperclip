@@ -1,6 +1,6 @@
 import { cloudWarmStandbyServerOptions } from "./middleware/cloud-warm-standby.js";
 import { createCloudWarmStandby } from "./services/cloud-warm-standby.js";
-import { subscribeAllCompanyLiveEvents } from "./services/live-events.js";
+import { subscribeLiveEvents } from "./services/live-events.js";
 import { chatCompletionDeliveryService } from "./services/chat-completion-delivery.js";
 /// <reference path="./types/express.d.ts" />
 // Kicks off the OTel bootstrap as early as possible (no-op unless
@@ -88,7 +88,9 @@ import {
   toolAccessService,
   workspaceOperationService,
 } from "./services/index.js";
-import { assertSingleOrganization } from "./services/organization.js";
+import { assertSingleOrganization, organizationService } from "./services/organization.js";
+import { migrateOrganizationDataDirs } from "./services/organization-data-dirs.js";
+import { resolvePaperclipInstanceRoot } from "./home-paths.js";
 import { questionResponseDeliveryService } from "./services/question-response-delivery.js";
 import { deliverNativeQuestionResponse } from "./services/native-runtime/native-question-bridge.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
@@ -652,6 +654,10 @@ async function startServerWithDatabaseTeardown(
   // names the pool host. Restore the signed, durable identity before Better
   // Auth, routes, or child-runtime configuration capture any public URL.
   await assertSingleOrganization(db as any);
+  const startupOrganizationId = await organizationService(db as any).findId();
+  if (startupOrganizationId) {
+    await migrateOrganizationDataDirs(resolvePaperclipInstanceRoot(), startupOrganizationId);
+  }
 
   const restoredCloudRuntimeIdentity = await initializeCloudRuntimeIdentity(db as any);
   if (restoredCloudRuntimeIdentity) config = loadConfig();
@@ -981,8 +987,8 @@ async function startServerWithDatabaseTeardown(
         db as any,
         cloudActorHeaderSourceFromHeaders(req.headers),
       );
-      if (!actor?.userId || !actor.companyIds) return null;
-      return { userId: actor.userId, companyIds: actor.companyIds };
+      if (!actor?.userId) return null;
+      return { userId: actor.userId };
     },
   });
 
@@ -1236,10 +1242,10 @@ async function startServerWithDatabaseTeardown(
   const chatCompletionDeliveries = chatCompletionDeliveryService(db as any, environmentLeaseCleanupHeartbeat);
   // Activity publication happens after the status transaction commits. This is
   // a best-effort fast path; the durable outbox and sweeps remain authoritative.
-  const unsubscribeChatCompletions = subscribeAllCompanyLiveEvents(event => {
+  const unsubscribeChatCompletions = subscribeLiveEvents(event => {
     if (heartbeatSchedulerStopped || event.type !== "activity.logged" ||
       event.payload.action !== "issue.updated" || typeof event.payload.entityId !== "string") return;
-    trackHeartbeatSchedulerWork(chatCompletionDeliveries.sweepPending({ companyId: event.companyId, taskId: event.payload.entityId })
+    trackHeartbeatSchedulerWork(chatCompletionDeliveries.sweepPending({ taskId: event.payload.entityId })
       .catch(err => logger.error({ err }, "post-commit chat completion delivery failed")));
   });
   server.on("close", unsubscribeChatCompletions);
@@ -1633,12 +1639,12 @@ async function startServerWithDatabaseTeardown(
         // Cursor pagination rebuilds the whole feed for every page; one
         // unscoped all-items build keeps this sweep at a single feed build
         // per company per tick.
-        const page = await attentionService(db as any).list(company.id, {
+        const page = await attentionService(db as any).list({
           includeDismissed: true,
           all: true,
           allowUnscopedAll: true,
         });
-        archived += await retentionExecutor.autoArchive({ companyId: company.id, items: page.items });
+        archived += await retentionExecutor.autoArchive({ items: page.items });
       }
       const notifications = await retentionExecutor.deliverNotifications();
       return { archived, ...notifications };

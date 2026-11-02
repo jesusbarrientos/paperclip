@@ -8,8 +8,7 @@ import {
 import {
   publishGlobalLiveEvent,
   publishLiveEvent,
-  subscribeAllCompanyLiveEvents,
-  subscribeCompanyLiveEvents,
+  subscribeLiveEvents,
   subscribeGlobalLiveEvents,
 } from "./live-events.js";
 import { SAFE_NATIVE_CHAT_PROGRESS_EVENT_TYPES } from "./safe-native-chat-progress.js";
@@ -286,18 +285,17 @@ describe("chat publication commit signals", () => {
     ).toBe(false);
   });
 
-  it("observes company events without changing the public global event stream", () => {
+  it("observes organization events without changing the public global event stream", () => {
     const observed: string[] = [];
     const globallyObserved: string[] = [];
-    const unsubscribe = subscribeAllCompanyLiveEvents((event) => {
-      observed.push(`${event.companyId}:${event.type}`);
+    const unsubscribe = subscribeLiveEvents((event) => {
+      observed.push(event.type);
     });
     const unsubscribeGlobal = subscribeGlobalLiveEvents((event) => {
-      globallyObserved.push(`${event.companyId}:${event.type}`);
+      globallyObserved.push(event.type);
     });
     try {
       expect(publishChatPublicationCommitSignal({
-        companyId: "publication-signal-company",
         issueId: "publication-signal-issue",
         runId: "publication-signal-run",
         agentId: "publication-signal-agent",
@@ -305,7 +303,6 @@ describe("chat publication commit signals", () => {
         eventType: "tool.execution.started",
       })).toBe(true);
       expect(publishChatPublicationCommitSignal({
-        companyId: "publication-signal-company",
         issueId: "publication-signal-issue",
         runId: "publication-signal-run",
         agentId: "publication-signal-agent",
@@ -313,7 +310,6 @@ describe("chat publication commit signals", () => {
         eventType: "provider.notice",
       })).toBe(false);
       publishLiveEvent({
-        companyId: "publication-signal-company",
         type: "heartbeat.run.status",
         payload: {},
       });
@@ -327,22 +323,20 @@ describe("chat publication commit signals", () => {
     }
 
     expect(observed).toEqual([
-      "publication-signal-company:heartbeat.run.event",
-      "publication-signal-company:heartbeat.run.status",
+      "heartbeat.run.event",
+      "heartbeat.run.status",
     ]);
-    expect(globallyObserved).toEqual(["*:plugin.ui.updated"]);
+    expect(globallyObserved).toEqual(["plugin.ui.updated"]);
   });
 
   it("contains a live subscriber failure after the durable source committed", () => {
-    const unsubscribe = subscribeCompanyLiveEvents(
-      "publication-signal-listener-failure",
+    const unsubscribe = subscribeLiveEvents(
       () => {
         throw new Error("simulated_live_listener_failure");
       },
     );
     try {
       expect(publishChatPublicationCommitSignal({
-        companyId: "publication-signal-listener-failure",
         issueId: "publication-signal-issue",
         runId: "publication-signal-run",
         agentId: "publication-signal-agent",
@@ -363,14 +357,13 @@ describe("chat publication commit signals", () => {
       onError: vi.fn(),
       minimumSpacingMs: 0,
     });
-    const unsubscribe = subscribeAllCompanyLiveEvents((event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       if (isChatPublicationCommitSignal(event)) trigger.notify();
     });
     try {
       // Status/lifecycle events may be emitted before a publication transaction
       // commits or after it rolls back. They must leave recovery to polling.
       publishLiveEvent({
-        companyId: "publication-commit-boundary-company",
         type: "heartbeat.run.event",
         payload: { eventType: "lifecycle" },
       });
@@ -379,7 +372,6 @@ describe("chat publication commit signals", () => {
 
       publicationCommitted = true;
       publishLiveEvent({
-        companyId: "publication-commit-boundary-company",
         type: "heartbeat.run.event",
         payload: { eventType: "run.presentation.resolved" },
       });

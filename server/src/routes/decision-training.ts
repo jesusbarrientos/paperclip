@@ -1,9 +1,10 @@
+import { organizationService } from "../services/organization.js";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
 import { decisionTrainingService, logActivity } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo, hasCompanyAccess } from "./authz.js";
+import { assertBoard, assertOrgAccess, getActorInfo, hasOrgAccess } from "./authz.js";
 
 const sourceKindSchema = z.enum(["interaction", "approval", "execution_decision"]);
 const exampleIdSchema = z.string().guid();
@@ -54,16 +55,14 @@ export function decisionTrainingRoutes(db: Db) {
   const svc = decisionTrainingService(db);
 
   router.post(
-    "/companies/:companyId/decision-training",
+    "/decision-training",
     validate(createSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       const userId = requireHumanUser(req, res);
       if (!userId) return;
 
       const example = await svc.create({
-        companyId,
         sourceKind: req.body.sourceKind,
         sourceId: req.body.sourceId,
         issueId: req.body.issueId,
@@ -72,7 +71,6 @@ export function decisionTrainingRoutes(db: Db) {
       });
       const actor = getActorInfo(req);
       await logActivity(db, {
-        companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -90,15 +88,13 @@ export function decisionTrainingRoutes(db: Db) {
   // (humans only) since it exposes the same captured decision state, but it
   // never persists anything.
   router.post(
-    "/companies/:companyId/decision-training/preview",
+    "/decision-training/preview",
     validate(previewSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       const userId = requireHumanUser(req, res);
       if (!userId) return;
       const preview = await svc.preview({
-        companyId,
         sourceKind: req.body.sourceKind,
         sourceId: req.body.sourceId,
         issueId: req.body.issueId,
@@ -111,10 +107,9 @@ export function decisionTrainingRoutes(db: Db) {
     },
   );
 
-  router.get("/companies/:companyId/decision-training", async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.get("/decision-training", async (req, res) => {
     assertBoard(req);
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     const parsed = z.object({
       project: z.string().guid().optional(),
       kind: sourceKindSchema.optional(),
@@ -125,7 +120,7 @@ export function decisionTrainingRoutes(db: Db) {
       res.status(400).json({ error: "Invalid decision training query", details: parsed.error.flatten() });
       return;
     }
-    res.json(await svc.list(companyId, {
+    res.json(await svc.list({
       projectId: parsed.data.project,
       kind: parsed.data.kind,
       author: parsed.data.author,
@@ -133,11 +128,10 @@ export function decisionTrainingRoutes(db: Db) {
     }));
   });
 
-  router.get("/companies/:companyId/decision-training/export.jsonl", async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.get("/decision-training/export.jsonl", async (req, res) => {
     assertBoard(req);
-    assertCompanyAccess(req, companyId);
-    const rows = await svc.list(companyId);
+    assertOrgAccess(req);
+    const rows = await svc.list();
     const body = rows
       .map(({ example }) => JSON.stringify({
         retentionPolicy: example.retentionPolicy,
@@ -147,14 +141,13 @@ export function decisionTrainingRoutes(db: Db) {
       .join("\n");
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
       action: "decision_training.exported",
       entityType: "decision_training_export",
-      entityId: companyId,
+      entityId: await organizationService(db).requireId(),
       details: { exampleCount: rows.length, exampleIds: rows.map(({ example }) => example.id) },
     });
     res.type("application/x-ndjson").send(body ? `${body}\n` : "");
@@ -165,13 +158,12 @@ export function decisionTrainingRoutes(db: Db) {
     const exampleId = parseExampleId(req, res);
     if (!exampleId) return;
     const example = await svc.getById(exampleId);
-    if (!example || !hasCompanyAccess(req, example.companyId)) {
+    if (!example || !hasOrgAccess(req)) {
       res.status(404).json({ error: "Decision training example not found" });
       return;
     }
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: example.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -188,7 +180,7 @@ export function decisionTrainingRoutes(db: Db) {
     const exampleId = parseExampleId(req, res);
     if (!exampleId) return;
     const existing = await svc.getById(exampleId);
-    if (!existing || !hasCompanyAccess(req, existing.companyId)) {
+    if (!existing || !hasOrgAccess(req)) {
       res.status(404).json({ error: "Decision training example not found" });
       return;
     }
@@ -204,7 +196,6 @@ export function decisionTrainingRoutes(db: Db) {
     if (notesChanged) {
       const actor = getActorInfo(req);
       await logActivity(db, {
-        companyId: existing.companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -222,7 +213,7 @@ export function decisionTrainingRoutes(db: Db) {
     const exampleId = parseExampleId(req, res);
     if (!exampleId) return;
     const existing = await svc.getById(exampleId);
-    if (!existing || !hasCompanyAccess(req, existing.companyId)) {
+    if (!existing || !hasOrgAccess(req)) {
       res.status(404).json({ error: "Decision training example not found" });
       return;
     }
@@ -236,7 +227,6 @@ export function decisionTrainingRoutes(db: Db) {
     }
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: existing.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,

@@ -342,7 +342,6 @@ export interface IssuesListFilters {
 }
 
 export interface IssuesListProps {
-  companyId: string | null;
   projectId?: string | null;
   filters?: IssuesListFilters;
   viewStateKey?: string;
@@ -357,8 +356,6 @@ export interface AssigneePickerSelection {
 }
 
 export interface AssigneePickerProps {
-  /** Company whose agents and users should be listed. Defaults to host context. */
-  companyId?: string | null;
   /** Controlled value. Use `agent:<id>`, `user:<id>`, or an empty string. */
   value: string;
   /** Called with the encoded value plus parsed assignee IDs. */
@@ -382,8 +379,6 @@ export interface AssigneePickerProps {
 }
 
 export interface ProjectPickerProps {
-  /** Company whose projects should be listed. Defaults to host context. */
-  companyId?: string | null;
   /** Controlled project id, or an empty string for no project. */
   value: string;
   /** Called with the selected project id. Empty string means no project. */
@@ -576,7 +571,7 @@ export const ErrorBoundary = createSdkUiComponent<ErrorBoundaryProps>("ErrorBoun
 export const FileTree = createSdkUiComponent<FileTreeProps>("FileTree");
 
 /**
- * Renders Paperclip's native issue list component for company-scoped plugin
+ * Renders Paperclip's native issue list component for plugin
  * pages that need a standard board issue view.
  */
 export const IssuesList = createSdkUiComponent<IssuesListProps>("IssuesList");

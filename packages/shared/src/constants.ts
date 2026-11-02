@@ -1322,7 +1322,6 @@ export type PluginCategory = (typeof PLUGIN_CATEGORIES)[number];
 export const PLUGIN_CAPABILITIES = [
   "ai.connections.route",
   // Data Read
-  "companies.read",
   "projects.read",
   "project.workspaces.read",
   "execution.workspaces.read",
@@ -1484,7 +1483,6 @@ export const PLUGIN_UI_SLOT_TYPES = [
   "projectSidebarItem",
   "globalToolbarButton",
   "appShellOverlay",
-  "organizationSwitcher",
   "toolbarButton",
   "contextMenuItem",
   "commentAnnotation",
@@ -1726,7 +1724,6 @@ export type PluginEventType = (typeof PLUGIN_EVENT_TYPES)[number];
 export const PLUGIN_BRIDGE_ERROR_CODES = [
   "WORKER_UNAVAILABLE",
   "CAPABILITY_DENIED",
-  "INVOCATION_SCOPE_DENIED",
   "WORKER_ERROR",
   "TIMEOUT",
   "UNKNOWN",

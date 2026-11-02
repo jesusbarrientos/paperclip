@@ -18,13 +18,11 @@ import { SetMyUserSecretDialog } from "./SetMyUserSecretDialog";
  * active definition the user has not set.
  */
 export function MissingUserSecretsBanner({
-  companyId,
   definitionKeys,
   title = "Set your user secrets",
   secretsPath,
   className,
 }: {
-  companyId: string;
   definitionKeys?: string[];
   title?: string;
   /** Optional route to the Secrets → My secrets tab for the "Manage all" link. */
@@ -34,8 +32,8 @@ export function MissingUserSecretsBanner({
   const [dialogFor, setDialogFor] = useState<MyUserSecretEntry | null>(null);
 
   const mySecretsQuery = useQuery({
-    queryKey: queryKeys.secrets.myUserSecrets(companyId),
-    queryFn: () => secretsApi.listMyUserSecrets(companyId),
+    queryKey: queryKeys.secrets.myUserSecrets(),
+    queryFn: () => secretsApi.listMyUserSecrets(),
     retry: false,
   });
 
@@ -93,7 +91,6 @@ export function MissingUserSecretsBanner({
       </div>
 
       <SetMyUserSecretDialog
-        companyId={companyId}
         definition={dialogFor?.definition ?? null}
         existingSecret={dialogFor?.secret ?? null}
         open={dialogFor !== null}

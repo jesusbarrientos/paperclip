@@ -5,13 +5,10 @@ import type {
   SmokeRunStepStatus,
   SmokeRunTrigger,
 } from "@paperclipai/shared";
-import { companies } from "./companies.js";
-
 export const smokeRuns = pgTable(
   "smoke_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     trigger: text("trigger").$type<SmokeRunTrigger>().notNull(),
     status: text("status").$type<SmokeRunStatus>().notNull().default("running"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -21,8 +18,8 @@ export const smokeRuns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("smoke_runs_company_started_idx").on(table.companyId, table.startedAt),
-    index("smoke_runs_company_status_idx").on(table.companyId, table.status),
+    index("smoke_runs_company_started_idx").on(table.startedAt),
+    index("smoke_runs_company_status_idx").on(table.status),
   ],
 );
 
@@ -30,7 +27,6 @@ export const smokeRunSteps = pgTable(
   "smoke_run_steps",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     runId: uuid("run_id").notNull().references(() => smokeRuns.id, { onDelete: "cascade" }),
     path: text("path").$type<SmokeRunStepPath>().notNull(),
     scenarioStep: text("scenario_step").notNull(),
@@ -42,7 +38,7 @@ export const smokeRunSteps = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("smoke_run_steps_company_run_idx").on(table.companyId, table.runId),
-    index("smoke_run_steps_company_path_idx").on(table.companyId, table.path),
+    index("smoke_run_steps_company_run_idx").on(table.runId),
+    index("smoke_run_steps_company_path_idx").on(table.path),
   ],
 );

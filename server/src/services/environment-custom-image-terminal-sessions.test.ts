@@ -113,7 +113,6 @@ describe("EnvironmentCustomImageTerminalSessionStore", () => {
     const now = new Date("2026-06-25T20:00:00.000Z");
     const minted = store.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "ssh-token-secret", host: "203.0.113.10", port: 2222 },
@@ -153,7 +152,6 @@ describe("EnvironmentCustomImageTerminalSessionStore", () => {
     const now = new Date("2026-06-25T20:00:00.000Z");
     const minted = store.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "ssh-token-secret", host: "203.0.113.10", port: 2222 },
@@ -177,7 +175,6 @@ describe("EnvironmentCustomImageTerminalSessionStore", () => {
     const now = new Date("2026-06-25T20:00:00.000Z");
     const minted = store.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "ssh-token-secret", host: "203.0.113.10", port: 2222 },
@@ -213,7 +210,6 @@ describe("EnvironmentCustomImageTerminalSessionStore", () => {
     const now = new Date("2026-06-25T20:00:00.000Z");
     const first = store.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "one", host: "example.test", port: 22 },
@@ -222,7 +218,6 @@ describe("EnvironmentCustomImageTerminalSessionStore", () => {
     });
     const second = store.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "two", host: "example.test", port: 22 },

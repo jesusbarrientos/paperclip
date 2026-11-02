@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { SentryGate } from "./components/SentryGate";
-import { CompanyProvider, useCompany } from "./context/CompanyContext";
+import { OrganizationProvider, useOrganization } from "./context/OrganizationContext";
 import { LiveUpdatesProvider } from "./context/LiveUpdatesProvider";
 import { BreadcrumbProvider } from "./context/BreadcrumbContext";
 import { PanelProvider } from "./context/PanelContext";
@@ -52,9 +52,9 @@ const queryClient = new QueryClient({
   },
 });
 
-function CompanyAwareBreadcrumbProvider({ children }: { children: React.ReactNode }) {
-  const { selectedCompany } = useCompany();
-  return <BreadcrumbProvider companyName={selectedCompany?.name ?? null}>{children}</BreadcrumbProvider>;
+function OrganizationAwareBreadcrumbProvider({ children }: { children: React.ReactNode }) {
+  const { organization } = useOrganization();
+  return <BreadcrumbProvider companyName={organization?.name ?? null}>{children}</BreadcrumbProvider>;
 }
 
 const rootElement = document.getElementById("root");
@@ -67,12 +67,12 @@ getOrCreatePaperclipReactRoot(window, rootElement).render(
         <SentryGate />
         <ThemeProvider>
           <BrowserRouter>
-            <CompanyProvider>
+            <OrganizationProvider>
               <EditorAutocompleteProvider>
                 <ToastProvider>
                   <LiveUpdatesProvider>
                     <TooltipProvider>
-                      <CompanyAwareBreadcrumbProvider>
+                      <OrganizationAwareBreadcrumbProvider>
                         <SidebarProvider>
                           <PanelProvider>
                             <PluginLauncherProvider>
@@ -82,12 +82,12 @@ getOrCreatePaperclipReactRoot(window, rootElement).render(
                             </PluginLauncherProvider>
                           </PanelProvider>
                         </SidebarProvider>
-                      </CompanyAwareBreadcrumbProvider>
+                      </OrganizationAwareBreadcrumbProvider>
                     </TooltipProvider>
                   </LiveUpdatesProvider>
                 </ToastProvider>
               </EditorAutocompleteProvider>
-            </CompanyProvider>
+            </OrganizationProvider>
           </BrowserRouter>
         </ThemeProvider>
       </QueryClientProvider>

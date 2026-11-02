@@ -19,7 +19,7 @@ const navigateTopLevelMock = vi.hoisted(() => vi.fn());
 vi.mock("@/api/tools", () => ({ toolsApi: toolsApiMock }));
 vi.mock("@/lib/browserNavigation", () => ({ navigateTopLevel: navigateTopLevelMock }));
 // The tab uses `useNavigate` from the app router (PAP-11088 draft hand-off),
-// which needs CompanyProvider; stub it so the copy hint renders in isolation.
+// which needs OrganizationProvider; stub it so the copy hint renders in isolation.
 vi.mock("@/lib/router", () => ({ useNavigate: () => mockNavigate }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,7 +66,6 @@ function connectResult(overrides: Partial<ConnectToolAppResult> = {}): ConnectTo
     connectionId: "conn-1",
     application: {
       id: "app-1",
-      companyId: "company-1",
       applicationKey: "app-gallery:link:test",
       name: "kv-demo",
       description: null,
@@ -82,7 +81,6 @@ function connectResult(overrides: Partial<ConnectToolAppResult> = {}): ConnectTo
     },
     connection: {
       id: "conn-1",
-      companyId: "company-1",
       applicationId: "app-1",
       name: "kv-demo",
       uid: "app-gallery-link-test/kv-demo",
@@ -193,7 +191,7 @@ describe("PasteConfigTab — discoverability copy (PAP-11091)", () => {
       root.render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter>
-            <PasteConfigTab companyId="company-1" />
+            <PasteConfigTab />
           </MemoryRouter>
         </QueryClientProvider>,
       );
@@ -235,7 +233,7 @@ describe("PasteConfigTab — activation handoff (PAP-11092)", () => {
       root.render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter>
-            <PasteConfigTab companyId="company-1" />
+            <PasteConfigTab />
           </MemoryRouter>
         </QueryClientProvider>,
       );
@@ -285,7 +283,7 @@ describe("PasteConfigTab — activation handoff (PAP-11092)", () => {
     await flushReact();
 
     expect(mockNavigate).not.toHaveBeenCalled();
-    expect(toolsApiMock.connectApp).toHaveBeenCalledWith("company-1", {
+    expect(toolsApiMock.connectApp).toHaveBeenCalledWith({
       link: "http://127.0.0.1:8848/mcp",
       name: "kv-demo",
       credentialValues: {},
@@ -324,7 +322,7 @@ describe("PasteConfigTab — activation handoff (PAP-11092)", () => {
     });
     await flushReact();
 
-    expect(toolsApiMock.finishApp).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(toolsApiMock.finishApp).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: ["cat-read", "cat-write"],
       askFirstCatalogEntryIds: [],
       access: "all_agents",
@@ -371,7 +369,7 @@ describe("PasteConfigTab — activation handoff (PAP-11092)", () => {
     });
     await flushReact();
 
-    expect(toolsApiMock.connectApp).toHaveBeenCalledWith("company-1", {
+    expect(toolsApiMock.connectApp).toHaveBeenCalledWith({
       link: "https://secure.example/mcp",
       name: "secure-demo",
       credentialValues: { "headers.Authorization": "Bearer new" },
@@ -399,7 +397,7 @@ describe("PasteConfigTab — activation handoff (PAP-11092)", () => {
     await flushReact();
 
     expect(toolsApiMock.connectApp).toHaveBeenCalledTimes(1);
-    expect(toolsApiMock.connectApp).toHaveBeenCalledWith("company-1", {
+    expect(toolsApiMock.connectApp).toHaveBeenCalledWith({
       link: "https://mcp.notion.com/mcp",
       name: "Notion generic self-test 2026-08-17T20:00:00Z",
       credentialValues: {},

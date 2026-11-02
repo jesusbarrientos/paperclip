@@ -11,7 +11,7 @@ it.skipIf(process.env.CREATEOS_LIVE_TEST !== "1")("CreateOS create/exec/stdin/re
   if (!apiUrl || !apiKey || !shape) throw new Error("Set CREATEOS_API_URL, CREATEOS_API_KEY, and CREATEOS_SHAPE for the live smoke.");
   const hooks = createPlugin().definition;
   const params = {
-    driverKey: "createos", companyId: "createos-plugin-smoke", environmentId: "createos-plugin-smoke",
+    driverKey: "createos", environmentId: "createos-plugin-smoke",
     config: { apiUrl, apiKey, shape, ...(rootfs ? { rootfs } : {}), reuseLease: true, timeoutMs: 120_000 },
   };
   const lease = await hooks.onEnvironmentAcquireLease!({ ...params, runId: "smoke" });

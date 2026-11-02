@@ -10,9 +10,8 @@ import type { EmailChannelService } from "../services/email-channels.js";
 const mocks = vi.hoisted(() => ({ credential: vi.fn(), listCredentials: vi.fn(), permission: vi.fn() }));
 vi.mock("../services/email-connections.js", () => ({ emailConnectionService: () => ({ credential: mocks.credential, listCredentials: mocks.listCredentials }) }));
 vi.mock("../services/access.js", () => ({ accessService: () => ({ hasPermission: mocks.permission }) }));
-const companyId = "11111111-1111-4111-8111-111111111111";
 const connectionId = "22222222-2222-4222-8222-222222222222";
-const path = `/api/companies/${companyId}/email/connections/${connectionId}/check-address`;
+const path = `/api/email/connections/${connectionId}/check-address`;
 const input = { username: "ralph", domain: "agentmail.to" };
 function app(actor = { type: "board", source: "local_implicit", userId: "board" } as express.Request["actor"]) {
   const instance = express();
@@ -29,23 +28,23 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe("AgentMail address checks", () => {
-  it("lists saved-key metadata with company and manager access checks", async () => {
-    const listPath = `/api/companies/${companyId}/email/connections`;
+  it("lists saved-key metadata with membership and manager access checks", async () => {
+    const listPath = `/api/email/connections`;
     mocks.listCredentials.mockResolvedValue([{ id: connectionId, label: "AgentMail account key", scope: "organization" }]);
     const response = await request(app()).get(listPath).expect(200);
     expect(response.headers["cache-control"]).toBe("no-store");
-    expect(mocks.listCredentials).toHaveBeenCalledWith(companyId, expect.objectContaining({ userId: "board" }));
+    expect(mocks.listCredentials).toHaveBeenCalledWith(expect.objectContaining({ userId: "board" }));
     mocks.listCredentials.mockClear();
-    await request(app({ type: "agent", agentId: connectionId, companyId })).get(listPath).expect(403);
-    await request(app({ type: "board", source: "session", userId: "member", companyIds: [] })).get(listPath).expect(404);
-    await request(app({ type: "board", source: "session", userId: "member", companyIds: [companyId] })).get(listPath).expect(403);
+    await request(app({ type: "agent", agentId: connectionId })).get(listPath).expect(403);
+    await request(app({ type: "board", source: "session", userId: "member", memberships: [] })).get(listPath).expect(404);
+    await request(app({ type: "board", source: "session", userId: "member", memberships: [{ membershipRole: "member", status: "active" }] })).get(listPath).expect(403);
     expect(mocks.listCredentials).not.toHaveBeenCalled();
   });
-  it("uses the company-scoped saved credential and returns only address status", async () => {
+  it("uses the saved credential and returns only address status", async () => {
     const response = await request(app()).post(path).send({ username: "Ralph", domain: "AgentMail.to" }).expect(200);
     expect(response.body).toEqual({ address: "ralph@agentmail.to", status: "taken" });
     expect(response.headers["cache-control"]).toBe("no-store");
-    expect(mocks.credential).toHaveBeenCalledWith(companyId, connectionId, expect.objectContaining({ userId: "board" }));
+    expect(mocks.credential).toHaveBeenCalledWith(connectionId, expect.objectContaining({ userId: "board" }));
     expect(fetch).toHaveBeenCalledWith("https://api.agentmail.to/v0/inboxes?limit=100", expect.objectContaining({ method: "GET" }));
     expect(response.text).not.toContain("private-key");
   });
@@ -60,12 +59,12 @@ describe("AgentMail address checks", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
   it("does not allow agents to check addresses", async () => {
-    await request(app({ type: "agent", agentId: connectionId, companyId })).post(path).send(input).expect(403);
+    await request(app({ type: "agent", agentId: connectionId })).post(path).send(input).expect(403);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it("requires company access and connection management permission", async () => {
-    await request(app({ type: "board", source: "session", userId: "member", companyIds: [] })).post(path).send(input).expect(404);
-    await request(app({ type: "board", source: "session", userId: "member", companyIds: [companyId] })).post(path).send(input).expect(403);
+  it("requires membership and connection management permission", async () => {
+    await request(app({ type: "board", source: "session", userId: "member", memberships: [] })).post(path).send(input).expect(404);
+    await request(app({ type: "board", source: "session", userId: "member", memberships: [{ membershipRole: "member", status: "active" }] })).post(path).send(input).expect(403);
     expect(mocks.credential).not.toHaveBeenCalled();
   });
   it("preserves credential access checks", async () => {

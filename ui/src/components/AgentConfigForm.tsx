@@ -60,7 +60,6 @@ import {
 import { environmentDisplayLabel } from "../lib/managed-sandbox-environment";
 import { adapterCuratesModelOrder, extractModelName, extractProviderId } from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
-import { useCompany } from "../context/CompanyContext";
 import {
   Field,
   ToggleField,
@@ -348,7 +347,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const showCreateRunPolicySection = props.showCreateRunPolicySection ?? true;
   const hideInstructionsFile = props.hideInstructionsFile ?? false;
   const canConfigureProviderTrace = props.canConfigureProviderTrace === true;
-  const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const environmentVariablesEditorRef = useRef<EnvironmentVariablesEditorHandle | null>(null);
 
@@ -356,29 +354,23 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const disabledTypes = useDisabledAdaptersSync();
 
   const { data: availableSecrets = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
-    queryFn: () => secretsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
   });
   // User-secret definitions power the "User secret" env binding source. Requires
   // secret-admin; non-admins simply get the free-text key fallback in the editor.
   const { data: userSecretDefinitions = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.userDefinitions(selectedCompanyId)
-      : ["user-secret-definitions", "none"],
-    queryFn: () => secretsApi.listUserSecretDefinitions(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
+    queryKey: queryKeys.secrets.userDefinitions(),
+    queryFn: () => secretsApi.listUserSecretDefinitions(),
     retry: false,
   });
   // Pending binding proposals targeting this agent (PAP-14731). Board-only route;
   // non-permitted viewers simply get an empty list.
   const editAgentId = !isCreate ? props.agent.id : null;
   const { data: pendingProposals = [] } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.secrets.proposals(selectedCompanyId, "pending")
-      : ["secret-proposals", "none"],
-    queryFn: () => secretsApi.listProposals(selectedCompanyId!, "pending"),
-    enabled: Boolean(selectedCompanyId) && !isCreate,
+    queryKey: queryKeys.secrets.proposals("pending"),
+    queryFn: () => secretsApi.listProposals("pending"),
+    enabled: !isCreate,
     retry: false,
   });
   const agentBindingProposals = useMemo(
@@ -388,7 +380,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       ),
     [pendingProposals, editAgentId],
   );
-  const proposalReview = useProposalReview(selectedCompanyId, []);
+  const proposalReview = useProposalReview([]);
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
@@ -432,14 +424,12 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   });
 
   const { data: environments = [] } = useQuery<Environment[]>({
-    queryKey: selectedCompanyId ? queryKeys.environments.list(selectedCompanyId) : ["environments", "none"],
-    queryFn: () => environmentsApi.list(selectedCompanyId!),
+    queryKey: queryKeys.environments.list(),
+    queryFn: () => environmentsApi.list(),
     // Load environments when the picker is enabled OR when execution is forced
     // onto Kubernetes (so we can resolve and default to the managed K8s env even
     // when the experimental environments picker is otherwise hidden).
-    enabled:
-      Boolean(selectedCompanyId) &&
-      (environmentsEnabled || generalSettings?.executionMode === "kubernetes"),
+    enabled: environmentsEnabled || generalSettings?.executionMode === "kubernetes",
   });
 
   // Setting-driven: resolve whether the instance forces Kubernetes execution and
@@ -449,21 +439,15 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     [generalSettings?.executionMode, environments],
   );
   const createSecret = useMutation({
-    mutationFn: (input: { name: string; value: string }) => {
-      if (!selectedCompanyId) throw new Error("Select an organization to create secrets");
-      return secretsApi.create(selectedCompanyId, input);
-    },
+    mutationFn: (input: { name: string; value: string }) => secretsApi.create(input),
     onSuccess: () => {
-      if (!selectedCompanyId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
     },
   });
 
   const uploadMarkdownImage = useMutation({
-    mutationFn: async ({ file, namespace }: { file: File; namespace: string }) => {
-      if (!selectedCompanyId) throw new Error("Select an organization to upload images");
-      return assetsApi.uploadImage(selectedCompanyId, file, namespace);
-    },
+    mutationFn: ({ file, namespace }: { file: File; namespace: string }) =>
+      assetsApi.uploadImage(file, namespace),
   });
 
   // ---- Edit mode: overlay for dirty tracking ----
@@ -634,9 +618,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   // error. Invalidate the list so the row reads the fresh definitions and clears
   // the error.
   const invalidateUserSecretDefinitions = () => {
-    if (!selectedCompanyId) return;
     void queryClient.invalidateQueries({
-      queryKey: queryKeys.secrets.userDefinitions(selectedCompanyId),
+      queryKey: queryKeys.secrets.userDefinitions(),
     });
   };
 
@@ -839,11 +822,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   // consults this data. The gate is advisory; the server resolves the capability
   // again and fails closed.
   const { data: environmentCapabilities } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.environments.capabilities(selectedCompanyId)
-      : ["environment-capabilities", "none"],
-    queryFn: () => environmentsApi.capabilities(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId) && adapterCaps.login != null,
+    queryKey: queryKeys.environments.capabilities(),
+    queryFn: () => environmentsApi.capabilities(),
+    enabled: adapterCaps.login != null,
   });
 
   // When the instance forces Kubernetes execution, new agents must default to the
@@ -895,19 +876,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     (overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection,
   ).data?.provider === "openrouter" ? "openrouter" : runnerProvider;
   // Fetch adapter models for the effective provider, including unsaved changes.
-  const modelQueryKey = selectedCompanyId
-    ? queryKeys.agents.adapterModels(selectedCompanyId, adapterType, currentDefaultEnvironmentId || null, modelProvider)
-    : ["agents", "none", "adapter-models", adapterType];
+  const modelQueryKey = queryKeys.agents.adapterModels(adapterType, currentDefaultEnvironmentId || null, modelProvider);
   const {
     data: fetchedModels,
     error: fetchedModelsError,
   } = useQuery({
     queryKey: modelQueryKey,
-    queryFn: () => agentsApi.adapterModels(selectedCompanyId!, adapterType, {
+    queryFn: () => agentsApi.adapterModels(adapterType, {
       environmentId: currentDefaultEnvironmentId || null,
       provider: modelProvider,
     }),
-    enabled: Boolean(selectedCompanyId),
   });
   const [refreshModelsError, setRefreshModelsError] = useState<string | null>(null);
   const [refreshingModels, setRefreshingModels] = useState(false);
@@ -917,24 +895,17 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     data: detectedModelData,
     refetch: refetchDetectedModel,
   } = useQuery({
-    queryKey: selectedCompanyId
-      ? queryKeys.agents.detectModel(selectedCompanyId, adapterType)
-      : ["agents", "none", "detect-model", adapterType],
-    queryFn: () => {
-      if (!selectedCompanyId) {
-        throw new Error("Select an organization to detect the model");
-      }
-      return agentsApi.detectModel(selectedCompanyId, adapterType);
-    },
-    enabled: Boolean(selectedCompanyId && isLocal && adapterType !== "opencode_local" && adapterType !== "paperclip_runner"),
+    queryKey: queryKeys.agents.detectModel(adapterType),
+    queryFn: () => agentsApi.detectModel(adapterType),
+    enabled: Boolean(isLocal && adapterType !== "opencode_local" && adapterType !== "paperclip_runner"),
   });
   const detectedModel = detectedModelData?.model ?? null;
   const detectedModelCandidates = detectedModelData?.candidates ?? [];
 
   const { data: companyAgents = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none", "list"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(!isCreate && selectedCompanyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
+    enabled: !isCreate,
   });
 
   /** Props passed to adapter-specific config field components */
@@ -987,9 +958,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
   const testEnvironment = useMutation({
     mutationFn: async () => {
-      if (!selectedCompanyId) {
-        throw new Error("Select an organization to test adapter environment");
-      }
       const flushedEnv = flushEnvironmentDraft();
       const adapterConfigPatch = flushedEnv ? { env: flushedEnv } : undefined;
       // Probe where a real run would actually execute: the agent's own
@@ -1025,8 +993,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 queryFn: () => instanceSettingsApi.get(),
               }),
               queryClient.ensureQueryData({
-                queryKey: queryKeys.environments.list(selectedCompanyId),
-                queryFn: () => environmentsApi.list(selectedCompanyId),
+                queryKey: queryKeys.environments.list(),
+                queryFn: () => environmentsApi.list(),
               }),
               queryClient.ensureQueryData({
                 queryKey: queryKeys.instance.experimentalSettings,
@@ -1071,16 +1039,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             : adapterConfig.provider === "acpx" && adapterConfig.acpxAgent === "claude" ? "claude_local"
               : adapterType
           : adapterType;
-        return testAgentSetup({ companyId: selectedCompanyId, adapterType, providerAdapter, adapterConfig, agentId, aiConnection, environmentId });
+        return testAgentSetup({ adapterType, providerAdapter, adapterConfig, agentId, aiConnection, environmentId });
       }
-      return agentsApi.testEnvironment(selectedCompanyId, adapterType, { adapterConfig, agentId, aiConnection, environmentId });
+      return agentsApi.testEnvironment(adapterType, { adapterConfig, agentId, aiConnection, environmentId });
     },
   });
   const [testActionPending, setTestActionPending] = useState(false);
   const [testActionError, setTestActionError] = useState<string | null>(null);
   const testActionLabel = "Test";
   const isSavePending = !isCreate && Boolean(props.isSaving);
-  const testEnvironmentDisabled = testActionPending || isSavePending || !selectedCompanyId;
+  const testEnvironmentDisabled = testActionPending || isSavePending;
 
   // Drop a stale Test result when the adapter type or the effective environment
   // changes. A held result would keep the login affordance visible for a target
@@ -1153,13 +1121,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     adapterSupportsSandboxLogin &&
     effectiveLoginEnvironment?.driver === "sandbox" &&
     Boolean(effectiveLoginEnvironmentId) &&
-    Boolean(selectedCompanyId) &&
     Boolean(authMissingCheck) &&
     (!loginNeedsPty || providerSupportsLoginPty);
   const runEnvironmentTest = useCallback(async () => {
-    if (!selectedCompanyId) {
-      throw new Error("Select an organization to test adapter environment");
-    }
     setTestActionPending(true);
     setTestActionError(null);
     testEnvironment.reset();
@@ -1171,7 +1135,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     } finally {
       setTestActionPending(false);
     }
-  }, [selectedCompanyId, testEnvironment]);
+  }, [testEnvironment]);
   // `runEnvironmentTest` (and `testEnvironmentDisabled`) change identity on every
   // render because `useMutation` returns a fresh result object each time. Hold the
   // latest behavior in a ref so the trigger handed to the parent stays referentially
@@ -1222,11 +1186,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             ? "Environment test failed"
             : null),
       result: testEnvironment.data ?? null,
-      // `showAdapterLogin` already requires a selected company and a non-empty
-      // environment id, so both are present here.
+      // `showAdapterLogin` already requires a non-empty environment id, so it is
+      // present here.
       login:
-        showAdapterLogin && selectedCompanyId && effectiveLoginEnvironmentId
-          ? { companyId: selectedCompanyId, adapterType, environmentId: effectiveLoginEnvironmentId }
+        showAdapterLogin && effectiveLoginEnvironmentId
+          ? { adapterType, environmentId: effectiveLoginEnvironmentId }
           : null,
     });
     return () => {
@@ -1238,7 +1202,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     testEnvironment.data,
     testEnvironment.error,
     showAdapterLogin,
-    selectedCompanyId,
     adapterType,
     effectiveLoginEnvironmentId,
   ]);
@@ -1250,11 +1213,10 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const currentModelId = typeof currentModelValue === "string" ? currentModelValue : "";
 
   async function handleRefreshModels() {
-    if (!selectedCompanyId) return;
     setRefreshingModels(true);
     setRefreshModelsError(null);
     try {
-      const refreshed = await agentsApi.adapterModels(selectedCompanyId, adapterType, { refresh: true, environmentId: currentDefaultEnvironmentId || null, provider: modelProvider });
+      const refreshed = await agentsApi.adapterModels(adapterType, { refresh: true, environmentId: currentDefaultEnvironmentId || null, provider: modelProvider });
       queryClient.setQueryData(modelQueryKey, refreshed);
     } catch (error) {
       setRefreshModelsError(error instanceof Error ? error.message : "Failed to refresh adapter models.");
@@ -1376,7 +1338,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       }
     />
   );
-
 
   if (!isCreate && props.content === "secrets") {
     return (
@@ -1658,7 +1619,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Field>
           )}
 
-          {!isCreate && selectedCompanyId && <AiConnectionField companyId={selectedCompanyId} agentId={props.agent.id} agentName={props.agent.name} adapterType={adapterType === "paperclip_runner" ? eff("adapterConfig", "provider", config.provider) === "codex" ? "codex_local" : eff("adapterConfig", "provider", config.provider) === "opencode" ? "opencode_local" : eff("adapterConfig", "provider", config.provider) === "acpx" && eff("adapterConfig", "acpxAgent", config.acpxAgent) === "grok" ? "grok_local" : eff("adapterConfig", "provider", config.provider) === "acpx" && eff("adapterConfig", "acpxAgent", config.acpxAgent) === "claude" ? "claude_local" : adapterType : adapterType}
+          {!isCreate && <AiConnectionField agentId={props.agent.id} agentName={props.agent.name} adapterType={adapterType === "paperclip_runner" ? eff("adapterConfig", "provider", config.provider) === "codex" ? "codex_local" : eff("adapterConfig", "provider", config.provider) === "opencode" ? "opencode_local" : eff("adapterConfig", "provider", config.provider) === "acpx" && eff("adapterConfig", "acpxAgent", config.acpxAgent) === "grok" ? "grok_local" : eff("adapterConfig", "provider", config.provider) === "acpx" && eff("adapterConfig", "acpxAgent", config.acpxAgent) === "claude" ? "claude_local" : adapterType : adapterType}
             routerAdapterType={adapterType} value={aiRuntimeConnectionBindingSchema.safeParse((overlay.runtime.runtimeConfig as Record<string, unknown> | undefined)?.aiConnection ?? runtimeConfig.aiConnection).data}
             model={String(eff("adapterConfig", "model", config.model) ?? "")} environmentId={currentDefaultEnvironmentId || undefined} legacy
             onChange={binding => mark("runtime", "runtimeConfig", { ...runtimeConfig, aiConnection: binding })} />}
@@ -1679,7 +1640,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           {showInlineAdapterTestEnvironmentFeedback && showAdapterLogin && (
             <AdapterLoginPanel
               key={`${adapterType}:${effectiveLoginEnvironmentId}`}
-              companyId={selectedCompanyId!}
               adapterType={adapterType}
               environmentId={effectiveLoginEnvironmentId!}
               onStored={isCreate ? handleClaudeLoginStored : handleClaudeLoginStoredEdit}
@@ -2241,10 +2201,9 @@ function AdapterLoginTerminalState({
 // the adapter type and the environment id, so a change to either remounts the
 // panel with a fresh session state.
 // The props that identify one login panel: one adapter in one sandbox
-// environment for one company. A parent that lifts the test feedback renders
+// environment. A parent that lifts the test feedback renders
 // the panel from this descriptor.
 export type AdapterLoginDescriptor = {
-  companyId: string;
   adapterType: string;
   environmentId: string;
 };
@@ -2349,7 +2308,6 @@ class AdapterLoginConflictError extends Error {
 }
 
 function DisplayedCodeLoginPanel({
-  companyId,
   adapterType,
   environmentId,
   autoStart,
@@ -2381,7 +2339,7 @@ function DisplayedCodeLoginPanel({
   const resumedRef = useRef(false);
 
   const startLogin = useMutation({
-    mutationFn: () => agentsApi.startAdapterAuthLogin(companyId, adapterType, { environmentId, aiConnection }),
+    mutationFn: () => agentsApi.startAdapterAuthLogin(adapterType, { environmentId, aiConnection }),
     onSuccess: (session) => {
       resumedRef.current = false;
       setStartError(null);
@@ -2406,7 +2364,7 @@ function DisplayedCodeLoginPanel({
   }, []);
 
   const cancelLogin = useMutation({
-    mutationFn: () => agentsApi.cancelAdapterAuthLogin(companyId, adapterType, sessionId!),
+    mutationFn: () => agentsApi.cancelAdapterAuthLogin(adapterType, sessionId!),
     onSuccess: clearActiveSession,
     onError: (error) => {
       setStartError(error instanceof Error ? error.message : "Could not cancel the login.");
@@ -2417,10 +2375,10 @@ function DisplayedCodeLoginPanel({
   // browser rediscovers its own session after a reload with no local state. A
   // 404 means no active session for the caller.
   const activeSessionQuery = useQuery({
-    queryKey: ["adapter-login-active-session", companyId, adapterType],
+    queryKey: ["adapter-login-active-session", adapterType],
     queryFn: async () => {
       try {
-        const active = await agentsApi.getActiveAdapterAuthLoginSession(companyId, adapterType);
+        const active = await agentsApi.getActiveAdapterAuthLoginSession(adapterType);
         if (!active) return null;
         if ((aiConnection && active.environmentId !== environmentId) || Boolean(active.aiConnection) !== Boolean(aiConnection) || (aiConnection && (active.aiConnection?.provider !== aiConnection.provider || active.aiConnection?.method !== aiConnection.method || active.aiConnection?.connectionId !== aiConnection.connectionId || active.aiConnection?.ownership !== aiConnection.ownership || active.aiConnection?.allAgents !== aiConnection.allAgents || JSON.stringify(active.aiConnection?.agentIds) !== JSON.stringify(aiConnection.agentIds)))) throw new AdapterLoginConflictError(active.sessionId);
         return active;
@@ -2445,8 +2403,8 @@ function DisplayedCodeLoginPanel({
   const [releasingResumedSession, setReleasingResumedSession] = useState(false);
 
   const statusQuery = useQuery({
-    queryKey: ["adapter-login-status", companyId, adapterType, sessionId],
-    queryFn: () => agentsApi.getAdapterAuthLoginStatus(companyId, adapterType, sessionId!),
+    queryKey: ["adapter-login-status", adapterType, sessionId],
+    queryFn: () => agentsApi.getAdapterAuthLoginStatus(adapterType, sessionId!),
     enabled: Boolean(sessionId) && !releasingResumedSession,
     // A status 404 is unrecoverable: the server removed the row, so a retry
     // cannot bring it back. Stop at once and fail loudly.
@@ -2511,14 +2469,14 @@ function DisplayedCodeLoginPanel({
     const id = sessionId;
     void (async () => {
       if (id) {
-        await agentsApi.cancelAdapterAuthLogin(companyId, adapterType, id).catch(() => {
+        await agentsApi.cancelAdapterAuthLogin(adapterType, id).catch(() => {
           // The session is already gone either way; nothing more to do.
         });
       }
       setReleasingResumedSession(false);
       clearActiveSession();
     })();
-  }, [statusQuery.error, releasingResumedSession, sessionId, companyId, adapterType, clearActiveSession]);
+  }, [statusQuery.error, releasingResumedSession, sessionId, adapterType, clearActiveSession]);
 
   // Start once, on mount, when the caller has already taken the press, and
   // only once the resume read has answered: a resumed session takes over
@@ -2532,7 +2490,7 @@ function DisplayedCodeLoginPanel({
     mutationFn: async () => {
       const conflict = activeSessionQuery.error;
       if (!(conflict instanceof AdapterLoginConflictError)) return;
-      await agentsApi.cancelAdapterAuthLogin(companyId, adapterType, conflict.sessionId);
+      await agentsApi.cancelAdapterAuthLogin(adapterType, conflict.sessionId);
     },
     onSuccess: async () => {
       autoStartedRef.current = false;
@@ -2848,7 +2806,6 @@ const CLAUDE_LOGIN_TIMED_OUT_MESSAGE = "The login timed out. Start the login aga
 // and submits it. The panel clears the code right after submit. The panel treats
 // only the server `stored` state as success, and it never shows the OAuth token.
 function SubmittedBrowserCodeLoginPanel({
-  companyId,
   adapterType,
   environmentId,
   onStored,
@@ -2924,10 +2881,10 @@ function SubmittedBrowserCodeLoginPanel({
   // instead of a blind first write. The server rejects a stale capture, so a
   // change by another process after the capture fails the overwrite.
   const storedTokenQuery = useQuery({
-    queryKey: ["claude-oauth-token-status", companyId],
+    queryKey: ["claude-oauth-token-status"],
     queryFn: async () => {
       try {
-        return await agentsApi.getClaudeOAuthTokenStatus(companyId);
+        return await agentsApi.getClaudeOAuthTokenStatus();
       } catch (error) {
         // A 404 means the owner has no stored value (indistinguishable from a
         // foreign value). The panel treats it as "no stored token".
@@ -2944,7 +2901,7 @@ function SubmittedBrowserCodeLoginPanel({
 
   const startLogin = useMutation({
     mutationFn: () =>
-      agentsApi.startClaudeSetupTokenLogin(companyId, {
+      agentsApi.startClaudeSetupTokenLogin({
         environmentId,
         aiConnection,
         // When the owner already has a stored token, the login rotates it under
@@ -2978,7 +2935,7 @@ function SubmittedBrowserCodeLoginPanel({
   };
 
   const cancelLogin = useMutation({
-    mutationFn: () => agentsApi.cancelClaudeSetupTokenLogin(companyId, sessionId!),
+    mutationFn: () => agentsApi.cancelClaudeSetupTokenLogin(sessionId!),
     onSuccess: () => {
       clearActiveSession();
     },
@@ -3009,22 +2966,22 @@ function SubmittedBrowserCodeLoginPanel({
   // state.
   const releaseServerSession = useCallback(
     (id: string) => {
-      void agentsApi.cancelClaudeSetupTokenLogin(companyId, id).catch(() => {
+      void agentsApi.cancelClaudeSetupTokenLogin(id).catch(() => {
         // Drop the error. A 404 means the server already removed the session. A
         // cleanup path cannot surface any other error, so it stays silent.
       });
     },
-    [companyId],
+    [],
   );
 
   // Read the caller's active Claude setup-token session on mount, with no
   // session id, so the browser rediscovers its own session after a reload
   // with no local state. A 404 means no active session for the caller.
   const activeSessionQuery = useQuery({
-    queryKey: ["claude-setup-token-active-session", companyId],
+    queryKey: ["claude-setup-token-active-session"],
     queryFn: async () => {
       try {
-        const active = await agentsApi.getActiveClaudeSetupTokenLoginSession(companyId);
+        const active = await agentsApi.getActiveClaudeSetupTokenLoginSession();
         if (!active) return null;
         if ((aiConnection && active.environmentId !== environmentId) || Boolean(active.aiConnection) !== Boolean(aiConnection) || (aiConnection && (active.aiConnection?.provider !== aiConnection.provider || active.aiConnection?.method !== aiConnection.method || active.aiConnection?.connectionId !== aiConnection.connectionId || active.aiConnection?.ownership !== aiConnection.ownership || active.aiConnection?.allAgents !== aiConnection.allAgents || JSON.stringify(active.aiConnection?.agentIds) !== JSON.stringify(aiConnection.agentIds)))) throw new Error("Another sign-in attempt is active. Finish or cancel it in its original account setup before starting this one.");
         return active;
@@ -3056,8 +3013,8 @@ function SubmittedBrowserCodeLoginPanel({
     Boolean(sessionId) && !timedOut && !statusGone && !releasingResumedSession;
 
   const statusQuery = useQuery({
-    queryKey: ["claude-setup-token-status", companyId, sessionId],
-    queryFn: () => agentsApi.getClaudeSetupTokenLoginStatus(companyId, sessionId!),
+    queryKey: ["claude-setup-token-status", sessionId],
+    queryFn: () => agentsApi.getClaudeSetupTokenLoginStatus(sessionId!),
     enabled: pollingEnabled,
     // A status 404 is terminal. The server removes a cleaned-up session at once,
     // so a retry cannot recover it. Stop at once and fail loudly.
@@ -3095,7 +3052,7 @@ function SubmittedBrowserCodeLoginPanel({
       const id = sessionId;
       void (async () => {
         if (id) {
-          await agentsApi.cancelClaudeSetupTokenLogin(companyId, id).catch(() => {
+          await agentsApi.cancelClaudeSetupTokenLogin(id).catch(() => {
             // The session is already gone either way; nothing more to do.
           });
         }
@@ -3105,7 +3062,7 @@ function SubmittedBrowserCodeLoginPanel({
       return;
     }
     setStatusGone(true);
-  }, [statusQuery.error, releasingResumedSession, sessionId, companyId]);
+  }, [statusQuery.error, releasingResumedSession, sessionId]);
 
   // Adopt the caller's active session once, on mount. This is what makes a
   // page reload keep the session: with no local state at all, the panel would
@@ -3130,11 +3087,11 @@ function SubmittedBrowserCodeLoginPanel({
   // route returns 404 until the URL is ready, so the panel treats a 404 as
   // not-ready and keeps polling.
   const promptQuery = useQuery({
-    queryKey: ["claude-setup-token-prompt", companyId, sessionId],
+    queryKey: ["claude-setup-token-prompt", sessionId],
     enabled: pollingEnabled && !authorizationUrl,
     queryFn: async () => {
       try {
-        return await agentsApi.getClaudeSetupTokenLoginPrompt(companyId, sessionId!);
+        return await agentsApi.getClaudeSetupTokenLoginPrompt(sessionId!);
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
@@ -3154,14 +3111,14 @@ function SubmittedBrowserCodeLoginPanel({
 
   const submitCode = useMutation({
     mutationFn: (code: string) =>
-      agentsApi.submitClaudeSetupTokenBrowserCode(companyId, sessionId!, code),
+      agentsApi.submitClaudeSetupTokenBrowserCode(sessionId!, code),
     onError: (error) => {
       setStartError(error instanceof Error ? error.message : "Could not submit the browser code.");
     },
   });
 
   const completeLogin = useMutation({
-    mutationFn: () => agentsApi.completeClaudeSetupTokenLogin(companyId, sessionId!),
+    mutationFn: () => agentsApi.completeClaudeSetupTokenLogin(sessionId!),
     onSuccess: (result) => {
       // The server reached the `stored` state. Hold the non-secret claim and
       // report it to the parent. The response carries no token.

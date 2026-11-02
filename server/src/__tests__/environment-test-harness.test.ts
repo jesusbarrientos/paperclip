@@ -26,7 +26,6 @@ const FAKE_MANIFEST: PaperclipPluginManifestV1 = {
 
 const BASE_PARAMS = {
   driverKey: "fake",
-  companyId: "co-1",
   environmentId: "env-1",
   config: {},
 };

@@ -4,7 +4,7 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 import { EmailEndpointSetup } from "@/pages/apps/chat/EmailEndpointSetup";
 import { ChatSetupSidebar } from "@/components/chat/ChatSetupNavigation";
 import { ChatSetupSidebarProvider } from "@/context/ChatSetupSidebarContext";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useLocation, useNavigate } from "@/lib/router";
 import { storybookAgents } from "../fixtures/paperclipData";
 
@@ -21,14 +21,13 @@ const agents = storybookAgents.map((agent, index) => ({
 function AgentMailJourney({ savedConnection = true }: { savedConnection?: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { selectedCompanyId } = useCompany();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (ready) return;
     navigate(`/apps/chat/connect?provider=agentmail${savedConnection ? `&connectionId=${CONNECTION}` : ""}`, { replace: true });
     setReady(true);
   }, [navigate, savedConnection, ready]);
-  if (!ready || !selectedCompanyId) return null;
+  if (!ready) return null;
   if (!pathname.endsWith("/apps/chat/connect")) return <div className="p-6 text-sm">Setup complete.</div>;
   return <ChatSetupSidebarProvider>
     <div className="min-h-screen bg-background text-foreground md:flex">
@@ -54,8 +53,8 @@ const meta = {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.origin);
       const method = init?.method ?? "GET";
       const body = init?.body ? JSON.parse(String(init.body)) : {};
-      if (url.pathname === `/api/companies/${COMPANY}/agents`) return Response.json(fixtureAgents);
-      if (url.pathname === `/api/companies/${COMPANY}/tools/connections`) return Response.json({ connections: [{
+      if (url.pathname === `/api/agents`) return Response.json(fixtureAgents);
+      if (url.pathname === `/api/tools/connections`) return Response.json({ connections: [{
         id: OTHER_ACCOUNT, name: "AgentMail", status: "active", enabled: true,
         config: { provider: "agentmail", emailCredential: true }, createdAt: "2026-09-30T14:00:00Z",
       }] });

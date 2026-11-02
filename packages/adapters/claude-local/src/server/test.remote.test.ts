@@ -107,7 +107,6 @@ describe("claude sandbox auth-missing check", () => {
     probeResult.value = { exitCode: 1, stdout: loginRequiredStdout, stderr: "" };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -128,7 +127,6 @@ describe("claude sandbox auth-missing check", () => {
     probeResult.value = { exitCode: 1, stdout: loginRequiredStdout, stderr: "" };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sshTarget,
@@ -153,7 +151,6 @@ describe("claude CLI model compatibility check", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",

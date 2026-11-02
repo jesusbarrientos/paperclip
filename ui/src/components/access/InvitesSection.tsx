@@ -4,7 +4,6 @@ import { Check, Copy } from "lucide-react";
 import { accessApi } from "@/api/access";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
-import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { Link } from "@/lib/router";
 import { queryKeys } from "@/lib/queryKeys";
@@ -47,7 +46,6 @@ function isInviteHistoryRow(value: unknown): value is Awaited<ReturnType<typeof 
 
 /** The Invites tab of the Members page (extracted from the former standalone Invites page). */
 export function InvitesSection() {
-  const { selectedCompanyId } = useCompany();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
   const [humanRole, setHumanRole] = useState<"owner" | "admin" | "operator" | "viewer">("operator");
@@ -87,15 +85,14 @@ export function InvitesSection() {
     return copyText(url, "The invite URL is selected. Copy it manually from the field.", selectLatestInviteUrl);
   }
 
-  const inviteHistoryQueryKey = queryKeys.access.invites(selectedCompanyId ?? "", "all", INVITE_HISTORY_PAGE_SIZE);
+  const inviteHistoryQueryKey = queryKeys.access.invites("all", INVITE_HISTORY_PAGE_SIZE);
   const invitesQuery = useInfiniteQuery({
     queryKey: inviteHistoryQueryKey,
     queryFn: ({ pageParam }) =>
-      accessApi.listInvites(selectedCompanyId!, {
+      accessApi.listInvites({
         limit: INVITE_HISTORY_PAGE_SIZE,
         offset: pageParam,
       }),
-    enabled: !!selectedCompanyId,
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
   });
@@ -109,7 +106,7 @@ export function InvitesSection() {
 
   const createInviteMutation = useMutation({
     mutationFn: () =>
-      accessApi.createCompanyInvite(selectedCompanyId!, {
+      accessApi.createCompanyInvite({
         allowedJoinTypes: "human",
         humanRole,
         agentMessage: null,
@@ -149,10 +146,6 @@ export function InvitesSection() {
       });
     },
   });
-
-  if (!selectedCompanyId) {
-    return <div className="text-sm text-muted-foreground">Select an organization to manage invites.</div>;
-  }
 
   if (invitesQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading invites…</div>;

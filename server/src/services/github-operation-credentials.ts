@@ -44,24 +44,23 @@ async function allowsGitHubCredentialExport(
   )
     return false;
   const [agent] = await db
-    .select({ companyId: agents.companyId, permissions: agents.permissions })
+    .select({ permissions: agents.permissions })
     .from(agents)
     .where(
-      and(eq(agents.id, run.agentId), eq(agents.companyId, run.companyId)),
+      eq(agents.id, run.agentId),
     );
   if (!agent) return false;
   const [issue] =
     typeof issueId === "string"
       ? await db
           .select({
-            companyId: issues.companyId,
             projectId: issues.projectId,
             executionPolicy: issues.executionPolicy,
             sourceTrust: issues.sourceTrust,
           })
           .from(issues)
           .where(
-            and(eq(issues.id, issueId), eq(issues.companyId, run.companyId)),
+            eq(issues.id, issueId),
           )
       : [];
   if (issueId !== undefined && issueId !== null && !issue) return false;
@@ -77,26 +76,20 @@ async function allowsGitHubCredentialExport(
     typeof projectId === "string"
       ? await db
           .select({
-            companyId: projects.companyId,
             executionWorkspacePolicy: projects.executionWorkspacePolicy,
           })
           .from(projects)
           .where(
-            and(
-              eq(projects.id, projectId),
-              eq(projects.companyId, run.companyId),
-            ),
+            eq(projects.id, projectId),
           )
       : [];
   if (projectId !== undefined && projectId !== null && !project) return false;
   return (
     resolveCoreTrustPreset({
-      companyId: run.companyId,
       agent,
       project,
       issue,
       run: {
-        companyId: run.companyId,
         executionPolicy: run.contextSnapshot?.executionPolicy,
       },
     }).kind === "standard"
@@ -107,7 +100,6 @@ async function allowsGitHubCredentialExport(
 export async function resolveGitHubOperationCredentials(
   db: Db,
   input: {
-    companyId: string;
     agentId: string;
     runId: string;
   },
@@ -141,7 +133,6 @@ export async function resolveGitHubOperationCredentials(
     const resolved = await resolveManagedGitHubCredential(
       db,
       secretService(db),
-      input.companyId,
       {
         agentId: input.agentId,
         heartbeatRunId: input.runId,

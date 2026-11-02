@@ -115,7 +115,7 @@ function submit(overrides: Record<string, unknown> = {}) {
 function memoryPersistence() {
   const rows = new Map<string, ChatSdkStateRecord>();
   const keyFor = (scope: ChatSdkStateScope, key: string) =>
-    JSON.stringify([scope.companyId, scope.endpointId, key]);
+    JSON.stringify([scope.endpointId, key]);
   const persistence: ChatSdkStatePersistence = {
     async read(scope, key) {
       return rows.get(keyFor(scope, key)) ?? null;
@@ -170,7 +170,6 @@ describe("Discord native modal Gateway bridge", () => {
       }),
     );
     const runtime = createChatSdkEndpointRuntime({
-      companyId: "company-discord-modal",
       endpointId: "endpoint-discord-modal",
       callbacks: { onMessage() {}, ...callbacks },
       enableDiscordGateway: false,

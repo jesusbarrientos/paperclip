@@ -126,19 +126,19 @@ function RoutineScopedRuns({
   );
 }
 
-export function AuditRuns({ companyId, routineId }: { companyId: string; routineId?: string }) {
+export function AuditRuns({ routineId }: { routineId?: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const agentId = searchParams.get("agentId") ?? ALL;
   const status = searchParams.get("runStatus") ?? ALL;
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
     enabled: !routineId,
   });
   const runs = useQuery({
-    queryKey: queryKeys.audit.runs(companyId, agentId === ALL ? null : agentId),
+    queryKey: queryKeys.audit.runs(agentId === ALL ? null : agentId),
     queryFn: () =>
-      heartbeatsApi.list(companyId, agentId === ALL ? undefined : agentId, RUN_LIMIT, {
+      heartbeatsApi.list(agentId === ALL ? undefined : agentId, RUN_LIMIT, {
         summary: true,
       }),
     refetchInterval: 15_000,

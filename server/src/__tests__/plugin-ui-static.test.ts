@@ -16,8 +16,6 @@ vi.mock("../services/plugin-registry.js", () => ({
   pluginRegistryService: () => mockRegistry,
 }));
 
-const companyA = "22222222-2222-4222-8222-222222222222";
-const companyB = "33333333-3333-4333-8333-333333333333";
 const pluginId = "11111111-1111-4111-8111-111111111111";
 const tempDirs: string[] = [];
 let originalNodeEnv: string | undefined;
@@ -52,13 +50,13 @@ function readyPlugin(packageRoot: string) {
   mockRegistry.getByKey.mockResolvedValue(null);
 }
 
-function boardActor(companyIds: string[]) {
+function boardActor(memberships: Array<{ membershipRole: string; status: string }>) {
   return {
     type: "board",
     userId: "board-user",
     source: "session",
     isInstanceAdmin: false,
-    companyIds,
+    memberships,
   };
 }
 
@@ -98,7 +96,7 @@ describe("plugin UI static route", () => {
     }
   });
 
-  it("serves built UI assets publicly when no company context is requested", async () => {
+  it("serves built UI assets publicly without reading config for anonymous requests", async () => {
     readyPlugin(createPluginPackage("export const marker = 'static-bundle';\n"));
     const app = await createApp({ type: "none", source: "none" });
 
@@ -109,32 +107,17 @@ describe("plugin UI static route", () => {
     expect(mockRegistry.getConfig).not.toHaveBeenCalled();
   });
 
-  it("requires authentication before reading company-scoped devUiUrl config", async () => {
+  it("does not read devUiUrl config for a board user without an active membership", async () => {
     readyPlugin(createPluginPackage());
-    const app = await createApp({ type: "none", source: "none" });
+    const app = await createApp(boardActor([]));
 
-    const res = await request(app)
-      .get(`/_plugins/${pluginId}/ui/index.js`)
-      .query({ companyId: companyA });
+    const res = await request(app).get(`/_plugins/${pluginId}/ui/index.js`);
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
     expect(mockRegistry.getConfig).not.toHaveBeenCalled();
   });
 
-  it("rejects cross-company companyId before reading devUiUrl config", async () => {
-    readyPlugin(createPluginPackage());
-    const app = await createApp(boardActor([companyA]));
-
-    const res = await request(app)
-      .get(`/_plugins/${pluginId}/ui/index.js`)
-      .query({ companyId: companyB });
-
-    expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/does not have access/i);
-    expect(mockRegistry.getConfig).not.toHaveBeenCalled();
-  });
-
-  it("proxies devUiUrl only after company access succeeds", async () => {
+  it("proxies devUiUrl only after organization access succeeds", async () => {
     process.env.NODE_ENV = "development";
     readyPlugin(createPluginPackage());
     mockRegistry.getConfig.mockResolvedValue({
@@ -147,15 +130,13 @@ describe("plugin UI static route", () => {
       headers: { "content-type": "application/javascript" },
     }));
     vi.stubGlobal("fetch", fetchMock);
-    const app = await createApp(boardActor([companyA]));
+    const app = await createApp(boardActor([{ membershipRole: "owner", status: "active" }]));
 
-    const res = await request(app)
-      .get(`/_plugins/${pluginId}/ui/index.js`)
-      .query({ companyId: companyA });
+    const res = await request(app).get(`/_plugins/${pluginId}/ui/index.js`);
 
     expect(res.status).toBe(200);
     expect(res.text).toBe("hot bundle");
-    expect(mockRegistry.getConfig).toHaveBeenCalledWith(pluginId, companyA);
+    expect(mockRegistry.getConfig).toHaveBeenCalledWith(pluginId);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:5173/index.js",
       expect.objectContaining({ signal: expect.any(Object) }),

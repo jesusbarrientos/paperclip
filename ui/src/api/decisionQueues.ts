@@ -52,7 +52,6 @@ export interface UpdateDecisionTriageBody {
 
 export interface DecisionRetentionDto {
   id: string;
-  companyId: string;
   sourceKind: AttentionSourceKind;
   sourceId: string;
   sourceActivityAt: string;
@@ -77,72 +76,70 @@ export interface CreateDecisionArchiveProposalBody {
  * routes are the write path and the queue-rail/queue-page read path.
  */
 export const decisionQueuesApi = {
-  seedRules: (companyId: string) =>
-    api.get<DecisionQueueSeedDefinition[]>(`/companies/${companyId}/decision-queue-seed-rules`),
+  seedRules: () =>
+    api.get<DecisionQueueSeedDefinition[]>(`/decision-queue-seed-rules`),
 
-  list: (companyId: string) => api.get<DecisionQueueDto[]>(`/companies/${companyId}/decision-queues`),
+  list: () => api.get<DecisionQueueDto[]>(`/decision-queues`),
 
-  create: (companyId: string, body: CreateDecisionQueueBody) =>
-    api.post<DecisionQueueDto>(`/companies/${companyId}/decision-queues`, body),
+  create: (body: CreateDecisionQueueBody) =>
+    api.post<DecisionQueueDto>(`/decision-queues`, body),
 
-  update: (companyId: string, key: string, body: UpdateDecisionQueueBody) =>
-    api.patch<DecisionQueueDto>(`/companies/${companyId}/decision-queues/${encodeURIComponent(key)}`, body),
+  update: (key: string, body: UpdateDecisionQueueBody) =>
+    api.patch<DecisionQueueDto>(`/decision-queues/${encodeURIComponent(key)}`, body),
 
-  listItems: (companyId: string, key: string) =>
-    api.get<DecisionQueueItemDto[]>(`/companies/${companyId}/decision-queues/${encodeURIComponent(key)}/items`),
+  listItems: (key: string) =>
+    api.get<DecisionQueueItemDto[]>(`/decision-queues/${encodeURIComponent(key)}/items`),
 
-  addItem: (companyId: string, key: string, sourceKind: AttentionSourceKind, sourceId: string) =>
+  addItem: (key: string, sourceKind: AttentionSourceKind, sourceId: string) =>
     api.post<DecisionQueueItemDto>(
-      `/companies/${companyId}/decision-queues/${encodeURIComponent(key)}/items`,
+      `/decision-queues/${encodeURIComponent(key)}/items`,
       { sourceKind, sourceId },
     ),
 
   removeItem: (
-    companyId: string,
     key: string,
     sourceKind: AttentionSourceKind,
     sourceId: string,
     reason?: string,
   ) =>
     api.delete<DecisionQueueItemDto>(
-      `/companies/${companyId}/decision-queues/${encodeURIComponent(key)}/items/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
+      `/decision-queues/${encodeURIComponent(key)}/items/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
       reason ? { reason } : {},
     ),
 
-  getTriage: (companyId: string, sourceKind: AttentionSourceKind, sourceId: string) =>
+  getTriage: (sourceKind: AttentionSourceKind, sourceId: string) =>
     api.get<DecisionTriageDto | null>(
-      `/companies/${companyId}/decision-triage/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
+      `/decision-triage/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
     ),
 
   updateTriage: (
-    companyId: string,
     sourceKind: AttentionSourceKind,
     sourceId: string,
     body: UpdateDecisionTriageBody,
   ) =>
     api.put<DecisionTriageDto>(
-      `/companies/${companyId}/decision-triage/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
+      `/decision-triage/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
       body,
     ),
 
-  setKeep: (companyId: string, sourceKind: AttentionSourceKind, sourceId: string, keep: boolean) =>
+  setKeep: (sourceKind: AttentionSourceKind, sourceId: string, keep: boolean) =>
     api.patch<DecisionRetentionDto>(
-      `/companies/${companyId}/decision-retention/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
+      `/decision-retention/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}`,
       { keep },
     ),
 
-  archive: (companyId: string, sourceKind: AttentionSourceKind, sourceId: string) =>
+  archive: (sourceKind: AttentionSourceKind, sourceId: string) =>
     api.post<DecisionRetentionDto>(
-      `/companies/${companyId}/decision-retention/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}/archive`,
+      `/decision-retention/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}/archive`,
       {},
     ),
 
-  revive: (companyId: string, sourceKind: AttentionSourceKind, sourceId: string) =>
+  revive: (sourceKind: AttentionSourceKind, sourceId: string) =>
     api.post<DecisionRetentionDto>(
-      `/companies/${companyId}/decision-retention/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}/revive`,
+      `/decision-retention/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}/revive`,
       {},
     ),
 
-  proposeArchive: (companyId: string, body: CreateDecisionArchiveProposalBody) =>
-    api.post(`/companies/${companyId}/decision-archive-proposals`, body),
+  proposeArchive: (body: CreateDecisionArchiveProposalBody) =>
+    api.post(`/decision-archive-proposals`, body),
 };

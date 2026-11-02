@@ -72,12 +72,10 @@ function normalizeIssuePriority(value: string): IssuePriority {
 export function routineRunIssue(
   summary: NonNullable<RoutineRunSummary["linkedIssue"]>,
   run: RoutineRunSummary,
-  companyId: string,
   projectId: string | null,
 ): Issue {
   return {
     ...summary,
-    companyId,
     projectId,
     projectWorkspaceId: null,
     goalId: null,
@@ -228,7 +226,7 @@ export function RoutineOverview() {
             {recentRuns.map((run) => run.linkedIssue ? (
               <IssueRow
                 key={run.id}
-                issue={routineRunIssue(run.linkedIssue, run, routine.companyId, routine.projectId)}
+                issue={routineRunIssue(run.linkedIssue, run, routine.projectId)}
                 issueLinkState={detailOrigin}
                 presentation="task"
                 metadata={(

@@ -30,7 +30,6 @@ vi.mock("@/components/MarkdownBody", () => ({
 function baseCard(overrides: Partial<StatusCardView>): StatusCardView {
   const card: StatusCard = {
     id: "card-1",
-    companyId: "company-1",
     createdByUserId: null,
     createdByAgentId: null,
     title: "Decisions v1 rollout",
@@ -94,7 +93,6 @@ function tile(card: StatusCardView, handlers: Partial<Record<"onOpen" | "onRefre
   return (
     <StatusCardTile
       card={card}
-      companyId="company-1"
       onOpen={handlers.onOpen ?? noop}
       onRefresh={handlers.onRefresh ?? noop}
       onRecompile={handlers.onRecompile ?? noop}

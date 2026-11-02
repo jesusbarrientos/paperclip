@@ -84,7 +84,6 @@ async function callRuntimeConnectionTool(
   return parsed;
 }
 
-const companyIdOptional = z.string().guid().optional().nullable();
 const agentIdOptional = z.string().guid().optional().nullable();
 const issueIdSchema = z.string().min(1);
 const projectIdSchema = z.string().min(1);
@@ -93,7 +92,6 @@ const approvalIdSchema = z.string().guid();
 const documentKeySchema = z.string().trim().min(1).max(64);
 
 const listIssuesSchema = z.object({
-  companyId: companyIdOptional,
   status: z.string().optional(),
   projectId: z.string().guid().optional(),
   assigneeAgentId: z.string().guid().optional(),
@@ -128,9 +126,7 @@ const upsertDocumentToolSchema = z.object({
   baseRevisionId: z.string().guid().nullable().optional(),
 });
 
-const createIssueToolSchema = z.object({
-  companyId: companyIdOptional,
-}).merge(createIssueInputSchema);
+const createIssueToolSchema = createIssueInputSchema;
 
 const updateIssueToolSchema = z.object({
   issueId: issueIdSchema,
@@ -197,9 +193,7 @@ const approvalDecisionSchema = z.object({
   payloadJson: z.string().optional(),
 });
 
-const createApprovalToolSchema = z.object({
-  companyId: companyIdOptional,
-}).merge(createApprovalSchema);
+const createApprovalToolSchema = createApprovalSchema;
 
 const apiRequestSchema = z.object({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
@@ -301,38 +295,36 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
     ),
     makeTool(
       "paperclipListAgents",
-      "List agents in a company",
-      z.object({ companyId: companyIdOptional }),
-      async ({ companyId }) => client.requestJson("GET", `/companies/${client.resolveCompanyId(companyId)}/agents`),
+      "List agents",
+      z.object({}),
+      async () => client.requestJson("GET", "/agents"),
     ),
     makeTool(
       "paperclipListSkills",
-      "List the company skill library (all installed skills, independent of which agents have them enabled)",
-      z.object({ companyId: companyIdOptional }),
-      async ({ companyId }) => client.requestJson("GET", `/companies/${client.resolveCompanyId(companyId)}/skills`),
+      "List the skill library (all installed skills, independent of which agents have them enabled)",
+      z.object({}),
+      async () => client.requestJson("GET", "/skills"),
     ),
     makeTool(
       "paperclipGetAgent",
       "Get a single agent by id",
-      z.object({ agentId: z.string().min(1), companyId: companyIdOptional }),
-      async ({ agentId, companyId }) => {
-        const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
-        return client.requestJson("GET", `/agents/${encodeURIComponent(agentId)}${qs}`);
+      z.object({ agentId: z.string().min(1) }),
+      async ({ agentId }) => {
+        return client.requestJson("GET", `/agents/${encodeURIComponent(agentId)}`);
       },
     ),
     makeTool(
       "paperclipListIssues",
-      "List issues for a company with optional filters",
+      "List issues with optional filters",
       listIssuesSchema,
       async (input) => {
-        const companyId = client.resolveCompanyId(input.companyId);
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(input)) {
-          if (key === "companyId" || value === undefined || value === null) continue;
+          if (value === undefined || value === null) continue;
           params.set(key, String(value));
         }
         const qs = params.toString();
-        return client.requestJson("GET", `/companies/${companyId}/issues${qs ? `?${qs}` : ""}`);
+        return client.requestJson("GET", `/issues${qs ? `?${qs}` : ""}`);
       },
     ),
     makeTool(
@@ -401,17 +393,16 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
     ),
     makeTool(
       "paperclipListProjects",
-      "List projects in a company",
-      z.object({ companyId: companyIdOptional }),
-      async ({ companyId }) => client.requestJson("GET", `/companies/${client.resolveCompanyId(companyId)}/projects`),
+      "List projects",
+      z.object({}),
+      async () => client.requestJson("GET", "/projects"),
     ),
     makeTool(
       "paperclipGetProject",
-      "Get a project by id or company-scoped short reference",
-      z.object({ projectId: projectIdSchema, companyId: companyIdOptional }),
-      async ({ projectId, companyId }) => {
-        const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
-        return client.requestJson("GET", `/projects/${encodeURIComponent(projectId)}${qs}`);
+      "Get a project by id or short reference",
+      z.object({ projectId: projectIdSchema }),
+      async ({ projectId }) => {
+        return client.requestJson("GET", `/projects/${encodeURIComponent(projectId)}`);
       },
     ),
     makeTool(
@@ -465,9 +456,9 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
     ),
     makeTool(
       "paperclipListGoals",
-      "List goals in a company",
-      z.object({ companyId: companyIdOptional }),
-      async ({ companyId }) => client.requestJson("GET", `/companies/${client.resolveCompanyId(companyId)}/goals`),
+      "List goals",
+      z.object({}),
+      async () => client.requestJson("GET", "/goals"),
     ),
     makeTool(
       "paperclipGetGoal",
@@ -477,19 +468,19 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
     ),
     makeTool(
       "paperclipListApprovals",
-      "List approvals in a company",
-      z.object({ companyId: companyIdOptional, status: z.string().optional() }),
-      async ({ companyId, status }) => {
+      "List approvals",
+      z.object({ status: z.string().optional() }),
+      async ({ status }) => {
         const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-        return client.requestJson("GET", `/companies/${client.resolveCompanyId(companyId)}/approvals${qs}`);
+        return client.requestJson("GET", `/approvals${qs}`);
       },
     ),
     makeTool(
       "paperclipCreateApproval",
       "Create a board approval request, optionally linked to one or more issues",
       createApprovalToolSchema,
-      async ({ companyId, ...body }) =>
-        client.requestJson("POST", `/companies/${client.resolveCompanyId(companyId)}/approvals`, {
+      async (body) =>
+        client.requestJson("POST", "/approvals", {
           body,
         }),
     ),
@@ -515,8 +506,8 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
       "paperclipCreateIssue",
       "Create a new issue",
       createIssueToolSchema,
-      async ({ companyId, ...body }) =>
-        client.requestJson("POST", `/companies/${client.resolveCompanyId(companyId)}/issues`, { body }),
+      async (body) =>
+        client.requestJson("POST", "/issues", { body }),
     ),
     makeTool(
       "paperclipUpdateIssue",

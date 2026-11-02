@@ -4,13 +4,12 @@ import { goals } from "@paperclipai/db";
 
 type GoalReader = Pick<Db, "select">;
 
-export async function getDefaultCompanyGoal(db: GoalReader, companyId: string) {
+export async function getDefaultCompanyGoal(db: GoalReader) {
   const activeRootGoal = await db
     .select()
     .from(goals)
     .where(
       and(
-        eq(goals.companyId, companyId),
         eq(goals.level, "company"),
         eq(goals.status, "active"),
         isNull(goals.parentId),
@@ -25,7 +24,6 @@ export async function getDefaultCompanyGoal(db: GoalReader, companyId: string) {
     .from(goals)
     .where(
       and(
-        eq(goals.companyId, companyId),
         eq(goals.level, "company"),
         isNull(goals.parentId),
       ),
@@ -37,14 +35,14 @@ export async function getDefaultCompanyGoal(db: GoalReader, companyId: string) {
   return db
     .select()
     .from(goals)
-    .where(and(eq(goals.companyId, companyId), eq(goals.level, "company")))
+    .where(eq(goals.level, "company"))
     .orderBy(asc(goals.createdAt))
     .then((rows) => rows[0] ?? null);
 }
 
 export function goalService(db: Db) {
   return {
-    list: (companyId: string) => db.select().from(goals).where(eq(goals.companyId, companyId)),
+    list: () => db.select().from(goals),
 
     getById: (id: string) =>
       db
@@ -53,12 +51,12 @@ export function goalService(db: Db) {
         .where(eq(goals.id, id))
         .then((rows) => rows[0] ?? null),
 
-    getDefaultCompanyGoal: (companyId: string) => getDefaultCompanyGoal(db, companyId),
+    getDefaultCompanyGoal: () => getDefaultCompanyGoal(db),
 
-    create: (companyId: string, data: Omit<typeof goals.$inferInsert, "companyId">) =>
+    create: (data: Omit<typeof goals.$inferInsert, "companyId">) =>
       db
         .insert(goals)
-        .values({ ...data, companyId })
+        .values({ ...data })
         .returning()
         .then((rows) => rows[0]),
 

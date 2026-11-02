@@ -1,6 +1,6 @@
 import { unprocessable } from "../errors.js";
 
-export async function assertEnvironmentSelectionForCompany(
+export async function assertEnvironmentSelection(
   environmentsSvc: {
     getById(environmentId: string): Promise<{
       id: string;
@@ -9,7 +9,6 @@ export async function assertEnvironmentSelectionForCompany(
       config: Record<string, unknown> | null;
     } | null>;
   },
-  _companyId: string,
   environmentId: string | null | undefined,
   options?: {
     allowedDrivers?: string[];

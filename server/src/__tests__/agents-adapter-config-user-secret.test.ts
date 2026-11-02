@@ -36,10 +36,6 @@ const mockAccessService = vi.hoisted(() => ({
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
   releaseLease: vi.fn(),
-  // The tenant-binding guard reads the environment's bound company ids before it
-  // reveals the driver or the status. An empty list marks an instance-global
-  // environment, so the guard lets the same-company Test through.
-  listBoundCompanyIds: vi.fn(async () => []),
   // The managed-sandbox-only redirect looks up the managed sandbox for a local
   // environment Test. These tests keep the policy off, so no managed row exists.
   findManagedSandboxEnvironment: vi.fn(async () => null),
@@ -118,7 +114,6 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-const COMPANY_ID = "11111111-1111-4111-8111-111111111111";
 const ENVIRONMENT_ID = "22222222-2222-4222-8222-222222222222";
 
 type TestActor = Express.Request["actor"];
@@ -145,7 +140,6 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     stopDb = started.cleanup;
     db = createDb(started.connectionString);
     await db.insert(companies).values({
-      id: COMPANY_ID,
       name: "Acme",
       issuePrefix: "ACME",
       status: "active",
@@ -220,26 +214,25 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
   const boardUserActor: TestActor = {
     type: "board",
     userId: "user-1",
-    companyIds: [COMPANY_ID],
+    memberships: [{ membershipRole: "owner", status: "active" }],
     source: "session",
     isInstanceAdmin: false,
   };
 
   const boardNoUserActor: TestActor = {
     type: "board",
-    companyIds: [COMPANY_ID],
     source: "local_implicit",
     isInstanceAdmin: false,
   };
 
   async function seedUserSecretDefinitionWithValue(key: string, value: string) {
     const svc = secretService(db);
-    const definition = await svc.createUserSecretDefinition(COMPANY_ID, {
+    const definition = await svc.createUserSecretDefinition({
       key,
       name: key,
       provider: "local_encrypted",
     });
-    await svc.createCurrentUserSecretValue(COMPANY_ID, "user-1", {
+    await svc.createCurrentUserSecretValue("user-1", {
       definitionId: definition.id,
       value,
     });
@@ -254,7 +247,7 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     const app = await createApp();
 
     const res = await request(app)
-      .post(`/api/companies/${COMPANY_ID}/adapters/external_test/test-environment`)
+      .post(`/api/adapters/external_test/test-environment`)
       .send({
         adapterConfig: {
           env: {
@@ -276,7 +269,7 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     const app = await createApp();
 
     const res = await request(app)
-      .post(`/api/companies/${COMPANY_ID}/adapters/external_test/test-environment`)
+      .post(`/api/adapters/external_test/test-environment`)
       .send({
         adapterConfig: {
           env: {
@@ -293,7 +286,7 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
   it("test-environment company secret_ref still resolves (no binding_missing regression)", async () => {
     beforeEachActor(boardUserActor);
     const svc = secretService(db);
-    const companySecret = await svc.create(COMPANY_ID, {
+    const companySecret = await svc.create({
       name: `company-token-${randomUUID()}`,
       provider: "local_encrypted",
       value: "company-value",
@@ -301,7 +294,7 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     const app = await createApp();
 
     const res = await request(app)
-      .post(`/api/companies/${COMPANY_ID}/adapters/external_test/test-environment`)
+      .post(`/api/adapters/external_test/test-environment`)
       .send({
         adapterConfig: {
           env: {
@@ -320,7 +313,7 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     await seedUserSecretDefinitionWithValue("github_token", "ghp_owner");
     let app = await createApp();
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/adapters/external_test/test-environment`)
+      .post(`/api/adapters/external_test/test-environment`)
       .send({
         adapterConfig: {
           env: { GH_TOKEN: { type: "user_secret_ref", key: "github_token", version: "latest", required: true } },
@@ -343,14 +336,13 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     await db.delete(secretAccessEvents);
     mockEnvironmentService.getById.mockResolvedValue({
       id: ENVIRONMENT_ID,
-      companyId: COMPANY_ID,
       name: "Sandbox",
       driver: "local",
       config: {},
     });
     app = await createApp();
     await request(app)
-      .post(`/api/companies/${COMPANY_ID}/adapters/external_test/test-environment`)
+      .post(`/api/adapters/external_test/test-environment`)
       .send({
         environmentId: ENVIRONMENT_ID,
         adapterConfig: {
@@ -376,7 +368,6 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     const agentId = randomUUID();
     mockAgentService.getById.mockResolvedValue({
       id: agentId,
-      companyId: COMPANY_ID,
       name: "Claude agent",
       adapterType: "claude_local",
       adapterConfig: {
@@ -394,7 +385,6 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
 
     // Declare it at the resolver-injected configPath (env.<KEY>) for consumer agent:<agentId>.
     await db.insert(userSecretDeclarations).values({
-      companyId: COMPANY_ID,
       userSecretDefinitionId: definition.id,
       targetType: "agent",
       targetId: agentId,

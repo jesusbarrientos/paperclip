@@ -26,6 +26,7 @@ import {
 } from "./profile-model";
 import { useProfilesData } from "./useProfilesData";
 import { WizardToolsStep } from "./WizardToolsStep";
+import { useOrganization } from "@/context/OrganizationContext";
 import { readWizardMeta, resumeStep, withWizardMeta, type WizardStep } from "./wizard-draft";
 
 function slugifyProfileKey(name: string): string {
@@ -44,12 +45,10 @@ const STEP_LABELS: Array<{ step: WizardStep; label: string }> = [
 ];
 
 export function ProfileWizard({
-  companyId,
   profileId,
   initialTemplate,
   initialStep,
 }: {
-  companyId: string;
   profileId?: string;
   initialTemplate?: TemplateKey;
   initialStep?: WizardStep;
@@ -57,7 +56,8 @@ export function ProfileWizard({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const data = useProfilesData(companyId);
+  const { organization } = useOrganization();
+  const data = useProfilesData();
   const { appGroups, catalog, profiles, agents } = data;
 
   const allProfiles = profiles.data?.profiles ?? [];
@@ -119,7 +119,7 @@ export function ProfileWizard({
   }, [name, keyEdited]);
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.tools.profiles(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tools.profiles() });
     queryClient.invalidateQueries({ queryKey: queryKeys.tools.testAgentAccesses() });
   };
 
@@ -151,7 +151,7 @@ export function ProfileWizard({
         template,
       });
       if (!draftId) {
-        const created = await toolsApi.createProfile(companyId, {
+        const created = await toolsApi.createProfile({
           profileKey: profileKey || slugifyProfileKey(name) || "profile",
           name: name.trim() || "Untitled profile",
           description: description.trim() || null,
@@ -191,7 +191,8 @@ export function ProfileWizard({
         entries,
         metadata: withWizardMeta(existing?.metadata ?? null, { lastCompletedStep: 3, template }),
       });
-      await reconcileBindings(companyId, profile, {
+      if (companyDefault && !organization) throw new Error("Organization not loaded");
+      await reconcileBindings(profile, organization?.id ?? null, {
         agentIds: [...selectedAgentIds],
         projectIds: [...selectedProjectIds],
         routineIds: [...selectedRoutineIds],
@@ -351,12 +352,14 @@ export function ProfileWizard({
 
 /** Reconcile the profile's assignments against the wizard's step-3 choices. */
 async function reconcileBindings(
-  companyId: string,
   profile: ToolProfileWithDetails,
+  organizationId: string | null,
   desired: { agentIds: string[]; projectIds: string[]; routineIds: string[]; companyDefault: boolean },
 ) {
   const want = new Map<string, ToolProfileBindingInput>();
-  if (desired.companyDefault) want.set(`company:${companyId}`, { targetType: "company", targetId: companyId });
+  if (desired.companyDefault && organizationId) {
+    want.set(`company:${organizationId}`, { targetType: "company", targetId: organizationId });
+  }
   for (const id of desired.agentIds) want.set(`agent:${id}`, { targetType: "agent", targetId: id });
   for (const id of desired.projectIds) want.set(`project:${id}`, { targetType: "project", targetId: id });
   for (const id of desired.routineIds) want.set(`routine:${id}`, { targetType: "routine", targetId: id });
@@ -371,8 +374,8 @@ async function reconcileBindings(
       .filter(([key]) => !have.has(key))
       .map(([key, input]) => ({
         key,
-        apply: () => toolsApi.bindProfile(companyId, profile.id, input),
-        rollback: () => toolsApi.unbindProfile(companyId, profile.id, input),
+        apply: () => toolsApi.bindProfile(profile.id, input),
+        rollback: () => toolsApi.unbindProfile(profile.id, input),
       })),
     ...profile.bindings
       .filter((binding) => managed.has(binding.targetType) && !want.has(`${binding.targetType}:${binding.targetId}`))
@@ -380,8 +383,8 @@ async function reconcileBindings(
         const input = { targetType: binding.targetType, targetId: binding.targetId } as ToolProfileBindingInput;
         return {
           key: `${binding.targetType}:${binding.targetId}`,
-          apply: () => toolsApi.unbindProfile(companyId, profile.id, input),
-          rollback: () => toolsApi.bindProfile(companyId, profile.id, input),
+          apply: () => toolsApi.unbindProfile(profile.id, input),
+          rollback: () => toolsApi.bindProfile(profile.id, input),
         };
       }),
   ];

@@ -18,7 +18,6 @@ import {
   type WorkspaceRuntimeControlRequest,
 } from "../components/WorkspaceRuntimeControls";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 import { useManagedSandboxOnly } from "../hooks/useManagedSandboxOnly";
 import { queryKeys } from "../lib/queryKeys";
 import { projectRouteRef, projectWorkspaceUrl } from "../lib/utils";
@@ -246,12 +245,10 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 export function ProjectWorkspaceDetail() {
-  const { companyPrefix, projectId, workspaceId } = useParams<{
-    companyPrefix?: string;
+  const { projectId, workspaceId } = useParams<{
     projectId: string;
     workspaceId: string;
   }>();
-  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
   const navigate = useNavigate();
@@ -264,17 +261,11 @@ export function ProjectWorkspaceDetail() {
   const routeWorkspaceId = workspaceId ?? "";
   const activeTab = useMemo(() => projectWorkspaceTabFromSearch(location.search), [location.search]);
 
-  const routeCompanyId = useMemo(() => {
-    if (!companyPrefix) return null;
-    const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix)?.id ?? null;
-  }, [companies, companyPrefix]);
 
-  const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
-  const canFetchProject = routeProjectRef.length > 0 && (isUuidLike(routeProjectRef) || Boolean(lookupCompanyId));
+  const canFetchProject = routeProjectRef.length > 0;
   const projectQuery = useQuery({
-    queryKey: [...queryKeys.projects.detail(routeProjectRef), lookupCompanyId ?? null],
-    queryFn: () => projectsApi.get(routeProjectRef, lookupCompanyId),
+    queryKey: queryKeys.projects.detail(routeProjectRef),
+    queryFn: () => projectsApi.get(routeProjectRef),
     enabled: canFetchProject,
   });
 
@@ -293,8 +284,7 @@ export function ProjectWorkspaceDetail() {
   } = usePluginSlots({
     slotTypes: ["detailTab"],
     entityType: "project_workspace",
-    companyId: project?.companyId ?? null,
-    enabled: Boolean(project?.companyId),
+    enabled: Boolean(project),
   });
   const pluginTabItems = useMemo(
     () => pluginDetailSlots.map((slot) => ({
@@ -310,10 +300,6 @@ export function ProjectWorkspaceDetail() {
     [pluginTabItems],
   );
 
-  useEffect(() => {
-    if (!project?.companyId || project.companyId === selectedCompanyId) return;
-    setSelectedCompanyId(project.companyId, { source: "route_sync" });
-  }, [project?.companyId, selectedCompanyId, setSelectedCompanyId]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -341,14 +327,12 @@ export function ProjectWorkspaceDetail() {
     if (!project) return;
     queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
     queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.urlKey) });
-    if (lookupCompanyId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all(lookupCompanyId) });
-    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });
   };
 
   const updateWorkspace = useMutation({
     mutationFn: (patch: Record<string, unknown>) =>
-      projectsApi.updateWorkspace(project!.id, routeWorkspaceId, patch, lookupCompanyId),
+      projectsApi.updateWorkspace(project!.id, routeWorkspaceId, patch),
     onSuccess: () => {
       invalidateProject();
       setErrorMessage(null);
@@ -359,7 +343,7 @@ export function ProjectWorkspaceDetail() {
   });
 
   const setPrimaryWorkspace = useMutation({
-    mutationFn: () => projectsApi.updateWorkspace(project!.id, routeWorkspaceId, { isPrimary: true }, lookupCompanyId),
+    mutationFn: () => projectsApi.updateWorkspace(project!.id, routeWorkspaceId, { isPrimary: true }),
     onSuccess: () => {
       invalidateProject();
       setErrorMessage(null);
@@ -371,7 +355,7 @@ export function ProjectWorkspaceDetail() {
 
   const controlRuntimeServices = useMutation({
     mutationFn: (request: WorkspaceRuntimeControlRequest) =>
-      projectsApi.controlWorkspaceCommands(project!.id, routeWorkspaceId, request.action, lookupCompanyId, request),
+      projectsApi.controlWorkspaceCommands(project!.id, routeWorkspaceId, request.action, request),
     onSuccess: (result, request) => {
       invalidateProject();
       setErrorMessage(null);
@@ -739,9 +723,7 @@ export function ProjectWorkspaceDetail() {
           <PluginSlotMount
             slot={activePluginTab.slot}
             context={{
-              companyId: project.companyId,
-              companyPrefix: companyPrefix ?? null,
-              projectId: project.id,
+                            projectId: project.id,
               entityId: workspace.id,
               entityType: "project_workspace",
             }}

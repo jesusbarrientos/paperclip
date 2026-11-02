@@ -8,7 +8,7 @@ import { Layout } from "@/components/Layout";
 import { RoutineDetail } from "@/pages/RoutineDetail";
 import { Routines } from "@/pages/Routines";
 import { Route, Routes, useNavigate } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { storybookAgents, storybookIssues } from "./paperclipData";
 
 const now = new Date("2026-09-18T15:00:00Z");
@@ -24,7 +24,7 @@ const actorFields = {
 
 export function webhook(signingMode: string, index = 1, webhookUrl = defaultWebhookUrl): RoutineTrigger {
   return {
-    ...actorFields, id: `webhook-${index}`, companyId, routineId,
+    ...actorFields, id: `webhook-${index}`, routineId,
     kind: "webhook", label: "Deployment completed", enabled: true,
     cronExpression: null, timezone: null, nextRunAt: null,
     lastFiredAt: now, publicId: "0123456789abcdef01234567", webhookUrl,
@@ -36,7 +36,7 @@ export function webhook(signingMode: string, index = 1, webhookUrl = defaultWebh
 }
 
 const completedRun: RoutineRunSummary = {
-  id: "storybook-webhook-run", companyId, routineId, triggerId: "webhook-1",
+  id: "storybook-webhook-run", routineId, triggerId: "webhook-1",
   source: "webhook", status: "completed", triggeredAt: now, completedAt: now,
   createdAt: now, updatedAt: now, idempotencyKey: "deployment-123",
   triggerPayload: { event: "deployment", environment: "production" },
@@ -49,7 +49,7 @@ const completedRun: RoutineRunSummary = {
 };
 
 export const baseRoutine: RoutineDetailData = {
-  ...actorFields, id: routineId, companyId, projectId: null, goalId: null,
+  ...actorFields, id: routineId, projectId: null, goalId: null,
   parentIssueId: null, responsibleUserId: null,
   title: "Verify a deployment",
   description: "Check the deployment from the incoming webhook. Verify the service is healthy and report the result.",
@@ -102,9 +102,8 @@ type Props = {
 /** The actual application shell and route pages, backed by an in-memory API. */
 export function WebhookReview({ signingMode = "bearer", state = "configured", preview, webhookUrl = defaultWebhookUrl }: Props) {
   const navigate = useNavigate();
-  const { setSelectedCompanyId } = useCompany();
   const [ready, setReady] = useState(false);
-  const initialActions = useRef({ navigate, setSelectedCompanyId });
+  const initialActions = useRef({ navigate });
 
   useEffect(() => {
     const fresh = state === "setup" || state === "credentials";
@@ -126,14 +125,14 @@ export function WebhookReview({ signingMode = "bearer", state = "configured", pr
     const originalIssueUpdate = issuesApi.update;
     const originalCompactList = issuesApi.listCompact;
     let issues = executionIssues.map((issue) => ({ ...issue }));
-    issuesApi.list = async (id, filters) => {
-      if (id !== companyId || filters?.originId !== routineId) return originalIssuesList(id, filters);
+    issuesApi.list = async (filters) => {
+      if (filters?.originId !== routineId) return originalIssuesList(filters);
       const search = filters.q?.toLowerCase();
       return issues.filter((issue) => !search || `${issue.identifier} ${issue.title}`.toLowerCase().includes(search));
     };
-    issuesApi.listCompact = async (id, filters, options) => {
-      if (id !== companyId || filters?.originId !== routineId) return originalCompactList(id, filters, options);
-      const rows = await issuesApi.list(id, filters);
+    issuesApi.listCompact = async (filters, options) => {
+      if (filters?.originId !== routineId) return originalCompactList(filters, options);
+      const rows = await issuesApi.list(filters);
       return rows.filter((issue) => !filters.status || filters.status.split(",").includes(issue.status))
         .map((issue) => ({ ...issue, activeRecoveryAction: null, successfulRunHandoff: null }));
     };
@@ -168,7 +167,7 @@ export function WebhookReview({ signingMode = "bearer", state = "configured", pr
       trigger: routine.triggers.find((item) => item.id === id)!,
       secretMaterial: { webhookUrl, webhookSecret: `${demoSecret}-rotated` },
     });
-    foldersApi.list = async (_companyId, kind) => ({ kind, folders: [], allCount: 1, unfiledCount: 1 });
+    foldersApi.list = async (kind) => ({ kind, folders: [], allCount: 1, unfiledCount: 1 });
     const previousFetch = window.fetch;
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
@@ -179,8 +178,7 @@ export function WebhookReview({ signingMode = "bearer", state = "configured", pr
       }
       return previousFetch(input, init);
     };
-    initialActions.current.setSelectedCompanyId(companyId);
-    initialActions.current.navigate(state === "list" ? "/PAP/routines" : `/PAP/routines/${routineId}/${["overview", "runs", "activity"].includes(state) ? state : "triggers"}`, { replace: true });
+    initialActions.current.navigate(state === "list" ? "/routines" : `/routines/${routineId}/${["overview", "runs", "activity"].includes(state) ? state : "triggers"}`, { replace: true });
     setReady(true);
     return () => {
       Object.assign(routinesApi, originalApi);
@@ -196,7 +194,7 @@ export function WebhookReview({ signingMode = "bearer", state = "configured", pr
   return (
     <PluginLauncherProvider>
     <Routes>
-      <Route path="/:companyPrefix" element={<Layout />}>
+      <Route path="/" element={<Layout />}>
         <Route path="routines" element={<Routines />} />
         <Route path="routines/:routineId/:section?" element={preview ?? <RoutineDetail />} />
       </Route>

@@ -11,7 +11,6 @@ import {
 } from "./model";
 
 const requirement: AiConnectionRequirement = {
-  companyId: "company",
   provider: "anthropic",
   method: "subscription",
 };
@@ -33,9 +32,8 @@ const binding: AiConnectionBinding = {
 };
 
 describe("AI connection selection presentation", () => {
-  it("scopes personal defaults to company, user and provider, independently of method", () => {
+  it("scopes personal defaults to user and provider, independently of method", () => {
     for (const change of [
-      { companyId: "other" },
       { provider: "openai" as const },
       { ownerUserId: "bob" },
       { ownership: "shared" as const },

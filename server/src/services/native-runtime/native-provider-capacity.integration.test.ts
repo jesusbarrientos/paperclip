@@ -50,7 +50,6 @@ describe("native provider capacity failure persistence", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Native capacity agent",
       status: "active",
       adapterType: "paperclip_runner",
@@ -71,7 +70,6 @@ describe("native provider capacity failure persistence", () => {
         .insert(issues)
         .values({
           id: issueId,
-          companyId,
           title: "Reply after a capacity failure",
           status: "in_progress",
           workMode: "standard",
@@ -82,7 +80,6 @@ describe("native provider capacity failure persistence", () => {
         .insert(heartbeatRuns)
         .values({
           id: runId,
-          companyId,
           agentId,
           status: "running",
           runtimeMode: "native",
@@ -112,7 +109,6 @@ describe("native provider capacity failure persistence", () => {
       expect(completionInput).toEqual(contract.contractJson);
       await db.insert(nativeRunFinalizations).values({
         runId,
-        companyId,
         issueId,
         phase: "observed",
       });
@@ -133,7 +129,6 @@ describe("native provider capacity failure persistence", () => {
       const execution: NativeExecutionInputV1 = {
         schema: "paperclip.native-execution-input.v1",
         binding: {
-          companyId,
           runId,
           issueId,
           agentId,
@@ -191,7 +186,6 @@ describe("native provider capacity failure persistence", () => {
       };
       const openInput = {
         identity: {
-          companyId,
           issueId,
           runId,
           agentId,
@@ -204,7 +198,6 @@ describe("native provider capacity failure persistence", () => {
         // Model a controller crash after the event commit but before its
         // observational callback or failure coordinator could run.
         const priorPort = new PaperclipControlPlanePort(db, {
-          companyId,
           issueId,
           runId,
           agentId,

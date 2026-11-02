@@ -129,21 +129,17 @@ export function resolveSharedClaudeConfigDir(
 
 export function resolveManagedClaudeConfigSeedDir(
   env: NodeJS.ProcessEnv,
-  companyId?: string,
 ): string {
   const instanceRoot = resolvePaperclipInstanceRootForAdapter({
     homeDir: nonEmpty(env.PAPERCLIP_HOME) ?? undefined,
     instanceId: nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? undefined,
     env,
   });
-  return companyId
-    ? path.resolve(instanceRoot, "companies", companyId, "claude-config-seed")
-    : path.resolve(instanceRoot, "claude-config-seed");
+  return path.resolve(instanceRoot, "organization", "claude-config-seed");
 }
 
 export function resolveManagedClaudeRuntimeStateDir(
   env: NodeJS.ProcessEnv,
-  companyId: string,
   agentId: string,
 ): string {
   const instanceRoot = resolvePaperclipInstanceRootForAdapter({
@@ -151,7 +147,7 @@ export function resolveManagedClaudeRuntimeStateDir(
     instanceId: nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? undefined,
     env,
   });
-  return path.join(instanceRoot, "companies", companyId, "agents", agentId, "claude-runtime");
+  return path.join(instanceRoot, "organization", "agents", agentId, "claude-runtime");
 }
 
 export async function writePaperclipClaudeMcpConfig(input: {
@@ -186,10 +182,9 @@ export async function writePaperclipClaudeMcpConfig(input: {
 export async function prepareClaudeConfigSeed(
   env: NodeJS.ProcessEnv,
   onLog: AdapterExecutionContext["onLog"],
-  companyId?: string,
 ): Promise<string> {
   const sourceDir = resolveSharedClaudeConfigDir(env);
-  const targetRootDir = resolveManagedClaudeConfigSeedDir(env, companyId);
+  const targetRootDir = resolveManagedClaudeConfigSeedDir(env);
 
   if (path.resolve(sourceDir) === path.resolve(targetRootDir)) {
     return targetRootDir;
@@ -273,7 +268,6 @@ export async function prepareSandboxClaudeProbeRuntime(input: {
   runId: string;
   target: AdapterExecutionTarget | null;
   cwd: string;
-  companyId?: string;
   env: Record<string, string>;
   installCommand: string;
   detectCommand: string;
@@ -301,7 +295,7 @@ export async function prepareSandboxClaudeProbeRuntime(input: {
     let tempWorkspaceDir: string | null = null;
     let preparedRuntime: Awaited<ReturnType<typeof prepareAdapterExecutionTargetRuntime>> | null = null;
     try {
-      const seedDir = input.managedAiConnection ? input.env.CLAUDE_CONFIG_DIR : await prepareClaudeConfigSeed(process.env, async () => {}, input.companyId);
+      const seedDir = input.managedAiConnection ? input.env.CLAUDE_CONFIG_DIR : await prepareClaudeConfigSeed(process.env, async () => {});
       const managedRemoteCwd =
         input.target?.kind === "remote" ? input.target.remoteCwd : input.cwd;
       tempWorkspaceDir = await fs.mkdtemp(

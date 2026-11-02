@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { IssueReferencePill } from "@/components/IssueReferencePill";
-import { Link, useCaseHref } from "@/lib/router";
+import { Link, caseHref } from "@/lib/router";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
@@ -118,7 +118,6 @@ function CopyableCompactValue({
 }
 
 function StringValue({ value, variant }: { value: string; variant: "compact" | "full" }) {
-  const caseHref = useCaseHref();
   const trimmed = value.trim();
   if (trimmed === "") return <EmptyValue />;
   if (URL_RE.test(trimmed)) {

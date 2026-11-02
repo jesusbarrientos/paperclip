@@ -53,20 +53,16 @@ export function slackSearchOAuthService(
       throw badRequest("Slack search requires a public HTTPS URL");
     return new URL("/api/slack/search/callback", url.origin).toString();
   };
-  async function endpoint(companyId: string, endpointId: string) {
+  async function endpoint(endpointId: string) {
     const [row] = await db
       .select({ endpoint: chatEndpoints, connection: toolConnections })
       .from(chatEndpoints)
       .innerJoin(
         toolConnections,
-        and(
-          eq(toolConnections.id, chatEndpoints.connectionId),
-          eq(toolConnections.companyId, companyId),
-        ),
+        eq(toolConnections.id, chatEndpoints.connectionId),
       )
       .where(
         and(
-          eq(chatEndpoints.companyId, companyId),
           eq(chatEndpoints.id, endpointId),
           eq(chatEndpoints.provider, "slack"),
         ),
@@ -79,17 +75,14 @@ export function slackSearchOAuthService(
       throw notFound("Active Slack connection not found");
     return row;
   }
-  async function linked(companyId: string, endpointId: string, userId: string) {
-    const row = await endpoint(companyId, endpointId);
+  async function linked(endpointId: string, userId: string) {
+    const row = await endpoint(endpointId);
     const [identity] = await db
       .select({ principal: chatExternalPrincipals })
       .from(chatIdentityLinks)
       .innerJoin(
         chatExternalPrincipals,
-        and(
-          eq(chatExternalPrincipals.id, chatIdentityLinks.principalId),
-          eq(chatExternalPrincipals.companyId, companyId),
-        ),
+        eq(chatExternalPrincipals.id, chatIdentityLinks.principalId),
       )
       .innerJoin(
         companyMemberships,
@@ -101,7 +94,6 @@ export function slackSearchOAuthService(
       )
       .where(
         and(
-          eq(chatIdentityLinks.companyId, companyId),
           eq(chatIdentityLinks.endpointId, endpointId),
           eq(chatIdentityLinks.paperclipUserId, userId),
           eq(chatIdentityLinks.status, "linked"),
@@ -117,11 +109,10 @@ export function slackSearchOAuthService(
     return { ...row, slackUserId: identity.principal.externalId };
   }
   async function credential(
-    companyId: string,
     connectionId: string,
     id: string,
   ) {
-    return secrets.resolveSecretValue(companyId, id, "latest", {
+    return secrets.resolveSecretValue(id, "latest", {
       consumerType: "tool_connection",
       consumerId: connectionId,
       configPath: "oauth.client_secret",
@@ -155,8 +146,8 @@ export function slackSearchOAuthService(
       );
     return value;
   }
-  async function status(companyId: string, endpointId: string, userId: string) {
-    const row = await endpoint(companyId, endpointId);
+  async function status(endpointId: string, userId: string) {
+    const row = await endpoint(endpointId);
     const config = configSchema.safeParse(
       object(row.connection.config).slackSearch,
     );
@@ -165,7 +156,6 @@ export function slackSearchOAuthService(
       .from(connectionGrants)
       .where(
         and(
-          eq(connectionGrants.companyId, companyId),
           eq(connectionGrants.connectionId, row.connection.id),
           eq(connectionGrants.kind, "user"),
           eq(connectionGrants.subjectUserId, userId),
@@ -196,17 +186,14 @@ export function slackSearchOAuthService(
   return {
     status,
     /** Search-only credential acquisition; no caller may use this token for writes. */
-    async accessToken(companyId: string, endpointId: string, userId: string) {
-      const initial = await linked(companyId, endpointId, userId);
+    async accessToken(endpointId: string, userId: string) {
+      const initial = await linked(endpointId, userId);
       return db.transaction(async (tx) => {
         await tx
           .select({ id: toolConnections.id })
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.id, initial.connection.id),
-              eq(toolConnections.companyId, companyId),
-            ),
+            eq(toolConnections.id, initial.connection.id),
           )
           .for("update");
         const [connection] = await tx
@@ -221,7 +208,6 @@ export function slackSearchOAuthService(
           .from(connectionGrants)
           .where(
             and(
-              eq(connectionGrants.companyId, companyId),
               eq(connectionGrants.connectionId, connection.id),
               eq(connectionGrants.subjectUserId, userId),
               eq(connectionGrants.kind, "user"),
@@ -242,7 +228,7 @@ export function slackSearchOAuthService(
           tx as unknown as Db,
           publicBaseUrl,
           fetchImpl,
-        ).assertLinked(companyId, endpointId, userId, bound.slackUserId);
+        ).assertLinked(endpointId, userId, bound.slackUserId);
         const txSecrets = secretService(tx as unknown as Db);
         const read = async (path: string) => {
           const ref = grant.credentialSecretRefs.find(
@@ -275,7 +261,6 @@ export function slackSearchOAuthService(
           grant_type: "refresh_token",
           client_id: config.clientId,
           client_secret: await txSecrets.resolveSecretValue(
-            companyId,
             config.clientSecretId,
             "latest",
             {
@@ -325,7 +310,6 @@ export function slackSearchOAuthService(
           if (typeof user[name] === "string") {
             const ref = await vault.storeConnectorOAuthSecret(
               {
-                companyId,
                 connection,
                 configPath: `oauth.${name}`,
                 label: `Slack search ${name}`,
@@ -362,32 +346,27 @@ export function slackSearchOAuthService(
       });
     },
     async assertLinked(
-      companyId: string,
       endpointId: string,
       userId: string,
       slackUserId: string,
     ) {
-      const current = await linked(companyId, endpointId, userId);
+      const current = await linked(endpointId, userId);
       if (current.slackUserId !== slackUserId)
         throw forbidden("Slack linked identity changed");
     },
     async configure(
-      companyId: string,
       endpointId: string,
       userId: string,
       input: unknown,
     ) {
       const values = slackSearchConfigSchema.parse(input);
-      const row = await endpoint(companyId, endpointId);
+      const row = await endpoint(endpointId);
       await db.transaction(async (tx) => {
         const [connection] = await tx
           .select()
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.companyId, companyId),
-              eq(toolConnections.id, row.connection.id),
-            ),
+            eq(toolConnections.id, row.connection.id),
           )
           .for("update");
         if (!connection?.enabled)
@@ -397,7 +376,6 @@ export function slackSearchOAuthService(
         );
         const ref = await vault.storeConnectorOAuthSecret(
           {
-            companyId,
             connection,
             configPath: "oauth.client_secret",
             label: "Slack search client secret",
@@ -433,15 +411,11 @@ export function slackSearchOAuthService(
             updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(toolConnections.companyId, companyId),
-              eq(toolConnections.id, row.connection.id),
-            ),
+            eq(toolConnections.id, row.connection.id),
           )
           .returning();
         await syncConnectionCredentialBindings(tx, updated);
         await logActivity(tx as unknown as Db, {
-          companyId,
           actorType: "user",
           actorId: userId,
           action: "chat.slack_search.configured",
@@ -449,10 +423,10 @@ export function slackSearchOAuthService(
           entityId: endpointId,
         });
       });
-      return status(companyId, endpointId, userId);
+      return status(endpointId, userId);
     },
-    async start(companyId: string, endpointId: string, userId: string) {
-      const row = await linked(companyId, endpointId, userId);
+    async start(endpointId: string, userId: string) {
+      const row = await linked(endpointId, userId);
       const config = configSchema.parse(
         object(row.connection.config).slackSearch,
       );
@@ -460,7 +434,6 @@ export function slackSearchOAuthService(
       const redirect = redirectUri();
       await db.insert(toolOauthStates).values({
         state,
-        companyId,
         connectionId: row.connection.id,
         codeVerifier: JSON.stringify({
           endpointId,
@@ -507,7 +480,6 @@ export function slackSearchOAuthService(
         );
       const binding = object(JSON.parse(pending.codeVerifier));
       const row = await linked(
-        pending.companyId,
         String(binding.endpointId),
         userId,
       );
@@ -525,7 +497,6 @@ export function slackSearchOAuthService(
       const tokens = await exchange({
         client_id: config.clientId,
         client_secret: await credential(
-          pending.companyId,
           row.connection.id,
           config.clientSecretId,
         ),
@@ -565,10 +536,7 @@ export function slackSearchOAuthService(
           .select({ id: toolConnections.id })
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.id, row.connection.id),
-              eq(toolConnections.companyId, pending.companyId),
-            ),
+            eq(toolConnections.id, row.connection.id),
           )
           .for("update");
         const [liveConnection] = await tx
@@ -601,7 +569,6 @@ export function slackSearchOAuthService(
           publicBaseUrl,
           fetchImpl,
         ).assertLinked(
-          pending.companyId,
           row.endpoint.id,
           userId,
           row.slackUserId,
@@ -615,7 +582,6 @@ export function slackSearchOAuthService(
           .from(connectionGrants)
           .where(
             and(
-              eq(connectionGrants.companyId, pending.companyId),
               eq(connectionGrants.connectionId, row.connection.id),
               eq(connectionGrants.subjectUserId, userId),
             ),
@@ -630,7 +596,6 @@ export function slackSearchOAuthService(
             refs.push(
               await vault.storeConnectorOAuthSecret(
                 {
-                  companyId: pending.companyId,
                   connection: row.connection,
                   configPath: `oauth.${name}`,
                   label: `Slack search ${name}`,
@@ -670,7 +635,6 @@ export function slackSearchOAuthService(
         await tx
           .insert(connectionGrants)
           .values({
-            companyId: pending.companyId,
             connectionId: row.connection.id,
             kind: "user",
             subjectUserId: userId,
@@ -686,27 +650,23 @@ export function slackSearchOAuthService(
           });
         await syncConnectionCredentialBindings(tx, liveConnection);
         await logActivity(tx as unknown as Db, {
-          companyId: pending.companyId,
           actorType: "user",
           actorId: userId,
           action: "chat.slack_search.connected",
           entityType: "chat_endpoint",
           entityId: row.endpoint.id,
         });
-        return { endpointId: row.endpoint.id, companyId: pending.companyId };
+        return { endpointId: row.endpoint.id };
       });
     },
-    async disconnect(companyId: string, endpointId: string, userId: string) {
-      const row = await endpoint(companyId, endpointId);
+    async disconnect(endpointId: string, userId: string) {
+      const row = await endpoint(endpointId);
       await db.transaction(async (tx) => {
         await tx
           .select({ id: toolConnections.id })
           .from(toolConnections)
           .where(
-            and(
-              eq(toolConnections.id, row.connection.id),
-              eq(toolConnections.companyId, companyId),
-            ),
+            eq(toolConnections.id, row.connection.id),
           )
           .for("update");
         await tx
@@ -719,7 +679,6 @@ export function slackSearchOAuthService(
           })
           .where(
             and(
-              eq(connectionGrants.companyId, companyId),
               eq(connectionGrants.connectionId, row.connection.id),
               eq(connectionGrants.kind, "user"),
               eq(connectionGrants.subjectUserId, userId),
@@ -729,7 +688,6 @@ export function slackSearchOAuthService(
           .delete(toolOauthStates)
           .where(
             and(
-              eq(toolOauthStates.companyId, companyId),
               eq(toolOauthStates.connectionId, row.connection.id),
               eq(toolOauthStates.subjectUserId, userId),
             ),
@@ -737,14 +695,13 @@ export function slackSearchOAuthService(
         await syncConnectionCredentialBindings(tx, row.connection);
       });
       await logActivity(db, {
-        companyId,
         actorType: "user",
         actorId: userId,
         action: "chat.slack_search.disconnected",
         entityType: "chat_endpoint",
         entityId: endpointId,
       });
-      return status(companyId, endpointId, userId);
+      return status(endpointId, userId);
     },
   };
 }

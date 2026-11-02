@@ -74,7 +74,7 @@ export function RunWorkspaceRecoverySurface({ run }: { run: HeartbeatRun }) {
   });
 
   const recoveryAction = issue?.activeRecoveryAction ?? null;
-  const canManageBoardRuntime = canBoardManageRuntime(run.companyId, boardAccess);
+  const canManageBoardRuntime = canBoardManageRuntime(boardAccess);
   // Prefer the workspace pinned by the recovery action's evidence (the workspace that actually
   // diverged) over the page-level id, which can drift after a re-issue rebinds the issue.
   const reconcileWorkspaceId =
@@ -137,7 +137,7 @@ export function RunWorkspaceRecoverySurface({ run }: { run: HeartbeatRun }) {
         "",
         issue.description ?? "",
       ];
-      return issuesApi.create(issue.companyId, {
+      return issuesApi.create({
         title: `Re-issue (isolated): ${issue.title ?? sourceLabel}`,
         description: descriptionLines.join("\n"),
         priority: issue.priority,

@@ -130,8 +130,7 @@ describe("codex execute", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "codex-home",
     );
     await fs.mkdir(workspace, { recursive: true });
@@ -157,7 +156,6 @@ describe("codex execute", () => {
         runId: "run-default",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -199,7 +197,7 @@ describe("codex execute", () => {
       expect(await fs.realpath(managedAuth)).toBe(await fs.realpath(path.join(sharedCodexHome, "auth.json")));
       expect((await fs.lstat(managedConfig)).isFile()).toBe(true);
       expect(await fs.readFile(managedConfig, "utf8")).toBe('model = "codex-mini-latest"\n');
-      await expect(fs.lstat(path.join(sharedCodexHome, "companies", "company-1"))).rejects.toThrow();
+      await expect(fs.lstat(path.join(sharedCodexHome, "organization"))).rejects.toThrow();
       expect(logs).toContainEqual(
         expect.objectContaining({
           stream: "stdout",
@@ -232,8 +230,7 @@ describe("codex execute", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "codex-home",
     );
     await fs.mkdir(workspace, { recursive: true });
@@ -269,7 +266,6 @@ describe("codex execute", () => {
         runId: "run-managed-mcp",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: {},
@@ -356,7 +352,6 @@ describe("codex execute", () => {
         runId: "run-notes",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -419,7 +414,6 @@ describe("codex execute", () => {
         runId: "run-meta",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -486,7 +480,6 @@ describe("codex execute", () => {
         runId: "run-sandbox-auth",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -557,7 +550,6 @@ describe("codex execute", () => {
         runId: "run-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -684,7 +676,7 @@ describe("codex execute", () => {
     try {
       await execute({
         runId: "run-context-owner",
-        agent: { id: "agent-1", companyId: "company-1", name: "Codex", adapterType: "codex_local", adapterConfig: {} },
+        agent: { id: "agent-1", name: "Codex", adapterType: "codex_local", adapterConfig: {} },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: {
           engine: "cli", command: commandPath, cwd: workspace,
@@ -700,7 +692,6 @@ describe("codex execute", () => {
             issue: { id: "issue-1", identifier: "PAP-900", title: "Repeat phrase Repeat phrase", description: "Repeat phrase Repeat phrase", status: "in_progress" },
             executionContinuation: {
               version: 1,
-              companyId: "company-1",
               issueId: "issue-1",
               trigger: { reason: "issue_commented", interactionId: null, sourceRunId: null },
               originCommentIds: [],
@@ -756,7 +747,6 @@ describe("codex execute", () => {
         runId: "run-transient-error",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -810,7 +800,7 @@ if (process.argv.includes("resume")) {
     try {
       const result = await execute({
         runId: `resume-stop-${started}`,
-        agent: { id: "agent-1", companyId: "company-1", name: "Codex", adapterType: "codex_local", adapterConfig: { engine: "cli" } },
+        agent: { id: "agent-1", name: "Codex", adapterType: "codex_local", adapterConfig: { engine: "cli" } },
         runtime: { sessionId: "existing-session", sessionParams: null, sessionDisplayId: "existing-session", taskKey: null },
         config: { engine: "cli", command: commandPath, cwd: root, promptTemplate: "Test resume." },
         context: {}, onLog: async () => {},
@@ -848,7 +838,6 @@ process.exit(1);
         runId: "run-harness-crash",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -905,7 +894,6 @@ process.exit(1);
         runId: "run-usage-limit",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -965,7 +953,6 @@ process.exit(1);
         runId: "run-refresh-token-reused",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1017,7 +1004,6 @@ process.exit(1);
         runId: "run-fallback",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1094,7 +1080,6 @@ process.exit(1);
         runId: "run-stage-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1164,7 +1149,6 @@ process.exit(1);
         runId: "run-stage-wake-executor",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1251,7 +1235,6 @@ process.exit(1);
         runId: "run-issue-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1353,7 +1336,6 @@ process.exit(1);
         runId: "run-resume-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1473,8 +1455,7 @@ process.exit(1);
       paperclipHome,
       "instances",
       "worktree-1",
-      "companies",
-      "company-1",
+      "organization",
       "codex-home",
     );
     const homeSkill = path.join(isolatedCodexHome, "skills", "paperclip");
@@ -1501,7 +1482,6 @@ process.exit(1);
         runId: "run-1",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1540,7 +1520,6 @@ process.exit(1);
           "PAPERCLIP_AGENT_ID",
           "PAPERCLIP_API_KEY",
           "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
           "PAPERCLIP_RUN_ID",
         ]),
       );
@@ -1607,7 +1586,7 @@ process.exit(1);
         paperclipRuntimeSkills: digest ? [{ key: "paperclipai/paperclip/agentmail", runtimeName: "agentmail", source }] : [],
       };
       const result = await execute({ runId: `run-${agentId}-${digest?.slice(0, 1) ?? "none"}`,
-        agent: { id: agentId, companyId: "company-1", name: "Email agent", adapterType: "codex_local", adapterConfig: config },
+        agent: { id: agentId, name: "Email agent", adapterType: "codex_local", adapterConfig: config },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config, context: { paperclipWake: { connectorSkillInstructions } }, authToken: "test-token", onLog: async () => {},
       });
@@ -1671,7 +1650,6 @@ process.exit(1);
         runId: "run-2",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },

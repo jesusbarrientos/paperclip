@@ -55,7 +55,7 @@ export const announcementManifestSchema = z.object({
   schemaVersion: z.literal(1),
   announcement: announcementSchema.nullable(),
 }).strict();
-export const dismissAnnouncementSchema = z.object({ companyId: z.string().uuid() }).strict();
+export const dismissAnnouncementSchema = z.object({ }).strict();
 export type AnnouncementAction = z.infer<typeof announcementActionSchema>;
 export type Announcement = z.infer<typeof announcementSchema>;
 export type AnnouncementManifest = z.infer<typeof announcementManifestSchema>;

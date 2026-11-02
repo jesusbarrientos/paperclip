@@ -33,7 +33,7 @@ async function choose(label: string) {
 }
 function Harness({ secretMessage, contextRoutine }: { secretMessage?: SecretMessage; contextRoutine?: RoutineDetail }) {
   const { data } = useQuery({ queryKey: queryKeys.routines.detail(routine.id), queryFn: api.get });
-  const value = { routine: contextRoutine ?? data ?? routine, routineId: routine.id, companyId: routine.companyId, secretMessage, setSecretMessage: vi.fn() } as unknown as RoutineDetailContextValue;
+  const value = { routine: contextRoutine ?? data ?? routine, routineId: routine.id, secretMessage, setSecretMessage: vi.fn() } as unknown as RoutineDetailContextValue;
   return <RoutineDetailContext.Provider value={value}><TriggersSection /></RoutineDetailContext.Provider>;
 }
 async function render(secretMessage?: SecretMessage, contextRoutine?: RoutineDetail) {
@@ -48,7 +48,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  routine = { id: "routine-1", companyId: "company-1", title: "Verify deployment", status: "active", triggers: [] } as unknown as RoutineDetail;
+  routine = { id: "routine-1", title: "Verify deployment", status: "active", triggers: [] } as unknown as RoutineDetail;
   api.get.mockImplementation(async () => routine);
   api.createTrigger.mockImplementation(async (_id, input) => {
     const trigger = { id: "trigger-1", enabled: true, webhookUrl: "https://paperclip.example/api/routine-triggers/public/0123456789abcdef01234567/fire", ...input } as RoutineTrigger;

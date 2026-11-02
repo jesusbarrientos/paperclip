@@ -25,47 +25,46 @@ const support = await getEmbeddedPostgresTestSupport();
   async function seed() {
     const companyId = randomUUID();
     await db.insert(companies).values({ id: companyId, name: companyId, issuePrefix: companyId.slice(0, 8) });
-    const [project] = await db.insert(projects).values({ companyId, name: "Contained intake" }).returning();
+    const [project] = await db.insert(projects).values({ name: "Contained intake" }).returning();
     const [agent] = await db.insert(agents).values({
-      companyId, name: "Contained agent", role: "engineer", adapterType: "paperclip_runner",
+      name: "Contained agent", role: "engineer", adapterType: "paperclip_runner",
       permissions: { authorizationPolicy: { trustPreset: LOW_TRUST_REVIEW_PRESET,
-        trustBoundary: { mode: LOW_TRUST_REVIEW_PRESET, companyId, projectIds: [project.id] } } },
+        trustBoundary: { mode: LOW_TRUST_REVIEW_PRESET, projectIds: [project.id] } } },
     }).returning();
-    const [other] = await db.insert(agents).values({ companyId, name: "Other", role: "engineer" }).returning();
-    return { companyId, agent, other };
+    const [other] = await db.insert(agents).values({ name: "Other", role: "engineer" }).returning();
+    return { agent, other };
   }
   async function task(f: Awaited<ReturnType<typeof seed>>) {
-    return issueService(db).create(f.companyId, {
+    return issueService(db).create({
       title: `Direct task ${randomUUID()}`, assigneeAgentId: f.agent.id,
       createdByUserId: "owner", responsibleUserId: "owner",
     });
   }
   async function execution(f: Awaited<ReturnType<typeof seed>>, issue: Awaited<ReturnType<typeof task>>,
     options: { human?: boolean; context?: Record<string, unknown>; retryOfRunId?: string; status?: string } = {}) {
-    const [wake] = await db.insert(agentWakeupRequests).values({ companyId: f.companyId, agentId: f.agent.id,
+    const [wake] = await db.insert(agentWakeupRequests).values({ agentId: f.agent.id,
       source: options.human ? "assignment" : "automation", status: "claimed",
       requestedByActorType: options.human ? "user" : "system", requestedByActorId: options.human ? "owner" : null,
       payload: { issueId: issue.id, _paperclipWakeContext: { source: "issue.update" } } }).returning();
-    const [run] = await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agent.id,
+    const [run] = await db.insert(heartbeatRuns).values({ agentId: f.agent.id,
       status: options.status ?? "running", responsibleUserId: "owner", wakeupRequestId: wake.id,
       retryOfRunId: options.retryOfRunId, contextSnapshot: { issueId: issue.id, ...options.context } }).returning();
     await db.update(agentWakeupRequests).set({ runId: run.id }).where(eq(agentWakeupRequests.id, wake.id));
-    return { run, wake, actor: { type: "agent" as const, companyId: f.companyId,
+    return { run, wake, actor: { type: "agent" as const,
       agentId: f.agent.id, source: "agent_key" as const, runId: run.id } };
   }
   async function launch(f: Awaited<ReturnType<typeof seed>>, issue: Awaited<ReturnType<typeof task>>,
     options: Parameters<typeof execution>[2] = {}) {
     const current = await execution(f, issue, options);
     return { ...current, ...await resolveAndRetainRunTrustPreset(db, {
-      companyId: f.companyId, agentId: f.agent.id, runId: current.run.id, agent: f.agent, issue,
+      agentId: f.agent.id, runId: current.run.id, agent: f.agent, issue,
     }) };
   }
   async function resolve(f: Awaited<ReturnType<typeof seed>>, issue: Awaited<ReturnType<typeof task>>, runId: string) {
-    return withHumanDirectedWork(db, resolveCoreTrustPreset({ companyId: f.companyId, agent: f.agent, issue }),
-      { companyId: f.companyId, agentId: f.agent.id, runId });
+    return withHumanDirectedWork(db, resolveCoreTrustPreset({ agent: f.agent, issue }),
+      { agentId: f.agent.id, runId });
   }
-  const resource = (issue: Awaited<ReturnType<typeof task>>) => ({ type: "issue" as const,
-    companyId: issue.companyId, issueId: issue.id, projectId: issue.projectId,
+  const resource = (issue: Awaited<ReturnType<typeof task>>) => ({ type: "issue" as const, issueId: issue.id, projectId: issue.projectId,
     parentIssueId: issue.parentId, assigneeAgentId: issue.assigneeAgentId, status: issue.status });
 
   it("allows the exact human-assigned task at dispatch and tool access; retains containment on retries", async () => {
@@ -73,8 +72,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const first = await launch(f, issue, { human: true });
     expect(first.trustPreset).toMatchObject({ kind: "low_trust_review", humanDirectedIssueId: issue.id });
     expect(JSON.stringify(first.executionPolicy)).not.toContain("humanDirectedIssueId");
-    const retried = await resolveAndRetainRunTrustPreset(db, { companyId: f.companyId,
-      agentId: f.agent.id, runId: first.run.id, agent: f.agent, issue });
+    const retried = await resolveAndRetainRunTrustPreset(db, { agentId: f.agent.id, runId: first.run.id, agent: f.agent, issue });
     expect(retried.trustPreset).toMatchObject(first.trustPreset);
     await expect(assertLowTrustWorkspaceIsolation({ db, resolution: first.trustPreset, issue,
       isolatedWorkspacesEnabled: true, effectiveExecutionWorkspaceMode: "isolated_workspace",
@@ -86,7 +84,7 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(await authorizationService(db).decide({ actor: first.actor, action: "issue:read", resource: resource(unrelated) })).toMatchObject({ allowed: false });
     expect(await authorizationService(db).decide({ actor: { ...first.actor, runId: undefined }, action: "issue:read", resource: resource(issue) })).toMatchObject({ allowed: false });
     expect(await authorizationService(db).decide({ actor: first.actor, action: "agent_instructions:update",
-      resource: { type: "agent", companyId: f.companyId, agentId: f.agent.id } })).toMatchObject({ allowed: false });
+      resource: { type: "agent", agentId: f.agent.id } })).toMatchObject({ allowed: false });
     await expect(assertLowTrustWorkspaceIsolation({ resolution: first.trustPreset, issue,
       isolatedWorkspacesEnabled: true, effectiveExecutionWorkspaceMode: "isolated_workspace",
       selectedEnvironmentDriver: "local" })).rejects.toMatchObject({ details: { code: "low_trust_requires_sandbox_environment" } });
@@ -97,7 +95,7 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("permits existing owner conversations without backfilling authority from historical attribution", async () => {
     const f = await seed();
-    const [issue] = await db.insert(issues).values({ companyId: f.companyId, title: "Owner chat",
+    const [issue] = await db.insert(issues).values({ title: "Owner chat",
       assigneeAgentId: f.agent.id, conversationAgentId: f.agent.id, conversationUserId: "owner", conversationState: "waiting", status: "in_review" }).returning();
     const result = await launch(f, issue as Awaited<ReturnType<typeof task>>);
     expect(result.trustPreset).toMatchObject({ humanDirectedIssueId: issue.id });
@@ -141,7 +139,7 @@ const support = await getEmbeddedPostgresTestSupport();
   it("recognizes a coalesced human request for the same run and exact task", async () => {
     const f = await seed(); const issue = await task(f); const current = await execution(f, issue);
     expect(await resolve(f, issue, current.run.id)).not.toHaveProperty("humanDirectedIssueId");
-    const [coalesced] = await db.insert(agentWakeupRequests).values({ companyId: f.companyId, agentId: f.agent.id,
+    const [coalesced] = await db.insert(agentWakeupRequests).values({ agentId: f.agent.id,
       runId: current.run.id, source: "assignment", status: "coalesced", requestedByActorType: "user",
       requestedByActorId: "owner", payload: { issueId: issue.id, _paperclipWakeContext: { source: "issue.update" } } }).returning();
     expect(await resolve(f, issue, current.run.id)).toHaveProperty("humanDirectedIssueId", issue.id);
@@ -150,16 +148,12 @@ const support = await getEmbeddedPostgresTestSupport();
       { requestedByActorType: "agent" }, { idempotencyKey: "chat-inbound:external-sender" },
       { payload: { issueId: randomUUID() } },
       { payload: { issueId: issue.id, _paperclipWakeContext: { source: "plugin:untrusted" } } },
-      { payload: { issueId: issue.id } }, { companyId: randomUUID() }, { agentId: f.other.id },
+      { payload: { issueId: issue.id } }, { agentId: f.other.id },
     ]) {
-      // Existing foreign keys require a real company for the cross-company case.
-      const badCompany = patch.companyId;
-      if (badCompany) await db.insert(companies).values({ id: badCompany, name: badCompany });
       await db.update(agentWakeupRequests).set(patch).where(eq(agentWakeupRequests.id, coalesced.id));
       expect(await resolve(f, issue, current.run.id)).not.toHaveProperty("humanDirectedIssueId");
       await db.update(agentWakeupRequests).set({ status: "coalesced", requestedByActorType: "user",
-        requestedByActorId: "owner", idempotencyKey: null, payload: { issueId: issue.id, _paperclipWakeContext: { source: "issue.update" } },
-        companyId: f.companyId, agentId: f.agent.id }).where(eq(agentWakeupRequests.id, coalesced.id));
+        requestedByActorId: "owner", idempotencyKey: null, payload: { issueId: issue.id, _paperclipWakeContext: { source: "issue.update" } }, agentId: f.agent.id }).where(eq(agentWakeupRequests.id, coalesced.id));
     }
   });
 
@@ -174,13 +168,11 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(await resolve(f, issue, last.run.id)).not.toHaveProperty("humanDirectedIssueId");
   });
 
-  it("never borrows retry authority from another task, agent, or company and terminates cycles", async () => {
+  it("never borrows retry authority from another task or agent and terminates cycles", async () => {
     const f = await seed(); const issue = await task(f); const otherIssue = await task(f);
-    const otherCompany = await seed();
     for (const scope of [
       { fixture: f, issue: otherIssue },
       { fixture: { ...f, agent: { ...f.agent, id: f.other.id } }, issue },
-      { fixture: otherCompany, issue: await task(otherCompany) },
     ]) {
       const parent = await execution(scope.fixture, scope.issue, { human: true, status: "failed" });
       const child = await launch(f, issue, { retryOfRunId: parent.run.id });
@@ -225,7 +217,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await issueService(db).update(issue.id, { assigneeAgentId: f.other.id });
     const completed = (await issueService(db).update(issue.id, { assigneeAgentId: f.agent.id, status: "done" }))!;
     const watchdog = createPostgresWatchdogAdapter(db);
-    expect(await watchdog.foldSourceResolvedRun(f.companyId, {
+    expect(await watchdog.foldSourceResolvedRun({
       run: { ...first.run, sourceIssueId: issue.id },
       sourceIssue: { ...completed, isRecoveryOriginKind: false },
       evidence: { kind: "activity", id: randomUUID(), createdAt: new Date(), action: "issue.updated" },

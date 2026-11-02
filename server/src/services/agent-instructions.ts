@@ -33,7 +33,6 @@ type BundleMode = "managed" | "external";
 
 type AgentLike = {
   id: string;
-  companyId: string;
   name: string;
   adapterConfig: unknown;
 };
@@ -58,7 +57,6 @@ type AgentInstructionsFileDetail = AgentInstructionsFileSummary & {
 
 type AgentInstructionsBundle = {
   agentId: string;
-  companyId: string;
   persistence?: "agent_files";
   mode: BundleMode | null;
   rootPath: string | null;
@@ -136,8 +134,7 @@ function resolvePathWithinRoot(rootPath: string, relativePath: string): string {
 export function resolveManagedInstructionsRoot(agent: AgentLike): string {
   return path.resolve(
     resolvePaperclipInstanceRoot(),
-    "companies",
-    agent.companyId,
+    "organization",
     "agents",
     agent.id,
     "instructions",
@@ -382,7 +379,6 @@ function toBundle(agent: AgentLike, state: BundleState, files: AgentInstructions
   nextFiles.sort((left, right) => left.path.localeCompare(right.path));
   return {
     agentId: agent.id,
-    companyId: agent.companyId,
     ...(state.mode === "managed" ? { persistence: "agent_files" as const } : {}),
     mode: state.mode,
     rootPath: state.rootPath,
@@ -491,8 +487,7 @@ export function syncInstructionsBundleConfigFromFilePath(
 export function agentInstructionsService(db?: Db) {
   async function assertUnversionedEntry(agent: AgentLike, entryFile: string, connection: Db | Parameters<Parameters<Db["transaction"]>[0]>[0] | undefined = db) {
     if (!connection) throw unprocessable("Bundle initialization requires the database-backed instructions service");
-    const [head] = await connection.select().from(agentInstructionHeads).where(and(eq(agentInstructionHeads.companyId, agent.companyId),
-      eq(agentInstructionHeads.agentId, agent.id), eq(agentInstructionHeads.entryFile, entryFile)));
+    const [head] = await connection.select().from(agentInstructionHeads).where(and(eq(agentInstructionHeads.agentId, agent.id), eq(agentInstructionHeads.entryFile, entryFile)));
     if (head) throw unprocessable("This entry has revision history. Use the instruction content API with its baseRevisionId to update it.", { code: "INSTRUCTION_REVISION_REQUIRED" });
   }
   async function getBundle(agent: AgentLike): Promise<AgentInstructionsBundle> {
@@ -706,7 +701,7 @@ export function agentInstructionsService(db?: Db) {
     if (!db) return operation(agent);
     return db.transaction(async (tx) => {
       const [current] = await tx.select().from(agents)
-        .where(and(eq(agents.id, agent.id), eq(agents.companyId, agent.companyId))).for("update");
+        .where(eq(agents.id, agent.id)).for("update");
       if (!current) throw notFound("Agent not found");
       if (relativePath !== LEGACY_PROMPT_TEMPLATE_PATH) {
         // Historical entries also remain projections if the configured entry changes.
@@ -805,12 +800,12 @@ export function agentInstructionsService(db?: Db) {
     if (!db) throw unprocessable("Bundle initialization requires the database-backed instructions service");
     return db.transaction(async (tx) => {
       const agent = args[0];
-      const [owner] = await tx.select({ id: agents.id }).from(agents).where(and(eq(agents.id, agent.id), eq(agents.companyId, agent.companyId))).for("update");
+      const [owner] = await tx.select({ id: agents.id }).from(agents).where(eq(agents.id, agent.id)).for("update");
       if (!owner) throw notFound("Agent not found");
       await assertUnversionedEntry(agent, args[2]?.entryFile ? normalizeRelativeFilePath(args[2].entryFile) : ENTRY_FILE_DEFAULT, tx);
       if (args[2]?.replaceExisting) {
         const [existingHead] = await tx.select({ id: agentInstructionHeads.revisionId }).from(agentInstructionHeads)
-          .where(and(eq(agentInstructionHeads.companyId, agent.companyId), eq(agentInstructionHeads.agentId, agent.id))).limit(1);
+          .where(eq(agentInstructionHeads.agentId, agent.id)).limit(1);
         if (existingHead) throw unprocessable("Replacing this bundle would remove a versioned entry. Use canonical content commits.", { code: "INSTRUCTION_REVISION_REQUIRED" });
       }
       return materializeManagedBundleUnversioned(...args);

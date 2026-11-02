@@ -69,7 +69,6 @@ async function createRunFixture(db: ReturnType<typeof createDb>) {
     issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
   }).returning().then((rows) => rows[0]!);
   const agent = await db.insert(agents).values({
-    companyId: company.id,
     name: `Gateway Agent ${randomUUID()}`,
     role: "engineer",
     adapterType: "process",
@@ -78,13 +77,11 @@ async function createRunFixture(db: ReturnType<typeof createDb>) {
     permissions: {},
   }).returning().then((rows) => rows[0]!);
   const issue = await db.insert(issues).values({
-    companyId: company.id,
     title: "Gateway approval work",
     status: "in_progress",
     assigneeAgentId: agent.id,
   }).returning().then((rows) => rows[0]!);
   const run = await db.insert(heartbeatRuns).values({
-    companyId: company.id,
     agentId: agent.id,
     invocationSource: "assignment",
     status: "running",
@@ -93,16 +90,14 @@ async function createRunFixture(db: ReturnType<typeof createDb>) {
   return { company, agent, issue, run };
 }
 
-async function createRemoteMcpToolFixture(db: ReturnType<typeof createDb>, companyId: string) {
+async function createRemoteMcpToolFixture(db: ReturnType<typeof createDb>) {
   const application = await db.insert(toolApplications).values({
-    companyId,
     applicationKey: `remote-${randomUUID().slice(0, 8)}`,
     name: "Remote MCP",
     type: "mcp_http",
     status: "active",
   }).returning().then((rows) => rows[0]!);
   const connection = await db.insert(toolConnections).values({
-    companyId,
     applicationId: application.id,
     name: "Remote connection",
     uid: `test/${randomUUID()}`,
@@ -116,7 +111,6 @@ async function createRemoteMcpToolFixture(db: ReturnType<typeof createDb>, compa
     config: { url: "https://8.8.8.8/mcp" },
   }).returning().then((rows) => rows[0]!);
   await db.insert(connectionGrants).values({
-    companyId,
     connectionId: connection.id,
     kind: "organization",
     credentialSecretRefs: [],
@@ -124,7 +118,6 @@ async function createRemoteMcpToolFixture(db: ReturnType<typeof createDb>, compa
     isDefault: true,
   });
   const catalogEntry = await db.insert(toolCatalogEntries).values({
-    companyId,
     applicationId: application.id,
     connectionId: connection.id,
     entryKind: "tool",
@@ -208,14 +201,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("gates write tools with an action request and executes only stored reviewed arguments once", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -304,18 +295,16 @@ describeEmbeddedPostgres("tool gateway service", () => {
     const { company, agent, issue, run } = await createRunFixture(db);
     // Real runner calls carry immutable identity in their signed approval.
     await initializeRunIdentity(db, {
-      companyId: company.id, runId: run.id, issueId: issue.id,
+      runId: run.id, issueId: issue.id,
       responsibleUserId: null, cause: "company_default",
     });
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -328,7 +317,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
     const [actionRequest] = await db.select().from(toolActionRequests);
     const approved = await gateway.approveActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     });
@@ -366,36 +354,35 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("commits one human decision and delivers once after the original run yields, including after service restart", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const wakeup = vi.fn(async (agentId: string, input: any) => {
-      const [wake] = await db.insert(agentWakeupRequests).values({ companyId: company.id, agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload }).returning();
+      const [wake] = await db.insert(agentWakeupRequests).values({ agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload }).returning();
       return wake as any;
     });
     const deliveries = toolActionDeliveryService(db, { wakeup });
     const gateway = createTestToolGatewayService(db, { onToolActionSettled: deliveries.deliver });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: "n1", body: "receipt" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const [request] = await db.select().from(toolActionRequests);
-    await gateway.approveActionRequest({ companyId: company.id, actionRequestId: request.id, actor: { userId: "reviewer" } });
+    await gateway.approveActionRequest({ actionRequestId: request.id, actor: { userId: "reviewer" } });
     const [interaction] = await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, request.interactionId!));
     expect(interaction).toMatchObject({ issueId: issue.id, status: "accepted", resolvedByUserId: "reviewer", result: { outcome: "accepted", toolAction: { status: "executed", rememberedAction: false } } });
-    const nativeResponses = await materializeNativeInteractionResponses({ db, companyId: company.id, issueId: issue.id, runId: randomUUID(), agentId: agent.id, interactionIds: [interaction.id] });
+    const nativeResponses = await materializeNativeInteractionResponses({ db, issueId: issue.id, runId: randomUUID(), agentId: agent.id, interactionIds: [interaction.id] });
     expect(nativeResponses).toMatchObject([{ interactionId: interaction.id, response: { status: "accepted", result: { toolAction: { status: "executed", resultSummary: expect.stringContaining("bodyLength") } } } }]);
     expect(wakeup).not.toHaveBeenCalled();
     expect((await db.select().from(toolActionDeliveries))[0].deliveredAt).toBeNull();
-    await deliveries.deliverForRun({ companyId: company.id, runId: run.id });
+    await deliveries.deliverForRun({ runId: run.id });
     expect(wakeup).not.toHaveBeenCalled();
     await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.id, run.id));
     const restarted = toolActionDeliveryService(db, { wakeup });
-    await deliveries.deliverForRun({ companyId: randomUUID(), runId: run.id });
-    await deliveries.deliverForRun({ companyId: company.id, runId: randomUUID() });
+    await deliveries.deliverForRun({ runId: randomUUID() });
     expect(wakeup).not.toHaveBeenCalled();
     // The original executor's terminal cleanup must deliver a review that was
     // approved while it was running, without waiting for the scheduler sweep.
-    await deliveries.deliverForRun({ companyId: company.id, runId: run.id });
+    await deliveries.deliverForRun({ runId: run.id });
     expect(wakeup).toHaveBeenCalledTimes(1);
     await Promise.all([restarted.sweepPending(), deliveries.sweepPending()]);
-    await gateway.approveActionRequest({ companyId: company.id, actionRequestId: request.id, actor: { userId: "second-reviewer" } });
+    await gateway.approveActionRequest({ actionRequestId: request.id, actor: { userId: "second-reviewer" } });
     await restarted.sweepPending();
     expect(wakeup).toHaveBeenCalledTimes(1);
     expect(wakeup.mock.calls[0][1].payload.toolAction).toMatchObject({ executionStatus: "executed", resultSummary: expect.stringContaining("bodyLength"), instructions: expect.stringContaining("Do not call it again") });
@@ -409,47 +396,45 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("waits for all reviews, then delivers both outcomes in one durable continuation", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
-    const wakeup = vi.fn(async (agentId: string, input: any) => (await db.insert(agentWakeupRequests).values({ companyId: company.id, agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload }).returning())[0] as any);
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    const wakeup = vi.fn(async (agentId: string, input: any) => (await db.insert(agentWakeupRequests).values({ agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload }).returning())[0] as any);
     const delivery = toolActionDeliveryService(db, { wakeup });
     const gateway = createTestToolGatewayService(db, { onToolActionSettled: delivery.deliver });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     for (const noteId of ["one", "two"]) await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId, body: "reviewed body" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const requests = await db.select().from(toolActionRequests);
     expect(requests).toHaveLength(2);
     await expect(issueService(db).update(issue.id, { status: "done", actorAgentId: agent.id })).rejects.toThrow("waiting for a connection review");
     await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.id, run.id));
-    await gateway.approveActionRequest({ companyId: company.id, actionRequestId: requests[0].id, actor: { userId: "reviewer" } });
+    await gateway.approveActionRequest({ actionRequestId: requests[0].id, actor: { userId: "reviewer" } });
     expect(wakeup).not.toHaveBeenCalled();
     expect((await db.select().from(issueThreadInteractions)).filter(row => row.status === "pending")).toHaveLength(1);
-    await expect(gateway.declineActionRequest({ companyId: company.id, issueId: issue.id, interactionId: requests[0].interactionId!, actionRequestId: requests[1].id, actor: { userId: "reviewer" } })).rejects.toThrow("does not belong to this interaction");
-    await gateway.declineActionRequest({ companyId: company.id, issueId: issue.id, interactionId: requests[1].interactionId!, actionRequestId: requests[1].id, reason: "Not needed", actor: { userId: "reviewer" } });
+    await expect(gateway.declineActionRequest({ issueId: issue.id, interactionId: requests[0].interactionId!, actionRequestId: requests[1].id, actor: { userId: "reviewer" } })).rejects.toThrow("does not belong to this interaction");
+    await gateway.declineActionRequest({ issueId: issue.id, interactionId: requests[1].interactionId!, actionRequestId: requests[1].id, reason: "Not needed", actor: { userId: "reviewer" } });
     await delivery.sweepPending();
     expect(wakeup).toHaveBeenCalledTimes(1);
     const payload = wakeup.mock.calls[0][1].payload;
     expect(payload.interactionIds).toHaveLength(2);
     expect(new Set(payload.toolActions.map((action: any) => action.executionStatus))).toEqual(new Set(["executed", "rejected"]));
     expect((await db.select().from(toolActionDeliveries)).every(row => row.deliveredAt)).toBe(true);
-    const native = await materializeNativeInteractionResponses({ db, companyId: company.id, issueId: issue.id, runId: randomUUID(), agentId: agent.id, interactionIds: payload.interactionIds });
+    const native = await materializeNativeInteractionResponses({ db, issueId: issue.id, runId: randomUUID(), agentId: agent.id, interactionIds: payload.interactionIds });
     expect(native).toHaveLength(2);
   });
 
   it("keeps reviewed results from different source runs in separate non-coalescing wakes", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    const [secondRun] = await db.insert(heartbeatRuns).values({ companyId: company.id,
-      agentId: agent.id, status: "running", contextSnapshot: { issueId: issue.id } }).returning();
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    const [secondRun] = await db.insert(heartbeatRuns).values({ agentId: agent.id, status: "running", contextSnapshot: { issueId: issue.id } }).returning();
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const gateway = createTestToolGatewayService(db);
     for (const sourceRun of [run, secondRun]) {
-      const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: sourceRun.id });
+      const session = await gateway.createSession({ agentId: agent.id, runId: sourceRun.id });
       await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: sourceRun.id, body: "separate origin" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     }
     const requests = await db.select().from(toolActionRequests);
-    for (const action of requests) await gateway.declineActionRequest({ companyId: company.id, issueId: issue.id,
+    for (const action of requests) await gateway.declineActionRequest({ issueId: issue.id,
       interactionId: action.interactionId!, actionRequestId: action.id, actor: { userId: "reviewer" } });
-    await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.companyId, company.id));
-    const wakeup = vi.fn(async (agentId: string, input: any) => (await db.insert(agentWakeupRequests).values({ companyId: company.id,
-      agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload }).returning())[0] as any);
+    await db.update(heartbeatRuns).set({ status: "succeeded" });
+    const wakeup = vi.fn(async (agentId: string, input: any) => (await db.insert(agentWakeupRequests).values({ agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload }).returning())[0] as any);
     await toolActionDeliveryService(db, { wakeup }).sweepPending();
     expect(wakeup).toHaveBeenCalledTimes(2);
     expect(new Set(wakeup.mock.calls.map(([, input]) => input.payload.sourceRunId))).toEqual(new Set([run.id, secondRun.id]));
@@ -462,17 +447,17 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("bounds many outcomes and recovers their full-result reference after wake commit", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     for (let n = 0; n < 12; n++) {
       await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: `note-${n}`, body: "review me" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     }
     const requests = await db.select().from(toolActionRequests);
-    for (const request of requests) await gateway.declineActionRequest({ companyId: company.id, actionRequestId: request.id, actor: { userId: "reviewer" }, reason: "😀\n\\".repeat(4000) });
+    for (const request of requests) await gateway.declineActionRequest({ actionRequestId: request.id, actor: { userId: "reviewer" }, reason: "😀\n\\".repeat(4000) });
     await db.update(heartbeatRuns).set({ status: "succeeded" }).where(eq(heartbeatRuns.id, run.id));
     const wakeup = vi.fn(async (agentId: string, input: any) => {
-      await db.insert(agentWakeupRequests).values({ companyId: company.id, agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload });
+      await db.insert(agentWakeupRequests).values({ agentId, source: input.source, idempotencyKey: input.idempotencyKey, payload: input.payload });
       throw new Error("crash after durable wake commit");
     });
     const delivery = toolActionDeliveryService(db, { wakeup });
@@ -492,13 +477,13 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("retires a former assignee's continuation after reassignment", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: "reassigned" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const [request] = await db.select().from(toolActionRequests);
-    await gateway.declineActionRequest({ companyId: company.id, actionRequestId: request.id, actor: { userId: "reviewer" } });
-    const [replacement] = await db.insert(agents).values({ companyId: company.id, name: "Replacement", role: "engineer", adapterType: "process" }).returning();
+    await gateway.declineActionRequest({ actionRequestId: request.id, actor: { userId: "reviewer" } });
+    const [replacement] = await db.insert(agents).values({ name: "Replacement", role: "engineer", adapterType: "process" }).returning();
     await db.update(issues).set({ assigneeAgentId: replacement.id }).where(eq(issues.id, issue.id));
     const wakeup = vi.fn();
     const delivery = toolActionDeliveryService(db, { wakeup });
@@ -510,9 +495,9 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("recovers expired reviews beyond a full batch of approvals that cannot recover", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: "expire" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const [request] = await db.select().from(toolActionRequests);
     await db.update(toolActionRequests).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(toolActionRequests.id, request.id));
@@ -529,18 +514,18 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("settles expired reviews and interrupted execution without replaying an uncertain external action", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: "expire" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const [expiring] = await db.select().from(toolActionRequests);
     await db.update(toolActionRequests).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(toolActionRequests.id, expiring.id));
     await gateway.sweepActionReviews();
     expect((await db.select().from(issueThreadInteractions))[0].status).toBe("expired");
-    expect(await materializeNativeInteractionResponses({ db, companyId: company.id, issueId: issue.id, runId: randomUUID(), agentId: agent.id, interactionIds: [expiring.interactionId!] })).toMatchObject([{ response: { status: "expired", executionStatus: "expired" } }]);
+    expect(await materializeNativeInteractionResponses({ db, issueId: issue.id, runId: randomUUID(), agentId: agent.id, interactionIds: [expiring.interactionId!] })).toMatchObject([{ response: { status: "expired", executionStatus: "expired" } }]);
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: "uncertain" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const pending = (await db.select().from(toolActionRequests)).find(row => row.status === "pending")!;
-    await commitToolActionReview(db, { companyId: company.id, actionRequestId: pending.id, decision: "approved", actor: { userId: "reviewer" } });
+    await commitToolActionReview(db, { actionRequestId: pending.id, decision: "approved", actor: { userId: "reviewer" } });
     await db.update(toolActionRequests).set({ status: "executing", updatedAt: new Date(Date.now() - 11 * 60_000) }).where(eq(toolActionRequests.id, pending.id));
     await db.update(toolInvocations).set({ status: "executing" }).where(eq(toolInvocations.id, pending.invocationId));
     await gateway.sweepActionReviews();
@@ -556,17 +541,17 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("remembers a read action atomically, allows changed arguments, and preserves explicit denials and definition review", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    const [project] = await db.insert(projects).values({ companyId: company.id, name: "Reviewed project" }).returning();
+    const [project] = await db.insert(projects).values({ name: "Reviewed project" }).returning();
     await db.update(issues).set({ projectId: project.id }).where(eq(issues.id, issue.id));
-    const { connection, catalogEntry } = await createRemoteMcpToolFixture(db, company.id);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask about reads", policyType: "require_approval", selectors: { connectionId: connection.id } });
+    const { connection, catalogEntry } = await createRemoteMcpToolFixture(db);
+    await db.insert(toolPolicies).values({ name: "Ask about reads", policyType: "require_approval", selectors: { connectionId: connection.id } });
     let calls = 0;
     const gateway = createTestToolGatewayService(db, { remoteHttpRequest: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       if (body.method === "tools/call") calls++;
       return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "Roadmap and meeting notes" }] } }), { headers: { "content-type": "application/json" } });
     } });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token)).find(t => t.connectionId === connection.id)!;
     const call = (limit: number) => gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: { limit } });
     await expect(call(10)).rejects.toMatchObject({ reasonCode: "approval_required" });
@@ -576,7 +561,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
     expect(requests).toHaveLength(1);
     const [interaction] = await db.select().from(issueThreadInteractions);
     expect(interaction.payload).toMatchObject({ supersedeOnUserComment: false, toolAction: { risk: "read", rememberActionScope: expect.any(String) } });
-    const approve = () => gateway.approveActionRequest({ companyId: company.id, actionRequestId: requests[0].id, rememberAction: true, actor: { userId: "reviewer" } });
+    const approve = () => gateway.approveActionRequest({ actionRequestId: requests[0].id, rememberAction: true, actor: { userId: "reviewer" } });
     await Promise.all([approve(), approve()]);
     expect(calls).toBe(1);
     const rules = await db.select().from(toolPolicies).where(eq(toolPolicies.policyType, "trust_rule"));
@@ -584,15 +569,15 @@ describeEmbeddedPostgres("tool gateway service", () => {
     expect(rules[0].selectors).toMatchObject({ agentId: agent.id, projectId: project.id, connectionId: connection.id, toolName: tool.name });
     await call(20);
     expect(calls).toBe(2);
-    const [otherAgent] = await db.insert(agents).values({ companyId: company.id, name: "Other agent", role: "engineer", adapterType: "process" }).returning();
+    const [otherAgent] = await db.insert(agents).values({ name: "Other agent", role: "engineer", adapterType: "process" }).returning();
     for (const boundary of [{ agentId: agent.id, projectId: null }, { agentId: otherAgent.id, projectId: project.id }]) {
-      const [otherIssue] = await db.insert(issues).values({ companyId: company.id, title: "Other scope", status: "in_progress", assigneeAgentId: boundary.agentId, projectId: boundary.projectId }).returning();
-      const [otherRun] = await db.insert(heartbeatRuns).values({ companyId: company.id, agentId: boundary.agentId, invocationSource: "assignment", status: "running", contextSnapshot: { issueId: otherIssue.id } }).returning();
-      const otherSession = await gateway.createSession({ companyId: company.id, agentId: boundary.agentId, runId: otherRun.id });
+      const [otherIssue] = await db.insert(issues).values({ title: "Other scope", status: "in_progress", assigneeAgentId: boundary.agentId, projectId: boundary.projectId }).returning();
+      const [otherRun] = await db.insert(heartbeatRuns).values({ agentId: boundary.agentId, invocationSource: "assignment", status: "running", contextSnapshot: { issueId: otherIssue.id } }).returning();
+      const otherSession = await gateway.createSession({ agentId: boundary.agentId, runId: otherRun.id });
       await expect(gateway.executeTool({ sessionToken: otherSession.token, tool: tool.name, parameters: { limit: 25 } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     }
     expect(calls).toBe(2);
-    const [deny] = await db.insert(toolPolicies).values({ companyId: company.id, name: "Explicit denial", policyType: "block", priority: 999, selectors: { connectionId: connection.id } }).returning();
+    const [deny] = await db.insert(toolPolicies).values({ name: "Explicit denial", policyType: "block", priority: 999, selectors: { connectionId: connection.id } }).returning();
     await expect(call(30)).rejects.toMatchObject({ status: 403 });
     expect(calls).toBe(2);
     await db.delete(toolPolicies).where(eq(toolPolicies.id, deny.id));
@@ -603,13 +588,13 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("rolls back approval when remembered permission cannot be saved", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
+    await db.insert(toolPolicies).values({ name: "Ask first", policyType: "require_approval", selectors: { toolName: "mcp-remote-fixture:update_note" } });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters: { noteId: "n1" } })).rejects.toMatchObject({ reasonCode: "approval_required" });
     const [request] = await db.select().from(toolActionRequests);
     // This internal fixture has no connection and cannot grant action-wide access.
-    await expect(gateway.approveActionRequest({ companyId: company.id, actionRequestId: request.id, rememberAction: true, actor: { userId: "reviewer" } })).rejects.toThrow();
+    await expect(gateway.approveActionRequest({ actionRequestId: request.id, rememberAction: true, actor: { userId: "reviewer" } })).rejects.toThrow();
     expect((await db.select().from(toolActionRequests))[0].status).toBe("pending");
     expect((await db.select().from(issueThreadInteractions))[0].status).toBe("pending");
     expect((await db.select().from(toolActionDeliveries))[0].deliveredAt).toBeNull();
@@ -619,13 +604,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("refuses to approve an action request through a different interaction", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
 
     await expect(gateway.executeTool({
       sessionToken: session.token,
@@ -635,7 +619,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
     const [actionRequest] = await db.select().from(toolActionRequests);
     await expect(gateway.approveActionRequest({
-      companyId: company.id,
       issueId: issue.id,
       interactionId: randomUUID(),
       actionRequestId: actionRequest.id,
@@ -649,13 +632,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("prevents another run from consuming an approved action request by id", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const originatingSession = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const originatingSession = await gateway.createSession({ agentId: agent.id, runId: run.id });
 
     await expect(gateway.executeTool({
       sessionToken: originatingSession.token,
@@ -675,13 +657,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
       .where(eq(toolActionRequests.id, actionRequest.id));
 
     const [otherRun] = await db.insert(heartbeatRuns).values({
-      companyId: company.id,
       agentId: agent.id,
       invocationSource: "assignment",
       status: "running",
       contextSnapshot: { issueId: issue.id },
     }).returning();
-    const otherSession = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: otherRun.id });
+    const otherSession = await gateway.createSession({ agentId: agent.id, runId: otherRun.id });
 
     await expect(gateway.executeTool({
       sessionToken: otherSession.token,
@@ -697,13 +678,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("executes an approved identical-args race once and returns the winner result", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const parameters = { noteId: "n1", body: "race body" };
 
     await expect(gateway.executeTool({
@@ -732,13 +712,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("refuses to execute an approved action after its issue closes", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const parameters = { noteId: "n1", body: "post-close body" };
 
     await expect(gateway.executeTool({
@@ -769,13 +748,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("keeps pre-execute-on-approve approved requests inert", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const parameters = { noteId: "n1", body: "legacy" };
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters }))
       .rejects.toMatchObject({ reasonCode: "approval_required" });
@@ -790,7 +768,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
     await db.update(toolActionRequests).set({ signedArguments: legacySignature }).where(eq(toolActionRequests.id, actionRequest.id));
 
     const approved = await gateway.approveActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     });
@@ -828,7 +805,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("does not let a stale legacy consumer overwrite the winning approved execution", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
@@ -849,7 +825,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     });
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -874,7 +849,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       .set({ signedArguments: legacySignature })
       .where(eq(toolActionRequests.id, actionRequest.id));
     await gateway.approveActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     });
@@ -936,14 +910,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
     vi.stubEnv("PAPERCLIP_TOOL_ACTION_SIGNING_SECRET", "");
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db, { toolActionSigningSecret: " " });
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -972,7 +944,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
-      companyId: company.id,
       name: `Gateway Agent ${randomUUID()}`,
       role: "engineer",
       adapterType: "process",
@@ -981,20 +952,18 @@ describeEmbeddedPostgres("tool gateway service", () => {
       permissions: {},
     }).returning().then((rows) => rows[0]!);
     const run = await db.insert(heartbeatRuns).values({
-      companyId: company.id,
       agentId: agent.id,
       invocationSource: "assignment",
       status: "running",
       contextSnapshot: {},
     }).returning().then((rows) => rows[0]!);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
 
     await expect(gateway.executeTool({
       sessionToken: session.token,
@@ -1011,14 +980,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("cancels a stale pending action request when direct approval sees an invalid signature", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -1034,7 +1001,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       .where(eq(toolActionRequests.id, actionRequest.id));
 
     await expect(gateway.approveActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     })).rejects.toMatchObject({
@@ -1048,14 +1014,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("declines a pending action request and rejects the invocation (PAP-10859)", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -1068,7 +1032,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
     const [actionRequest] = await db.select().from(toolActionRequests);
     const declined = await gateway.declineActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     });
@@ -1082,13 +1045,11 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
     // Declining again is idempotent; approving a declined request is refused.
     const again = await gateway.declineActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     });
     expect(again.status).toBe("rejected");
     await expect(gateway.approveActionRequest({
-      companyId: company.id,
       actionRequestId: actionRequest.id,
       actor: { userId: "board-user" },
     })).rejects.toMatchObject({ reasonCode: "action_not_pending" });
@@ -1102,13 +1063,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("expires a stale identical request and creates a fresh approval", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review note writes",
       policyType: "require_approval",
       selectors: { toolName: "mcp-remote-fixture:update_note" },
     });
     const gateway = createTestToolGatewayService(db);
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const parameters = { noteId: "n1", body: "expires" };
     await expect(gateway.executeTool({ sessionToken: session.token, tool: "mcp-remote-fixture:update_note", parameters }))
       .rejects.toMatchObject({ reasonCode: "approval_required" });
@@ -1126,14 +1086,12 @@ describeEmbeddedPostgres("tool gateway service", () => {
   it("adds formal board approval for destructive tool actions and fails closed until approved", async () => {
     const { company, agent, run } = await createRunFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Review destructive tools",
       policyType: "require_approval",
       selectors: { toolName: "fixture:delete_everything" },
     });
     const gateway = createTestToolGatewayService(db, { pluginToolDispatcher: fakePluginDispatcher() });
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -1197,9 +1155,8 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("maps remote MCP elicitation to a durable issue interaction", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    await createRemoteMcpToolFixture(db, company.id);
+    await createRemoteMcpToolFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow read tools",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1230,7 +1187,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
     try {
       const gateway = createTestToolGatewayService(db);
       const session = await gateway.createSession({
-        companyId: company.id,
         agentId: agent.id,
         runId: run.id,
       });
@@ -1278,12 +1234,11 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("initializes a fresh Streamable HTTP session before a stateful tools/call", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    const { connection } = await createRemoteMcpToolFixture(db, company.id);
+    const { connection } = await createRemoteMcpToolFixture(db);
     await db.update(toolConnections).set({
       config: { url: "https://example.invalid/mcp", mcpSessionRequired: true },
     }).where(eq(toolConnections.id, connection.id));
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow read tools",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1321,7 +1276,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     });
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -1344,7 +1298,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("hides cached Chat unread filters and blocks agent and board requests before provider dispatch", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    const { connection, catalogEntry } = await createRemoteMcpToolFixture(db, company.id);
+    const { connection, catalogEntry } = await createRemoteMcpToolFixture(db);
     await db.update(toolConnections).set({
       lastCatalogRefreshAt: new Date(),
       config: {
@@ -1363,7 +1317,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
       } },
     }).where(eq(toolCatalogEntries.id, catalogEntry.id));
     await db.insert(toolPolicies).values({
-      companyId: company.id, name: "Allow Chat reads", policyType: "allow", selectors: { riskLevel: "read" },
+      name: "Allow Chat reads", policyType: "allow", selectors: { riskLevel: "read" },
     });
     const provider = vi.fn(async (_url, init) => {
       const payload = JSON.parse(String(init.body));
@@ -1373,13 +1327,13 @@ describeEmbeddedPostgres("tool gateway service", () => {
         : { content: [{ type: "text", text: "Found matching messages." }] } });
     });
     const gateway = createTestToolGatewayService(db, { remoteHttpRequest: provider });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token))
       .find((candidate) => candidate.upstreamToolName === "search_messages")!;
     expect(tool).toBeTruthy();
     expect(JSON.stringify(tool.parametersSchema)).not.toContain("isUnread");
     expect(tool.description).toContain("Read/unread filtering is not supported.");
-    const catalog = await toolAccessService(db).listCatalog(connection.id, company.id);
+    const catalog = await toolAccessService(db).listCatalog(connection.id);
     expect(JSON.stringify(catalog[0].inputSchema)).not.toContain("isUnread");
     expect(catalog[0].description).toContain("Read/unread filtering is not supported.");
 
@@ -1389,7 +1343,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
       await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters }))
         .rejects.toMatchObject(error);
       await expect(gateway.executeTestCall({
-        companyId: company.id, connectionId: connection.id, agentId: agent.id,
+        connectionId: connection.id, agentId: agent.id,
         userId: "board", toolName: "search_messages", parameters,
       })).rejects.toMatchObject(error);
     }
@@ -1406,7 +1360,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("explains Google Workspace preview enrollment when a tool call is denied", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    const { connection } = await createRemoteMcpToolFixture(db, company.id);
+    const { connection } = await createRemoteMcpToolFixture(db);
     await db.update(toolConnections).set({
       config: {
         url: "https://drivemcp.googleapis.com/mcp/v1",
@@ -1414,7 +1368,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     }).where(eq(toolConnections.id, connection.id));
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow Drive reads",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1433,7 +1386,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     });
     const session = await gateway.createSession({
-      companyId: company.id,
       agentId: agent.id,
       runId: run.id,
     });
@@ -1452,7 +1404,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("injects Vercel tokens at dispatch and refreshes exactly once after an upstream 401", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    const { connection } = await createRemoteMcpToolFixture(db, company.id);
+    const { connection } = await createRemoteMcpToolFixture(db);
     await db.update(toolConnections).set({
       credentialSource: "vercel_connect",
       externalCredential: {
@@ -1474,7 +1426,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       credentialSecretRefs: [],
     }).where(eq(connectionGrants.connectionId, connection.id));
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow Vercel-backed reads",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1508,7 +1459,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
         }), { status: 200, headers: { "content-type": "application/json" } });
       },
     });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token))
       .find((candidate) => candidate.providerType === "mcp_remote_http");
 
@@ -1529,8 +1480,8 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
     const [storedConnection] = await db.select().from(toolConnections).where(eq(toolConnections.id, connection.id));
     const [storedGrant] = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, connection.id));
-    const audits = await db.select().from(toolAccessAuditEvents).where(eq(toolAccessAuditEvents.companyId, company.id));
-    const calls = await db.select().from(toolCallEvents).where(eq(toolCallEvents.companyId, company.id));
+    const audits = await db.select().from(toolAccessAuditEvents);
+    const calls = await db.select().from(toolCallEvents);
     const persisted = JSON.stringify({ storedConnection, storedGrant, audits, calls });
     expect(persisted).not.toContain("stale-provider-bearer");
     expect(persisted).not.toContain("fresh-provider-bearer");
@@ -1539,20 +1490,19 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("keeps managed GitHub personal identity even under a legacy shared policy", async () => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    const { connection } = await createRemoteMcpToolFixture(db, company.id);
+    const { connection } = await createRemoteMcpToolFixture(db);
     await db.update(toolConnections).set({ authKind: "oauth", credentialSource: "paperclip_vault",
       config: { ...connection.config, sourceTemplateKey: "github" },
     }).where(eq(toolConnections.id, connection.id));
-    await db.insert(toolConnectionInstalls).values({ companyId: company.id,
-      connectionId: connection.id, targetType: "agent", targetId: agent.id });
+    await db.insert(toolConnectionInstalls).values({ connectionId: connection.id, targetType: "agent", targetId: agent.id });
     await db.insert(companyMemberships).values(["A", "B"].map(principalId => ({ principalType: "user", principalId, status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
     const grants = await db.insert(connectionGrants).values(["A", "B"].map(subjectUserId => ({
-      companyId: company.id, connectionId: connection.id, kind: "user", subjectUserId,
+      connectionId: connection.id, kind: "user", subjectUserId,
       status: "active", credentialSecretRefs: [],
     }))).returning();
-    await initializeRunIdentity(db, { companyId: company.id, runId: run.id, issueId: issue.id,
+    await initializeRunIdentity(db, { runId: run.id, issueId: issue.id,
       responsibleUserId: "A", cause: "instruction" });
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Allow reads",
+    await db.insert(toolPolicies).values({ name: "Allow reads",
       policyType: "allow", selectors: { riskLevel: "read" } });
     const resolvedGrants: string[] = [];
     const gateway = createTestToolGatewayService(db, {
@@ -1564,13 +1514,13 @@ describeEmbeddedPostgres("tool gateway service", () => {
         id: JSON.parse(String(init.body)).id, result: { content: [{ type: "text", text: "ok" }] },
       }), { status: 200, headers: { "content-type": "application/json" } }),
     });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token)).find(t => t.providerType === "mcp_remote_http")!;
     for (const [index, user] of ["A", "B", "A"].entries()) {
       if (index > 0) {
-        const [message] = await db.insert(issueComments).values({ companyId: company.id, issueId: issue.id,
+        const [message] = await db.insert(issueComments).values({ issueId: issue.id,
           authorUserId: user, body: "Next instruction" }).returning();
-        const pending = await reserveSteeredIdentity(db, { companyId: company.id, runId: run.id,
+        const pending = await reserveSteeredIdentity(db, { runId: run.id,
           issueId: issue.id, messageId: message.id });
         await reconcileSteeredIdentity(db, pending!);
       }
@@ -1585,23 +1535,21 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it.each([false, true])("reselects a duplicate only before GitHub dispatch (upstream failure: %s)", async (upstreamFailure) => {
     const { company, agent, issue, run } = await createRunFixture(db);
-    const first = await createRemoteMcpToolFixture(db, company.id);
+    const first = await createRemoteMcpToolFixture(db);
     await db.update(toolApplications).set({ name: "Older GitHub" }).where(eq(toolApplications.id, first.application.id));
-    const fixtures = [first, await createRemoteMcpToolFixture(db, company.id)];
+    const fixtures = [first, await createRemoteMcpToolFixture(db)];
     const grants = [];
     for (const [index, { connection }] of fixtures.entries()) {
-      const secret = await secretService(db).create(company.id, {
+      const secret = await secretService(db).create({
         provider: "local_encrypted", name: `GitHub ${index}`, key: `github.${randomUUID()}`, value: `token-${index}`,
       });
-      await db.insert(companySecretBindings).values({ companyId: company.id, secretId: secret.id,
+      await db.insert(companySecretBindings).values({ secretId: secret.id,
         targetType: "tool_connection", targetId: connection.id, configPath: "oauth.access_token" });
       await db.update(toolConnections).set({ authKind: "oauth", credentialSource: "paperclip_vault",
         config: { ...connection.config, sourceTemplateKey: "github" },
       }).where(eq(toolConnections.id, connection.id));
-      await db.insert(toolConnectionInstalls).values({ companyId: company.id,
-        connectionId: connection.id, targetType: "agent", targetId: agent.id });
-      const [grant] = await db.insert(connectionGrants).values({ companyId: company.id,
-        connectionId: connection.id, kind: "agent", subjectAgentId: agent.id, status: "active",
+      await db.insert(toolConnectionInstalls).values({ connectionId: connection.id, targetType: "agent", targetId: agent.id });
+      const [grant] = await db.insert(connectionGrants).values({ connectionId: connection.id, kind: "agent", subjectAgentId: agent.id, status: "active",
         createdAt: new Date(index === 0 ? "2026-01-01" : "2026-02-01"),
         credentialSecretRefs: [{ secretId: secret.id, configPath: "oauth.access_token", versionSelector: "latest" }],
         providerTenant: { github: { userId: "42", login: "octocat", installationCount: 1,
@@ -1609,9 +1557,9 @@ describeEmbeddedPostgres("tool gateway service", () => {
       }).returning();
       grants.push(grant!);
     }
-    await initializeRunIdentity(db, { companyId: company.id, runId: run.id, issueId: issue.id,
+    await initializeRunIdentity(db, { runId: run.id, issueId: issue.id,
       responsibleUserId: "A", cause: "instruction" });
-    await db.insert(toolPolicies).values({ companyId: company.id, name: "Allow reads",
+    await db.insert(toolPolicies).values({ name: "Allow reads",
       policyType: "allow", selectors: { riskLevel: "read" } });
     const refreshed: string[] = [];
     const dispatched = vi.fn(async (_url: string, init: RequestInit) => {
@@ -1630,7 +1578,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
         return grants.find(grant => grant.id === grantId)!;
       }, remoteHttpRequest: dispatched,
     });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token)).find(t => t.providerType === "mcp_remote_http")!;
     const execution = gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: {} });
     if (upstreamFailure) await expect(execution).rejects.toMatchObject({ status: 502 });
@@ -1641,15 +1589,14 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("refreshes a customer OAuth grant once and retries after an upstream 401", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    const { connection } = await createRemoteMcpToolFixture(db, company.id);
-    const accessSecret = await secretService(db).create(company.id, {
+    const { connection } = await createRemoteMcpToolFixture(db);
+    const accessSecret = await secretService(db).create({
       provider: "local_encrypted",
       name: "Customer OAuth access token",
       key: `gateway.oauth.${randomUUID()}`,
       value: "stale-customer-token",
     });
     await db.insert(companySecretBindings).values({
-      companyId: company.id,
       secretId: accessSecret.id,
       targetType: "tool_connection",
       targetId: connection.id,
@@ -1688,7 +1635,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     }).where(eq(connectionGrants.id, grant.id));
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow customer OAuth reads",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1715,7 +1661,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
         }), { status: 200, headers: { "content-type": "application/json" } });
       },
     });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token))
       .find((candidate) => candidate.providerType === "mcp_remote_http");
 
@@ -1736,15 +1682,14 @@ describeEmbeddedPostgres("tool gateway service", () => {
 
   it("marks a managed OAuth grant reconnect-required after one rejected refresh retry", async () => {
     const { company, agent, run } = await createRunFixture(db);
-    const { connection } = await createRemoteMcpToolFixture(db, company.id);
-    const accessSecret = await secretService(db).create(company.id, {
+    const { connection } = await createRemoteMcpToolFixture(db);
+    const accessSecret = await secretService(db).create({
       provider: "local_encrypted",
       name: "Managed OAuth access token",
       key: `gateway.managed-oauth.${randomUUID()}`,
       value: "stale-managed-token",
     });
     await db.insert(companySecretBindings).values({
-      companyId: company.id,
       secretId: accessSecret.id,
       targetType: "tool_connection",
       targetId: connection.id,
@@ -1782,7 +1727,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     }).where(eq(connectionGrants.id, grant.id));
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow managed OAuth reads",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1803,7 +1747,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
         return new Response(null, { status: 401 });
       },
     });
-    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const session = await gateway.createSession({ agentId: agent.id, runId: run.id });
     const tool = (await gateway.listToolsForSession(session.token))
       .find((candidate) => candidate.providerType === "mcp_remote_http");
 
@@ -1829,7 +1773,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
       issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
-      companyId: company.id,
       name: `Gateway Agent ${randomUUID()}`,
       role: "engineer",
       adapterType: "process",
@@ -1838,15 +1781,13 @@ describeEmbeddedPostgres("tool gateway service", () => {
       permissions: {},
     }).returning().then((rows) => rows[0]!);
     const run = await db.insert(heartbeatRuns).values({
-      companyId: company.id,
       agentId: agent.id,
       invocationSource: "manual",
       status: "running",
       contextSnapshot: {},
     }).returning().then((rows) => rows[0]!);
-    await createRemoteMcpToolFixture(db, company.id);
+    await createRemoteMcpToolFixture(db);
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow read tools",
       policyType: "allow",
       selectors: { riskLevel: "read" },
@@ -1860,7 +1801,6 @@ describeEmbeddedPostgres("tool gateway service", () => {
     try {
       const gateway = createTestToolGatewayService(db);
       const session = await gateway.createSession({
-        companyId: company.id,
         agentId: agent.id,
         runId: run.id,
       });
@@ -1909,17 +1849,16 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     });
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow read fixture",
       policyType: "allow",
       selectors: { toolName: "fixture:read_status" },
     });
 
     await expect(gateway.executePluginTool({
-      actor: { type: "agent", companyId: company.id, agentId: agent.id, runId: run.id },
+      actor: { type: "agent", agentId: agent.id, runId: run.id },
       tool: "fixture:read_status",
       parameters: {},
-      runContext: { companyId: company.id, agentId: agent.id, runId: run.id },
+      runContext: { agentId: agent.id, runId: run.id },
     })).rejects.toMatchObject({
       status: 422,
       reasonCode: "prompt_injection_blocked",
@@ -1982,17 +1921,16 @@ describeEmbeddedPostgres("tool gateway service", () => {
       },
     });
     await db.insert(toolPolicies).values({
-      companyId: company.id,
       name: "Allow read fixture",
       policyType: "allow",
       selectors: { toolName: "fixture:read_status" },
     });
 
     await gateway.executePluginTool({
-      actor: { type: "agent", companyId: company.id, agentId: agent.id, runId: run.id },
+      actor: { type: "agent", agentId: agent.id, runId: run.id },
       tool: "fixture:read_status",
       parameters: { query: "ok", apiKey: "sk-secret-value" },
-      runContext: { companyId: company.id, agentId: agent.id, runId: run.id },
+      runContext: { agentId: agent.id, runId: run.id },
     });
 
     expect(executedParameters).toEqual({ query: "ok", apiKey: "sk-secret-value" });

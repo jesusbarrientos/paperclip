@@ -22,10 +22,9 @@
  *       // ... sync implementation
  *     });
  *
- *     ctx.data.register("sync-health", async ({ companyId }) => {
+ *     ctx.data.register("sync-health", async () => {
  *       const state = await ctx.state.get({
- *         scopeKind: "company",
- *         scopeId: String(companyId),
+ *         scopeKind: "instance",
  *         stateKey: "last-sync-at",
  *       });
  *       return { lastSync: state };
@@ -58,7 +57,6 @@ export {
   createHostClientHandlers,
   getRequiredCapability,
   CapabilityDeniedError,
-  InvocationScopeDeniedError,
 } from "./host-client-factory.js";
 
 // JSON-RPC protocol helpers and constants
@@ -100,7 +98,6 @@ export type {
   PluginDefinition,
   PaperclipPlugin,
   PluginHealthDiagnostics,
-  PluginConfigChangeContext,
   PluginConfigValidationResult,
   PluginWebhookInput,
   PluginApiRequestInput,
@@ -147,7 +144,6 @@ export type {
   JsonRpcMessage,
   JsonRpcErrorCode,
   PluginRpcErrorCode,
-  PluginInvocationScope,
   PluginInvocationContext,
   WorkerHostCallContext,
   InitializeParams,
@@ -249,7 +245,6 @@ export type {
   PluginProjectsClient,
   PluginExecutionWorkspacesClient,
   PluginSkillsClient,
-  PluginCompaniesClient,
   PluginIssuesClient,
   PluginIssueMutationActor,
   PluginIssueRelationsClient,
@@ -312,7 +307,6 @@ export type {
   PluginEntityQuery,
   PluginWorkspace,
   PluginExecutionWorkspaceMetadata,
-  Company,
   Project,
   Issue,
   IssueComment,
@@ -357,7 +351,6 @@ export type {
   PluginLauncherDeclaration,
   PluginMinimumHostVersion,
   PluginDatabaseDeclaration,
-  PluginApiRouteCompanyResolution,
   PluginApiRouteDeclaration,
   PluginLocalFolderDeclaration,
   PluginCompanySettings,

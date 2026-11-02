@@ -153,7 +153,7 @@ describe("setup/sync rerun survival — cross-cutting", () => {
     process.env.PAPERCLIP_INSTANCE_ID = "test-instance";
 
     const svc = agentInstructionsService();
-    const agent = { id: "agent-1", companyId: "company-1", name: "Agent 1", adapterConfig: {} };
+    const agent = { id: "agent-1", name: "Agent 1", adapterConfig: {} };
     const stockFiles = { "AGENTS.md": "# stock\n", "docs/TOOLS.md": "## stock tools\n" };
 
     // Initial files are fixture setup. Bundle materialization now requires a

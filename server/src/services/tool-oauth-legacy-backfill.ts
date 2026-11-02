@@ -112,7 +112,7 @@ async function runtimeProviderConfigForExistingSecret(
   if (!providerConfig) {
     throw new Error("Provider vault not found for existing OAuth token secret " + secret.id);
   }
-  if (providerConfig.companyId !== secret.companyId || providerConfig.provider !== secret.provider) {
+  if (providerConfig.provider !== secret.provider) {
     throw new Error("Provider vault does not match existing OAuth token secret " + secret.id);
   }
   if (providerConfig.status === "disabled" || providerConfig.status === "coming_soon") {
@@ -165,17 +165,13 @@ async function upsertTokenSecret(
   const existing = await tx
     .select()
     .from(companySecrets)
-    .where(and(
-      eq(companySecrets.companyId, connection.companyId),
-      eq(companySecrets.key, key),
-    ))
+    .where(eq(companySecrets.key, key))
     .then((rows) => rows[0] ?? null);
   const nextVersion = existing ? existing.latestVersion + 1 : 1;
   const providerId = (existing?.provider ?? "local_encrypted") as SecretProvider;
   const provider = getSecretProvider(providerId);
   const providerConfig = existing ? await runtimeProviderConfigForExistingSecret(tx, existing) : null;
   const providerWriteContext = {
-    companyId: connection.companyId,
     secretKey: key,
     secretName: existing?.name ?? name,
     version: nextVersion,
@@ -196,7 +192,6 @@ async function upsertTokenSecret(
   const secret = existing ?? await tx
     .insert(companySecrets)
     .values({
-      companyId: connection.companyId,
       key,
       name,
       provider: "local_encrypted",
@@ -263,7 +258,6 @@ async function upsertTokenSecret(
   await tx
     .insert(companySecretBindings)
     .values({
-      companyId: connection.companyId,
       secretId: secret.id,
       targetType: "tool_connection",
       targetId: connection.id,
@@ -274,7 +268,6 @@ async function upsertTokenSecret(
     })
     .onConflictDoUpdate({
       target: [
-        companySecretBindings.companyId,
         companySecretBindings.targetType,
         companySecretBindings.targetId,
         companySecretBindings.configPath,

@@ -86,17 +86,15 @@ const support = await getEmbeddedPostgresTestSupport();
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Shared",
         role: "engineer",
         adapterType: "codex_local",
       });
       await db
         .insert(issues)
-        .values({ id: issueId, companyId, title: "Identity test" });
+        .values({ id: issueId, title: "Identity test" });
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId,
         status: "running",
         contextSnapshot: { issueId },
@@ -110,12 +108,11 @@ const support = await getEmbeddedPostgresTestSupport();
         })),
       ).onConflictDoUpdate(membershipUpsert);
       await initializeRunIdentity(db, {
-        companyId,
         runId,
         responsibleUserId: "A",
         cause: "instruction",
       });
-      return { companyId, agentId, runId, issueId };
+      return { agentId, runId, issueId };
     }
     async function grant(
       input: Awaited<ReturnType<typeof seed>>,
@@ -129,13 +126,11 @@ const support = await getEmbeddedPostgresTestSupport();
         id = randomUUID();
       await db.insert(toolApplications).values({
         id: applicationId,
-        companyId: input.companyId,
         name: applicationId,
         type: "mcp_http",
       });
       await db.insert(toolConnections).values({
         id: connectionId,
-        companyId: input.companyId,
         applicationId,
         name: connectionId,
         uid: connectionId,
@@ -146,7 +141,6 @@ const support = await getEmbeddedPostgresTestSupport();
         config: { sourceTemplateKey: "github" },
       });
       await db.insert(toolConnectionInstalls).values({
-        companyId: input.companyId,
         connectionId,
         targetType: "agent",
         targetId: input.agentId,
@@ -154,13 +148,11 @@ const support = await getEmbeddedPostgresTestSupport();
       if (!dedicated)
         await db.insert(userSecretDefinitions).values({
           id: definitionId,
-          companyId: input.companyId,
           key: definitionId,
           name: "Test GitHub",
         });
       await db.insert(companySecrets).values({
         id: secretId,
-        companyId: input.companyId,
         key: secretId,
         name: `Test token ${secretId}`,
         scope: dedicated ? "company" : "user",
@@ -169,7 +161,6 @@ const support = await getEmbeddedPostgresTestSupport();
       });
       await db.insert(connectionGrants).values({
         id,
-        companyId: input.companyId,
         connectionId,
         kind: dedicated ? "agent" : "user",
         subjectUserId: dedicated ? null : user,
@@ -203,7 +194,6 @@ const support = await getEmbeddedPostgresTestSupport();
       const id = randomUUID();
       await db.insert(issueComments).values({
         id,
-        companyId: input.companyId,
         issueId: input.issueId,
         authorUserId: user,
         body: "Next instruction",
@@ -274,12 +264,6 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(
         (await resolveGitHubOperationCredentials(db, input)).reason,
       ).toMatch(/More than one/);
-      await expect(
-        resolveGitHubOperationCredentials(db, {
-          ...input,
-          companyId: randomUUID(),
-        }),
-      ).rejects.toThrow();
     });
     it.each([true, false])(
       "prefers the healthy duplicate regardless of grant age (%s)",
@@ -362,7 +346,6 @@ const support = await getEmbeddedPostgresTestSupport();
         (
           await resolveManagedGitHubIdentitySelection(
             db,
-            input.companyId,
             context,
           )
         ).grant?.id,
@@ -392,7 +375,6 @@ const support = await getEmbeddedPostgresTestSupport();
         (
           await resolveManagedGitHubIdentitySelection(
             db,
-            input.companyId,
             context,
           )
         ).grant?.id,
@@ -405,7 +387,6 @@ const support = await getEmbeddedPostgresTestSupport();
         (
           await resolveManagedGitHubIdentitySelection(
             db,
-            input.companyId,
             context,
           )
         ).grant?.id,
@@ -437,7 +418,7 @@ const support = await getEmbeddedPostgresTestSupport();
         .where(eq(toolConnectionInstalls.connectionId, duplicate.connectionId));
       expect(
         (
-          await resolveManagedGitHubIdentitySelection(db, input.companyId, {
+          await resolveManagedGitHubIdentitySelection(db, {
             ...input,
             responsibleUserId: "A",
           })
@@ -512,7 +493,7 @@ const support = await getEmbeddedPostgresTestSupport();
             .where(eq(connectionGrants.id, second.id));
         expect(
           (
-            await resolveManagedGitHubIdentitySelection(db, input.companyId, {
+            await resolveManagedGitHubIdentitySelection(db, {
               ...input,
               responsibleUserId: "A",
             })
@@ -637,7 +618,6 @@ const support = await getEmbeddedPostgresTestSupport();
               trustPreset: LOW_TRUST_REVIEW_PRESET,
               trustBoundary: {
                 mode: LOW_TRUST_REVIEW_PRESET,
-                companyId: input.companyId,
                 rootIssueId: input.issueId,
                 issueIds: [input.issueId],
                 allowedAgentIds: [input.agentId],
@@ -669,7 +649,6 @@ const support = await getEmbeddedPostgresTestSupport();
             const projectId = randomUUID();
             await db.insert(projects).values({
               id: projectId,
-              companyId: input.companyId,
               name: "Restricted",
               executionWorkspacePolicy: policy,
             });
@@ -735,7 +714,6 @@ const support = await getEmbeddedPostgresTestSupport();
       const projectId = randomUUID();
       await db.insert(projects).values({
         id: projectId,
-        companyId: input.companyId,
         name: "Taskless project",
       });
       await db
@@ -754,7 +732,6 @@ const support = await getEmbeddedPostgresTestSupport();
               trustPreset: LOW_TRUST_REVIEW_PRESET,
               trustBoundary: {
                 mode: LOW_TRUST_REVIEW_PRESET,
-                companyId: input.companyId,
                 projectIds: [projectId],
                 allowedAgentIds: [input.agentId],
               },
@@ -824,13 +801,13 @@ const support = await getEmbeddedPostgresTestSupport();
         expect((await post()).status).toBe(403);
         releaseA();
         const next = { ...input, runId: randomUUID() };
-        await db.insert(heartbeatRuns).values({ id: next.runId, companyId: next.companyId, agentId: next.agentId, status: "running", contextSnapshot: { issueId: input.issueId } });
-        await initializeRunIdentity(db, { companyId: input.companyId, runId: next.runId, responsibleUserId: "B", cause: "instruction" });
+        await db.insert(heartbeatRuns).values({ id: next.runId, agentId: next.agentId, status: "running", contextSnapshot: { issueId: input.issueId } });
+        await initializeRunIdentity(db, { runId: next.runId, responsibleUserId: "B", cause: "instruction" });
         broker.activate(next);
         const b = await post();
         expect(b.status).toBe(200);
         expect((await b.json()).login).toBe("B");
-        await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.companyId, input.companyId));
+        await db.update(connectionGrants).set({ status: "revoked" });
         const revoked = await post();
         expect((await revoked.json()).env).toEqual({});
       } finally { await broker.stop(); }

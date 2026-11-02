@@ -51,7 +51,7 @@ When Paperclip is running inside a managed worktree instance (`PAPERCLIP_IN_WORK
 
 ### Per-agent isolation and auth seeding
 
-For `codex_local` agents the server isolation guard pins each agent to a per-agent home (`<instance>/companies/<companyId>/agents/<agentId>/codex-home`) and sets `OPENAI_API_KEY=""` so an agent can never spend against the host API key or share another agent's Codex state.
+For `codex_local` agents the server isolation guard pins each agent to a per-agent home (`<instance>/organization/agents/<agentId>/codex-home`) and sets `OPENAI_API_KEY=""` so an agent can never spend against the host API key or share another agent's Codex state.
 
 A managed home is created empty, so the adapter must provision auth into it before launching Codex — otherwise the agent runs with zero credentials and the provider returns `401 Missing bearer`. The seeding contract:
 
@@ -141,7 +141,7 @@ a docs-only change.
 For manual local CLI usage outside heartbeat runs (for example running as `codexcoder` directly), use:
 
 ```sh
-npx paperclipai agent local-cli codexcoder --company-id <company-id>
+npx paperclipai agent local-cli codexcoder
 ```
 
 This installs any missing skills, creates an agent API key, and prints shell exports to run as that agent.

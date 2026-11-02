@@ -128,11 +128,10 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
     return companyId;
   }
 
-  async function seedAgent(companyId: string) {
+  async function seedAgent() {
     const agentId = randomUUID();
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CEO",
       role: "engineer",
       status: "running",
@@ -144,23 +143,20 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
     return agentId;
   }
 
-  function listOnboardingIssues(companyId: string) {
+  function listOnboardingIssues() {
     return db
       .select()
       .from(issues)
-      .where(and(
-        eq(issues.companyId, companyId),
-        eq(issues.originKind, ONBOARDING_FIRST_TASK_ORIGIN_KIND),
-      ));
+      .where(eq(issues.originKind, ONBOARDING_FIRST_TASK_ORIGIN_KIND));
   }
 
   it("stamps the onboarding origin and seeds the agent-attributed greeting on the first task", async () => {
-    const companyId = await seedCompany();
-    const agentId = await seedAgent(companyId);
+    await seedCompany();
+    const agentId = await seedAgent();
     const app = createApp();
 
     const created = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Get started", onboardingFirstTask: true, assigneeAgentId: agentId })
       .expect(201);
 
@@ -174,12 +170,12 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
   });
 
   it("seeds the two-option opening question card as the assignee on the first task", async () => {
-    const companyId = await seedCompany();
-    const agentId = await seedAgent(companyId);
+    await seedCompany();
+    const agentId = await seedAgent();
     const app = createApp();
 
     const created = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Get started", onboardingFirstTask: true, assigneeAgentId: agentId })
       .expect(201);
 
@@ -215,11 +211,11 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
   });
 
   it("does not seed the opening card on an unassigned onboarding first task", async () => {
-    const companyId = await seedCompany();
+    await seedCompany();
     const app = createApp();
 
     const created = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Get started", onboardingFirstTask: true })
       .expect(201);
 
@@ -231,15 +227,14 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
   });
 
   it("fails closed to an ordinary issue when the onboarding origin is already claimed", async () => {
-    const companyId = await seedCompany();
-    const agentId = await seedAgent(companyId);
+    await seedCompany();
+    const agentId = await seedAgent();
     const app = createApp();
     // Simulate the losing side of the count-vs-create race: the winning issue
     // already claimed the onboarding origin but is hidden, so the zero-count
     // fast path still passes and only issues_onboarding_first_task_uq rejects
     // the privileged insert.
     await db.insert(issues).values({
-      companyId,
       title: "Race winner",
       status: "todo",
       priority: "medium",
@@ -248,7 +243,7 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
     });
 
     const created = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Race loser", onboardingFirstTask: true, assigneeAgentId: agentId })
       .expect(201);
 
@@ -258,32 +253,32 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
       .from(issueComments)
       .where(eq(issueComments.issueId, created.body.id));
     expect(comments).toHaveLength(0);
-    expect(await listOnboardingIssues(companyId)).toHaveLength(1);
+    expect(await listOnboardingIssues()).toHaveLength(1);
   });
 
   it("allows at most one onboarding first task across concurrent creates", async () => {
-    const companyId = await seedCompany();
+    await seedCompany();
     const app = createApp();
 
     const responses = await Promise.all(
       ["Kick off A", "Kick off B", "Kick off C"].map((title) =>
         request(app)
-          .post(`/api/companies/${companyId}/issues`)
+          .post(`/api/issues`)
           .send({ title, onboardingFirstTask: true }),
       ),
     );
 
     for (const response of responses) expect(response.status).toBe(201);
-    expect(await listOnboardingIssues(companyId)).toHaveLength(1);
+    expect(await listOnboardingIssues()).toHaveLength(1);
   });
 
   it("stores the server-selected skill invocation and ignores the client description", async () => {
-    const companyId = await seedCompany();
-    const agentId = await seedAgent(companyId);
+    await seedCompany();
+    const agentId = await seedAgent();
     const app = createApp();
 
     const created = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({
         title: "Get started",
         description: "client supplied description that must be ignored",
@@ -299,7 +294,7 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
   });
 
   it("invokes the skill in plan mode when enableFirstTaskPlanProposal is on", async () => {
-    const companyId = await seedCompany();
+    await seedCompany();
     const app = createApp();
     await db
       .insert(instanceSettings)
@@ -310,7 +305,7 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
       });
 
     const created = await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Get started", onboardingFirstTask: true })
       .expect(201);
 
@@ -322,39 +317,37 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
   });
 
   it("does not queue an assignment wake for the onboarding first task", async () => {
-    const companyId = await seedCompany();
-    const agentId = await seedAgent(companyId);
+    await seedCompany();
+    const agentId = await seedAgent();
     const app = createApp();
 
     await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Get started", onboardingFirstTask: true, assigneeAgentId: agentId })
       .expect(201);
 
     await drainHeartbeatRunsToQuiescence(db, heartbeatService(db));
     const wakeups = await db
       .select()
-      .from(agentWakeupRequests)
-      .where(eq(agentWakeupRequests.companyId, companyId));
+      .from(agentWakeupRequests);
     expect(wakeups).toHaveLength(0);
     expect(mockAdapterExecute).not.toHaveBeenCalled();
   });
 
   it("still queues an assignment wake for an ordinary assigned issue", async () => {
-    const companyId = await seedCompany();
-    const agentId = await seedAgent(companyId);
+    await seedCompany();
+    const agentId = await seedAgent();
     const app = createApp();
 
     await request(app)
-      .post(`/api/companies/${companyId}/issues`)
+      .post(`/api/issues`)
       .send({ title: "Ordinary task", assigneeAgentId: agentId })
       .expect(201);
 
     await drainHeartbeatRunsToQuiescence(db, heartbeatService(db));
     const wakeups = await db
       .select()
-      .from(agentWakeupRequests)
-      .where(eq(agentWakeupRequests.companyId, companyId));
+      .from(agentWakeupRequests);
     // An ordinary assigned create still queues the assignment wake for the agent.
     expect(wakeups.length).toBeGreaterThan(0);
     expect(wakeups.some((row) => row.agentId === agentId)).toBe(true);

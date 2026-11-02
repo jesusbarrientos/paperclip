@@ -1,8 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpDown, Check, ChevronDown, Columns3, Filter, Layers, ListTree, Search, SearchX } from "lucide-react";
-import { Link, useCaseHref, useNavigate } from "@/lib/router";
-import { useCompany } from "@/context/CompanyContext";
+import { Link, caseHref, useNavigate } from "@/lib/router";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { casesApi, CASE_STATUSES, TERMINAL_CASE_STATUSES, type CaseStatus, type CaseSummary } from "@/api/cases";
@@ -84,8 +83,8 @@ const defaultCaseViewState: CaseViewState = {
   treeView: false,
 };
 
-function getCaseViewStorageKey(companyId: string | null | undefined): string | null {
-  return companyId ? `paperclip:cases:${companyId}:view` : null;
+function getCaseViewStorageKey(): string | null {
+  return "paperclip:cases:view";
 }
 
 function normalizeCaseColumns(value: unknown): CaseColumn[] {
@@ -412,7 +411,6 @@ function CaseListRow({
   selected?: boolean;
   onSelect?: () => void;
 }) {
-  const caseHref = useCaseHref();
   return (
     <Link
       data-case-item
@@ -739,14 +737,12 @@ function CasesEmptyHero() {
 }
 
 export function Cases() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const caseHref = useCaseHref();
   const caseListRef = useRef<HTMLDivElement | null>(null);
 
-  const viewStorageKey = getCaseViewStorageKey(selectedCompanyId);
+  const viewStorageKey = getCaseViewStorageKey();
   const [viewState, setViewState] = useState<CaseViewState>(() => loadCaseViewState(viewStorageKey));
   const [collapsedTreeCaseIds, setCollapsedTreeCaseIds] = useState<Set<string>>(() => new Set());
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => new Set());
@@ -800,29 +796,26 @@ export function Cases() {
     };
   }, [usesDefaultStatusFilter, viewState.labelFilter, viewState.projectFilters, viewState.search, viewState.statusFilters, viewState.treeView, viewState.typeFilters]);
   const casesQuery = useQuery({
-    queryKey: [...queryKeys.cases.list(selectedCompanyId ?? ""), listFilters],
-    queryFn: () => casesApi.list(selectedCompanyId!, listFilters),
-    enabled: !!selectedCompanyId,
+    queryKey: [...queryKeys.cases.list(), listFilters],
+    queryFn: () => casesApi.list(listFilters),
   });
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId ?? "", { includeArchived: true }),
-    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
   const labelsQuery = useQuery({
-    queryKey: queryKeys.issues.labels(selectedCompanyId ?? ""),
-    queryFn: () => issuesApi.listLabels(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.issues.labels(),
+    queryFn: () => issuesApi.listLabels(),
   });
   const patchCase = useMutation({
     mutationFn: ({ caseId, status }: { caseId: string; status: CaseStatus }) =>
       casesApi.patch(caseId, { status }),
     onSuccess: (updated) => {
       queryClient.setQueryData<CaseSummary[]>(
-        [...queryKeys.cases.list(selectedCompanyId ?? ""), listFilters],
+        [...queryKeys.cases.list(), listFilters],
         (current) => current?.map((row) => row.id === updated.id ? { ...row, ...updated } : row),
       );
-      queryClient.invalidateQueries({ queryKey: queryKeys.cases.list(selectedCompanyId ?? "") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.cases.list() });
     },
   });
 
@@ -1179,7 +1172,7 @@ export function Cases() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [caseHref, keyboardNavItems, navigate, selectedIndex, viewState.treeView]);
+  }, [keyboardNavItems, navigate, selectedIndex, viewState.treeView]);
 
   if (casesQuery.isLoading) return <PageSkeleton variant="list" />;
 

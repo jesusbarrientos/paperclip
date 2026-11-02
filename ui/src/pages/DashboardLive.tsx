@@ -4,12 +4,10 @@ import { Link } from "@/lib/router";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { EmptyState } from "../components/EmptyState";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 
 const DASHBOARD_LIVE_RUN_LIMIT = 50;
 
 export function DashboardLive() {
-  const { selectedCompanyId, companies } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
 
   useEffect(() => {
@@ -19,14 +17,6 @@ export function DashboardLive() {
     ]);
   }, [setBreadcrumbs]);
 
-  if (!selectedCompanyId) {
-    return (
-      <EmptyState
-        icon={RadioTower}
-        message={companies.length === 0 ? "Create an organization to view live runs." : "Select an organization to view live runs."}
-      />
-    );
-  }
 
   return (
     <div className="space-y-5">
@@ -48,7 +38,6 @@ export function DashboardLive() {
       </div>
 
       <ActiveAgentsPanel
-        companyId={selectedCompanyId}
         title="Active / recent"
         minRunCount={DASHBOARD_LIVE_RUN_LIMIT}
         fetchLimit={DASHBOARD_LIVE_RUN_LIMIT}

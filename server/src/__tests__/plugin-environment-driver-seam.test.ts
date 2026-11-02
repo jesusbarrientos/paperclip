@@ -147,7 +147,6 @@ describe("plugin environment driver seam", () => {
 
     stdin.write(serializeMessage(createRequest("environmentProbe", {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "environment-1",
       config: { template: "base" },
     }, 2)));
@@ -164,7 +163,6 @@ describe("plugin environment driver seam", () => {
 
     stdin.write(serializeMessage(createRequest("environmentStartInteractiveSetup", {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "environment-1",
       sessionId: "session-1",
       config: { template: "base" },
@@ -186,7 +184,6 @@ describe("plugin environment driver seam", () => {
 
     stdin.write(serializeMessage(createRequest("environmentExecute", {
       driverKey: "fake-plugin",
-      companyId: "company-1",
       environmentId: "environment-1",
       config: { template: "base" },
       lease: { providerLeaseId: "lease-1" },
@@ -331,7 +328,6 @@ describe("plugin external object provider seam", () => {
     expect(initializeResponse.result.supportedMethods).toContain("resolveExternalObject");
 
     stdin.write(serializeMessage(createRequest("detectExternalObjects", {
-      companyId: "company-1",
       urls: [{
         sanitizedCanonicalUrl: "https://mock.example/tickets/123",
         sanitizedDisplayUrl: "https://mock.example/tickets/123",
@@ -340,7 +336,6 @@ describe("plugin external object provider seam", () => {
         redactedMatchedText: "https://mock.example/tickets/123",
       }],
       sourceContext: {
-        companyId: "company-1",
         sourceIssueId: "issue-1",
         sourceKind: "description",
         sourceRecordId: null,
@@ -360,13 +355,11 @@ describe("plugin external object provider seam", () => {
     });
 
     stdin.write(serializeMessage(createRequest("resolveExternalObject", {
-      companyId: "company-1",
       providerKey: "mocktracker",
       objectType: "ticket",
       externalId: "MOCK-123",
       object: {
         id: "object-1",
-        companyId: "company-1",
         providerKey: "mocktracker",
         objectType: "ticket",
         externalId: "MOCK-123",

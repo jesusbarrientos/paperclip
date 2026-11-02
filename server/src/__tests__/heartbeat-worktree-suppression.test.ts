@@ -110,7 +110,6 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Worktree Agent",
       role: "engineer",
       status: "idle",
@@ -131,7 +130,6 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Assigned work",
       status: "todo",
       priority: "high",
@@ -139,7 +137,7 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
       responsibleUserId: "responsible-user",
     });
 
-    return { companyId, agentId, issueId };
+    return { agentId, issueId };
   }
 
   async function armWorktreeRunExecution(cutoff: Date) {
@@ -223,11 +221,10 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
   });
 
   it("does not replay copied queued runs or timer wakes while worktree scheduling is suppressed", async () => {
-    const { companyId, agentId, issueId } = await insertAgentAndIssue();
+    const { agentId, issueId } = await insertAgentAndIssue();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",

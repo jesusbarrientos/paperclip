@@ -52,7 +52,6 @@ async function flushReact() {
 
 const RUN = {
   id: "run-1",
-  companyId: "company-1",
   trigger: "manual",
   status: "failed",
   startedAt: "2026-07-10T00:00:00Z",
@@ -76,7 +75,6 @@ describe("SmokeLabDashboardCard", () => {
       steps: [
         {
           id: "s1",
-          companyId: "company-1",
           runId: "run-1",
           path: "P3",
           scenarioStep: "allowed-read",
@@ -103,7 +101,7 @@ describe("SmokeLabDashboardCard", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
-          <SmokeLabDashboardCard companyId="company-1" />
+          <SmokeLabDashboardCard />
         </QueryClientProvider>,
       );
     });

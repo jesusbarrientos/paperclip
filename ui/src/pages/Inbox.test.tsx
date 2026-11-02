@@ -12,6 +12,7 @@ import {
   getLocalInboxArchiveIssueIds,
 } from "../lib/inboxArchiveCache";
 import { taskCollectionPreferencesStorageKey } from "../lib/task-collection-preferences";
+import { queryKeys } from "../lib/queryKeys";
 
 const routerMock = vi.hoisted(() => ({
   location: { pathname: "/", search: "", hash: "" },
@@ -100,8 +101,8 @@ vi.mock("../api/projects", () => ({
   projectsApi: { list: apiMocks.projectsList },
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 vi.mock("../context/BreadcrumbContext", () => ({
@@ -175,7 +176,6 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: "issue-1",
     identifier: "PAP-904",
-    companyId: "company-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,
@@ -234,7 +234,6 @@ function createJoinRequest(
   return {
     id: "join-1",
     inviteId: "invite-1",
-    companyId: "company-1",
     requestType: "human",
     status: "pending_approval",
     requestIp: "127.0.0.1",
@@ -269,7 +268,6 @@ function createJoinRequest(
 function createApproval(overrides: Partial<Approval> = {}): Approval {
   return {
     id: "approval-1",
-    companyId: "company-1",
     type: "hire_agent",
     requestedByAgentId: null,
     requestedByUserId: "local-board",
@@ -287,7 +285,6 @@ function createApproval(overrides: Partial<Approval> = {}): Approval {
 function createFailedRun(overrides: Partial<HeartbeatRun> = {}): HeartbeatRun {
   return {
     id: "run-1",
-    companyId: "company-1",
     agentId: "agent-1",
     responsibleUserId: null,
     invocationSource: "assignment",
@@ -378,8 +375,8 @@ describe("Inbox toolbar", () => {
   });
 
   afterEach(() => {
-    for (const issueId of getLocalInboxArchiveIssueIds("company-1")) {
-      clearLocalInboxArchive("company-1", issueId);
+    for (const issueId of getLocalInboxArchiveIssueIds()) {
+      clearLocalInboxArchive(issueId);
     }
     container.remove();
   });
@@ -432,10 +429,9 @@ describe("Inbox toolbar", () => {
       createIssue({ id: "legacy-row", identifier: "PAP-1904", title: "Legacy inbox task" }),
     ]);
     localStorage.setItem(
-      taskCollectionPreferencesStorageKey({ companyId: "company-1", collectionKey: "inbox" }),
+      taskCollectionPreferencesStorageKey({ collectionKey: "inbox" }),
       JSON.stringify({
         version: 1,
-        companyId: "company-1",
         collectionKey: "inbox",
         viewState: {},
         columns: [],
@@ -555,7 +551,7 @@ describe("Inbox toolbar", () => {
 
   it("restores folded and unfolded sub-tasks across remounts", async () => {
     routerMock.location.pathname = "/inbox/mine";
-    const storageKey = "paperclip:inbox:collapsed-parents:company-1";
+    const storageKey = "paperclip:inbox:collapsed-parents";
     localStorage.removeItem(storageKey);
 
     const parent = createIssue({
@@ -705,7 +701,7 @@ describe("Inbox toolbar", () => {
 
   it("explains that live-run filtering is different from active task statuses", async () => {
     routerMock.location.pathname = "/inbox/mine";
-    localStorage.setItem("paperclip:inbox:filters:company-1", JSON.stringify({
+    localStorage.setItem("paperclip:inbox:filters", JSON.stringify({
       allCategoryFilter: "everything",
       allApprovalFilter: "all",
       issueFilters: { liveOnly: true },
@@ -726,9 +722,9 @@ describe("Inbox toolbar", () => {
     expect(container.querySelector('[data-testid="inbox-filter-scope-feedback"]')?.textContent)
       .toBe("Live runs only — tasks currently connected to an agent run.");
     const migrated = JSON.parse(
-      localStorage.getItem("paperclip:task-collection:v1:company-1:inbox") ?? "null",
-    ) as { companyId?: string; collectionKey?: string } | null;
-    expect(migrated).toMatchObject({ companyId: "company-1", collectionKey: "inbox" });
+      localStorage.getItem("paperclip:task-collection:v1:inbox") ?? "null",
+    ) as { collectionKey?: string } | null;
+    expect(migrated).toMatchObject({ collectionKey: "inbox" });
 
     act(() => root.unmount());
   });
@@ -774,12 +770,10 @@ describe("Inbox toolbar", () => {
     routerMock.location.pathname = "/inbox/mine";
     localStorage.setItem(
       taskCollectionPreferencesStorageKey({
-        companyId: "company-1",
         collectionKey: "inbox",
       }),
       JSON.stringify({
         version: 1,
-        companyId: "company-1",
         collectionKey: "inbox",
         viewState: { showDateGroupSeparators: false },
         columns: ["status", "id", "updated"],
@@ -915,12 +909,12 @@ describe("Inbox toolbar", () => {
       expect(apiMocks.issuesList).toHaveBeenCalledTimes(3);
     });
 
-    expect(apiMocks.issuesList.mock.calls.map((call) => call[1]?.includeLiveDescendantSummary)).toEqual([
+    expect(apiMocks.issuesList.mock.calls.map((call) => call[0]?.includeLiveDescendantSummary)).toEqual([
       true,
       true,
       true,
     ]);
-    expect(apiMocks.issuesList.mock.calls.map((call) => call[1]?.limit)).toEqual([
+    expect(apiMocks.issuesList.mock.calls.map((call) => call[0]?.limit)).toEqual([
       500,
       500,
       500,
@@ -1321,7 +1315,7 @@ describe("Inbox toolbar", () => {
 
     await act(async () => {
       queryClient.setQueriesData<Issue[]>(
-        { queryKey: ["issues", "company-1", "mine-by-me"] },
+        { queryKey: queryKeys.issues.listMineByMe() },
         [archivedIssue],
       );
     });

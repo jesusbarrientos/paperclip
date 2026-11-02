@@ -48,14 +48,12 @@ describeEmbeddedPostgres("reconcileAbandonedExecutionControl reports a genuine f
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Stuck worker",
       adapterType: "codex_local",
       status: "running",
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       executionControlDeadlineAt: pastDeadline,
@@ -63,7 +61,6 @@ describeEmbeddedPostgres("reconcileAbandonedExecutionControl reports a genuine f
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Abandoned execution control fixture",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -71,7 +68,7 @@ describeEmbeddedPostgres("reconcileAbandonedExecutionControl reports a genuine f
       checkoutRunId: runId,
     });
 
-    return { companyId, agentId, issueId, runId };
+    return { agentId, issueId, runId };
   }
 
   it("reports exactly one Sentry event for a genuine finalization-deadline failure", async () => {
@@ -143,33 +140,33 @@ describeEmbeddedPostgres("native review execution reconciliation admission", () 
     const now = new Date();
     await db.insert(companies).values({ id: companyId, name: "Reviewer recovery", issuePrefix: admitted ? "RRA" : "RRN" });
     await db.insert(agents).values([
-      { id: workerId, companyId, name: "Worker", adapterType: "codex_local", status: "idle" },
-      { id: reviewerId, companyId, name: "Reviewer", adapterType: "codex_local", status: "running" },
+      { id: workerId, name: "Worker", adapterType: "codex_local", status: "idle" },
+      { id: reviewerId, name: "Reviewer", adapterType: "codex_local", status: "running" },
     ]);
     await db.insert(heartbeatRuns).values({
-      id: runId, companyId, agentId: reviewerId, status: "running", runtimeMode: "native",
+      id: runId, agentId: reviewerId, status: "running", runtimeMode: "native",
       nativeIssueId: issueId, executionControlDeadlineAt: new Date(now.getTime() - 60_000),
       contextSnapshot: { issueId, ...(admitted ? { nativeReviewInteractionId: interactionId, nativeReviewDecisionId: decisionId } : {}) },
     });
-    await db.insert(heartbeatRuns).values({ id: sourceRunId, companyId, agentId: workerId, status: "succeeded", runtimeMode: "native", nativeIssueId: issueId });
+    await db.insert(heartbeatRuns).values({ id: sourceRunId, agentId: workerId, status: "succeeded", runtimeMode: "native", nativeIssueId: issueId });
     await db.insert(issues).values({
-      id: issueId, companyId, title: "Review task", status: "in_review", statusVersion: 1,
+      id: issueId, title: "Review task", status: "in_review", statusVersion: 1,
       lastStatusDecisionId: decisionId, assigneeAgentId: workerId, executionRunId: runId, checkoutRunId: runId,
     });
     const contractId = randomUUID();
     const resultId = randomUUID();
     const assessmentId = randomUUID();
-    await db.insert(completionContracts).values({ id: contractId, companyId, issueId, revision: 1, schemaVersion: "1", policyVersion: "test", risk: "low", completionAuthority: "agent_claim_policy", incompleteCriteriaPolicy: "block", contractJson: {}, canonicalSha256: randomUUID(), createdByActorType: "agent", createdByActorId: workerId });
+    await db.insert(completionContracts).values({ id: contractId, issueId, revision: 1, schemaVersion: "1", policyVersion: "test", risk: "low", completionAuthority: "agent_claim_policy", incompleteCriteriaPolicy: "block", contractJson: {}, canonicalSha256: randomUUID(), createdByActorType: "agent", createdByActorId: workerId });
     await db.update(heartbeatRuns).set({ completionContractId: contractId }).where(eq(heartbeatRuns.id, sourceRunId));
-    await db.insert(nativeRunResults).values({ id: resultId, companyId, issueId, runId: sourceRunId, completionContractId: contractId, serverFingerprint: randomUUID(), schemaStatus: "valid", resultJson: {}, canonicalSha256: randomUUID() });
-    await db.insert(workAssessments).values({ id: assessmentId, companyId, issueId, runId: sourceRunId, contractId, resultId, triggerKind: "test", triggerActorCompanyId: companyId, priorIssueStatus: "in_progress", priorStatusVersion: 0, policyVersion: "test", assessmentJson: {}, inputDigest: randomUUID() });
+    await db.insert(nativeRunResults).values({ id: resultId, issueId, runId: sourceRunId, completionContractId: contractId, serverFingerprint: randomUUID(), schemaStatus: "valid", resultJson: {}, canonicalSha256: randomUUID() });
+    await db.insert(workAssessments).values({ id: assessmentId, issueId, runId: sourceRunId, contractId, resultId, triggerKind: "test", priorIssueStatus: "in_progress", priorStatusVersion: 0, policyVersion: "test", assessmentJson: {}, inputDigest: randomUUID() });
     await db.insert(statusDecisions).values({
-      id: decisionId, companyId, issueId, runId: sourceRunId, assessmentId: assessmentId, decisionVersion: 1,
+      id: decisionId, issueId, runId: sourceRunId, assessmentId: assessmentId, decisionVersion: 1,
       policyVersion: "test", fromStatus: "in_progress", toStatus: "in_review", reasonCode: "completion_review",
       decisionJson: { projectedStatusVersion: 1 }, decisionDigest: randomUUID(), applicationState: "applied",
     });
     await db.insert(issueThreadInteractions).values({
-      id: interactionId, companyId, issueId, kind: "request_confirmation", status: "pending",
+      id: interactionId, issueId, kind: "request_confirmation", status: "pending",
       continuationPolicy: "wake_assignee", requestedResolverPolicy: "anyone", effectiveResolverPolicy: "anyone",
       resolverPolicyProvenance: "inherited", sourceRunId: sourceRunId, addresseeAgentId: reviewerId,
       payload: { version: 1, prompt: "Review", target: { type: "custom", key: "native_completion_review", revisionId: decisionId } },
@@ -180,7 +177,7 @@ describeEmbeddedPostgres("native review execution reconciliation admission", () 
     const [updatedRun] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
     const [review] = await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, interactionId));
     expect(updatedIssue).toMatchObject({ assigneeAgentId: workerId, executionRunId: admitted ? null : runId, checkoutRunId: admitted ? null : runId });
-    const recovery = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.companyId, companyId));
+    const recovery = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, issueId));
     expect(recovery).toHaveLength(admitted ? 1 : 0);
     if (admitted) expect(recovery[0]).toMatchObject({ maxAttempts: 3, wakePolicy: null, returnOwnerAgentId: workerId });
     expect(updatedRun?.status).toBe("failed");

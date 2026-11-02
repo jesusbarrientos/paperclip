@@ -99,8 +99,8 @@ Agents wake on a schedule, check work, and act. Delegation flows up and down the
 Monthly budgets per agent. When they hit the limit, they stop. No runaway costs.
 </td>
 <td align="center">
-<h3>🏢 Multi-Company</h3>
-One deployment, many companies. Complete data isolation. One control plane for your portfolio.
+<h3>🏢 One Organization per Instance</h3>
+Each instance runs one company end to end. Run another instance for another company.
 </td>
 <td align="center">
 <h3>🎫 Ticket System</h3>
@@ -150,7 +150,7 @@ Paperclip handles the hard orchestration details correctly.
 | **Governance with rollback.**     | Approval gates are enforced, config changes are revisioned, and bad changes can be rolled back safely.        |
 | **Goal-aware execution.**         | Tasks carry full goal ancestry so agents consistently see the "why," not just a title.                        |
 | **Portable company templates.**   | Export/import orgs, agents, and skills with secret scrubbing and collision handling.                          |
-| **True multi-company isolation.** | Every entity is company-scoped, so one deployment can run many companies with separate data and audit trails. |
+| **One organization per instance.** | Each instance serves exactly one company; separate companies run on separate instances with separate data and audit trails. |
 
 <br/>
 
@@ -190,7 +190,7 @@ Paperclip is a full control plane, not a wrapper. Before you build any of this y
 <tr>
 <td width="50%">
 
-**Identity & Access** — Two deployment modes (trusted local or authenticated), board users, agent API keys, short-lived run JWTs, company memberships, invite flows, and OpenClaw onboarding. Every mutating request is traced to an actor.
+**Identity & Access** — Two deployment modes (trusted local or authenticated), board users, agent API keys, short-lived run JWTs, instance-level memberships, invite flows, and OpenClaw onboarding. Every mutating request is traced to an actor.
 
 </td>
 <td width="50%">
@@ -202,7 +202,7 @@ Paperclip is a full control plane, not a wrapper. Before you build any of this y
 <tr>
 <td>
 
-**Work & Task System** — Issues carry company/project/goal/parent links, atomic checkout with execution locks, first-class blocker dependencies, comments, documents, attachments, work products, labels, and inbox state. No double-work, no lost context.
+**Work & Task System** — Issues carry project/goal/parent links, atomic checkout with execution locks, first-class blocker dependencies, comments, documents, attachments, work products, labels, and inbox state. No double-work, no lost context.
 
 </td>
 <td>
@@ -226,7 +226,7 @@ Paperclip is a full control plane, not a wrapper. Before you build any of this y
 <tr>
 <td>
 
-**Budget & Cost Control** — Token and cost tracking by company, agent, project, goal, issue, provider, and model. Scoped budget policies with warning thresholds and hard stops. Overspend pauses agents and cancels queued work automatically.
+**Budget & Cost Control** — Token and cost tracking by organization, agent, project, goal, issue, provider, and model. Scoped budget policies with warning thresholds and hard stops. Overspend pauses agents and cancels queued work automatically.
 
 </td>
 <td>
@@ -243,7 +243,7 @@ Paperclip is a full control plane, not a wrapper. Before you build any of this y
 </td>
 <td>
 
-**Secrets & Storage** — Instance and company secrets, encrypted local storage, provider-backed object storage, attachments, and work products. Sensitive values stay out of prompts unless a scoped run explicitly needs them.
+**Secrets & Storage** — Organization and user secrets, encrypted local storage, provider-backed object storage, attachments, and work products. Sensitive values stay out of prompts unless a scoped run explicitly needs them.
 
 </td>
 </tr>
@@ -255,7 +255,7 @@ Paperclip is a full control plane, not a wrapper. Before you build any of this y
 </td>
 <td>
 
-**Company Portability** — Export and import entire organizations — agents, skills, projects, routines, and issues — with secret scrubbing and collision handling. One deployment, many companies, complete data isolation.
+**Company Portability** — Export and import entire organizations — agents, skills, projects, routines, and issues — with secret scrubbing and collision handling. Packages import into the instance's single organization.
 
 </td>
 </tr>
@@ -317,7 +317,7 @@ Locally, a single Node.js process manages an embedded Postgres and local file st
 If you're a solo entrepreneur you can use Tailscale to access Paperclip on the go. Then later you can deploy to e.g. Vercel when you need it.
 
 **Can I run multiple companies?**
-Yes. A single deployment can run an unlimited number of companies with complete data isolation.
+Yes, one per instance. Each Paperclip instance serves exactly one organization, so run a separate instance (with its own database) for each company.
 
 **How is Paperclip different from agents like OpenClaw or Claude Code?**
 Paperclip _uses_ those agents. It orchestrates them into a company — with org charts, budgets, goals, governance, and accountability.
@@ -334,15 +334,12 @@ By default, agents run on scheduled heartbeats and event-based triggers (task as
 
 ## Importing & Exporting Companies
 
-Export a company to a portable package and import it into any other instance — local or cloud — from a local path or GitHub:
+Export the organization to a portable package and import it into another instance's organization — local or cloud — through the API:
 
-```bash
-paperclipai company export <company-id> --out ./my-export
-paperclipai company import ./my-export --dry-run
-paperclipai company import org/repo --target new
-```
+- `POST /api/organization/exports/preview` and `POST /api/organization/exports` build the package
+- `POST /api/organization/imports/preview` and `POST /api/organization/imports/apply` import a local or GitHub package into the instance's organization
 
-The board UI has matching Export and Import pages in company settings: the Export page shows a fidelity panel listing what the bundle will not carry, and the Import page starts imported agents and routines paused by default, with a post-import activation step. See the [Importing & Exporting guide](https://github.com/paperclipai/paperclip/blob/master/docs/guides/board-operator/importing-and-exporting.md) for details.
+The board UI has matching Export and Import pages in organization settings: the Export page shows a fidelity panel listing what the bundle will not carry, and the Import page starts imported agents and routines paused by default, with a post-import activation step. See the [Importing & Exporting guide](https://github.com/paperclipai/paperclip/blob/master/docs/guides/board-operator/importing-and-exporting.md) for details.
 
 ## Development
 

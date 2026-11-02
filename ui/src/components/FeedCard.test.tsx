@@ -18,7 +18,6 @@ vi.mock("@/lib/router", () => ({
 
 const event: ActivityEvent = {
   id: "event-1",
-  companyId: "company-1",
   actorType: "user",
   actorId: "user-1",
   action: "issue.updated",

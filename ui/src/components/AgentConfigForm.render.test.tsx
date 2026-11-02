@@ -82,17 +82,11 @@ vi.mock("../lib/clipboard", () => ({
   copyTextToClipboard: mockClipboard.copyTextToClipboard,
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: [{ id: "company-1", name: "Paperclip" }],
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
-    selectionSource: "bootstrap",
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "organization-1", name: "Paperclip" },
     loading: false,
     error: null,
-    setSelectedCompanyId: vi.fn(),
-    reloadCompanies: vi.fn(),
-    createCompany: vi.fn(),
   }),
 }));
 
@@ -210,7 +204,6 @@ async function flushReact() {
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "Cody",
     role: "Engineer",
     title: null,
@@ -1092,10 +1085,10 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.testEnvironment).toHaveBeenCalledTimes(1);
-    expect(mockAgentsApi.testEnvironment.mock.calls[0]?.[2]).toMatchObject({
+    expect(mockAgentsApi.testEnvironment.mock.calls[0]?.[1]).toMatchObject({
       adapterConfig: {},
     });
-    const adapterConfig = (mockAgentsApi.testEnvironment.mock.calls[0]?.[2] as {
+    const adapterConfig = (mockAgentsApi.testEnvironment.mock.calls[0]?.[1] as {
       adapterConfig: Record<string, unknown>;
     }).adapterConfig;
     expect(adapterConfig).not.toHaveProperty("model");
@@ -1123,10 +1116,10 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.testEnvironment).toHaveBeenCalledTimes(1);
-    expect(mockAgentsApi.testEnvironment.mock.calls[0]?.[2]).toMatchObject({
+    expect(mockAgentsApi.testEnvironment.mock.calls[0]?.[1]).toMatchObject({
       adapterConfig: {},
     });
-    const adapterConfig = (mockAgentsApi.testEnvironment.mock.calls[0]?.[2] as {
+    const adapterConfig = (mockAgentsApi.testEnvironment.mock.calls[0]?.[1] as {
       adapterConfig: Record<string, unknown>;
     }).adapterConfig;
     expect(adapterConfig).not.toHaveProperty("model");
@@ -1166,7 +1159,6 @@ describe("AgentConfigForm environment selector", () => {
     expect(mockAgentsApi.testEnvironment).toHaveBeenCalled();
     for (const call of mockAgentsApi.testEnvironment.mock.calls) {
       expect(call).toEqual([
-        "company-1",
         "codex_local",
         expect.objectContaining({
           adapterConfig: expect.objectContaining({
@@ -1450,7 +1442,6 @@ describe("AgentConfigForm environment selector", () => {
           />
           {login && (
             <AdapterLoginPanel
-              companyId={login.companyId}
               adapterType={login.adapterType}
               environmentId={login.environmentId}
             />
@@ -1577,7 +1568,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("company-1", "codex_local", {
+    expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("codex_local", {
       environmentId: "sandbox-1",
     });
     expect(result.container.textContent).toContain("WXYZ-1234");
@@ -1689,7 +1680,6 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.cancelAdapterAuthLogin).toHaveBeenCalledWith(
-      "company-1",
       "codex_local",
       "session-1",
     );
@@ -1736,7 +1726,7 @@ describe("AgentConfigForm environment selector", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     await act(async () => {
       root.render(<QueryClientProvider client={queryClient}><ToastProvider><TooltipProvider>
-        <AdapterLoginPanel companyId="company-1" adapterType="grok_local" environmentId="new-sandbox"
+        <AdapterLoginPanel adapterType="grok_local" environmentId="new-sandbox"
           aiConnection={{ ...intent, agentIds: [] }} chrome="onboarding" autoStart />
       </TooltipProvider></ToastProvider></QueryClientProvider>);
     });
@@ -1754,8 +1744,8 @@ describe("AgentConfigForm environment selector", () => {
     expect(mockAgentsApi.startAdapterAuthLogin).not.toHaveBeenCalled();
     await act(async () => release());
     await flushUntil(() => mockAgentsApi.startAdapterAuthLogin.mock.calls.length === 1);
-    expect(mockAgentsApi.cancelAdapterAuthLogin).toHaveBeenLastCalledWith("company-1", "grok_local", "previous-login");
-    expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("company-1", "grok_local", { environmentId: "new-sandbox", aiConnection: intent });
+    expect(mockAgentsApi.cancelAdapterAuthLogin).toHaveBeenLastCalledWith("grok_local", "previous-login");
+    expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("grok_local", { environmentId: "new-sandbox", aiConnection: intent });
     queryClient.clear();
   });
 
@@ -1780,7 +1770,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="codex_local"
                 environmentId="sandbox-1"
                 chrome="onboarding"
@@ -1835,7 +1824,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="codex_local"
                 environmentId="sandbox-1"
                 autoStart
@@ -1897,7 +1885,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="codex_local"
                 environmentId="sandbox-1"
                 autoStart
@@ -1945,7 +1932,7 @@ describe("AgentConfigForm environment selector", () => {
         prompt: { url: "https://auth.example.test/rebind", code: "REBIND-2" },
       });
     mockAgentsApi.getAdapterAuthLoginStatus.mockImplementation(
-      async (_companyId: string, _adapterType: string, sid: string) => ({
+      async (_adapterType: string, sid: string) => ({
         sessionId: sid,
         environmentId: "sandbox-1",
         status: "authenticated",
@@ -1973,7 +1960,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="codex_local"
                 environmentId="sandbox-1"
                 autoStart
@@ -2045,7 +2031,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="codex_local"
                 environmentId="sandbox-1"
                 autoStart
@@ -2241,7 +2226,6 @@ describe("AgentConfigForm environment selector", () => {
     expect(mockAgentsApi.startAdapterAuthLogin).not.toHaveBeenCalled();
     // The panel polls the resumed session id, not a freshly started one.
     expect(mockAgentsApi.getAdapterAuthLoginStatus).toHaveBeenCalledWith(
-      "company-1",
       "codex_local",
       "resumed-session-1",
     );
@@ -2264,7 +2248,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await startLogin(result.container);
 
-    expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("company-1", "codex_local", {
+    expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("codex_local", {
       environmentId: "sandbox-1",
     });
   });
@@ -2452,7 +2436,7 @@ describe("AgentConfigForm environment selector", () => {
       (result.container.textContent ?? "").includes("https://claude.example.test/authorize"),
     );
 
-    expect(mockAgentsApi.startClaudeSetupTokenLogin).toHaveBeenCalledWith("company-1", {
+    expect(mockAgentsApi.startClaudeSetupTokenLogin).toHaveBeenCalledWith({
       environmentId: "sandbox-1",
     });
     // The panel shows the authorization URL and a browser-code input. It never
@@ -2513,7 +2497,6 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.submitClaudeSetupTokenBrowserCode).toHaveBeenCalledWith(
-      "company-1",
       "claude-session-1",
       "BROWSERCODE-9",
     );
@@ -2542,7 +2525,6 @@ describe("AgentConfigForm environment selector", () => {
     await flushUntil(() => (result.container.textContent ?? "").includes("Authenticated"));
 
     expect(mockAgentsApi.completeClaudeSetupTokenLogin).toHaveBeenCalledWith(
-      "company-1",
       "claude-session-1",
     );
     expect(result.container.textContent).toContain("Authenticated");
@@ -2617,7 +2599,6 @@ describe("AgentConfigForm environment selector", () => {
     });
     const makeDefinition = (key: string): UserSecretDefinition => ({
       id: `def-${key}`,
-      companyId: "company-1",
       key,
       name: key.toUpperCase(),
       description: null,
@@ -2700,7 +2681,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="claude_local"
                 environmentId="sandbox-1"
                 onStored={onStored}
@@ -2737,7 +2717,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="claude_local"
                 environmentId="sandbox-1"
                 chrome="onboarding"
@@ -2777,7 +2756,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="claude_local"
                 environmentId="sandbox-1"
                 onApplyStored={onApplyStored}
@@ -2819,7 +2797,6 @@ describe("AgentConfigForm environment selector", () => {
           <ToastProvider>
             <TooltipProvider>
               <AdapterLoginPanel
-                companyId="company-1"
                 adapterType="claude_local"
                 environmentId="sandbox-1"
                 onApplyStored={onApplyStored}
@@ -2946,7 +2923,6 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.cancelClaudeSetupTokenLogin).toHaveBeenCalledWith(
-      "company-1",
       "claude-session-1",
     );
     // The panel resets: the Sign in button is available again, and the URL and the
@@ -2980,7 +2956,6 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.cancelClaudeSetupTokenLogin).toHaveBeenCalledWith(
-      "company-1",
       "claude-session-1",
     );
     // The panel reset even though the cancel returned a 404: the Sign in button is
@@ -3054,7 +3029,6 @@ describe("AgentConfigForm environment selector", () => {
     expect(result.container.textContent).toContain("https://claude.example.test/resumed");
     expect(mockAgentsApi.startClaudeSetupTokenLogin).not.toHaveBeenCalled();
     expect(mockAgentsApi.getClaudeSetupTokenLoginStatus).toHaveBeenCalledWith(
-      "company-1",
       "resumed-claude-session-1",
     );
     expect(findButton(result.container, "Cancel")).toBeTruthy();
@@ -3101,7 +3075,6 @@ describe("AgentConfigForm environment selector", () => {
     await flushReact();
 
     expect(mockAgentsApi.cancelClaudeSetupTokenLogin).toHaveBeenCalledWith(
-      "company-1",
       "resumed-claude-session-1",
     );
     expect(findButton(result.container, "Sign in")?.disabled).toBe(false);
@@ -3290,7 +3263,6 @@ describe("AgentConfigForm environment selector", () => {
       // owner starts a new session and does not hit the "too many active
       // sessions" cap.
       expect(mockAgentsApi.cancelClaudeSetupTokenLogin).toHaveBeenCalledWith(
-        "company-1",
         "claude-session-1",
       );
       // The Log in button is available again, and the Cancel button is gone.

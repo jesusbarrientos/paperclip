@@ -25,7 +25,6 @@ function sortRevisionsDescending(revisions: DocumentRevision[]) {
 function createCurrentRevisionSnapshot(document: IssueDocument): DocumentRevision {
   return {
     id: document.latestRevisionId ?? `${document.id}-latest`,
-    companyId: document.companyId,
     documentId: document.id,
     issueId: document.issueId,
     key: document.key,

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import express from "express";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { like } from "drizzle-orm";
+import { agents, companies, companySkills, createDb, heartbeatRuns } from "@paperclipai/db";
 import { companySkillRoutes } from "../routes/company-skills.js";
 import { agentRoutes } from "../routes/agents.js";
 import { errorHandler } from "../middleware/error-handler.js";
@@ -33,6 +34,7 @@ if (!support.supported) console.warn(`Planning fixture API calibration skipped: 
     process.env.PAPERCLIP_HOME = root;
     process.env.PAPERCLIP_INSTANCE_ID = "default";
     db = createDb(tempDb.connectionString);
+    await db.insert(companies).values({ name: "Planning calibration", issuePrefix: "PLAN" });
     app = express();
     app.use(express.json());
     app.use((req, _res, next) => { (req as any).actor = { type: "board", source: "local_implicit", isInstanceAdmin: true, userId: "local-board" }; next(); });
@@ -52,6 +54,14 @@ if (!support.supported) console.warn(`Planning fixture API calibration skipped: 
       },
     };
   });
+  // Variants reuse the same skill slugs in the single organization.
+  afterEach(async () => {
+    await db.delete(companySkills).where(like(companySkills.key, "company/eval-%"));
+    const skillsRoot = path.join(root, "instances", "default", "skills");
+    for (const entry of await readdir(skillsRoot).catch(() => [] as string[])) {
+      if (entry.startsWith("eval-")) await rm(path.join(skillsRoot, entry), { recursive: true, force: true, maxRetries: 3 });
+    }
+  });
   afterAll(async () => {
     if (savedHome === undefined) delete process.env.PAPERCLIP_HOME; else process.env.PAPERCLIP_HOME = savedHome;
     if (savedInstance === undefined) delete process.env.PAPERCLIP_INSTANCE_ID; else process.env.PAPERCLIP_INSTANCE_ID = savedInstance;
@@ -59,16 +69,15 @@ if (!support.supported) console.warn(`Planning fixture API calibration skipped: 
     if (root) await rm(root, { recursive: true, force: true });
   });
   it.each(PLAN_VARIANTS)("admits %s through real creation, readback and selection APIs", async variant => {
-    const companyId = randomUUID(), agentId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Planning calibration", issuePrefix: `P${companyId.slice(0, 6)}` });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Fixture Lead", role: "general", adapterType: "paperclip_runner", adapterConfig: {} });
-    const before = await api.get<any[]>(`/api/companies/${companyId}/skills`);
+    const agentId = randomUUID();
+    await db.insert(agents).values({ id: agentId, name: "Fixture Lead", role: "general", adapterType: "paperclip_runner", adapterConfig: {} });
+    const before = await api.get<any[]>(`/api/skills`);
     const bundled = before.find(s => s.key === PLAN_SKILLS[0].key);
     expect(bundled).toBeDefined();
-    const sources = await preparePlanSkills(api, companyId, variant);
+    const sources = await preparePlanSkills(api, variant);
     expect(sources).toHaveLength(2);
-    expect(sources.every(s => s.key.startsWith(`company/${companyId}/eval-`))).toBe(true);
-    const selected = await selectPlanSkills(api, companyId, agentId, sources);
+    expect(sources.every(s => s.key.startsWith("company/eval-"))).toBe(true);
+    const selected = await selectPlanSkills(api, agentId, sources);
     const invocations = planInvocations(sources, selected);
     const contextSkills = [];
     for (const source of sources.filter(s => s.selected)) {
@@ -90,15 +99,15 @@ if (!support.supported) console.warn(`Planning fixture API calibration skipped: 
     expect(resolveRunnerdCodexSkillInputs(inputs, context, providerHome)).toEqual(inputs.map(i => ({
       ...i, path: path.join(providerHome, "skills", i.name, "SKILL.md"),
     })));
-    await verifyPlanSelection(api, companyId, agentId, sources);
-    await verifyPlanSkills(api, companyId, sources);
-    const after = await api.get<any[]>(`/api/companies/${companyId}/skills`);
+    await verifyPlanSelection(api, agentId, sources);
+    await verifyPlanSkills(api, sources);
+    const after = await api.get<any[]>(`/api/skills`);
     expect(after.find(s => s.key === bundled.key)?.id).toBe(bundled.id);
     expect(after.find(s => s.key === bundled.key)?.markdown).toBe(bundled.markdown);
     expect(await db.select().from(heartbeatRuns)).toHaveLength(0);
     // Fail closed if a later actor changes either selection or source bytes.
     const swapped = sources.map(s => ({ ...s, selected: !s.selected }));
-    await expect(verifyPlanSelection(api, companyId, agentId, swapped)).rejects.toThrow("selection differs");
-    await expect(verifyPlanSkills(api, companyId, [{ ...sources[0]!, sha256: "wrong" }])).rejects.toThrow("guidance changed");
+    await expect(verifyPlanSelection(api, agentId, swapped)).rejects.toThrow("selection differs");
+    await expect(verifyPlanSkills(api, [{ ...sources[0]!, sha256: "wrong" }])).rejects.toThrow("guidance changed");
   }, 30_000);
 });

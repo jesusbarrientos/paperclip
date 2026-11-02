@@ -127,7 +127,6 @@ describe("Discord native command Gateway boundary", () => {
     });
     vi.stubGlobal("fetch", fetch);
     const runtime = createChatSdkEndpointRuntime({
-      companyId: "company-command",
       endpointId: "endpoint-command",
       callbacks: {
         onMessage() {},

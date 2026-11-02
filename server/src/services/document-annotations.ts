@@ -34,7 +34,6 @@ type ActorInput = {
 
 type IssueDocumentRow = {
   issueId: string;
-  companyId: string;
   documentId: string;
   documentKey: string;
   latestBody: string;
@@ -44,7 +43,6 @@ type IssueDocumentRow = {
 
 type RoutineDocumentRow = {
   routineId: string;
-  companyId: string;
   documentId: string;
   documentKey: string;
   latestBody: string;
@@ -54,7 +52,6 @@ type RoutineDocumentRow = {
 
 type CaseDocumentRow = {
   caseId: string;
-  companyId: string;
   documentId: string;
   documentKey: string;
   latestBody: string;
@@ -64,7 +61,6 @@ type CaseDocumentRow = {
 
 const threadSelect = {
   id: documentAnnotationThreads.id,
-  companyId: documentAnnotationThreads.companyId,
   issueId: documentAnnotationThreads.issueId,
   routineId: documentAnnotationThreads.routineId,
   caseId: documentAnnotationThreads.caseId,
@@ -96,7 +92,6 @@ const threadSelect = {
 
 const commentSelect = {
   id: documentAnnotationComments.id,
-  companyId: documentAnnotationComments.companyId,
   threadId: documentAnnotationComments.threadId,
   issueId: documentAnnotationComments.issueId,
   routineId: documentAnnotationComments.routineId,
@@ -129,7 +124,6 @@ export function documentAnnotationService(db: Db) {
     return dbOrTx
       .select({
         issueId: issueDocuments.issueId,
-        companyId: documents.companyId,
         documentId: documents.id,
         documentKey: issueDocuments.key,
         latestBody: documents.latestBody,
@@ -150,7 +144,6 @@ export function documentAnnotationService(db: Db) {
     return dbOrTx
       .select({
         routineId: routineDocuments.routineId,
-        companyId: documents.companyId,
         documentId: documents.id,
         documentKey: routineDocuments.key,
         latestBody: documents.latestBody,
@@ -161,8 +154,7 @@ export function documentAnnotationService(db: Db) {
       .innerJoin(documents, eq(routineDocuments.documentId, documents.id))
       .where(and(
         eq(routineDocuments.routineId, routineId),
-        eq(routineDocuments.key, key),
-        eq(routineDocuments.companyId, documents.companyId),
+        eq(routineDocuments.key, key)
       ))
       .then((rows: RoutineDocumentRow[]) => rows[0] ?? null);
   }
@@ -175,7 +167,6 @@ export function documentAnnotationService(db: Db) {
     return dbOrTx
       .select({
         caseId: caseDocuments.caseId,
-        companyId: documents.companyId,
         documentId: documents.id,
         documentKey: caseDocuments.key,
         latestBody: documents.latestBody,
@@ -186,8 +177,7 @@ export function documentAnnotationService(db: Db) {
       .innerJoin(documents, eq(caseDocuments.documentId, documents.id))
       .where(and(
         eq(caseDocuments.caseId, caseId),
-        eq(caseDocuments.key, key),
-        eq(caseDocuments.companyId, documents.companyId),
+        eq(caseDocuments.key, key)
       ))
       .then((rows: CaseDocumentRow[]) => rows[0] ?? null);
   }
@@ -213,7 +203,6 @@ export function documentAnnotationService(db: Db) {
     routineId: string,
     documentKey: string,
     threadId: string,
-    companyId: string,
     documentId: string,
     dbOrTx: any = db,
   ): Promise<DocumentAnnotationThread | null> {
@@ -222,7 +211,6 @@ export function documentAnnotationService(db: Db) {
       .from(documentAnnotationThreads)
       .where(and(
         eq(documentAnnotationThreads.id, threadId),
-        eq(documentAnnotationThreads.companyId, companyId),
         eq(documentAnnotationThreads.routineId, routineId),
         eq(documentAnnotationThreads.documentId, documentId),
         eq(documentAnnotationThreads.documentKey, documentKey),
@@ -234,7 +222,6 @@ export function documentAnnotationService(db: Db) {
     caseId: string,
     documentKey: string,
     threadId: string,
-    companyId: string,
     documentId: string,
     dbOrTx: any = db,
   ): Promise<DocumentAnnotationThread | null> {
@@ -243,7 +230,6 @@ export function documentAnnotationService(db: Db) {
       .from(documentAnnotationThreads)
       .where(and(
         eq(documentAnnotationThreads.id, threadId),
-        eq(documentAnnotationThreads.companyId, companyId),
         eq(documentAnnotationThreads.caseId, caseId),
         eq(documentAnnotationThreads.documentId, documentId),
         eq(documentAnnotationThreads.documentKey, documentKey),
@@ -269,12 +255,12 @@ export function documentAnnotationService(db: Db) {
     const comment = await dbOrTx
       .select({
         id: issueComments.id,
-        companyId: issueComments.companyId,
         issueId: issueComments.issueId,
       })
       .from(issueComments)
       .where(and(eq(issueComments.id, commentId), isNull(issueComments.deletedAt)))
-      .then((rows: Array<{ id: string; companyId: string; issueId: string }>) => rows[0] ?? null);
+      .then((rows: Array<{ id: string;
+ issueId: string }>) => rows[0] ?? null);
     if (!comment || comment.issueId !== issueId) {
       throw unprocessable("Linked issue comment must belong to this issue");
     }
@@ -323,7 +309,6 @@ export function documentAnnotationService(db: Db) {
       const doc = await getRoutineDocument(routineId, key);
       if (!doc) throw notFound("Document not found");
       const conditions = [
-        eq(documentAnnotationThreads.companyId, doc.companyId),
         eq(documentAnnotationThreads.routineId, routineId),
         eq(documentAnnotationThreads.documentId, doc.documentId),
       ];
@@ -357,7 +342,6 @@ export function documentAnnotationService(db: Db) {
       const doc = await getCaseDocument(caseId, key);
       if (!doc) throw notFound("Document not found");
       const conditions = [
-        eq(documentAnnotationThreads.companyId, doc.companyId),
         eq(documentAnnotationThreads.caseId, caseId),
         eq(documentAnnotationThreads.documentId, doc.documentId),
       ];
@@ -393,7 +377,7 @@ export function documentAnnotationService(db: Db) {
     getThreadForRoutineDocument: async (routineId: string, key: string, threadId: string) => {
       const doc = await getRoutineDocument(routineId, key);
       if (!doc) return null;
-      const thread = await getThreadForRoutine(routineId, key, threadId, doc.companyId, doc.documentId);
+      const thread = await getThreadForRoutine(routineId, key, threadId, doc.documentId);
       if (!thread) return null;
       const comments = await commentsForThreads([thread.id]);
       return { ...thread, comments };
@@ -402,7 +386,7 @@ export function documentAnnotationService(db: Db) {
     getThreadForCaseDocument: async (caseId: string, key: string, threadId: string) => {
       const doc = await getCaseDocument(caseId, key);
       if (!doc) return null;
-      const thread = await getThreadForCase(caseId, key, threadId, doc.companyId, doc.documentId);
+      const thread = await getThreadForCase(caseId, key, threadId, doc.documentId);
       if (!thread) return null;
       const comments = await commentsForThreads([thread.id]);
       return { ...thread, comments };
@@ -448,7 +432,6 @@ export function documentAnnotationService(db: Db) {
       const [thread] = await tx
         .insert(documentAnnotationThreads)
         .values({
-          companyId: doc.companyId,
           issueId,
           documentId: doc.documentId,
           documentKey: doc.documentKey,
@@ -477,7 +460,6 @@ export function documentAnnotationService(db: Db) {
       const [comment] = await tx
         .insert(documentAnnotationComments)
         .values({
-          companyId: doc.companyId,
           threadId: thread.id,
           issueId,
           documentId: doc.documentId,
@@ -534,7 +516,6 @@ export function documentAnnotationService(db: Db) {
       const [thread] = await tx
         .insert(documentAnnotationThreads)
         .values({
-          companyId: doc.companyId,
           issueId: null,
           routineId,
           documentId: doc.documentId,
@@ -564,7 +545,6 @@ export function documentAnnotationService(db: Db) {
       const [comment] = await tx
         .insert(documentAnnotationComments)
         .values({
-          companyId: doc.companyId,
           threadId: thread.id,
           issueId: null,
           routineId,
@@ -622,7 +602,6 @@ export function documentAnnotationService(db: Db) {
       const [thread] = await tx
         .insert(documentAnnotationThreads)
         .values({
-          companyId: doc.companyId,
           issueId: null,
           routineId: null,
           caseId,
@@ -653,7 +632,6 @@ export function documentAnnotationService(db: Db) {
       const [comment] = await tx
         .insert(documentAnnotationComments)
         .values({
-          companyId: doc.companyId,
           threadId: thread.id,
           issueId: null,
           routineId: null,
@@ -687,7 +665,6 @@ export function documentAnnotationService(db: Db) {
       const [comment] = await tx
         .insert(documentAnnotationComments)
         .values({
-          companyId: thread.companyId,
           threadId: thread.id,
           issueId: thread.issueId,
           documentId: thread.documentId,
@@ -717,13 +694,12 @@ export function documentAnnotationService(db: Db) {
     ) => db.transaction(async (tx) => {
       const doc = await getRoutineDocument(routineId, key, tx);
       if (!doc) throw notFound("Document not found");
-      const thread = await getThreadForRoutine(routineId, key, threadId, doc.companyId, doc.documentId, tx);
+      const thread = await getThreadForRoutine(routineId, key, threadId, doc.documentId, tx);
       if (!thread) throw notFound("Annotation thread not found");
       const now = new Date();
       const [comment] = await tx
         .insert(documentAnnotationComments)
         .values({
-          companyId: thread.companyId,
           threadId: thread.id,
           issueId: null,
           routineId: thread.routineId,
@@ -754,13 +730,12 @@ export function documentAnnotationService(db: Db) {
     ) => db.transaction(async (tx) => {
       const doc = await getCaseDocument(caseId, key, tx);
       if (!doc) throw notFound("Document not found");
-      const thread = await getThreadForCase(caseId, key, threadId, doc.companyId, doc.documentId, tx);
+      const thread = await getThreadForCase(caseId, key, threadId, doc.documentId, tx);
       if (!thread) throw notFound("Annotation thread not found");
       const now = new Date();
       const [comment] = await tx
         .insert(documentAnnotationComments)
         .values({
-          companyId: thread.companyId,
           threadId: thread.id,
           issueId: null,
           routineId: null,
@@ -891,7 +866,7 @@ export function documentAnnotationService(db: Db) {
     ) => db.transaction(async (tx) => {
       const doc = await getRoutineDocument(routineId, key, tx);
       if (!doc) throw notFound("Document not found");
-      const thread = await getThreadForRoutine(routineId, key, threadId, doc.companyId, doc.documentId, tx);
+      const thread = await getThreadForRoutine(routineId, key, threadId, doc.documentId, tx);
       if (!thread) throw notFound("Annotation thread not found");
       if (!input.status || input.status === thread.status) return thread;
 
@@ -927,7 +902,7 @@ export function documentAnnotationService(db: Db) {
     ) => db.transaction(async (tx) => {
       const doc = await getCaseDocument(caseId, key, tx);
       if (!doc) throw notFound("Document not found");
-      const thread = await getThreadForCase(caseId, key, threadId, doc.companyId, doc.documentId, tx);
+      const thread = await getThreadForCase(caseId, key, threadId, doc.documentId, tx);
       if (!thread) throw notFound("Annotation thread not found");
       if (!input.status || input.status === thread.status) return thread;
 
@@ -1008,7 +983,6 @@ export function documentAnnotationService(db: Db) {
         const [snapshot] = await tx
           .insert(documentAnnotationAnchorSnapshots)
           .values({
-            companyId: thread.companyId,
             threadId: thread.id,
             documentId: thread.documentId,
             fromRevisionId: thread.currentRevisionId,
@@ -1083,7 +1057,6 @@ export function documentAnnotationService(db: Db) {
         const [snapshot] = await tx
           .insert(documentAnnotationAnchorSnapshots)
           .values({
-            companyId: thread.companyId,
             threadId: thread.id,
             documentId: thread.documentId,
             fromRevisionId: thread.currentRevisionId,
@@ -1158,7 +1131,6 @@ export function documentAnnotationService(db: Db) {
         const [snapshot] = await tx
           .insert(documentAnnotationAnchorSnapshots)
           .values({
-            companyId: thread.companyId,
             threadId: thread.id,
             documentId: thread.documentId,
             fromRevisionId: thread.currentRevisionId,

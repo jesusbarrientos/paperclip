@@ -22,7 +22,6 @@ import { publishLiveEvent } from "./live-events.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 
 export interface ExternalObjectSourceContext {
-  companyId: string;
   sourceIssueId: string;
   sourceKind: ExternalObjectMentionSourceKind;
   sourceRecordId: string | null;
@@ -46,7 +45,6 @@ export interface ExternalObjectDetection {
 export interface ExternalObjectDetector {
   key: string;
   detect(input: {
-    companyId: string;
     urls: ExternalObjectCanonicalUrl[];
     sourceContext: ExternalObjectSourceContext;
   }): Promise<ExternalObjectDetection[]> | ExternalObjectDetection[];
@@ -82,7 +80,6 @@ export interface ExternalObjectResolver {
   providerKey: string;
   objectType?: string;
   resolve(input: {
-    companyId: string;
     object: ExternalObjectRecord;
   }): Promise<ExternalObjectResolveResult>;
 }
@@ -97,7 +94,6 @@ const REFRESH_LEASE_RENEW_INTERVAL_MS = 60_000;
 
 function sourceWhere(input: ExternalObjectSourceContext) {
   const conditions = [
-    eq(externalObjectMentions.companyId, input.companyId),
     eq(externalObjectMentions.sourceIssueId, input.sourceIssueId),
     eq(externalObjectMentions.sourceKind, input.sourceKind),
   ];
@@ -169,7 +165,6 @@ export function createExternalObjectDetectorRegistry(detectors: ExternalObjectDe
   const entries = [...detectors, genericUrlDetector()];
 
   async function detect(input: {
-    companyId: string;
     urls: ExternalObjectCanonicalUrl[];
     sourceContext: ExternalObjectSourceContext;
   }) {
@@ -220,7 +215,6 @@ function manifestProvidesObject(
 function objectSnapshot(object: ExternalObjectRecord): PluginExternalObjectRecordSnapshot {
   return {
     id: object.id,
-    companyId: object.companyId,
     providerKey: object.providerKey,
     objectType: object.objectType,
     externalId: object.externalId,
@@ -272,7 +266,6 @@ function createPluginProviderDetector(
         if (!manifest.capabilities.includes("external.objects.detect")) continue;
         try {
           const result = await pluginWorkerManager.call(provider.id, "detectExternalObjects", {
-            companyId: input.companyId,
             urls: input.urls.map((url) => ({
               sanitizedCanonicalUrl: url.sanitizedCanonicalUrl,
               sanitizedDisplayUrl: url.sanitizedDisplayUrl,
@@ -330,7 +323,6 @@ async function resolveViaPluginProvider(
     if (!manifestProvidesObject(manifest, object)) continue;
     try {
       return await pluginWorkerManager.call(provider.id, "resolveExternalObject", {
-        companyId: object.companyId,
         providerKey: object.providerKey,
         objectType: object.objectType,
         externalId: object.externalId,
@@ -389,24 +381,22 @@ export function externalObjectService(
     return dbOrTx
       .select({
         id: issues.id,
-        companyId: issues.companyId,
         title: issues.title,
         description: issues.description,
       })
       .from(issues)
       .where(eq(issues.id, issueId))
-      .then((rows: Array<{ id: string; companyId: string; title: string; description: string | null }>) => rows[0] ?? null);
+      .then((rows: Array<{ id: string;
+ title: string; description: string | null }>) => rows[0] ?? null);
   }
 
   async function upsertObjectFromDetection(
-    companyId: string,
     detection: ExternalObjectDetection,
     dbOrTx: any,
   ): Promise<ExternalObjectRecord> {
     const now = new Date();
     const canonical = detection.canonical;
     const values = {
-      companyId,
       providerKey: detection.providerKey,
       pluginId: detection.pluginId ?? null,
       objectType: detection.objectType,
@@ -424,7 +414,6 @@ export function externalObjectService(
       .values(values)
       .onConflictDoUpdate({
         target: [
-          externalObjects.companyId,
           externalObjects.providerKey,
           externalObjects.objectType,
           externalObjects.externalId,
@@ -452,7 +441,6 @@ export function externalObjectService(
     if (urls.length === 0) return;
 
     const detections = await detectorRegistry.detect({
-      companyId: input.companyId,
       urls,
       sourceContext: input,
     });
@@ -465,9 +453,8 @@ export function externalObjectService(
       const sourceKey = `${detection.providerKey}:${detection.objectType}:${canonicalHash}`;
       if (seen.has(sourceKey)) continue;
       seen.add(sourceKey);
-      const object = await upsertObjectFromDetection(input.companyId, detection, dbOrTx);
+      const object = await upsertObjectFromDetection(detection, dbOrTx);
       values.push({
-        companyId: input.companyId,
         sourceIssueId: input.sourceIssueId,
         sourceKind: input.sourceKind,
         sourceRecordId: input.sourceRecordId,
@@ -496,7 +483,6 @@ export function externalObjectService(
       const issue = await issueById(issueId, tx);
       if (!issue) throw notFound("Issue not found");
       await replaceSourceMentions({
-        companyId: issue.companyId,
         sourceIssueId: issue.id,
         sourceKind: "title",
         sourceRecordId: null,
@@ -505,7 +491,6 @@ export function externalObjectService(
         text: issue.title,
       }, tx);
       await replaceSourceMentions({
-        companyId: issue.companyId,
         sourceIssueId: issue.id,
         sourceKind: "description",
         sourceRecordId: null,
@@ -523,13 +508,13 @@ export function externalObjectService(
       const comment = await tx
         .select({
           id: issueComments.id,
-          companyId: issueComments.companyId,
           issueId: issueComments.issueId,
           body: issueComments.body,
         })
         .from(issueComments)
         .where(eq(issueComments.id, commentId))
-        .then((rows: Array<{ id: string; companyId: string; issueId: string; body: string }>) => rows[0] ?? null);
+        .then((rows: Array<{ id: string;
+ issueId: string; body: string }>) => rows[0] ?? null);
       if (!comment) {
         await tx
           .delete(externalObjectMentions)
@@ -537,7 +522,6 @@ export function externalObjectService(
         return;
       }
       await replaceSourceMentions({
-        companyId: comment.companyId,
         sourceIssueId: comment.issueId,
         sourceKind: "comment",
         sourceRecordId: comment.id,
@@ -555,7 +539,6 @@ export function externalObjectService(
       const document = await tx
         .select({
           documentId: documents.id,
-          companyId: documents.companyId,
           issueId: issueDocuments.issueId,
           key: issueDocuments.key,
           body: documents.latestBody,
@@ -563,7 +546,8 @@ export function externalObjectService(
         .from(issueDocuments)
         .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
         .where(eq(documents.id, documentId))
-        .then((rows: Array<{ documentId: string; companyId: string; issueId: string; key: string; body: string }>) => rows[0] ?? null);
+        .then((rows: Array<{ documentId: string;
+ issueId: string; key: string; body: string }>) => rows[0] ?? null);
       if (!document) {
         await tx
           .delete(externalObjectMentions)
@@ -571,7 +555,6 @@ export function externalObjectService(
         return;
       }
       await replaceSourceMentions({
-        companyId: document.companyId,
         sourceIssueId: document.issueId,
         sourceKind: "document",
         sourceRecordId: document.documentId,
@@ -623,10 +606,7 @@ export function externalObjectService(
       })
       .from(externalObjectMentions)
       .leftJoin(externalObjects, eq(externalObjectMentions.objectId, externalObjects.id))
-      .where(and(
-        eq(externalObjectMentions.companyId, issue.companyId),
-        eq(externalObjectMentions.sourceIssueId, issue.id),
-      ))
+      .where(eq(externalObjectMentions.sourceIssueId, issue.id))
       .orderBy(asc(externalObjectMentions.sourceKind), asc(externalObjectMentions.createdAt));
     const now = new Date();
     const grouped = new Map<string, {
@@ -715,7 +695,7 @@ export function externalObjectService(
     return summarizeObjectPayloads(objects);
   }
 
-  async function getIssueSummaries(companyId: string, issueIds: string[]) {
+  async function getIssueSummaries(issueIds: string[]) {
     if (!(await isEnabled())) return new Map<string, ReturnType<typeof summarizeObjectPayloads>>();
     const uniqueIssueIds = [...new Set(issueIds)].filter((id) => id.length > 0);
     const summaries = new Map<string, ReturnType<typeof summarizeObjectPayloads>>();
@@ -728,10 +708,7 @@ export function externalObjectService(
       })
       .from(externalObjectMentions)
       .innerJoin(externalObjects, eq(externalObjectMentions.objectId, externalObjects.id))
-      .where(and(
-        eq(externalObjectMentions.companyId, companyId),
-        inArray(externalObjectMentions.sourceIssueId, uniqueIssueIds),
-      ));
+      .where(inArray(externalObjectMentions.sourceIssueId, uniqueIssueIds));
 
     const now = new Date();
     const objectsByIssueId = new Map<string, Map<string, ReturnType<typeof toObjectPayload>>>();
@@ -751,21 +728,16 @@ export function externalObjectService(
   async function getProjectSummary(projectId: string) {
     if (!(await isEnabled())) return emptySummary();
     const projectIssues = await db
-      .select({ id: issues.id, companyId: issues.companyId })
+      .select({ id: issues.id })
       .from(issues)
       .where(and(eq(issues.projectId, projectId), inArray(issues.status, ["todo", "in_progress", "in_review", "blocked"])));
     if (projectIssues.length === 0) return { ...summarizeObjects([]), objects: [] };
-    const companyIds = new Set(projectIssues.map((issue) => issue.companyId));
-    if (companyIds.size !== 1) return { ...summarizeObjects([]), objects: [] };
     const issueIds = projectIssues.map((issue) => issue.id);
     const rows = await db
       .select({ object: externalObjects })
       .from(externalObjectMentions)
       .innerJoin(externalObjects, eq(externalObjectMentions.objectId, externalObjects.id))
-      .where(and(
-        eq(externalObjectMentions.companyId, projectIssues[0]!.companyId),
-        inArray(externalObjectMentions.sourceIssueId, issueIds),
-      ));
+      .where(inArray(externalObjectMentions.sourceIssueId, issueIds));
     const now = new Date();
     const objectsById = new Map<string, ReturnType<typeof toObjectPayload>>();
     for (const row of rows) objectsById.set(row.object.id, toObjectPayload(row.object, now));
@@ -774,7 +746,6 @@ export function externalObjectService(
   }
 
   type RefreshObjectInput = {
-    companyId: string;
     actor?: Pick<LogActivityInput, "actorType" | "actorId" | "agentId" | "runId">;
     force?: boolean;
     now?: Date;
@@ -783,7 +754,6 @@ export function externalObjectService(
   function refreshOwnerWhere(object: ExternalObjectRecord, refreshToken: string) {
     return and(
       eq(externalObjects.id, object.id),
-      eq(externalObjects.companyId, object.companyId),
       eq(externalObjects.refreshToken, refreshToken),
     );
   }
@@ -792,7 +762,7 @@ export function externalObjectService(
     const latest = await db
       .select()
       .from(externalObjects)
-      .where(and(eq(externalObjects.id, object.id), eq(externalObjects.companyId, object.companyId)))
+      .where(eq(externalObjects.id, object.id))
       .then((rows) => rows[0] ?? null);
     if (!latest) throw notFound("External object not found");
     return { object: toObjectPayload(latest, now), refreshed: false, reason: "refresh_superseded" as const };
@@ -822,7 +792,7 @@ export function externalObjectService(
       return { object: toObjectPayload(updated ?? object, now), refreshed: false, reason: "no_resolver" as const };
     }
 
-    const result = pluginResult ?? await resolver!.resolve({ companyId: object.companyId, object });
+    const result = pluginResult ?? await resolver!.resolve({ object });
     if (!result.ok) {
       const [updated] = await db
         .update(externalObjects)
@@ -840,7 +810,6 @@ export function externalObjectService(
         .returning();
       if (!updated) return refreshSupersededResult(object, now);
       publishLiveEvent({
-        companyId: object.companyId,
         type: "external_object.updated",
         payload: { objectId: object.id, liveness: result.liveness },
       });
@@ -883,7 +852,6 @@ export function externalObjectService(
     const next = updated ?? object;
     if (objectChanged(object, next) && input.actor) {
       await logActivity(db, {
-        companyId: object.companyId,
         actorType: input.actor.actorType,
         actorId: input.actor.actorId,
         agentId: input.actor.agentId,
@@ -904,7 +872,6 @@ export function externalObjectService(
       });
     }
     publishLiveEvent({
-      companyId: object.companyId,
       type: "external_object.updated",
       payload: { objectId: object.id, statusCategory: next.statusCategory, liveness: next.liveness },
     });
@@ -937,7 +904,6 @@ export function externalObjectService(
       })
       .where(and(
         eq(externalObjects.id, object.id),
-        eq(externalObjects.companyId, object.companyId),
         dueOrForced,
       ))
       .returning();
@@ -971,14 +937,14 @@ export function externalObjectService(
     const object = await db
       .select()
       .from(externalObjects)
-      .where(and(eq(externalObjects.id, objectId), eq(externalObjects.companyId, input.companyId)))
+      .where(eq(externalObjects.id, objectId))
       .then((rows) => rows[0] ?? null);
     if (!object) throw notFound("External object not found");
     if (!input.force && object.nextRefreshAt && object.nextRefreshAt > now) {
       return { object: toObjectPayload(object, now), refreshed: false, reason: "backoff" as const };
     }
 
-    const refreshKey = `${object.companyId}:${object.id}`;
+    const refreshKey = object.id;
     const existingRefresh = objectRefreshesInFlight.get(refreshKey);
     if (existingRefresh) return existingRefresh;
 
@@ -987,7 +953,7 @@ export function externalObjectService(
       const latest = await db
         .select()
         .from(externalObjects)
-        .where(and(eq(externalObjects.id, object.id), eq(externalObjects.companyId, object.companyId)))
+        .where(eq(externalObjects.id, object.id))
         .then((rows) => rows[0] ?? null);
       if (!latest) throw notFound("External object not found");
       return { object: toObjectPayload(latest, now), refreshed: false, reason: "refresh_in_progress" as const };
@@ -1006,7 +972,6 @@ export function externalObjectService(
   }
 
   async function refreshIssueObjects(issueId: string, input: {
-    companyId: string;
     objectIds?: string[];
     actor?: Pick<LogActivityInput, "actorType" | "actorId" | "agentId" | "runId">;
   }) {
@@ -1017,19 +982,18 @@ export function externalObjectService(
       .filter((id) => !input.objectIds || input.objectIds.includes(id));
     const results = [];
     for (const objectId of objectIds) {
-      results.push(await refreshObject(objectId, { companyId: input.companyId, actor: input.actor }));
+      results.push(await refreshObject(objectId, { actor: input.actor }));
     }
     return results;
   }
 
-  async function refreshDueObjectsUnchecked(companyId: string, limit = 50, now = new Date()) {
+  async function refreshDueObjectsUnchecked(limit = 50, now = new Date()) {
     const staleRefreshStartedBefore = new Date(now.getTime() - DEFAULT_REFRESH_LEASE_SECONDS * 1000);
     const due = await db
       .select({ id: externalObjects.id })
       .from(externalObjects)
       .where(
         and(
-          eq(externalObjects.companyId, companyId),
           eq(externalObjects.isTerminal, false),
           lte(externalObjects.nextRefreshAt, now),
           or(
@@ -1042,7 +1006,6 @@ export function externalObjectService(
     const results = [];
     for (const row of due) {
       results.push(await refreshObject(row.id, {
-        companyId,
         actor: { actorType: "system", actorId: "external-object-resolver", agentId: null, runId: null },
         now,
       }));
@@ -1050,9 +1013,9 @@ export function externalObjectService(
     return results;
   }
 
-  async function refreshDueObjects(companyId: string, limit = 50, now = new Date()) {
+  async function refreshDueObjects(limit = 50, now = new Date()) {
     if (!(await isEnabled())) return [];
-    return refreshDueObjectsUnchecked(companyId, limit, now);
+    return refreshDueObjectsUnchecked(limit, now);
   }
 
   async function refreshDueObjectsForActiveCompanies(limitPerCompany = 50, now = new Date()) {
@@ -1064,7 +1027,7 @@ export function externalObjectService(
     let checked = 0;
     let refreshed = 0;
     for (const company of activeCompanies) {
-      const results = await refreshDueObjectsUnchecked(company.id, limitPerCompany, now);
+      const results = await refreshDueObjectsUnchecked(limitPerCompany, now);
       checked += results.length;
       refreshed += results.filter((result) => result.refreshed).length;
     }

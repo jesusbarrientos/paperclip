@@ -3,7 +3,6 @@
   "fixtureName": "Duplicate event",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_replay",
     "issueId": "issue_replay_duplicate",
     "runId": "run_replay_duplicate",
     "environmentLeaseId": "lease_replay_duplicate",

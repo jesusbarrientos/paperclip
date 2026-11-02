@@ -124,7 +124,7 @@ Configure credentials through Hermes env/profile secrets, never in prompt text:
 - \`PAPERCLIP_API_URL\` - Paperclip base URL, with or without \`/api\`
 - \`PAPERCLIP_BRIDGE_API_KEY\` - Paperclip agent API key created with \`scope.kind = "task_bridge"\`
 - optional fallback \`PAPERCLIP_API_KEY\` - must still be a task_bridge key, never a normal claimed agent key
-- optional \`PAPERCLIP_COMPANY_ID\`, \`PAPERCLIP_AGENT_ID\`, and \`PAPERCLIP_RUN_ID\`
+- optional \`PAPERCLIP_AGENT_ID\` and \`PAPERCLIP_RUN_ID\`
 
 The bridge is separate from adapter execution:
 
@@ -140,7 +140,6 @@ task-bridge surfaces.
 
 - \`{{agentId}}\` — Paperclip agent ID
 - \`{{agentName}}\` — Agent display name
-- \`{{companyId}}\` — Paperclip company ID
 - \`{{companyName}}\` — Company display name
 - \`{{runId}}\` — Current heartbeat run ID
 - \`{{taskId}}\` — Current task/issue ID (if assigned)

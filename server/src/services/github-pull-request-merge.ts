@@ -23,12 +23,10 @@ export type PullRequestMergeDetails = {
 };
 
 export type PullRequestMergeStateResolver = (
-  companyId: string,
   reference: GitHubPullRequestReference,
 ) => Promise<PullRequestMergeState>;
 
 export type PullRequestMergeDetailsResolver = (
-  companyId: string,
   reference: GitHubPullRequestReference,
 ) => Promise<PullRequestMergeDetails>;
 
@@ -90,10 +88,9 @@ export function createPullRequestMergeDetailsResolver(db: Db): PullRequestMergeD
   const resolver = createGitHubExternalObjectProvider(db).resolvers
     .find((candidate) => candidate.objectType === "pull_request") ?? null;
 
-  return async (companyId, reference) => {
+  return async (reference) => {
     if (!resolver) return { state: "unknown", headRef: null, headSha: null };
     const result = await resolver.resolve({
-      companyId,
       object: {
         externalId: `${reference.owner}/${reference.repo}#pull/${reference.number}`,
         sanitizedCanonicalUrl: `https://github.com/${reference.owner}/${reference.repo}/pull/${reference.number}`,
@@ -125,5 +122,5 @@ export function createPullRequestMergeDetailsResolver(db: Db): PullRequestMergeD
 
 export function createPullRequestMergeStateResolver(db: Db): PullRequestMergeStateResolver {
   const resolveDetails = createPullRequestMergeDetailsResolver(db);
-  return async (companyId, reference) => (await resolveDetails(companyId, reference)).state;
+  return async (reference) => (await resolveDetails(reference)).state;
 }

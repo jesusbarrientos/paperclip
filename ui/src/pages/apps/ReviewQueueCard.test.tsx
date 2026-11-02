@@ -13,18 +13,17 @@ const pushToastMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/tools", () => ({
   toolsApi: {
-    listActionRequests: (companyId: string, status: string) => listActionRequestsMock(companyId, status),
-    approveActionRequest: (companyId: string, actionRequestId: string, rememberAction?: boolean) =>
-      approveActionRequestMock(companyId, actionRequestId, rememberAction),
-    createTrustRuleFromActionRequest: (companyId: string, actionRequestId: string, input: unknown) =>
-      createTrustRuleFromActionRequestMock(companyId, actionRequestId, input),
+    listActionRequests: (status: string) => listActionRequestsMock(status),
+    approveActionRequest: (actionRequestId: string, rememberAction?: boolean) =>
+      approveActionRequestMock(actionRequestId, rememberAction),
+    createTrustRuleFromActionRequest: (actionRequestId: string, input: unknown) =>
+      createTrustRuleFromActionRequestMock(actionRequestId, input),
   },
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip" },
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip" },
   }),
 }));
 
@@ -46,7 +45,6 @@ function pendingRequest() {
   return {
     request: {
       id: "request-1",
-      companyId: "company-1",
       invocationId: "invocation-1",
       issueId: "issue-1",
       interactionId: null,
@@ -142,7 +140,7 @@ describe("ReviewQueueCard", () => {
     await flushReact();
 
     expect(calls).toEqual(["approve"]);
-    expect(approveActionRequestMock).toHaveBeenCalledWith("company-1", "request-1", true);
+    expect(approveActionRequestMock).toHaveBeenCalledWith("request-1", true);
     expect(createTrustRuleFromActionRequestMock).not.toHaveBeenCalled();
     expect(pushToastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Always allowed" }));
   });

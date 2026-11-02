@@ -36,7 +36,6 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 describeEmbeddedPostgres("reportRunFailure", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
   let agentId!: string;
   let inheritedEnv: NodeJS.ProcessEnv;
 
@@ -70,18 +69,15 @@ describeEmbeddedPostgres("reportRunFailure", () => {
   });
 
   async function seedCompanyAndAgent(agentOverrides: Partial<typeof agents.$inferInsert> = {}) {
-    companyId = randomUUID();
     agentId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      issuePrefix: "TEST",
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -91,7 +87,7 @@ describeEmbeddedPostgres("reportRunFailure", () => {
       permissions: {},
       ...agentOverrides,
     });
-    return { companyId, agentId };
+    return { agentId };
   }
 
   function buildRun(
@@ -99,7 +95,6 @@ describeEmbeddedPostgres("reportRunFailure", () => {
   ): typeof heartbeatRuns.$inferSelect {
     return {
       id: randomUUID(),
-      companyId,
       agentId,
       status: "failed",
       error: "the provider process exited with code 1",

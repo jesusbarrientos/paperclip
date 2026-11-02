@@ -37,14 +37,12 @@ export type QueuedCommentActivityLogInput = {
  * before calling `publishActivity`.
  */
 export type QueuedCommentActivityPublication = {
-  companyId: string;
   payload: Record<string, unknown>;
   pluginEvent: unknown;
 };
 
 export type QueuedCommentIssueContext = {
   id: string;
-  companyId: string;
   assigneeAgentId: string | null;
   executionRunId: string | null;
 };

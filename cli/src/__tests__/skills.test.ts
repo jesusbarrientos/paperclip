@@ -30,7 +30,6 @@ function jsonResponse(body: unknown, status = 200): Response {
 function skill(overrides: Record<string, unknown> = {}) {
   return {
     id: "11111111-1111-1111-1111-111111111111",
-    companyId: "company-1",
     key: "paperclip/review-prs",
     slug: "review-prs",
     name: "Review PRs",
@@ -81,7 +80,6 @@ function catalogSkill(overrides: Record<string, unknown> = {}) {
 function agent(overrides: Record<string, unknown> = {}) {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "Coder",
     role: "engineer",
     status: "active",
@@ -129,7 +127,6 @@ describe("skills CLI commands", () => {
     process.env = { ...ORIGINAL_ENV };
     delete process.env.PAPERCLIP_API_URL;
     delete process.env.PAPERCLIP_API_KEY;
-    delete process.env.PAPERCLIP_COMPANY_ID;
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -153,8 +150,6 @@ describe("skills CLI commands", () => {
     await runCommand([
       "skills",
       "list",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -163,7 +158,7 @@ describe("skills CLI commands", () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://paperclip.test/api/companies/company-1/skills",
+      "http://paperclip.test/api/skills",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ authorization: "Bearer token" }),
@@ -181,8 +176,6 @@ describe("skills CLI commands", () => {
       "skills",
       "show",
       "Review PRs",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -192,7 +185,7 @@ describe("skills CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/skills/11111111-1111-1111-1111-111111111111",
+      "http://paperclip.test/api/skills/11111111-1111-1111-1111-111111111111",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -214,8 +207,6 @@ describe("skills CLI commands", () => {
       "skills",
       "file",
       "review-prs",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -320,8 +311,6 @@ describe("skills CLI commands", () => {
       "--as",
       "pr-flow",
       "--force",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -330,7 +319,7 @@ describe("skills CLI commands", () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://paperclip.test/api/companies/company-1/skills/install-catalog",
+      "http://paperclip.test/api/skills/install-catalog",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -353,8 +342,6 @@ describe("skills CLI commands", () => {
       "update",
       "review-prs",
       "--force",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -364,7 +351,7 @@ describe("skills CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/skills/11111111-1111-1111-1111-111111111111/install-update",
+      "http://paperclip.test/api/skills/11111111-1111-1111-1111-111111111111/install-update",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ force: true }),
@@ -396,8 +383,6 @@ describe("skills CLI commands", () => {
       "skills",
       "audit",
       "review-prs",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -407,7 +392,7 @@ describe("skills CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/skills/11111111-1111-1111-1111-111111111111/audit",
+      "http://paperclip.test/api/skills/11111111-1111-1111-1111-111111111111/audit",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({}),
@@ -427,8 +412,6 @@ describe("skills CLI commands", () => {
       "review-prs",
       "--yes",
       "--force",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -438,7 +421,7 @@ describe("skills CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://paperclip.test/api/companies/company-1/skills/11111111-1111-1111-1111-111111111111/reset",
+      "http://paperclip.test/api/skills/11111111-1111-1111-1111-111111111111/reset",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ force: true }),
@@ -481,8 +464,6 @@ describe("skills CLI commands", () => {
       "paperclip/qa",
       "--mode",
       "add",
-      "--company-id",
-      "company-1",
       "--api-base",
       "http://paperclip.test",
       "--api-key",
@@ -492,7 +473,7 @@ describe("skills CLI commands", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://paperclip.test/api/agents/coder?companyId=company-1",
+      "http://paperclip.test/api/agents/coder",
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(

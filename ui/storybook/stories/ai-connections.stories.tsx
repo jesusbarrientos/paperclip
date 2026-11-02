@@ -148,15 +148,15 @@ export const IdentityMatrix: Story = {
 export const ResponsibleUser: Story = {};
 export const ResponsibleUserApiKey: Story = {
   args: {
-    requirement: { companyId: AI_REVIEW_REQUIREMENT.companyId, provider: "anthropic" },
+    requirement: { provider: "anthropic" },
     currentUserId: "sam",
     initialBinding: AI_REVIEW_BINDING,
     initialConnections: [...AI_REVIEW_CONNECTIONS, {
-      id: "sam-api", grantId: "sam-api-grant", companyId: AI_REVIEW_REQUIREMENT.companyId,
+      id: "sam-api", grantId: "sam-api-grant", 
       provider: "anthropic", method: "api_key", name: "My Claude API key",
       ownership: "personal", ownerUserId: "sam", ownerName: "Sam", isDefault: true, status: "connected",
     }, {
-      id: "shared-api", grantId: "shared-api-grant", companyId: AI_REVIEW_REQUIREMENT.companyId,
+      id: "shared-api", grantId: "shared-api-grant", 
       provider: "anthropic", method: "api_key", name: "Engineering Claude API",
       ownership: "shared", status: "connected",
     }],

@@ -23,7 +23,6 @@ import {
 } from "../../vendor/paperclip-runner/index.js";
 
 export interface PaperclipRunnerSemanticBinding {
-  readonly companyId: string;
   readonly issueId: string;
   readonly runId: string;
   readonly agentId: string;
@@ -116,7 +115,6 @@ export class PaperclipRunnerSemanticAuthority {
           case "get_task_context":
             return {
               value: jsonValue({
-                company: { id: this.#binding.companyId },
                 actor: {
                   id: context.agent.id,
                   name: context.agent.name,
@@ -157,7 +155,6 @@ export class PaperclipRunnerSemanticAuthority {
               .from(issueComments)
               .where(
                 and(
-                  eq(issueComments.companyId, this.#binding.companyId),
                   eq(issueComments.issueId, this.#binding.issueId),
                   isNull(issueComments.deletedAt),
                 ),
@@ -184,11 +181,7 @@ export class PaperclipRunnerSemanticAuthority {
               .from(issueDocuments)
               .innerJoin(documents, eq(documents.id, issueDocuments.documentId))
               .where(
-                and(
-                  eq(issueDocuments.companyId, this.#binding.companyId),
-                  eq(issueDocuments.issueId, this.#binding.issueId),
-                  eq(documents.companyId, this.#binding.companyId),
-                ),
+                eq(issueDocuments.issueId, this.#binding.issueId),
               );
             return {
               value: jsonValue({ documents: rows }),
@@ -216,10 +209,8 @@ export class PaperclipRunnerSemanticAuthority {
               .innerJoin(documents, eq(documents.id, issueDocuments.documentId))
               .where(
                 and(
-                  eq(issueDocuments.companyId, this.#binding.companyId),
                   eq(issueDocuments.issueId, this.#binding.issueId),
-                  eq(issueDocuments.key, key),
-                  eq(documents.companyId, this.#binding.companyId),
+                  eq(issueDocuments.key, key)
                 ),
               )
               .limit(1);
@@ -255,10 +246,8 @@ export class PaperclipRunnerSemanticAuthority {
               )
               .where(
                 and(
-                  eq(issueDocuments.companyId, this.#binding.companyId),
                   eq(issueDocuments.issueId, this.#binding.issueId),
-                  eq(issueDocuments.key, key),
-                  eq(documentRevisions.companyId, this.#binding.companyId),
+                  eq(issueDocuments.key, key)
                 ),
               )
               .orderBy(desc(documentRevisions.revisionNumber))
@@ -284,17 +273,14 @@ export class PaperclipRunnerSemanticAuthority {
     this.#assertActiveContext(context, false);
     return {
       runId: context.run.id,
-      companyId: context.run.companyId,
       actor: {
         id: context.agent.id,
-        companyId: context.agent.companyId,
         status: activeAgentStatus(context.agent.status),
         role: context.agent.role,
         claims: [],
       },
       activeTask: {
         id: context.issue.id,
-        companyId: context.issue.companyId,
         assigneeActorId: context.issue.assigneeAgentId,
         executionRunId: context.issue.executionRunId,
         status: context.issue.status,
@@ -311,22 +297,15 @@ export class PaperclipRunnerSemanticAuthority {
       .from(heartbeatRuns)
       .innerJoin(
         issues,
-        and(
-          eq(issues.id, heartbeatRuns.nativeIssueId),
-          eq(issues.companyId, heartbeatRuns.companyId),
-        ),
+        eq(issues.id, heartbeatRuns.nativeIssueId),
       )
       .innerJoin(
         agents,
-        and(
-          eq(agents.id, heartbeatRuns.agentId),
-          eq(agents.companyId, heartbeatRuns.companyId),
-        ),
+        eq(agents.id, heartbeatRuns.agentId),
       )
       .where(
         and(
           eq(heartbeatRuns.id, this.#binding.runId),
-          eq(heartbeatRuns.companyId, this.#binding.companyId),
           eq(heartbeatRuns.agentId, this.#binding.agentId),
           eq(heartbeatRuns.nativeIssueId, this.#binding.issueId),
           eq(heartbeatRuns.runtimeMode, "native"),

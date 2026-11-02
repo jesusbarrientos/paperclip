@@ -54,7 +54,6 @@ const VIEWER_CAPABILITIES: ToolConnectionCapabilities = {
 function grant(overrides: Partial<ConnectionGrant> = {}): ConnectionGrant {
   return {
     id: "grant-org",
-    companyId: "company-1",
     connectionId: "conn-1",
     kind: "organization",
     subjectUserId: null,

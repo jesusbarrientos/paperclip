@@ -46,7 +46,6 @@ type Recovery = Pick<
 /** Batched reads; list consumers do not perform per-task polling. */
 export async function executionProjectionsForRuns(
   db: Db,
-  companyId: string,
   runIds: string[],
   now = new Date(),
   options: { retryDatabaseReads?: boolean } = {},
@@ -62,19 +61,13 @@ export async function executionProjectionsForRuns(
     .select(executionRunColumns)
     .from(heartbeatRuns)
     .where(
-      and(
-        eq(heartbeatRuns.companyId, companyId),
-        inArray(heartbeatRuns.id, runIds),
-      ),
+      inArray(heartbeatRuns.id, runIds),
     ));
   const coordinators = await read(async () => db
     .select()
     .from(nativeRunFinalizations)
     .where(
-      and(
-        eq(nativeRunFinalizations.companyId, companyId),
-        inArray(nativeRunFinalizations.runId, runIds),
-      ),
+      inArray(nativeRunFinalizations.runId, runIds),
     ));
   const issueIds = [
     ...new Set(
@@ -92,7 +85,6 @@ export async function executionProjectionsForRuns(
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, companyId),
             inArray(issueThreadInteractions.issueId, issueIds),
             eq(issueThreadInteractions.status, "pending"),
           ),
@@ -110,7 +102,6 @@ export async function executionProjectionsForRuns(
         .from(issueRecoveryActions)
         .where(
           and(
-            eq(issueRecoveryActions.companyId, companyId),
             inArray(issueRecoveryActions.sourceIssueId, issueIds),
             inArray(issueRecoveryActions.status, [
               "active",
@@ -147,12 +138,11 @@ export async function executionProjectionsForRuns(
 }
 export async function executionProjectionForRun(
   db: Db,
-  companyId: string,
   runId: string,
   now = new Date(),
 ): Promise<ExecutionProjection | null> {
   return (
-    (await executionProjectionsForRuns(db, companyId, [runId], now)).get(
+    (await executionProjectionsForRuns(db, [runId], now)).get(
       runId,
     ) ?? null
   );

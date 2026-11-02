@@ -10,7 +10,6 @@ import type { ExecutionContinuationEnvelope, NativeFinalizationResult } from "@p
 
 export interface AdapterAgent {
   id: string;
-  companyId: string;
   name: string;
   adapterType: string | null;
   adapterConfig: unknown;
@@ -320,13 +319,11 @@ export interface AdapterSkillSnapshot {
 
 export interface AdapterSkillContext {
   agentId: string;
-  companyId: string;
   adapterType: string;
   config: Record<string, unknown>;
 }
 
 export interface AdapterEnvironmentTestContext {
-  companyId: string;
   adapterType: string;
   config: Record<string, unknown>;
   /**
@@ -353,7 +350,6 @@ export interface AdapterEnvironmentTestContext {
 
 /** Payload for the onHireApproved adapter lifecycle hook (e.g. join-request or hire_agent approval). */
 export interface HireApprovedPayload {
-  companyId: string;
   agentId: string;
   agentName: string;
   adapterType: string;

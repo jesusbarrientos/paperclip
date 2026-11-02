@@ -1583,7 +1583,6 @@ describe("Capability live runnerd and Codex session", () => {
     const binding = {
       sessionId: "session-governed-resume",
       runId: "run-governed-resume",
-      companyId: "company-1",
       actorId: "actor-1",
       taskId: "task-1",
     };
@@ -1881,7 +1880,6 @@ describe("Capability live runnerd and Codex session", () => {
     const binding = {
       sessionId: "session-fail-closed",
       runId: "run-fail-closed",
-      companyId: "company-1",
       actorId: "actor-1",
       taskId: "task-1",
     };
@@ -1964,7 +1962,6 @@ describe("Capability live runnerd and Codex session", () => {
       const binding = {
         sessionId: "session-real-runnerd-resume",
         runId: "run-real-runnerd-resume",
-        companyId: "company-1",
         actorId: "actor-1",
         taskId: "task-1",
       };

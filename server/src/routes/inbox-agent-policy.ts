@@ -4,7 +4,7 @@ import { updateInboxAgentPolicySchema } from "@paperclipai/shared";
 import { forbidden, notFound, unauthorized } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import { accessService, inboxAgentPolicyService, logActivity } from "../services/index.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertOrgAccess, getActorInfo } from "./authz.js";
 
 export function inboxAgentPolicyRoutes(db: Db) {
   const router = Router();
@@ -16,16 +16,16 @@ export function inboxAgentPolicyRoutes(db: Db) {
     return req.actor.userId;
   }
 
-  async function assertAdmin(req: Request, companyId: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertAdmin(req: Request) {
+    assertOrgAccess(req);
     if (req.actor.type === "board") {
       if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
       if (!req.actor.userId) throw unauthorized("Board user context required");
-      if (await access.canUser(companyId, req.actor.userId, "users:manage_permissions")) return;
+      if (await access.canUser(req.actor.userId, "users:manage_permissions")) return;
     } else if (
       req.actor.type === "agent"
       && req.actor.agentId
-      && await access.hasPermission(companyId, "agent", req.actor.agentId, "users:manage_permissions")
+      && await access.hasPermission("agent", req.actor.agentId, "users:manage_permissions")
     ) {
       return;
     }
@@ -34,19 +34,18 @@ export function inboxAgentPolicyRoutes(db: Db) {
     });
   }
 
-  async function assertActiveUserMembership(companyId: string, userId: string) {
-    const membership = await access.getMembership(companyId, "user", userId);
+  async function assertActiveUserMembership(userId: string) {
+    const membership = await access.getMembership("user", userId);
     if (!membership || membership.status !== "active") {
       throw notFound("Active company user membership not found");
     }
   }
 
-  async function writePolicy(req: Request, companyId: string, userId: string) {
-    const previous = await policies.get(companyId, userId);
-    const policy = await policies.update(companyId, userId, req.body);
+  async function writePolicy(req: Request, userId: string) {
+    const previous = await policies.get(userId);
+    const policy = await policies.update(userId, req.body);
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -65,39 +64,35 @@ export function inboxAgentPolicyRoutes(db: Db) {
     return policy;
   }
 
-  router.get("/companies/:companyId/users/me/inbox-agent-policy", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    res.json(await policies.get(companyId, selfUserId(req)));
+  router.get("/users/me/inbox-agent-policy", async (req, res) => {
+    assertOrgAccess(req);
+    res.json(await policies.get(selfUserId(req)));
   });
 
   router.put(
-    "/companies/:companyId/users/me/inbox-agent-policy",
+    "/users/me/inbox-agent-policy",
     validate(updateInboxAgentPolicySchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
-      res.json(await writePolicy(req, companyId, selfUserId(req)));
+      assertOrgAccess(req);
+      res.json(await writePolicy(req, selfUserId(req)));
     },
   );
 
-  router.get("/companies/:companyId/users/:userId/inbox-agent-policy", async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.get("/users/:userId/inbox-agent-policy", async (req, res) => {
     const userId = req.params.userId as string;
-    await assertAdmin(req, companyId);
-    await assertActiveUserMembership(companyId, userId);
-    res.json(await policies.get(companyId, userId));
+    await assertAdmin(req);
+    await assertActiveUserMembership(userId);
+    res.json(await policies.get(userId));
   });
 
   router.put(
-    "/companies/:companyId/users/:userId/inbox-agent-policy",
+    "/users/:userId/inbox-agent-policy",
     validate(updateInboxAgentPolicySchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
       const userId = req.params.userId as string;
-      await assertAdmin(req, companyId);
-      await assertActiveUserMembership(companyId, userId);
-      res.json(await writePolicy(req, companyId, userId));
+      await assertAdmin(req);
+      await assertActiveUserMembership(userId);
+      res.json(await writePolicy(req, userId));
     },
   );
 

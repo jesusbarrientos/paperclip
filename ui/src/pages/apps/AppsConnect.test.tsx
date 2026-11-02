@@ -13,7 +13,7 @@ import { rememberSkillSourceReturn, skillSourceReturnPath } from "@/lib/skill-so
 import { AppsConnect } from "./AppsConnect";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-vi.mock("@/api/companies-query", () => ({ useAccountIdentity: () => ({ userId: "board-user", settled: true, failed: false }), resolveAccountUserId: async () => "board-user" }));
+vi.mock("@/api/account-identity", () => ({ useAccountIdentity: () => ({ userId: "board-user", settled: true, failed: false }), resolveAccountUserId: async () => "board-user" }));
 
 const listGalleryMock = vi.hoisted(() => vi.fn());
 const experimentalMock = vi.hoisted(() => vi.fn());
@@ -41,8 +41,7 @@ const mockSearch = vi.hoisted(() => ({ value: "" }));
 const mockParams = vi.hoisted(() => ({ appKey: undefined as string | undefined }));
 const mockCompany = vi.hoisted(() => ({
   value: {
-    selectedCompanyId: "company-1" as string | undefined,
-    selectedCompany: { id: "company-1", name: "Paperclip" } as { id: string; name: string } | null,
+    organization: { id: "company-1", name: "Paperclip" } as { id: string; name: string } | null,
   },
 }));
 
@@ -75,25 +74,25 @@ const PAGERDUTY = CONNECTABLE_APP_DEFINITIONS.find((app) => app.slug === "pagerd
 vi.mock("@/api/tools", () => ({
   toolsApi: {
     syncAggregatorApps: vi.fn().mockResolvedValue({ apps: [], sync: { status: "idle" }, discovery: { availability: "available" } }),
-    listGallery: (companyId: string) => listGalleryMock(companyId),
-    listApplications: (companyId: string) => listApplicationsMock(companyId),
-    listConnections: (companyId: string) => listConnectionsMock(companyId),
+    listGallery: () => listGalleryMock(),
+    listApplications: () => listApplicationsMock(),
+    listConnections: () => listConnectionsMock(),
     getConnection: (id: string) => getConnectionMock(id),
     getConnectionInstalls: (id: string) => getConnectionInstallsMock(id),
-    connectApp: (companyId: string, input: unknown) => connectAppMock(companyId, input),
+    connectApp: (input: unknown) => connectAppMock(input),
     startOAuth: (connectionId: string, input?: unknown) => startOAuthMock(connectionId, input),
-    finishApp: (companyId: string, connectionId: string, input: unknown) =>
-      finishAppMock(companyId, connectionId, input),
+    finishApp: (connectionId: string, input: unknown) =>
+      finishAppMock(connectionId, input),
     putConnectionInstalls: (connectionId: string, installs: unknown) =>
       putConnectionInstallsMock(connectionId, installs),
     getCloudConnectorEnrollment: () => getCloudConnectorEnrollmentMock(),
-    startCloudConnectorEnrollment: (companyId: string, label?: string, returnTo?: string) =>
-      startCloudConnectorEnrollmentMock(companyId, label, returnTo),
+    startCloudConnectorEnrollment: (label?: string, returnTo?: string) =>
+      startCloudConnectorEnrollmentMock(label, returnTo),
   },
 }));
 
 vi.mock("@/api/agents", () => ({
-  agentsApi: { list: (companyId: string) => listAgentsMock(companyId) },
+  agentsApi: { list: () => listAgentsMock() },
 }));
 
 vi.mock("@/lib/browserNavigation", () => ({
@@ -106,8 +105,8 @@ vi.mock("@/lib/router", () => ({
   useSearchParams: () => [new URLSearchParams(mockSearch.value), vi.fn()],
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => mockCompany.value,
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => mockCompany.value,
 }));
 
 vi.mock("@/context/BreadcrumbContext", () => ({
@@ -290,8 +289,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     experimentalMock.mockResolvedValue({ enableChatConnectors: false });
     window.sessionStorage.clear();
     mockCompany.value = {
-      selectedCompanyId: "company-1",
-      selectedCompany: { id: "company-1", name: "Paperclip" },
+      organization: { id: "company-1", name: "Paperclip" },
     };
     mockSearch.value = "";
     mockParams.appKey = undefined;
@@ -396,7 +394,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await act(async () => buttonByText("Connect")?.click());
     await flushReact();
     expect(connectAppMock).toHaveBeenCalledOnce();
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       configValues: { workspaceId: "paperclip-acme" },
       agentInstructions: expect.objectContaining({ enabled: true, text: honcho.agentInstructions!.text }),
     }));
@@ -467,10 +465,10 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await act(async () => setInputValue(token, "fixture-token"));
     await act(async () => buttonByText("Try again")!.click());
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalledWith({ connectionId: connection.id }));
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ galleryKey: provider, link: "https://provider.example/mcp", grantKind: "user", authMode: "bearer", credentialValues: { "credentials.authorization": "fixture-token" } }));
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ galleryKey: provider, link: "https://provider.example/mcp", grantKind: "user", authMode: "bearer", credentialValues: { "credentials.authorization": "fixture-token" } }));
     // PAP-659 C6a/C7: this path used to send an empty ask-first list, so the
     // gateway connectors were the one place the armed write gate did not apply.
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", connection.id, { enabledCatalogEntryIds: ["tool-1", "tool-2"], askFirstCatalogEntryIds: ["tool-2"], access: { agentIds: ["agent-1"] }, preserveExistingAccess: true });
+    expect(finishAppMock).toHaveBeenCalledWith(connection.id, { enabledCatalogEntryIds: ["tool-1", "tool-2"], askFirstCatalogEntryIds: ["tool-2"], access: { agentIds: ["agent-1"] }, preserveExistingAccess: true });
     expect(putConnectionInstallsMock).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(popup).not.toHaveBeenCalled();
@@ -503,7 +501,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     expect(container.textContent).toContain("Authorization did not complete");
     await act(async () => buttonByText("Try again")!.click());
     await vi.waitFor(() => expect(startOAuthMock).toHaveBeenCalledTimes(2));
-    expect(connectAppMock).toHaveBeenLastCalledWith("company-1", expect.objectContaining({ resumeConnectionId: connection.id }));
+    expect(connectAppMock).toHaveBeenLastCalledWith(expect.objectContaining({ resumeConnectionId: connection.id }));
     await act(async () => message(window.location.origin, "intent-inline", "connected"));
     expect(onComplete).toHaveBeenCalledWith({ resolvedByCallback: true });
     await act(async () => root.unmount());
@@ -576,8 +574,8 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await act(async () => setInputValue(container.querySelector<HTMLInputElement>('input[type="password"]')!, "https://provider.example/mcp?token=fixture-secret"));
     await act(async () => buttonByText("Save & exit")!.click());
     await vi.waitFor(() => expect(onCancel).toHaveBeenCalled());
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ saveDraft: true }));
-    expect(sessionStorage.getItem("paperclip:mcp-intent-draft:company-1:intent-inline")).toBe(connection.id);
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ saveDraft: true }));
+    expect(sessionStorage.getItem("paperclip:mcp-intent-draft:intent-inline")).toBe(connection.id);
     expect(JSON.stringify(sessionStorage)).not.toContain("fixture-secret");
     expect(finishAppMock).not.toHaveBeenCalled();
     expect(putConnectionInstallsMock).not.toHaveBeenCalled();
@@ -653,7 +651,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await act(async () => buttonByText("Reuse an existing session")!.click());
     expect(container.querySelector('input[id$="-url"]')).toBeNull();
     await act(async () => buttonByText("Connect Composio")!.click());
-    await vi.waitFor(() => expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ link: "https://session.example/mcp" })));
+    await vi.waitFor(() => expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ link: "https://session.example/mcp" })));
   });
 
   it("reuses saved Composio accounts for a targeted app setup URL", async () => {
@@ -698,15 +696,15 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await render();
     await act(async () => buttonByText("Connect Composio")!.click());
     await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/apps/new-composio/permissions"));
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ grantKind: "organization" }));
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ grantKind: "organization" }));
     expect(putConnectionInstallsMock).toHaveBeenCalledWith("new-composio", [{ targetType: "company", targetId: "company-1" }]);
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "new-composio", expect.objectContaining({ access: "all_agents" }));
+    expect(finishAppMock).toHaveBeenCalledWith("new-composio", expect.objectContaining({ access: "all_agents" }));
     expect(openAggregatorTaskMock).not.toHaveBeenCalled();
-    expect(window.sessionStorage.getItem("paperclip:mcp-upstream-app:company-1:new-composio")).toBeNull();
+    expect(window.sessionStorage.getItem("paperclip:mcp-upstream-app:new-composio")).toBeNull();
   });
 
   it("recovers upstream app context after a gateway OAuth redirect", async () => {
-    window.sessionStorage.setItem("paperclip:mcp-upstream-app:company-1:composio-draft", "hubspot");
+    window.sessionStorage.setItem("paperclip:mcp-upstream-app:composio-draft", "hubspot");
     mockSearch.value = "source=composio&resume=composio-draft&oauth=connected";
     getConnectionMock.mockResolvedValue({ id: "composio-draft", status: "draft", credentialPolicy: "per_user", config: { sourceTemplateKey: "composio", connectionMethodKey: "mcp" } });
     await render();
@@ -715,7 +713,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
   });
 
   it.each(["arcade", "composio", "executor"])("explains a failed %s OAuth return and retries the same saved draft", async (provider) => {
-    const draft = { id: "conn-oauth-draft", companyId: "company-1", status: "draft", authKind: "oauth", credentialPolicy: "shared", config: { sourceTemplateKey: provider, connectionMethodKey: "mcp", url: "https://example.com/mcp" } };
+    const draft = { id: "conn-oauth-draft", status: "draft", authKind: "oauth", credentialPolicy: "shared", config: { sourceTemplateKey: provider, connectionMethodKey: "mcp", url: "https://example.com/mcp" } };
     mockSearch.value = `source=${provider}&resume=${draft.id}&oauth=failed&code=oauth_callback_failed&error_description=untrusted-provider-message`;
     getConnectionMock.mockResolvedValue(draft);
     connectAppMock.mockResolvedValue({ connectionId: draft.id, connection: draft, catalog: [], auth: { kind: "oauth" } });
@@ -726,7 +724,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     expect(buttonByText("Try again")).toBeTruthy();
     await act(async () => buttonByText("Try again")!.click());
     await vi.waitFor(() => expect(startOAuthMock).toHaveBeenCalledWith(draft.id, { asCurrentUser: false }));
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ resumeConnectionId: draft.id }));
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ resumeConnectionId: draft.id }));
     expect(navigateTopLevelMock).toHaveBeenCalled();
   });
 
@@ -758,7 +756,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     expect(container.querySelector('[role="radiogroup"][aria-label="Which humans can use this credential?"]')).toBeNull();
     await act(async () => buttonByText("Try again")!.click());
     await vi.waitFor(() => expect(startOAuthMock).toHaveBeenCalledWith(draft.id, { asCurrentUser }));
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ resumeConnectionId: draft.id, grantKind: asCurrentUser ? "user" : "organization" }));
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ resumeConnectionId: draft.id, grantKind: asCurrentUser ? "user" : "organization" }));
   });
 
   it("shows only MCP URL setup on the BYO page", async () => {
@@ -783,7 +781,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     const choice = { id: "conn-archive", applicationId: "app-archive", name: "Archive", status: "active" as const, enabled: true };
     listApplicationsMock.mockResolvedValue({ applications: [{ id: choice.applicationId, name: "Archive", applicationKey: "archive", type: "mcp_http" }] });
     listConnectionsMock.mockResolvedValue({ connections: [{
-      ...choice, companyId: "company-1", transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", credentialSource: "paperclip_vault",
+      ...choice, transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", credentialSource: "paperclip_vault",
       config: source === "config-url" ? { url: endpoint } : {},
       transportConfig: source === "transport-url" ? { url: endpoint } : source === "transport-serverUrl" ? { serverUrl: endpoint } : {},
     }] });
@@ -791,13 +789,13 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await render(undefined, false, <ConnectionSetupFlow host="dialog" configuredConnection={choice} requestedAgentId="agent-1" />);
     const input = container.querySelector<HTMLInputElement>('input[aria-label="MCP server URL"]');
     expect(input?.value).toBe(endpoint);
-    expect(listConnectionsMock).toHaveBeenCalledWith("company-1");
+    expect(listConnectionsMock).toHaveBeenCalledWith();
     await act(async () => { buttonByText("Continue")?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await flushReact();
     await passAccessStep();
     await act(async () => { buttonByText("Check link")?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await flushReact();
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       link: endpoint, reconnectConnectionId: choice.id,
     }));
   });
@@ -806,13 +804,13 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     const choice = { id: "conn-archive", applicationId: "app-archive", name: "Archive", status: "active" as const, enabled: true };
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     listApplicationsMock.mockResolvedValue({ applications: [{ id: choice.applicationId, name: "Archive", applicationKey: "archive", type: "mcp_http" }] });
-    listConnectionsMock.mockResolvedValue({ connections: [{ ...choice, companyId: "company-1", transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", credentialSource: "paperclip_vault", config: { url: "https://archive.example.test/mcp" } }] });
+    listConnectionsMock.mockResolvedValue({ connections: [{ ...choice, transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", credentialSource: "paperclip_vault", config: { url: "https://archive.example.test/mcp" } }] });
     getConnectionMock.mockImplementation(async () => (await listConnectionsMock()).connections[0]);
     await render(client, false, <ConnectionSetupFlow host="dialog" configuredConnection={choice} requestedAgentId="agent-1" />);
     const input = container.querySelector<HTMLInputElement>('input[aria-label="MCP server URL"]');
     expect(input?.value).toBe("https://archive.example.test/mcp");
     await act(async () => setInputValue(input!, "https://edited.example.test/mcp"));
-    listConnectionsMock.mockResolvedValue({ connections: [{ ...choice, companyId: "company-1", transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", credentialSource: "paperclip_vault", config: { url: "https://refreshed.example.test/mcp" } }] });
+    listConnectionsMock.mockResolvedValue({ connections: [{ ...choice, transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", credentialSource: "paperclip_vault", config: { url: "https://refreshed.example.test/mcp" } }] });
     await act(async () => { await client.invalidateQueries(); });
     await flushReact();
     expect(container.querySelector<HTMLInputElement>('input[aria-label="MCP server URL"]')?.value).toBe("https://edited.example.test/mcp");
@@ -918,10 +916,10 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
       retry: false,
       staleTime: Infinity,
     } } });
-    client.setQueryData(queryKeys.environments.list("company-1"), [
+    client.setQueryData(queryKeys.environments.list(), [
       { id: "local-env", name: "Local", driver: "local", status: "active", config: {} },
     ]);
-    client.setQueryData(queryKeys.environments.capabilities("company-1"), {});
+    client.setQueryData(queryKeys.environments.capabilities(), {});
     client.setQueryData(queryKeys.instance.settings, { defaultEnvironmentId: "local-env" });
     client.setQueryData(queryKeys.instance.generalSettings, {});
     client.setQueryData(queryKeys.health, { deploymentMode: "authenticated", localAiLoginSupported: false });
@@ -939,7 +937,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await act(async () => setInputValue(key!, "fixture-anthropic-ai-key"));
     await act(async () => buttonByText("Connect")!.click());
     await flushReact();
-    expect(createAiAccount).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(createAiAccount).toHaveBeenCalledWith(expect.objectContaining({
       provider: "anthropic", method: "api_key", apiKey: "fixture-anthropic-ai-key",
     }));
     if (!taskRepair) expect(mockNavigate).toHaveBeenCalledWith("/apps/anthropic-ai-account/permissions");
@@ -1055,11 +1053,11 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
 
   it("returns to the pending skill import when GitHub setup is cancelled", async () => {
     mockParams.appKey = "github";
-    rememberSkillSourceReturn("company-1", "new");
+    rememberSkillSourceReturn("new");
     await render();
     await act(async () => buttonByText("Cancel")?.click());
     expect(mockNavigate).toHaveBeenCalledWith("/skills/sources/new");
-    expect(skillSourceReturnPath("company-1")).toBeNull();
+    expect(skillSourceReturnPath()).toBeNull();
   });
 
   it("uses Cancel to exit while the bottom Back button stays in the wizard", async () => {
@@ -1132,7 +1130,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     // The load-bearing assertion: an API-key-only method reaches the server as
     // a personal grant. A disabled "Just me" would make this unreachable.
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    expect(connectAppMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(connectAppMock.mock.calls[0]?.[0]).toMatchObject({
       galleryKey: "posthog",
       grantKind: "user",
     });
@@ -1238,7 +1236,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       galleryKey: "box",
       connectionMethodKey: "mcp-own-oauth",
       oauthClient: {
@@ -1261,7 +1259,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     expect(primary?.disabled).toBe(false);
     await act(async () => { primary!.click(); });
     await flushReact();
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       galleryKey: "asana", connectionMethodKey: "managed", grantKind: "user",
     }));
   });
@@ -1301,7 +1299,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await act(async () => { buttonByText("Continue to sign in")!.click(); });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenLastCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenLastCalledWith(expect.objectContaining({
       galleryKey: "asana", connectionMethodKey: "mcp-own-oauth",
       oauthClient: { clientId: "asana-own-client", clientSecret: "asana-own-secret" },
     }));
@@ -1345,7 +1343,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       galleryKey: "postman",
       connectionMethodKey: "mcp-oauth-full",
     }));
@@ -1433,7 +1431,6 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(startCloudConnectorEnrollmentMock).toHaveBeenCalledWith(
-      "company-1",
       "Paperclip",
       "/apps/connect?source=gmail&stage=setup",
     );
@@ -1465,7 +1462,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     expect(fallback?.textContent).toBe("Open authorization in a new tab");
     expect(fallback?.href).toBe("https://my-staging.paperclip.app/connections/enroll?id=enroll-test");
     expect(navigateTopLevelMock).not.toHaveBeenCalled();
-    expect(startCloudConnectorEnrollmentMock).toHaveBeenCalledWith("company-1", "Paperclip", "/apps/connect?source=gmail&stage=setup&intent=intent-1&enrollment_host=dialog");
+    expect(startCloudConnectorEnrollmentMock).toHaveBeenCalledWith("Paperclip", "/apps/connect?source=gmail&stage=setup&intent=intent-1&enrollment_host=dialog");
     listGalleryMock.mockResolvedValue({ apps: [{ ...GMAIL, ownershipAvailability: { ...GMAIL.ownershipAvailability, platform_shared: true } }] });
     getCloudConnectorEnrollmentMock.mockResolvedValue({ status: "active" });
     await act(async () => { await client.invalidateQueries({ queryKey: ["cloud-connector", "enrollment"] }); });
@@ -1477,7 +1474,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     connectAppMock.mockResolvedValue({ connectionId: "gmail-1", connection: { id: "gmail-1", credentialPolicy: "per_user" }, auth: { kind: "oauth", startUrl: "https://example.test/unbound" } });
     await act(async () => buttonByText("Continue to sign in")?.click());
     await flushReact();
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({ grantKind: "user" }));
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({ grantKind: "user" }));
     expect(startOAuthMock).toHaveBeenCalledWith("gmail-1", { asCurrentUser: true, interactionId: "intent-1" });
     expect(putConnectionInstallsMock).not.toHaveBeenCalled();
     open.mockRestore();
@@ -1548,8 +1545,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
       });
       await flushReact();
 
-      expect(startCloudConnectorEnrollmentMock).toHaveBeenCalledWith(
-        "company-1", "Paperclip", "/apps/connect?source=github&stage=setup",
+      expect(startCloudConnectorEnrollmentMock).toHaveBeenCalledWith("Paperclip", "/apps/connect?source=github&stage=setup",
       );
       expect(navigateTopLevelMock).toHaveBeenCalledWith(
         "https://my-staging.paperclip.app/connections/enroll?id=enroll-test",
@@ -1745,7 +1741,6 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     expect(JSON.parse(window.sessionStorage.getItem(
       "paperclip.connector-enrollment-access:github",
     ) ?? "null")).toEqual({
-      companyId: "company-1",
       grantKind: "agent",
       installChoice: "specific",
       agentIds: ["agent-1"],
@@ -1756,7 +1751,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     container.innerHTML = "";
     mockParams.appKey = undefined;
     mockSearch.value = "source=github&stage=setup&cloud_connector=enrolled";
-    mockCompany.value = { selectedCompanyId: undefined, selectedCompany: null };
+    mockCompany.value = { organization: null };
     listGalleryMock.mockResolvedValue({ apps: [GITHUB_MANAGED] });
     getCloudConnectorEnrollmentMock.mockResolvedValue({
       configured: true,
@@ -1772,8 +1767,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
 
     expect(window.sessionStorage.getItem("paperclip.connector-enrollment-access:github")).toBeNull();
     mockCompany.value = {
-      selectedCompanyId: "company-1",
-      selectedCompany: { id: "company-1", name: "Paperclip" },
+      organization: { id: "company-1", name: "Paperclip" },
     };
     await act(async () => {
       mountedRoot?.render(
@@ -1794,7 +1788,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       galleryKey: "github",
       grantKind: "agent",
       subjectAgentId: "agent-1",
@@ -1864,7 +1858,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
         buttonByText("Continue to sign in")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
       await flushReact();
-      expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
         galleryKey: slug, connectionMethodKey: "paperclip-read", grantKind: "user",
       }));
   });
@@ -2058,7 +2052,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       galleryKey: "neon",
       connectionMethodKey: "mcp-api-key",
       credentialValues: { "credentials.authorization": "napi_test-key" },
@@ -2115,7 +2109,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", {
+    expect(connectAppMock).toHaveBeenCalledWith({
       galleryKey: "posthog",
       connectionMethodKey: "mcp-api-key",
       name: "PostHog for the organization",
@@ -2169,7 +2163,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     });
     await flushReact();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", {
+    expect(connectAppMock).toHaveBeenCalledWith({
       galleryKey: "posthog",
       connectionMethodKey: "mcp-api-key",
       name: "PostHog for the organization",
@@ -2421,7 +2415,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await submitCuratedOAuthSetup();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", {
+    expect(connectAppMock).toHaveBeenCalledWith({
       galleryKey: "notion",
       connectionMethodKey: "mcp-oauth",
       name: "Notion for the organization",
@@ -2741,11 +2735,11 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await passAccessStep();
     await submitCuratedOAuthSetup();
 
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(connectAppMock).toHaveBeenCalledWith(expect.objectContaining({
       galleryKey: "notion",
       applicationId: "app-notion",
     }));
-    expect(connectAppMock.mock.calls[0]?.[1]).not.toHaveProperty("grantKind");
+    expect(connectAppMock.mock.calls[0]?.[0]).not.toHaveProperty("grantKind");
     expect(startOAuthMock).toHaveBeenCalledWith("conn-archived", {
       asCurrentUser: false,
     });
@@ -2885,7 +2879,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await submitCuratedOAuthSetup();
 
     expect(startOAuthMock).not.toHaveBeenCalled();
-    expect(connectAppMock).toHaveBeenCalledWith("company-1", {
+    expect(connectAppMock).toHaveBeenCalledWith({
       galleryKey: "notion",
       connectionMethodKey: "mcp-oauth",
       name: "Notion for the organization",
@@ -2903,8 +2897,8 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     mockSearch.value = "source=notion";
     listGalleryMock.mockResolvedValueOnce({ apps: [NOTION] });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    queryClient.setQueryData(queryKeys.tools.applications("company-1"), { applications: [] });
-    queryClient.setQueryData(queryKeys.tools.connections("company-1"), { connections: [] });
+    queryClient.setQueryData(queryKeys.tools.applications(), { applications: [] });
+    queryClient.setQueryData(queryKeys.tools.connections(), { connections: [] });
 
     let resolveApplications!: (value: unknown) => void;
     let resolveConnections!: (value: unknown) => void;
@@ -3152,7 +3146,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       link: "https://www.example.com/actions",
       name: "example.com/actions for the organization",
@@ -3201,7 +3195,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(2);
-    const [, input] = connectAppMock.mock.calls[1];
+    const [input] = connectAppMock.mock.calls[1];
     expect(input.credentialValues).toEqual({ "credentials.authorization": "secret-key" });
   });
 
@@ -3241,13 +3235,13 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    expect(connectAppMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(connectAppMock.mock.calls[0]?.[0]).toMatchObject({
       link: zapierUrl,
       name: "Zapier for the organization",
       galleryKey: "zapier",
       connectionMethodKey: "generated-url",
     });
-    expect(connectAppMock.mock.calls[0]?.[1].credentialValues).toBeUndefined();
+    expect(connectAppMock.mock.calls[0]?.[0].credentialValues).toBeUndefined();
   });
 
   it("gives Zapier the shared credential and agent access opener", async () => {
@@ -3322,7 +3316,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    expect(connectAppMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(connectAppMock.mock.calls[0]?.[0]).toMatchObject({
       link: zapierUrl,
       name: "Zapier",
       galleryKey: "zapier",
@@ -3330,7 +3324,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
       grantKind: "user",
     });
 
-    expect(finishAppMock).toHaveBeenCalledWith("company-1", "conn-1", {
+    expect(finishAppMock).toHaveBeenCalledWith("conn-1", {
       enabledCatalogEntryIds: ["action-1", "action-2"],
       askFirstCatalogEntryIds: [],
       access: "all_agents",
@@ -3387,7 +3381,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       link: "https://www.example.com/actions",
       name: "Bla for the organization",
@@ -3518,7 +3512,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith("/apps/connect?source=github");
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({ galleryKey: "github", name: "GitHub for the organization" });
   });
 
@@ -3554,7 +3548,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    expect(connectAppMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(connectAppMock.mock.calls[0]?.[0]).toMatchObject({
       galleryKey: "github",
       connectionMethodKey: "mcp-key",
       resumeConnectionId: connectionId,
@@ -3581,7 +3575,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       galleryKey: "github",
       name: "GitHub for the organization",
@@ -3618,7 +3612,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       galleryKey: "google-sheets",
       name: "Google Sheets for the organization",
@@ -3657,7 +3651,7 @@ describe("AppsConnect — Connect with a link (M4 frame)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       galleryKey: "google-sheets",
       configValues: { allowedSpreadsheetIds: ["sheet_123", "sheet_456"] },
@@ -3751,7 +3745,7 @@ describe("AppsConnect — guided generic MCP flow (PAP-17087)", () => {
       buttonByText("Check link")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
-    expect(connectAppMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(connectAppMock.mock.calls[0]?.[0]).toMatchObject({
       name: "127.0.0.1:47399/mcp for the organization",
     });
   });
@@ -4125,7 +4119,7 @@ describe("AppsConnect — guided generic MCP flow (PAP-17087)", () => {
     await flushReact();
 
     expect(connectAppMock).toHaveBeenCalledTimes(1);
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       link: "https://mcp.example.test/mcp",
       authMode: "custom_headers",
@@ -4177,7 +4171,7 @@ describe("AppsConnect — guided generic MCP flow (PAP-17087)", () => {
     });
     await flushReact();
 
-    const [, input] = connectAppMock.mock.calls[0];
+    const [input] = connectAppMock.mock.calls[0];
     expect(input).toMatchObject({
       authMode: "oauth",
       oauthClient: { clientId: "operator-client", clientSecret: "operator-secret" },

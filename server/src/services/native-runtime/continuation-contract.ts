@@ -27,30 +27,21 @@ export async function rebindContinuationContract(
       .select()
       .from(issues)
       .where(
-        and(
-          eq(issues.companyId, binding.companyId),
-          eq(issues.id, binding.issueId),
-        ),
+        eq(issues.id, binding.issueId),
       )
       .for("update");
     const [coordinator] = await tx
       .select()
       .from(nativeRunFinalizations)
       .where(
-        and(
-          eq(nativeRunFinalizations.companyId, binding.companyId),
-          eq(nativeRunFinalizations.runId, binding.runId),
-        ),
+        eq(nativeRunFinalizations.runId, binding.runId),
       )
       .for("update");
     const [run] = await tx
       .select()
       .from(heartbeatRuns)
       .where(
-        and(
-          eq(heartbeatRuns.companyId, binding.companyId),
-          eq(heartbeatRuns.id, binding.runId),
-        ),
+        eq(heartbeatRuns.id, binding.runId),
       )
       .for("update");
     if (
@@ -75,10 +66,7 @@ export async function rebindContinuationContract(
       .select({ id: nativeRunResults.id })
       .from(nativeRunResults)
       .where(
-        and(
-          eq(nativeRunResults.companyId, binding.companyId),
-          eq(nativeRunResults.runId, binding.runId),
-        ),
+        eq(nativeRunResults.runId, binding.runId),
       )
       .limit(1);
     const ownsFencedRecovery = recoveryClaim

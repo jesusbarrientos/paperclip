@@ -11,7 +11,6 @@ import {
 } from "./chat-telegram-ephemeral.js";
 
 const scope = {
-  companyId: "company",
   endpointId: "endpoint",
   botUserId: "123",
 };

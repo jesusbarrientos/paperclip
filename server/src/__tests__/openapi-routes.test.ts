@@ -33,7 +33,7 @@ const apiPrefixes: Record<string, string> = {
   "slack-tools.ts": "/api",
   "email.ts": "/api",
   "cloud.ts": "/api/cloud",
-  "companies.ts": "/api/companies",
+  "companies.ts": "/api/organization",
   "company-skills.ts": "/api",
   "company-skill-policy.ts": "/api",
   "connection-intents.ts": "/api",
@@ -203,13 +203,13 @@ function loadActualRoutes() {
       file === "companies.ts" &&
       source.includes("router.post(COMPANY_IMPORT_ROUTE_PATH")
     ) {
-      routes.add("POST /api/companies/import");
+      routes.add("POST /api/organization/import");
     }
     if (
       file === "companies.ts" &&
       source.includes("router.post(COMPANY_IMPORT_TRANSFERS_ROUTE_PATH")
     ) {
-      routes.add(`POST /api/companies${COMPANY_IMPORT_TRANSFERS_ROUTE_PATH}`);
+      routes.add(`POST /api/organization${COMPANY_IMPORT_TRANSFERS_ROUTE_PATH}`);
     }
   }
 
@@ -240,9 +240,9 @@ function loadSpecRoutes() {
 describe("openapi routes", () => {
   it("documents board-only pool management with revision-checked deletion", () => {
     const { spec } = loadSpecRoutes();
-    const pools = spec.paths["/api/companies/{companyId}/ai-connection-pools"];
-    const remove = spec.paths["/api/companies/{companyId}/ai-connection-pools/{poolId}"].delete;
-    const inspection = spec.paths["/api/companies/{companyId}/ai-connection-pools/{poolId}/inspection"].get;
+    const pools = spec.paths["/api/ai-connection-pools"];
+    const remove = spec.paths["/api/ai-connection-pools/{poolId}"].delete;
+    const inspection = spec.paths["/api/ai-connection-pools/{poolId}/inspection"].get;
     for (const operation of [pools.get, pools.post, remove, inspection]) {
       expect(operation.security).toEqual([{ BoardSessionAuth: [] }, { BoardApiKeyAuth: [] }]);
     }
@@ -269,7 +269,7 @@ describe("openapi routes", () => {
     expect(current.responses["200"].content["application/json"].schema.nullable).toBe(true);
     expect(Object.keys(image.responses["200"].content)).toEqual(["image/png", "image/jpeg", "image/webp"]);
     expect(dismiss.requestBody.content["application/json"].schema).toMatchObject({
-      required: ["companyId"], additionalProperties: false,
+      additionalProperties: false,
     });
     expect(dismiss.description).toContain("viewers may dismiss their own");
   });
@@ -295,7 +295,7 @@ describe("openapi routes", () => {
       "Get the generated OpenAPI document",
     );
     expect(
-      res.body.paths["/api/companies/{companyId}/agents"].get.summary,
+      res.body.paths["/api/agents"].get.summary,
     ).toBe("List agents in a company");
     expect(res.body.paths["/api/agents/{id}/keys"].post.summary).toBe(
       "Create an agent API key",
@@ -310,19 +310,11 @@ describe("openapi routes", () => {
     expect(res.body.paths["/api/mcp/project-tools"].post["x-paperclip-authorization"]).toEqual({ actor: "agent", heartbeatBound: true, taskBound: true });
     expect(res.body.paths["/mcp/gateways/{gatewayPublicId}"].post.security).toEqual([]);
     expect(res.body.paths["/api/mcp/gateways/{gatewayPublicId}"]).toBeUndefined();
-    expect(res.body.paths["/api/companies"].get.parameters).toContainEqual({
-      name: "scope",
-      in: "query",
-      required: false,
-      schema: { type: "string", enum: ["accessible"] },
-    });
-    expect(res.body.paths["/api/companies"].get.responses["403"]).toBeDefined();
-    expect(res.body.paths["/api/companies"].get.responses["400"]).toBeDefined();
     expect(
-      res.body.paths["/api/companies"].post.responses["201"],
+      res.body.paths["/api/organization"].post.responses["201"],
     ).toBeDefined();
     expect(
-      res.body.paths["/api/companies"].post.requestBody.content[
+      res.body.paths["/api/organization"].post.requestBody.content[
         "application/json"
       ].schema,
     ).toMatchObject({
@@ -333,10 +325,10 @@ describe("openapi routes", () => {
       required: ["name"],
     });
     expect(
-      JSON.stringify(res.body.paths["/api/companies"].post.responses),
+      JSON.stringify(res.body.paths["/api/organization"].post.responses),
     ).not.toContain("candidates");
     expect(
-      res.body.paths["/api/companies/{companyId}/skills/scan-projects"].post
+      res.body.paths["/api/skills/scan-projects"].post
         .responses["200"].content["application/json"].schema,
     ).toMatchObject({
       type: "object",
@@ -356,7 +348,7 @@ describe("openapi routes", () => {
       },
     });
     expect(
-      res.body.paths["/api/companies/{companyId}/folders"].post.responses[
+      res.body.paths["/api/folders"].post.responses[
         "201"
       ],
     ).toBeDefined();
@@ -389,11 +381,11 @@ describe("openapi routes", () => {
       expect(createInteractionSchema).toContain(`\"${resolverPolicy}\"`);
     }
     expect(
-      res.body.paths["/api/companies/{companyId}/folders/items/move"].post
+      res.body.paths["/api/folders/items/move"].post
         .summary,
     ).toBe("Move an item into or out of a folder");
     const createQueue =
-      res.body.paths["/api/companies/{companyId}/decision-queues"].post;
+      res.body.paths["/api/decision-queues"].post;
     expect(createQueue.security).toContainEqual({ AgentBearerAuth: [] });
     expect(createQueue.responses["200"]).toBeDefined();
     expect(createQueue.responses["201"]).toBeDefined();
@@ -409,7 +401,7 @@ describe("openapi routes", () => {
     });
     const updateTriage =
       res.body.paths[
-        "/api/companies/{companyId}/decision-triage/{sourceKind}/{sourceId}"
+        "/api/decision-triage/{sourceKind}/{sourceId}"
       ].put;
     expect(updateTriage.responses["422"]).toBeDefined();
     expect(
@@ -430,8 +422,8 @@ describe("openapi routes", () => {
     const { spec } = loadSpecRoutes();
     const boardSecurity = [{ BoardSessionAuth: [] }, { BoardApiKeyAuth: [] }];
     const operations = [
-      ["get", "/api/companies/{companyId}/chat-endpoints"],
-      ["post", "/api/companies/{companyId}/chat-endpoints"],
+      ["get", "/api/chat-endpoints"],
+      ["post", "/api/chat-endpoints"],
       ["get", "/api/chat-endpoints/{endpointId}"],
       ["get", "/api/chat-endpoints/{endpointId}/github/configuration"],
       ["put", "/api/chat-endpoints/{endpointId}/github/configuration"],
@@ -504,7 +496,7 @@ describe("openapi routes", () => {
       expect(operation.tags).toContain("chat-channels");
     }
 
-    const create = spec.paths["/api/companies/{companyId}/chat-endpoints"].post;
+    const create = spec.paths["/api/chat-endpoints"].post;
     expect(create.responses["201"]).toBeDefined();
     expect(create.requestBody.content["application/json"].schema).toMatchObject(
       {
@@ -771,7 +763,7 @@ describe("openapi routes", () => {
 
   it("documents board-only repository discovery and selection", () => {
     const { spec } = loadSpecRoutes();
-    const discovery = spec.paths["/api/companies/{companyId}/project-repositories"].get;
+    const discovery = spec.paths["/api/project-repositories"].get;
     const replacement = spec.paths["/api/projects/{id}/repositories"].put;
     for (const operation of [discovery, replacement]) {
       expect(operation["x-paperclip-authorization"]).toEqual({ actor: "board" });
@@ -810,25 +802,25 @@ describe("openapi routes", () => {
       actor: "board",
     });
     expect(
-      spec.paths["/api/companies/{companyId}/cost-events"].post.responses[
+      spec.paths["/api/cost-events"].post.responses[
         "201"
       ],
     ).toBeDefined();
     expect(
-      spec.paths["/api/companies/{companyId}/cost-events"].post.responses[
+      spec.paths["/api/cost-events"].post.responses[
         "403"
       ],
     ).toBeDefined();
     expect(
-      spec.paths["/api/companies/{companyId}/managed-agent-profiles"].post
+      spec.paths["/api/managed-agent-profiles"].post
         .security,
     ).toEqual([{ BoardSessionAuth: [] }, { BoardApiKeyAuth: [] }]);
     expect(
-      spec.paths["/api/companies/{companyId}/remote-agent-profiles"].get
+      spec.paths["/api/remote-agent-profiles"].get
         .security,
     ).toEqual([{ BoardSessionAuth: [] }, { BoardApiKeyAuth: [] }]);
     const remoteAgentProfileBody =
-      spec.paths["/api/companies/{companyId}/remote-agent-profiles"].post
+      spec.paths["/api/remote-agent-profiles"].post
         .requestBody.content["application/json"].schema;
     expect(remoteAgentProfileBody.properties.service).toMatchObject({
       type: "string",
@@ -847,7 +839,7 @@ describe("openapi routes", () => {
       spec.paths["/api/board-api-keys"].post.responses["201"],
     ).toBeDefined();
     expect(
-      spec.paths["/api/companies/import"].post.responses["202"],
+      spec.paths["/api/organization/import"].post.responses["202"],
     ).toBeDefined();
     expect(
       spec.paths["/api/routines/{id}/run"].post.responses["422"],
@@ -856,7 +848,7 @@ describe("openapi routes", () => {
 
   it("publishes the Claude browser-code grammar and strict setup-token response shapes", () => {
     const { spec } = loadSpecRoutes();
-    const base = "/api/companies/{companyId}/setup-token-login-sessions";
+    const base = "/api/setup-token-login-sessions";
 
     // The submitted browser code carries the bounded printable-ASCII grammar.
     const codeBody =
@@ -943,9 +935,9 @@ describe("openapi routes", () => {
     const { spec } = loadSpecRoutes();
     const cancel =
       spec.paths[
-        "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/cancel"
+        "/api/setup-token-login-sessions/{sessionId}/cancel"
       ].post;
-    // The 404 is reachable at run time. The company-access gate returns a fixed
+    // The 404 is reachable at run time. The organization-access gate returns a fixed
     // 404 for a non-member before the cancel logic runs, so the spec declares
     // it. The idempotent cancel still returns 200 for an owner-scoped missing,
     // terminal, or foreign session id.

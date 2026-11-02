@@ -250,7 +250,6 @@ describe("server adapter registry", () => {
     expect(adapter.supportsInstructionsBundle).toBe(true);
     expect(adapter.instructionsPathKey).toBe("instructionsFilePath");
     const result = await adapter.testEnvironment({
-      companyId: "company-1",
       adapterType: "paperclip_runner",
       config: { provider: "claude_managed" },
     });
@@ -276,7 +275,6 @@ describe("server adapter registry", () => {
     }, "aws_agentcore_profile_selected"],
   ] as const)("accepts a complete %s profile selection", async (provider, config, code) => {
     const result = await requireServerAdapter("paperclip_runner").testEnvironment({
-      companyId: "company-1",
       adapterType: "paperclip_runner",
       config: { provider, ...config },
     });
@@ -292,7 +290,6 @@ describe("server adapter registry", () => {
     ["claude", "claude-sonnet-5"],
   ] as const)("does not claim runtime readiness from the remote ACPX %s platform alone", async (acpxAgent, model) => {
     const result = await requireServerAdapter("paperclip_runner").testEnvironment({
-      companyId: "company-1",
       adapterType: "paperclip_runner",
       config: { provider: "acpx", acpxAgent, model },
       executionTarget: {
@@ -316,7 +313,7 @@ describe("server adapter registry", () => {
     if (ready) probe.mockResolvedValueOnce(undefined);
     else probe.mockRejectedValueOnce(new Error("Runtime package integrity verification failed"));
     const result = await requireServerAdapter("paperclip_runner").testEnvironment({
-      companyId: "company-1", adapterType: "paperclip_runner",
+      adapterType: "paperclip_runner",
       config: { provider: "acpx", acpxAgent: "claude", model: "custom-claude-model" },
     });
     expect(probe).toHaveBeenLastCalledWith("custom-claude-model");
@@ -328,7 +325,6 @@ describe("server adapter registry", () => {
 
   it("keeps the ACPX Pi profile unavailable", async () => {
     const result = await requireServerAdapter("paperclip_runner").testEnvironment({
-      companyId: "company-1",
       adapterType: "paperclip_runner",
       config: {
         provider: "acpx",
@@ -348,7 +344,7 @@ describe("server adapter registry", () => {
     process.env[key] = JSON.stringify([{ agent: "cursor", model: "exact-model" }]);
     try {
       const result = await requireServerAdapter("paperclip_runner").testEnvironment({
-        companyId: "company-1", adapterType: "paperclip_runner",
+        adapterType: "paperclip_runner",
         config: { provider: "acpx", acpxAgent: "cursor", model: "exact-model" },
       });
       expect(result).toMatchObject({ status: "warn", checks: [{ code: "acpx_candidate_qualification_only" }] });

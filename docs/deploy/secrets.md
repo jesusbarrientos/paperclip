@@ -129,7 +129,7 @@ plaintext secret values.
 Recommended external ref shape for operator-owned AWS paths:
 
 ```text
-paperclip-ext/{environment}/{company-id}/user-secrets/{definition-key}/{opaque-owner-id}
+paperclip-ext/{environment}/user-secrets/{definition-key}/{opaque-owner-id}
 ```
 
 Guidance:
@@ -149,7 +149,7 @@ Guidance:
 
 ### IAM Caveats
 
-Paperclip enforces company scoping, responsible-user derivation, declaration
+Paperclip enforces organization access, responsible-user derivation, declaration
 policy, current-user value APIs, redaction, and access-event metadata. It does
 not replace the IAM policy of an external vault.
 
@@ -203,7 +203,7 @@ Validate secrets config:
 
 ```sh
 pnpm paperclipai doctor
-npx paperclipai secrets doctor --company-id <company-id>
+npx paperclipai secrets doctor
 ```
 
 ### Environment Overrides
@@ -245,8 +245,8 @@ backup/rotation/incident runbooks — in `doc/SECRETS-AWS-PROVIDER.md`.
 
 ## Provider Vaults
 
-A *provider vault* is a named, company-scoped configuration that points secret
-material at one of the supported provider backends. Each company can configure
+A *provider vault* is a named, organization-level configuration that points secret
+material at one of the supported provider backends. The organization can configure
 multiple vaults, including more than one vault per provider family, and pick a
 default vault per family for new secret operations. Existing secrets created
 before any vault was configured continue to resolve through the deployment-level
@@ -264,7 +264,7 @@ Open `Organization Settings → Secrets` in the board UI and switch to the
 - Run a health check against a vault and read the latest result inline.
 
 The same operations are exposed under
-`/api/companies/{companyId}/secret-provider-configs` for automation. See the
+`/api/secret-provider-configs` for automation. See the
 [secrets API reference](/api/secrets#provider-vaults) for the full route table.
 
 ### Custody Of Provider Credentials
@@ -456,7 +456,7 @@ Each provider family has a different backup story:
 The AWS Secrets Manager provider cannot bootstrap itself from Paperclip
 `company_secrets`. Its initial AWS access must be present before the server can
 create or resolve AWS-backed company secrets, regardless of whether you use the
-deployment-level default or a per-company vault.
+deployment-level default or an organization provider vault.
 
 For Paperclip Cloud, provision the server runtime IAM role/workload identity,
 KMS key, deployment prefix, and non-secret `PAPERCLIP_SECRETS_AWS_*` environment
@@ -475,8 +475,8 @@ store.
 If you have existing agents with inline API keys in their config, migrate them to encrypted secret refs:
 
 ```sh
-npx paperclipai secrets migrate-inline-env --company-id <company-id>
-npx paperclipai secrets migrate-inline-env --company-id <company-id> --apply
+npx paperclipai secrets migrate-inline-env
+npx paperclipai secrets migrate-inline-env --apply
 
 # low-level script for direct database maintenance
 pnpm secrets:migrate-inline-env         # dry run
@@ -493,7 +493,7 @@ Company exports include only environment declarations. They do not include
 secret IDs, provider references, encrypted material, or plaintext values.
 
 ```sh
-npx paperclipai secrets declarations --company-id <company-id> --kind secret
+npx paperclipai secrets declarations --kind secret
 ```
 
 Before importing a package into another instance, use those declarations to

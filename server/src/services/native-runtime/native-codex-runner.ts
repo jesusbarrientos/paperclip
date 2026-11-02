@@ -37,7 +37,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 async function readNativeGoalControl(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   agentId: string;
   requestId: string | null;
@@ -59,7 +58,6 @@ async function readNativeGoalControl(input: {
     )
     .where(
       and(
-        eq(agentSessionGoalActions.companyId, input.companyId),
         eq(agentSessionGoalActions.requestId, input.requestId),
         eq(agentTaskSessions.agentId, input.agentId),
         eq(agentTaskSessions.taskKey, input.issueId),
@@ -282,7 +280,6 @@ async function stopChild(
 
 export async function executeNativeCodexRunner(input: {
   db: Db;
-  companyId: string;
   issueId: string;
   runId: string;
   agentId: string;
@@ -321,7 +318,6 @@ export async function executeNativeCodexRunner(input: {
   const runnerStateDirectory = resolve(runtimeRoot, "runner", input.runId);
   const goalControl = await readNativeGoalControl({
     db: input.db,
-    companyId: input.companyId,
     issueId: input.issueId,
     agentId: input.agentId,
     requestId: input.goalControlRequestId ?? null,
@@ -334,7 +330,6 @@ export async function executeNativeCodexRunner(input: {
   const prepared = await runnerPrpCoordinator(input.db, {
     stateRoot: resolve(runtimeRoot, "control-plane"),
   }).prepare({
-    companyId: input.companyId,
     issueId: input.issueId,
     runId: input.runId,
     agentId: input.agentId,
@@ -503,7 +498,6 @@ export async function executeNativeCodexRunner(input: {
       await failRunnerGoalAction(
         input.db,
         {
-          companyId: input.companyId,
           issueId: input.issueId,
           agentId: input.agentId,
           adapterType: "paperclip_runner",

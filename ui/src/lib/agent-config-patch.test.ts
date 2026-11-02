@@ -7,7 +7,6 @@ import { buildAgentUpdatePatch, type AgentConfigOverlay } from "./agent-config-p
 function makeAgent(): Agent {
   return {
     id: "agent-1",
-    companyId: "company-1",
     name: "Agent",
     role: "engineer",
     title: "Engineer",

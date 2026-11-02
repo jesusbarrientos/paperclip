@@ -161,7 +161,7 @@ exit 7
     try {
       const result = await execute({
         runId: "run-diagnostic-1",
-        agent: { id: "agent-1", companyId: "company-1", name: "Cursor", adapterType: "cursor", adapterConfig: {} },
+        agent: { id: "agent-1", name: "Cursor", adapterType: "cursor", adapterConfig: {} },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: { command, cwd: root, env: { FIXTURE_TRACE: trace, FIXTURE_DETAIL: detail, FIXTURE_STRUCTURED: structured } },
         context: createPromptContextFixture(), authToken: "fixture-run-token", onLog: async () => {},
@@ -205,7 +205,6 @@ exit 7
         runId: "run-fresh-lease-1",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},
@@ -337,7 +336,6 @@ printf '%s\\n' '{"type":"result","subtype":"success","session_id":"cursor-sessio
         runId: "run-fresh-lease-managed",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "Cursor Coder",
           adapterType: "cursor",
           adapterConfig: {},
@@ -416,7 +414,7 @@ printf '%s\\n' '{"type":"result","subtype":"success","session_id":"cursor-sessio
     try {
       const result = await execute({
         runId: "run-cursor-resume-fallback",
-        agent: { id: "agent-1", companyId: "company-1", name: "Cursor Coder", adapterType: "cursor", adapterConfig: {} },
+        agent: { id: "agent-1", name: "Cursor Coder", adapterType: "cursor", adapterConfig: {} },
         runtime: { sessionId: "cursor-session-old", sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: { command: commandPath, cwd: workspace, promptTemplate: "Follow the paperclip heartbeat." },
         context: createPromptContextFixture(),

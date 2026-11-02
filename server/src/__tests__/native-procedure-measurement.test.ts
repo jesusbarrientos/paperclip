@@ -16,7 +16,7 @@ import { startOpenCodeMcpBridge } from "../../../packages/paperclip-runner/src/d
 // Paperclip delivers, not the vendor's private prompt, tokenizer or billing.
 const root = new URL("../../../", import.meta.url);
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
-const identity = { companyId: "company", agentId: "agent", issueId: "issue", runId: "run", sessionId: "session" };
+const identity = { agentId: "agent", issueId: "issue", runId: "run", sessionId: "session" };
 const tools = new PaperclipRunnerToolAuthority({} as Db, {
   ...identity, apiToolsEnabled: true, workspaceRoot: WORKSPACE,
 }).definitions();
@@ -45,7 +45,7 @@ function execution(provider: NativeExecutionInput["provider"]): NativeExecutionI
     skills: [], mcp: { assignmentSetId: "none", digest: "0".repeat(64), bindingId: null },
   };
   return parseNativeExecutionInput({
-    schema: "paperclip.native-execution-input.v5", binding: { companyId: identity.companyId, agentId: identity.agentId, issueId: identity.issueId, runId: identity.runId, executionWorkspaceId: "workspace" },
+    schema: "paperclip.native-execution-input.v5", binding: { agentId: identity.agentId, issueId: identity.issueId, runId: identity.runId, executionWorkspaceId: "workspace" },
     task: { identifier: "TASK-1", title: "Review delegated work", description: "Review delegated work", prompt: "Review delegated work.", workMode: "standard" },
     workspace: { cwd: WORKSPACE, repoUrl: null, repoRef: null, branchName: null },
     session: { normalizedSessionId: "session", driverKind: provider.kind === "acpx" ? "acpx_runtime" : provider.kind === "opencode" ? "opencode_server" : "codex_app_server", protocolVersion: 1 },

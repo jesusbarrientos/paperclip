@@ -105,7 +105,6 @@ describe("claude_local environment diagnostics", () => {
     process.env.ANTHROPIC_API_KEY = "sk-test-host";
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -131,7 +130,6 @@ describe("claude_local environment diagnostics", () => {
     delete process.env.ANTHROPIC_BEDROCK_BASE_URL;
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -159,7 +157,6 @@ describe("claude_local environment diagnostics", () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = "1";
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -187,7 +184,6 @@ describe("claude_local environment diagnostics", () => {
     delete process.env.CLAUDE_CODE_USE_BEDROCK;
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -218,7 +214,6 @@ describe("claude_local environment diagnostics", () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = "1";
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -243,7 +238,6 @@ describe("claude_local environment diagnostics", () => {
     await fs.rm(path.dirname(cwd), { recursive: true, force: true });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -261,7 +255,6 @@ describe("claude_local environment diagnostics", () => {
 
   it("defaults remote probes to the environment remote cwd when adapter cwd is unset", async () => {
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -302,7 +295,6 @@ describe("claude_local environment diagnostics", () => {
     const executeCalls: Array<{ command: string; args?: string[]; env?: Record<string, string> }> = [];
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -411,7 +403,6 @@ console.log(JSON.stringify({ type: "result", result: "hello", usage: { input_tok
 
     try {
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "claude_local",
         config: {
           engine: "cli",
@@ -447,7 +438,6 @@ console.log(JSON.stringify({ type: "result", result: "hello", usage: { input_tok
 
     try {
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "claude_local",
         config: {
           engine: "cli",

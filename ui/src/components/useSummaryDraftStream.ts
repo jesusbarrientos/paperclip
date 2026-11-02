@@ -60,7 +60,6 @@ function readPayloadString(value: unknown): string | null {
  * spinner. State resets whenever the tracked generation changes.
  */
 export function useSummaryDraftStream(
-  companyId: string | null | undefined,
   generatingIssue: SummarySlotIssueRef | null,
 ): SummaryDraftStream {
   const { visible } = usePageVisibility();
@@ -111,7 +110,7 @@ export function useSummaryDraftStream(
   const activeRunQuery = useQuery({
     queryKey: queryKeys.issues.activeRun(issueId ?? "__none__"),
     queryFn: () => heartbeatsApi.activeRunForIssue(issueId!),
-    enabled: Boolean(companyId) && Boolean(issueId) && !runId,
+    enabled: Boolean(issueId) && !runId,
     retry: false,
     refetchInterval: runId ? false : 4000,
   });

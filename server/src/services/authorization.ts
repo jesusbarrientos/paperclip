@@ -45,13 +45,11 @@ export type AuthorizationActor =
     type: "board" | "agent" | "none";
     userId?: string | null;
     sessionId?: string | null;
-    companyIds?: string[];
-    memberships?: Array<{ companyId: string; membershipRole?: string | null; status?: string }>;
-    onBehalfOfMemberships?: Array<{ companyId: string; membershipRole?: string | null; status?: string }>;
+    memberships?: Array<{ membershipRole?: string | null; status?: string }>;
+    onBehalfOfMemberships?: Array<{ membershipRole?: string | null; status?: string }>;
     isInstanceAdmin?: boolean;
     ignoreInstanceAdmin?: boolean;
     agentId?: string | null;
-    companyId?: string | null;
     keyId?: string | null;
     keyScope?: AgentApiKeyScope | null;
     runId?: string | null;
@@ -89,12 +87,13 @@ export type AuthorizationAction =
   | "secrets:propose";
 
 export type AuthorizationResource =
-  | { type: "company"; companyId: string }
-  | { type: "agent"; companyId: string; agentId?: string | null }
-  | { type: "project"; companyId: string; projectId?: string | null }
+  | { type: "company"; }
+  | { type: "agent";
+ agentId?: string | null }
+  | { type: "project";
+ projectId?: string | null }
   | {
       type: "issue";
-      companyId: string;
       issueId?: string | null;
       projectId?: string | null;
       parentIssueId?: string | null;
@@ -153,10 +152,6 @@ export type AuthorizationDecision = {
 type PrincipalGrantDecision = AuthorizationDecision & {
   grant?: NonNullable<AuthorizationDecision["grant"]>;
 };
-
-function companyIdForResource(resource: AuthorizationResource) {
-  return resource.companyId;
-}
 
 function permissionForAction(action: AuthorizationAction): PermissionKey | null {
   if (action === "agent_config:read" || action === "agent_config:update" || action === "agent_instructions:update" || action === "skill_config:update") {
@@ -245,10 +240,8 @@ type AssignmentPolicyEffect =
   | { kind: "unknown"; explanation: string };
 
 type AgentHierarchyRow = { id: string; reportsTo: string | null };
-type LowTrustBoundaryWithCompany = LowTrustBoundary & { companyId: string };
 type AgentAuthorizationRow = {
   id: string;
-  companyId: string;
   role: string;
   status: string;
   reportsTo: string | null;
@@ -256,12 +249,10 @@ type AgentAuthorizationRow = {
 };
 type ProjectAuthorizationRow = {
   id: string;
-  companyId: string;
   executionWorkspacePolicy: unknown;
 };
 type IssueAuthorizationRow = {
   id: string;
-  companyId: string;
   projectId: string | null;
   parentId: string | null;
   assigneeAgentId: string | null;
@@ -378,22 +369,20 @@ function agentIsInSubtree(
   return false;
 }
 
-async function loadCompanyAgentHierarchy(db: Db | DbTransaction, companyId: string) {
+async function loadCompanyAgentHierarchy(db: Db | DbTransaction) {
   const rows = await db
     .select({ id: agents.id, reportsTo: agents.reportsTo })
-    .from(agents)
-    .where(eq(agents.companyId, companyId));
+    .from(agents);
   return new Map(rows.map((agent) => [agent.id, agent]));
 }
 
 async function isAgentInSubtree(
   db: Db | DbTransaction,
-  companyId: string,
   rootAgentId: string,
   targetAgentId: string,
 ) {
   return agentIsInSubtree(
-    await loadCompanyAgentHierarchy(db, companyId),
+    await loadCompanyAgentHierarchy(db),
     rootAgentId,
     targetAgentId,
   );
@@ -401,7 +390,6 @@ async function isAgentInSubtree(
 
 async function scopeAllows(
   db: Db | DbTransaction,
-  companyId: string,
   grantScope: Record<string, unknown> | null,
   requestedScope: Record<string, unknown> | null | undefined,
   options: { requireStructuredScope?: boolean } = {},
@@ -467,7 +455,7 @@ async function scopeAllows(
   if (subtreeRootAgentIds.length > 0) {
     constrained = true;
     if (!targetAssigneeAgentId) return false;
-    const agentsById = await loadCompanyAgentHierarchy(db, companyId);
+    const agentsById = await loadCompanyAgentHierarchy(db);
     let matchesSubtree = false;
     for (const rootAgentId of subtreeRootAgentIds) {
       if (agentIsInSubtree(agentsById, rootAgentId, targetAssigneeAgentId)) {
@@ -493,9 +481,8 @@ function deny(input: Omit<AuthorizationDecision, "allowed">): AuthorizationDecis
 
 type ResponsibleUserSnapshot = {
   userId: string;
-  companyId: string;
   userExists: boolean;
-  activeMembership: { companyId: string; membershipRole?: string | null; status?: string } | null;
+  activeMembership: { membershipRole?: string | null; status?: string } | null;
 };
 
 type ResponsibleUserActorWithMemo = AuthorizationActor & {
@@ -509,10 +496,9 @@ export function responsibleUserAuthzShadowMode() {
 }
 
 function activeActorMembership(
-  memberships: Array<{ companyId: string; membershipRole?: string | null; status?: string }> | null | undefined,
-  companyId: string,
+  memberships: Array<{ membershipRole?: string | null; status?: string }> | null | undefined,
 ) {
-  return memberships?.find((membership) => membership.companyId === companyId && membership.status === "active") ?? null;
+  return memberships?.find((membership) => membership.status === "active") ?? null;
 }
 
 function activeResponsibleUserCanAuthorizeIssueAction(
@@ -576,7 +562,6 @@ export function authorizationService(db: Db | DbTransaction) {
   }
 
   async function getActiveMembership(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
   ) {
@@ -593,7 +578,7 @@ export function authorizationService(db: Db | DbTransaction) {
       .then((rows) => rows[0] ?? null);
   }
 
-  async function loadResponsibleUserSnapshot(companyId: string, userId: string): Promise<ResponsibleUserSnapshot> {
+  async function loadResponsibleUserSnapshot(userId: string): Promise<ResponsibleUserSnapshot> {
     const [user, membership] = await Promise.all([
       db
         .select({ id: authUsers.id })
@@ -617,30 +602,27 @@ export function authorizationService(db: Db | DbTransaction) {
     ]);
     return {
       userId,
-      companyId,
       userExists: Boolean(user),
-      activeMembership: user && membership ? { ...membership, companyId } : null,
+      activeMembership: user && membership ? { ...membership } : null,
     };
   }
 
   function getResponsibleUserSnapshot(input: {
     actor: AuthorizationActor;
-    companyId: string;
     userId: string;
   }): Promise<ResponsibleUserSnapshot> {
     const actorWithMemo = input.actor as ResponsibleUserActorWithMemo;
-    const key = `${input.companyId}:${input.userId}`;
+    const key = input.userId;
     actorWithMemo.__responsibleUserSnapshotMemo ??= new Map();
     const requestMemo = actorWithMemo.__responsibleUserSnapshotMemo.get(key);
     if (requestMemo) return requestMemo;
 
     const actorMembership = input.actor.onBehalfOfUserId === input.userId
-      ? activeActorMembership(input.actor.onBehalfOfMemberships, input.companyId)
+      ? activeActorMembership(input.actor.onBehalfOfMemberships)
       : null;
     if (actorMembership) {
       const promise = Promise.resolve({
         userId: input.userId,
-        companyId: input.companyId,
         userExists: true,
         activeMembership: actorMembership,
       });
@@ -648,7 +630,7 @@ export function authorizationService(db: Db | DbTransaction) {
       return promise;
     }
 
-    const promise = loadResponsibleUserSnapshot(input.companyId, input.userId);
+    const promise = loadResponsibleUserSnapshot(input.userId);
     actorWithMemo.__responsibleUserSnapshotMemo.set(key, promise);
     void promise.catch(() => {
       if (actorWithMemo.__responsibleUserSnapshotMemo?.get(key) === promise) {
@@ -659,7 +641,6 @@ export function authorizationService(db: Db | DbTransaction) {
   }
 
   async function findGrant(
-    companyId: string,
     principalType: PrincipalType,
     principalId: string,
     permissionKey: PermissionKey,
@@ -678,23 +659,22 @@ export function authorizationService(db: Db | DbTransaction) {
   }
 
   async function decidePrincipalGrant(input: {
-    companyId: string;
     principalType: PrincipalType;
     principalId: string;
     action: AuthorizationAction;
     permissionKey: PermissionKey;
     scope?: Record<string, unknown> | null;
   }): Promise<PrincipalGrantDecision> {
-    const membership = await getActiveMembership(input.companyId, input.principalType, input.principalId);
+    const membership = await getActiveMembership(input.principalType, input.principalId);
     if (!membership) {
       return deny({
         action: input.action,
         reason: "deny_missing_membership",
-        explanation: `${input.principalType} principal ${input.principalId} is not an active member of company ${input.companyId}.`,
+        explanation: `${input.principalType} principal ${input.principalId} is not an active member.`,
       });
     }
 
-    const grant = await findGrant(input.companyId, input.principalType, input.principalId, input.permissionKey);
+    const grant = await findGrant(input.principalType, input.principalId, input.permissionKey);
     if (!grant) {
       if (
         input.principalType === "user"
@@ -717,7 +697,7 @@ export function authorizationService(db: Db | DbTransaction) {
     }
 
     if (
-      !(await scopeAllows(db, input.companyId, grant.scope, input.scope, {
+      !(await scopeAllows(db, grant.scope, input.scope, {
         requireStructuredScope: input.permissionKey === "tasks:assign_scope",
       }))
     ) {
@@ -751,7 +731,6 @@ export function authorizationService(db: Db | DbTransaction) {
     return db
       .select({
         id: agents.id,
-        companyId: agents.companyId,
         role: agents.role,
         status: agents.status,
         reportsTo: agents.reportsTo,
@@ -766,7 +745,6 @@ export function authorizationService(db: Db | DbTransaction) {
     return db
       .select({
         id: projects.id,
-        companyId: projects.companyId,
         executionWorkspacePolicy: projects.executionWorkspacePolicy,
       })
       .from(projects)
@@ -778,7 +756,6 @@ export function authorizationService(db: Db | DbTransaction) {
     return db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
         projectId: issues.projectId,
         parentId: issues.parentId,
         assigneeAgentId: issues.assigneeAgentId,
@@ -794,37 +771,35 @@ export function authorizationService(db: Db | DbTransaction) {
       .then((rows) => rows[0] ?? null);
   }
 
-  async function loadRunPolicy(runId: string | null | undefined, companyId: string, agentId: string) {
+  async function loadRunPolicy(runId: string | null | undefined, agentId: string) {
     if (!runId) return null;
     const row = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
         agentId: heartbeatRuns.agentId,
         contextSnapshot: heartbeatRuns.contextSnapshot,
       })
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
-    if (!row || row.companyId !== companyId || row.agentId !== agentId) return null;
+    if (!row || row.agentId !== agentId) return null;
     const context = isPlainRecord(row.contextSnapshot) ? row.contextSnapshot : null;
     return isPlainRecord(context?.executionPolicy)
-      ? { companyId: row.companyId, executionPolicy: context.executionPolicy }
+      ? { executionPolicy: context.executionPolicy }
       : null;
   }
 
-  async function loadRunIssueId(runId: string | null | undefined, companyId: string, agentId: string) {
+  async function loadRunIssueId(runId: string | null | undefined, agentId: string) {
     if (!runId) return null;
     const row = await db
       .select({
-        companyId: heartbeatRuns.companyId,
         agentId: heartbeatRuns.agentId,
         contextSnapshot: heartbeatRuns.contextSnapshot,
       })
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
-    if (!row || row.companyId !== companyId || row.agentId !== agentId) return null;
+    if (!row || row.agentId !== agentId) return null;
     const context = isPlainRecord(row.contextSnapshot) ? row.contextSnapshot : null;
     const issueId = typeof context?.issueId === "string"
       ? context.issueId.trim()
@@ -837,36 +812,34 @@ export function authorizationService(db: Db | DbTransaction) {
   async function isDirectParentReportTarget(input: {
     actor: AuthorizationActor;
     actorAgentId: string;
-    companyId: string;
     resource: AuthorizationResource;
   }) {
     if (input.resource.type !== "issue" || !input.resource.issueId) return false;
-    const runIssueId = await loadRunIssueId(input.actor.runId, input.companyId, input.actorAgentId);
+    const runIssueId = await loadRunIssueId(input.actor.runId, input.actorAgentId);
     if (!runIssueId || runIssueId === input.resource.issueId) return false;
     const runIssue = await loadIssue(runIssueId);
     return Boolean(
       runIssue &&
-      runIssue.companyId === input.companyId &&
       runIssue.assigneeAgentId === input.actorAgentId &&
       runIssue.checkoutRunId === input.actor.runId &&
       runIssue.parentId === input.resource.issueId,
     );
   }
 
-  async function loadProjectAuthorizationPolicy(companyId: string, projectId: string) {
+  async function loadProjectAuthorizationPolicy(projectId: string) {
     const row = await db
       .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
       .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .where(eq(projects.id, projectId))
       .then((rows) => rows[0] ?? null);
     return readPolicyObject(row?.executionWorkspacePolicy, "authorizationPolicy");
   }
 
-  async function loadIssueAuthorizationPolicy(companyId: string, issueId: string) {
+  async function loadIssueAuthorizationPolicy(issueId: string) {
     const row = await db
       .select({ executionPolicy: issues.executionPolicy })
       .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+      .where(eq(issues.id, issueId))
       .then((rows) => rows[0] ?? null);
     return readPolicyObject(row?.executionPolicy, "authorizationPolicy");
   }
@@ -886,13 +859,11 @@ export function authorizationService(db: Db | DbTransaction) {
   async function resolveActorTrust(input: {
     actorAgent: AgentAuthorizationRow;
     actor: AuthorizationActor;
-    companyId: string;
     resource: AuthorizationResource;
   }): Promise<TrustPresetResolution> {
     const { issue, project } = await loadResourceContext(input.resource);
-    const run = await loadRunPolicy(input.actor.runId, input.companyId, input.actorAgent.id);
+    const run = await loadRunPolicy(input.actor.runId, input.actorAgent.id);
     const resolution = resolveCoreTrustPreset({
-      companyId: input.companyId,
       agent: input.actorAgent,
       project,
       issue,
@@ -900,23 +871,21 @@ export function authorizationService(db: Db | DbTransaction) {
     });
     if (!input.actor.runId || resolution.kind !== "low_trust_review") return resolution;
     return withHumanDirectedWork(db, resolution, {
-      companyId: input.companyId, agentId: input.actorAgent.id, runId: input.actor.runId,
+      agentId: input.actorAgent.id, runId: input.actor.runId,
     });
   }
 
-  async function issueIdIsDescendantOf(issueId: string, rootIssueId: string, companyId: string) {
+  async function issueIdIsDescendantOf(issueId: string, rootIssueId: string) {
     const rows = await db.execute(sql`
       WITH RECURSIVE ancestors(id, parent_id, depth) AS (
         SELECT id, parent_id, 0
         FROM issues
-        WHERE company_id = ${companyId}
-          AND id = ${issueId}
+        WHERE id = ${issueId}
         UNION ALL
         SELECT parent.id, parent.parent_id, ancestors.depth + 1
         FROM issues parent
         JOIN ancestors ON parent.id = ancestors.parent_id
-        WHERE parent.company_id = ${companyId}
-          AND ancestors.depth < ${LOW_TRUST_ISSUE_ANCESTRY_MAX_DEPTH - 1}
+        WHERE ancestors.depth < ${LOW_TRUST_ISSUE_ANCESTRY_MAX_DEPTH - 1}
       )
       SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ${rootIssueId}) AS is_descendant
     `);
@@ -929,44 +898,43 @@ export function authorizationService(db: Db | DbTransaction) {
   }
 
   async function issueResourceWithinLowTrustBoundary(
-    boundary: LowTrustBoundaryWithCompany,
+    boundary: LowTrustBoundary,
     resource: Extract<AuthorizationResource, { type: "issue" }>,
   ) {
     const issue = resource.issueId ? await loadIssue(resource.issueId) : null;
     const candidate = {
-      companyId: resource.companyId,
       id: issue?.id ?? resource.issueId ?? null,
       projectId: issue?.projectId ?? resource.projectId ?? null,
     };
     if (isIssueWithinLowTrustBoundary(boundary, candidate)) return true;
     if (candidate.id && boundary.rootIssueId) {
-      return issueIdIsDescendantOf(candidate.id, boundary.rootIssueId, boundary.companyId);
+      return issueIdIsDescendantOf(candidate.id, boundary.rootIssueId);
     }
     // Only an explicit root scope includes descendants. A parent in a permitted
     // project (or an exact issue-id scope) cannot authorize a child elsewhere.
     if (!resource.parentIssueId || !boundary.rootIssueId) return false;
     const parent = await loadIssue(resource.parentIssueId);
-    if (!parent || parent.companyId !== boundary.companyId) return false;
+    if (!parent) return false;
     // Root ancestry permits decomposition, not selection of an unrelated
     // project. Projectless children remain possible for projectless roots.
     if (candidate.projectId && !await projectWithinLowTrustBoundary(boundary, candidate.projectId)) return false;
     return parent.id === boundary.rootIssueId ||
-      issueIdIsDescendantOf(parent.id, boundary.rootIssueId, boundary.companyId);
+      issueIdIsDescendantOf(parent.id, boundary.rootIssueId);
   }
 
   async function projectWithinLowTrustBoundary(
-    boundary: LowTrustBoundaryWithCompany,
+    boundary: LowTrustBoundary,
     projectId: string | null | undefined,
   ) {
     if (!projectId) return false;
     if (boundary.projectIds?.includes(projectId)) return true;
     if (!boundary.rootIssueId) return false;
     const rootIssue = await loadIssue(boundary.rootIssueId);
-    return rootIssue?.companyId === boundary.companyId && rootIssue.projectId === projectId;
+    return rootIssue?.projectId === projectId;
   }
 
   function agentWithinLowTrustBoundary(
-    boundary: LowTrustBoundaryWithCompany,
+    boundary: LowTrustBoundary,
     actorAgentId: string,
     targetAgentId: string | null | undefined,
   ) {
@@ -1008,7 +976,6 @@ export function authorizationService(db: Db | DbTransaction) {
     if (input.action === "agent_instructions:update") {
       if (input.resource.type === "agent" && input.resource.agentId === input.actorAgentId &&
           await hasOwnerChatInstructionAuthority(db, {
-            companyId: boundary.companyId,
             agentId: input.actorAgentId,
             runId: input.actor.runId,
             userId: input.actor.onBehalfOfUserId,
@@ -1070,7 +1037,7 @@ export function authorizationService(db: Db | DbTransaction) {
       if (input.resource.type !== "issue") {
         return lowTrustDeny("Low-trust issue access is missing an issue resource.");
       }
-      if (input.resolution.humanDirectedIssueId && input.resource.companyId === boundary.companyId &&
+      if (input.resolution.humanDirectedIssueId &&
           input.resource.issueId === input.resolution.humanDirectedIssueId) {
         return lowTrustAllow("Allowed on the exact task directed by an authenticated human.");
       }
@@ -1079,7 +1046,6 @@ export function authorizationService(db: Db | DbTransaction) {
           input.resource.issueId &&
           await agentHasMentionGrantOnIssue({
             action: input.action,
-            companyId: boundary.companyId,
             issueId: input.resource.issueId,
             issueAssigneeAgentId: input.resource.assigneeAgentId ?? null,
             actorAgentId: input.actorAgentId,
@@ -1097,7 +1063,6 @@ export function authorizationService(db: Db | DbTransaction) {
         input.resource.issueId &&
         await agentHasMentionGrantOnIssue({
           action: input.action,
-          companyId: boundary.companyId,
           issueId: input.resource.issueId,
           issueAssigneeAgentId: input.resource.assigneeAgentId ?? null,
           actorAgentId: input.actorAgentId,
@@ -1143,13 +1108,12 @@ export function authorizationService(db: Db | DbTransaction) {
 
   async function parentIssueMatchesTaskBridgeBoundary(
     parentIssueId: string | null | undefined,
-    companyId: string,
     allowedParentIssueIds: string[],
   ) {
     if (!parentIssueId || allowedParentIssueIds.length === 0) return false;
     if (allowedParentIssueIds.includes(parentIssueId)) return true;
     for (const rootIssueId of allowedParentIssueIds) {
-      if (await issueIdIsDescendantOf(parentIssueId, rootIssueId, companyId)) return true;
+      if (await issueIdIsDescendantOf(parentIssueId, rootIssueId)) return true;
     }
     return false;
   }
@@ -1161,12 +1125,12 @@ export function authorizationService(db: Db | DbTransaction) {
     const allowedProjectIds = taskBridgeScopeIds(scope, "projectId", "projectIds");
     const allowedParentIssueIds = taskBridgeScopeIds(scope, "parentIssueId", "parentIssueIds");
     if (resource.projectId && allowedProjectIds.includes(resource.projectId)) return true;
-    if (await parentIssueMatchesTaskBridgeBoundary(resource.parentIssueId, resource.companyId, allowedParentIssueIds)) {
+    if (await parentIssueMatchesTaskBridgeBoundary(resource.parentIssueId, allowedParentIssueIds)) {
       return true;
     }
     if (resource.parentIssueId && allowedProjectIds.length > 0) {
       const parent = await loadIssue(resource.parentIssueId);
-      if (parent?.companyId === resource.companyId && parent.projectId && allowedProjectIds.includes(parent.projectId)) {
+      if (parent?.projectId && allowedProjectIds.includes(parent.projectId)) {
         return true;
       }
     }
@@ -1304,18 +1268,17 @@ export function authorizationService(db: Db | DbTransaction) {
     return denySkillTest("Skill-test run token cannot use this API action.");
   }
 
-  async function assignmentTargetIsInCompany(resource: AuthorizationResource) {
+  async function assignmentTargetIsAssignable(resource: AuthorizationResource) {
     if (resource.type !== "issue") return true;
     if (resource.assigneeAgentId) {
       const target = await loadAgent(resource.assigneeAgentId);
       return Boolean(
         target &&
-        target.companyId === resource.companyId &&
         isSimpleAssignableAgentStatus(target.status),
       );
     }
     if (resource.assigneeUserId) {
-      return Boolean(await getActiveMembership(resource.companyId, "user", resource.assigneeUserId));
+      return Boolean(await getActiveMembership("user", resource.assigneeUserId));
     }
     return true;
   }
@@ -1336,21 +1299,21 @@ export function authorizationService(db: Db | DbTransaction) {
     }
     if (resource.projectId) {
       checks.push(
-        loadProjectAuthorizationPolicy(resource.companyId, resource.projectId).then((policy) =>
+        loadProjectAuthorizationPolicy(resource.projectId).then((policy) =>
           evaluateAuthorizationPolicyForAssignment(policy, "Target project"),
         ),
       );
     }
     if (resource.issueId) {
       checks.push(
-        loadIssueAuthorizationPolicy(resource.companyId, resource.issueId).then((policy) =>
+        loadIssueAuthorizationPolicy(resource.issueId).then((policy) =>
           evaluateAuthorizationPolicyForAssignment(policy, "Target issue"),
         ),
       );
     }
     if (resource.parentIssueId && resource.parentIssueId !== resource.issueId) {
       checks.push(
-        loadIssueAuthorizationPolicy(resource.companyId, resource.parentIssueId).then((policy) =>
+        loadIssueAuthorizationPolicy(resource.parentIssueId).then((policy) =>
           evaluateAuthorizationPolicyForAssignment(policy, "Parent issue"),
         ),
       );
@@ -1366,8 +1329,8 @@ export function authorizationService(db: Db | DbTransaction) {
     );
   }
 
-  async function isManagerOf(companyId: string, managerAgentId: string, assigneeAgentId: string) {
-    return isAgentInSubtree(db, companyId, managerAgentId, assigneeAgentId);
+  async function isManagerOf(managerAgentId: string, assigneeAgentId: string) {
+    return isAgentInSubtree(db, managerAgentId, assigneeAgentId);
   }
 
   function commentAuthorCanGrantIssueMention(input: {
@@ -1389,7 +1352,6 @@ export function authorizationService(db: Db | DbTransaction) {
 
   async function agentHasMentionGrantOnIssue(input: {
     action: AuthorizationAction;
-    companyId: string;
     issueId: string;
     issueAssigneeAgentId: string | null;
     actorAgentId: string;
@@ -1403,7 +1365,6 @@ export function authorizationService(db: Db | DbTransaction) {
       })
       .from(issueComments)
       .where(and(
-        eq(issueComments.companyId, input.companyId),
         eq(issueComments.issueId, input.issueId),
         isNull(issueComments.deletedAt),
         sql`${issueComments.body} LIKE ${"%agent://" + input.actorAgentId + "%"}`,
@@ -1437,7 +1398,6 @@ export function authorizationService(db: Db | DbTransaction) {
         logger.info({
           actorAgentId: input.actorAgentId,
           issueId: input.issueId,
-          companyId: input.companyId,
           commentId: row.id,
           grantedAction: input.action,
           grant: "issue_mention_comment",
@@ -1463,8 +1423,6 @@ export function authorizationService(db: Db | DbTransaction) {
     scope?: Record<string, unknown> | null;
   }): Promise<AuthorizationDecision> {
     const permissionKey = permissionForAction(input.action);
-    const companyId = companyIdForResource(input.resource);
-
     /**
      * Shared default-open decision for issue write-influence channels.
      *
@@ -1485,16 +1443,15 @@ export function authorizationService(db: Db | DbTransaction) {
         input.resource.parentIssueId
       ) {
         const parent = await loadIssue(input.resource.parentIssueId);
-        if (!parent || parent.companyId !== companyId) {
+        if (!parent) {
           return deny({
             action: input.action,
             reason: "deny_company_boundary",
-            explanation: "The issue write target is not visible in this company.",
+            explanation: "The issue write target is not visible.",
           });
         }
         visibilityResource = {
           type: "issue",
-          companyId: parent.companyId,
           issueId: parent.id,
           projectId: parent.projectId,
           parentIssueId: parent.parentId,
@@ -1516,7 +1473,7 @@ export function authorizationService(db: Db | DbTransaction) {
         : await decideBase({
             actor: input.actor,
             action: "company_scope:read",
-            resource: { type: "company", companyId },
+            resource: { type: "company" },
             scope: input.scope,
           });
 
@@ -1540,7 +1497,6 @@ export function authorizationService(db: Db | DbTransaction) {
       principalId: string,
     ): Promise<AuthorizationDecision> {
       const broadDecision = await decidePrincipalGrant({
-        companyId,
         principalType,
         principalId,
         action: input.action,
@@ -1549,7 +1505,6 @@ export function authorizationService(db: Db | DbTransaction) {
       });
       if (broadDecision.allowed || broadDecision.reason === "deny_missing_membership") return broadDecision;
       const scopedDecision = await decidePrincipalGrant({
-        companyId,
         principalType,
         principalId,
         action: input.action,
@@ -1565,7 +1520,6 @@ export function authorizationService(db: Db | DbTransaction) {
       principalId: string,
     ): Promise<AuthorizationDecision> {
       const configureDecision = await decidePrincipalGrant({
-        companyId,
         principalType,
         principalId,
         action: input.action,
@@ -1577,7 +1531,6 @@ export function authorizationService(db: Db | DbTransaction) {
       }
 
       const suggestDecision = await decidePrincipalGrant({
-        companyId,
         principalType,
         principalId,
         action: input.action,
@@ -1596,7 +1549,6 @@ export function authorizationService(db: Db | DbTransaction) {
       keys: { direct: PermissionKey; suggest: PermissionKey },
     ): Promise<AuthorizationDecision> {
       const directDecision = await decidePrincipalGrant({
-        companyId,
         principalType,
         principalId,
         action: input.action,
@@ -1614,7 +1566,6 @@ export function authorizationService(db: Db | DbTransaction) {
       if (directDecision.reason === "deny_missing_membership") return directDecision;
 
       const suggestDecision = await decidePrincipalGrant({
-        companyId,
         principalType,
         principalId,
         action: input.action,
@@ -1687,7 +1638,7 @@ export function authorizationService(db: Db | DbTransaction) {
           explanation: "Allowed because the actor is the local implicit board.",
         });
       }
-      // MCP grants always use their explicitly consented company membership,
+      // MCP grants always use their explicitly consented membership,
       // even when the consenting person is an instance administrator.
       // A cloud_tenant actor's computed `isInstanceAdmin` flag is trusted: it
       // can only be set by the attested trusted-header resolver (stack owner +
@@ -1706,13 +1657,11 @@ export function authorizationService(db: Db | DbTransaction) {
           explanation: "Allowed because the actor is an instance admin.",
         });
       }
-      // What instance-admin elevation used to give cloud tenant users is
-      // replaced by company-scoped visibility: an active membership in the
-      // resource company grants the same read surface a same-company agent
-      // gets, and non-viewer members may mutate issues inside their company.
-      // Cross-company access stays denied.
+      // Cloud tenant users get no instance-admin elevation: an active
+      // membership grants the same read surface an agent gets, and non-viewer
+      // members may mutate issues.
       if (input.actor.source === "cloud_tenant" && input.actor.userId) {
-        const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+        const membership = await getActiveMembership("user", input.actor.userId);
         if (membership) {
           if (
             input.action === "agent:read" ||
@@ -1752,7 +1701,7 @@ export function authorizationService(db: Db | DbTransaction) {
         });
       }
       if (input.action === "tasks:assign") {
-        if (!(await assignmentTargetIsInCompany(input.resource))) {
+        if (!(await assignmentTargetIsAssignable(input.resource))) {
           return deny({
             action: input.action,
             reason: "deny_company_boundary",
@@ -1763,7 +1712,7 @@ export function authorizationService(db: Db | DbTransaction) {
         taskAssignmentPolicyEffect = policyEffect;
         const policyDeny = await denyForAssignmentPolicyIfNeeded(policyEffect);
         if (policyDeny) return policyDeny;
-        const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+        const membership = await getActiveMembership("user", input.actor.userId);
         if (policyEffect.kind === "none" && membership && membership.membershipRole !== "viewer") {
           return allow({
             action: input.action,
@@ -1802,7 +1751,7 @@ export function authorizationService(db: Db | DbTransaction) {
               explanation: `No board permission mapping exists for ${input.action}.`,
             });
           }
-          const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+          const membership = await getActiveMembership("user", input.actor.userId);
           if (membership && membership.membershipRole !== "viewer") {
             return allow({
               action: input.action,
@@ -1820,7 +1769,7 @@ export function authorizationService(db: Db | DbTransaction) {
           return deny({
             action: input.action,
             reason: "deny_missing_membership",
-            explanation: `user principal ${input.actor.userId} is not an active member of company ${companyId}.`,
+            explanation: `user principal ${input.actor.userId} is not an active member.`,
           });
         }
         if (
@@ -1836,7 +1785,7 @@ export function authorizationService(db: Db | DbTransaction) {
           input.action === "secrets:read" ||
           input.action === "secrets:propose"
         ) {
-          const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+          const membership = await getActiveMembership("user", input.actor.userId);
           // Mirroring the tasks:assign carve-out above, viewers keep the
           // read-only visibility actions but not the privileged ones.
           const requiresNonViewer =
@@ -1862,7 +1811,7 @@ export function authorizationService(db: Db | DbTransaction) {
           return deny({
             action: input.action,
             reason: "deny_missing_membership",
-            explanation: `user principal ${input.actor.userId} is not an active member of company ${companyId}.`,
+            explanation: `user principal ${input.actor.userId} is not an active member.`,
           });
         }
         return deny({
@@ -1879,7 +1828,6 @@ export function authorizationService(db: Db | DbTransaction) {
         return grantDecision;
       }
       return decidePrincipalGrant({
-        companyId,
         principalType: "user",
         principalId: input.actor.userId,
         action: input.action,
@@ -1896,16 +1844,9 @@ export function authorizationService(db: Db | DbTransaction) {
         explanation: "Agent authentication required.",
       });
     }
-    if (input.actor.companyId !== companyId) {
-      return deny({
-        action: input.action,
-        reason: "deny_company_boundary",
-        explanation: "Agent key cannot access another company.",
-      });
-    }
 
     const actorAgent = await loadAgent(actorAgentId);
-    if (!actorAgent || actorAgent.companyId !== companyId) {
+    if (!actorAgent) {
       return deny({
         action: input.action,
         reason: "deny_company_boundary",
@@ -1944,7 +1885,6 @@ export function authorizationService(db: Db | DbTransaction) {
     const trustResolution = await resolveActorTrust({
       actorAgent,
       actor: input.actor,
-      companyId,
       resource: input.resource,
     });
     const directParentReportTarget =
@@ -1952,7 +1892,6 @@ export function authorizationService(db: Db | DbTransaction) {
       await isDirectParentReportTarget({
         actor: input.actor,
         actorAgentId,
-        companyId,
         resource: input.resource,
       });
     const lowTrustDecision = await decideLowTrustAccess({
@@ -2026,14 +1965,13 @@ export function authorizationService(db: Db | DbTransaction) {
 
       const targetSnapshot = await getResponsibleUserSnapshot({
         actor: input.actor,
-        companyId,
         userId: targetUserId,
       });
       if (!targetSnapshot.userExists || !targetSnapshot.activeMembership) {
         return deny({
           action: input.action,
           reason: "deny_missing_membership",
-          explanation: `Inbox target user ${targetUserId} is not an active member of company ${companyId}.`,
+          explanation: `Inbox target user ${targetUserId} is not an active member.`,
         });
       }
 
@@ -2044,10 +1982,7 @@ export function authorizationService(db: Db | DbTransaction) {
         })
         .from(userInboxAgentPolicies)
         .where(
-          and(
-            eq(userInboxAgentPolicies.companyId, companyId),
-            eq(userInboxAgentPolicies.userId, targetUserId),
-          ),
+          eq(userInboxAgentPolicies.userId, targetUserId),
         )
         .then((rows) => rows[0] ?? null);
 
@@ -2057,9 +1992,9 @@ export function authorizationService(db: Db | DbTransaction) {
         // explicit consent for agents selected in the profile control. The
         // implicit default-open policy remains responsible-user-only so an
         // absent row never becomes a company-wide cross-user grant.
-        const grant = await findGrant(companyId, "agent", actorAgentId, "inbox:manage");
+        const grant = await findGrant("agent", actorAgentId, "inbox:manage");
         if (grant && grant.scope?.responsibleUserOnly !== true &&
-            (await scopeAllows(db, companyId, grant.scope, { userId: targetUserId }))) {
+            (await scopeAllows(db, grant.scope, { userId: targetUserId }))) {
           return allow({
             action: input.action,
             reason: "allow_explicit_grant",
@@ -2192,7 +2127,7 @@ export function authorizationService(db: Db | DbTransaction) {
           explanation: "Actor agent is not active for simple mode task assignment.",
         });
       }
-      if (!(await assignmentTargetIsInCompany(input.resource))) {
+      if (!(await assignmentTargetIsAssignable(input.resource))) {
         return deny({
           action: input.action,
           reason: "deny_company_boundary",
@@ -2236,7 +2171,6 @@ export function authorizationService(db: Db | DbTransaction) {
         resource?.issueId &&
         await agentHasMentionGrantOnIssue({
           action: input.action,
-          companyId,
           issueId: resource.issueId,
           issueAssigneeAgentId: resource.assigneeAgentId ?? null,
           actorAgentId,
@@ -2299,7 +2233,6 @@ export function authorizationService(db: Db | DbTransaction) {
 
     if (permissionKey) {
       const grantDecision = await decidePrincipalGrant({
-        companyId,
         principalType: "agent",
         principalId: actorAgentId,
         action: input.action,
@@ -2333,7 +2266,7 @@ export function authorizationService(db: Db | DbTransaction) {
       input.action === "tasks:manage_active_checkouts" &&
       input.resource.type === "issue" &&
       input.resource.assigneeAgentId &&
-      await isManagerOf(companyId, actorAgentId, input.resource.assigneeAgentId)
+      await isManagerOf(actorAgentId, input.resource.assigneeAgentId)
     ) {
       return allow({
         action: input.action,
@@ -2370,10 +2303,8 @@ export function authorizationService(db: Db | DbTransaction) {
       return agentDecision;
     }
 
-    const companyId = companyIdForResource(input.resource);
     const snapshot = await getResponsibleUserSnapshot({
       actor: input.actor,
-      companyId,
       userId: responsibleUserId,
     });
     const denyCode: AuthorizationDecision["code"] =
@@ -2402,7 +2333,6 @@ export function authorizationService(db: Db | DbTransaction) {
           actor: {
             type: "board",
             userId: responsibleUserId,
-            companyIds: [companyId],
             memberships: [snapshot.activeMembership],
             isInstanceAdmin: false,
             ignoreInstanceAdmin: true,
@@ -2412,7 +2342,7 @@ export function authorizationService(db: Db | DbTransaction) {
       : deny({
           action: input.action,
           reason: "deny_missing_membership",
-          explanation: `Responsible user ${responsibleUserId} is unavailable for company ${companyId}.`,
+          explanation: `Responsible user ${responsibleUserId} is unavailable.`,
         });
 
     if (
@@ -2431,7 +2361,7 @@ export function authorizationService(db: Db | DbTransaction) {
       code: denyCode,
       explanation:
         denyCode === "RESPONSIBLE_USER_UNAVAILABLE"
-          ? `Responsible user ${responsibleUserId} is unavailable for company ${companyId}.`
+          ? `Responsible user ${responsibleUserId} is unavailable.`
           : `Responsible user ${responsibleUserId} is not authorized for ${input.action}: ${userDecision.explanation}`,
       grant: userDecision.grant,
     });
@@ -2442,7 +2372,6 @@ export function authorizationService(db: Db | DbTransaction) {
       reason: userDecision.reason,
       action: input.action,
       resourceType: input.resource.type,
-      companyId,
       actorAgentId: input.actor.agentId ?? null,
       responsibleUserId,
     }, "responsible-user authorization intersection denied");
@@ -2463,18 +2392,18 @@ export function authorizationService(db: Db | DbTransaction) {
   // A candidate filter only: project policies and responsible-user grants are
   // still evaluated by decide(). Project policies can contribute an additional
   // root/project scope, so the query must also retain projects with such policy.
-  async function projectDiscoveryCandidateIds(actor: AuthorizationActor, companyId: string): Promise<string[] | null> {
+  async function projectDiscoveryCandidateIds(actor: AuthorizationActor): Promise<string[] | null> {
     if (actor.type !== "agent" || !actor.agentId || actor.keyScope) return null;
     const agent = await loadAgent(actor.agentId);
-    if (!agent || agent.companyId !== companyId) return [];
-    const run = await loadRunPolicy(actor.runId, companyId, agent.id);
-    const resolution = resolveCoreTrustPreset({ companyId, agent, run });
+    if (!agent) return [];
+    const run = await loadRunPolicy(actor.runId, agent.id);
+    const resolution = resolveCoreTrustPreset({ agent, run });
     // A project can supply a missing boundary; never prefilter that case.
     if (resolution.kind !== "low_trust_review") return null;
     const ids = new Set(resolution.boundary.projectIds ?? []);
     if (resolution.boundary.rootIssueId) {
       const root = await loadIssue(resolution.boundary.rootIssueId);
-      if (root?.companyId === companyId && root.projectId) ids.add(root.projectId);
+      if (root?.projectId) ids.add(root.projectId);
     }
     return [...ids];
   }

@@ -369,11 +369,11 @@ describe("createHttp2BridgeServer + createSandboxHttp2BridgeGateway", () => {
       // The session survives: a second request completes normally.
       const survivingResponse = await expectSessionStillServesARequest(rawClient, {
         method: "GET",
-        path: "/api/companies/co1",
+        path: "/api/organization",
         token: bridgeToken,
       });
       expect(survivingResponse.status).toBe(200);
-      expect(JSON.parse(survivingResponse.body)).toEqual({ path: "/api/companies/co1" });
+      expect(JSON.parse(survivingResponse.body)).toEqual({ path: "/api/organization" });
     } finally {
       rawClient.close();
       await handle.close();
@@ -2003,7 +2003,7 @@ describe("createHttp2BridgeServer + createSandboxHttp2BridgeGateway", () => {
     try {
       const response = await gateway.forwardRequest({
         method: "POST",
-        path: "/api/companies/co-1/issues/issue-1/attachments",
+        path: "/api/issues/issue-1/attachments",
         query: "",
         headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
         body: multipartBody,

@@ -1610,7 +1610,6 @@ export type {
   PluginMinimumHostVersion,
   PluginUiDeclaration,
   PluginDatabaseDeclaration,
-  PluginApiRouteCompanyResolution,
   PluginApiRouteDeclaration,
   PluginObjectReferenceRefreshPolicy,
   PluginObjectReferenceProviderDeclaration,

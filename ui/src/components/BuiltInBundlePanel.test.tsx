@@ -12,7 +12,7 @@ import type {
 } from "@/api/builtInAgents";
 
 // The panel links to agent tabs via `@/lib/router` (company-prefixed Link).
-// Stub it to a plain anchor so the panel test doesn't need CompanyContext.
+// Stub it to a plain anchor so the panel test doesn't need OrganizationContext.
 vi.mock("@/lib/router", () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
 }));

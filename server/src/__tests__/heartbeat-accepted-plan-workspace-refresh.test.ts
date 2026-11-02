@@ -161,7 +161,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   });
 
   async function seedAcceptedPlanClaim(args: {
-    companyId: string;
     issueId: string;
     ownerAgentId: string;
     status?: "in_flight" | "completed";
@@ -171,7 +170,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId: args.companyId,
       title: "Plan",
       format: "markdown",
       latestBody: "Plan body",
@@ -182,7 +180,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId: args.companyId,
       documentId,
       revisionNumber: 1,
       title: "Plan",
@@ -191,13 +188,11 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       createdByAgentId: args.ownerAgentId,
     });
     await db.insert(issueDocuments).values({
-      companyId: args.companyId,
       issueId: args.issueId,
       documentId,
       key: "plan",
     });
     await db.insert(issuePlanDecompositions).values({
-      companyId: args.companyId,
       sourceIssueId: args.issueId,
       acceptedPlanRevisionId: revisionId,
       status: args.status ?? "in_flight",
@@ -212,7 +207,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }
 
   async function seedAcceptedPlanAcceptance(args: {
-    companyId: string;
     issueId: string;
     ownerAgentId: string;
   }) {
@@ -222,7 +216,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId: args.companyId,
       title: "Plan",
       format: "markdown",
       latestBody: "Plan body",
@@ -233,7 +226,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId: args.companyId,
       documentId,
       revisionNumber: 1,
       title: "Plan",
@@ -242,14 +234,12 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       createdByAgentId: args.ownerAgentId,
     });
     await db.insert(issueDocuments).values({
-      companyId: args.companyId,
       issueId: args.issueId,
       documentId,
       key: "plan",
     });
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId: args.companyId,
       issueId: args.issueId,
       kind: "request_confirmation",
       status: "accepted",
@@ -302,7 +292,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Accepted Plan Workspace Refresh",
       status: "active",
       createdAt: new Date(),
@@ -310,7 +299,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -320,7 +308,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -333,7 +320,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: sharedExecutionWorkspaceId,
-      companyId,
       projectId,
       projectWorkspaceId,
       mode: "shared_workspace",
@@ -348,7 +334,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Implement accepted plan",
@@ -366,7 +351,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       updatedAt: new Date(),
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,
@@ -476,7 +460,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Accepted Plan Branch Freshness",
       status: "active",
       createdAt: new Date(),
@@ -484,7 +467,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -494,7 +476,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -512,7 +493,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(issues).values({
       id: sourceIssueId,
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Planning source issue",
@@ -538,7 +518,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     adapterExecute.mockImplementationOnce(async () => {
       // Planning is awaiting a real confirmation, not a prose-only promise.
       await db.insert(issueThreadInteractions).values({
-        companyId, issueId: sourceIssueId, kind: "request_confirmation", status: "pending",
+        issueId: sourceIssueId, kind: "request_confirmation", status: "pending",
         requestedResolverPolicy: "anyone", effectiveResolverPolicy: "anyone",
         payload: { version: 1, prompt: "Review the source plan" },
       });
@@ -592,7 +572,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await drainHeartbeatRunsToQuiescence(db, heartbeat);
     await db.delete(issueThreadInteractions).where(eq(issueThreadInteractions.issueId, sourceIssueId));
     const acceptedPlanRevisionId = await seedAcceptedPlanAcceptance({
-      companyId,
       issueId: sourceIssueId,
       ownerAgentId: agentId,
     });
@@ -712,7 +691,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Accepted Plan Routing",
       status: "active",
       createdAt: new Date(),
@@ -720,7 +698,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -730,7 +707,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -744,7 +720,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await db.insert(issues).values([
       {
         id: issueId,
-        companyId,
         projectId,
         projectWorkspaceId,
         title: "Later planning wake",
@@ -759,7 +734,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
       {
         id: otherPlanningIssueId,
-        companyId,
         projectId,
         projectWorkspaceId,
         title: "Earlier accepted plan",
@@ -774,13 +748,11 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
     ]);
     await seedAcceptedPlanClaim({
-      companyId,
       issueId: otherPlanningIssueId,
       ownerAgentId: agentId,
       status: "in_flight",
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,
@@ -871,7 +843,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Accepted Plan Routing",
       status: "active",
       createdAt: new Date(),
@@ -879,7 +850,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -889,7 +859,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -903,7 +872,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await db.insert(issues).values([
       {
         id: issueId,
-        companyId,
         projectId,
         projectWorkspaceId,
         title: "Implementation wake after accepted plan",
@@ -918,7 +886,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
       {
         id: otherPlanningIssueId,
-        companyId,
         projectId,
         projectWorkspaceId,
         title: "Earlier accepted plan",
@@ -933,13 +900,11 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
     ]);
     await seedAcceptedPlanClaim({
-      companyId,
       issueId: otherPlanningIssueId,
       ownerAgentId: agentId,
       status: "in_flight",
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,
@@ -1031,7 +996,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Accepted Plan Retry",
       status: "active",
       createdAt: new Date(),
@@ -1039,7 +1003,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -1049,7 +1012,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -1062,7 +1024,6 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Accepted plan retry",
@@ -1076,13 +1037,11 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       updatedAt: new Date(),
     });
     await seedAcceptedPlanClaim({
-      companyId,
       issueId,
       ownerAgentId: agentId,
       status: "in_flight",
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,

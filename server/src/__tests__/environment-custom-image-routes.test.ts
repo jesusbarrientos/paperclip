@@ -129,7 +129,6 @@ function createEnvironment(overrides: Record<string, unknown> = {}) {
 function createTemplate(overrides: Record<string, unknown> = {}) {
   return {
     id: "template-1",
-    companyId: "company-1",
     environmentId: "env-1",
     provider: "daytona",
     templateKind: "snapshot",
@@ -152,7 +151,6 @@ function createTemplate(overrides: Record<string, unknown> = {}) {
 function createSession(overrides: Record<string, unknown> = {}) {
   return {
     id: "session-1",
-    companyId: "company-1",
     environmentId: "env-1",
     templateId: "template-1",
     promotedTemplateId: null,
@@ -216,7 +214,6 @@ function agentActor() {
   return {
     type: "agent",
     agentId: "agent-1",
-    companyId: "company-1",
     source: "agent_key",
     runId: "run-1",
   };
@@ -315,7 +312,6 @@ describe("environment customImage setup routes", () => {
         userId: "user-1",
         agentId: null,
       },
-      secretContextCompanyId: "company-1",
     });
     const activity = loggedActivityJson();
     expect(activity).not.toContain("203.0.113.10");
@@ -576,7 +572,6 @@ describe("environment customImage setup routes", () => {
     mockEnvironmentCustomImageService.getSessionById.mockResolvedValue(createSession());
     const terminal = environmentCustomImageTerminalSessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "token-secret", host: "203.0.113.10", port: 2222 },
@@ -664,8 +659,7 @@ describe("environment customImage setup routes", () => {
         agentId: null,
         runId: null,
         agentApiKeyId: null,
-      },
-      companyId: "company-1",
+      }
     });
   });
 

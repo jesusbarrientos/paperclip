@@ -117,7 +117,6 @@ export async function authorizeSlackWrite(
       .from(chatEndpointResources)
       .where(
         and(
-          eq(chatEndpointResources.companyId, authority.endpoint.companyId),
           eq(chatEndpointResources.endpointId, authority.endpoint.id),
           eq(chatEndpointResources.providerResourceId, channelId),
           eq(chatEndpointResources.availability, "available"),
@@ -132,7 +131,6 @@ export async function authorizeSlackWrite(
   if (
     !(await slackPublicationAllowed(
       db,
-      authority.endpoint.companyId,
       authority.endpoint.id,
       authority.issueId,
       channelId,
@@ -169,7 +167,6 @@ export async function recordSlackReadBoundary(
   await db
     .insert(chatActions)
     .values({
-      companyId: authority.endpoint.companyId,
       endpointId: authority.endpoint.id,
       conversationId: authority.conversation?.id ?? null,
       principalId: authority.principalId,
@@ -189,7 +186,6 @@ export async function recordSlackReadBoundary(
 }
 export async function slackPublicationAllowed(
   db: Pick<Db, "select">,
-  companyId: string,
   endpointId: string,
   issueId: string,
   channelId: string,
@@ -201,7 +197,6 @@ export async function slackPublicationAllowed(
     .from(chatActions)
     .where(
       and(
-        eq(chatActions.companyId, companyId),
         eq(chatActions.endpointId, endpointId),
         eq(chatActions.kind, "slack_private_source"),
         sql`${chatActions.payload}->>'issueId' = ${issueId}`,

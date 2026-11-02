@@ -35,15 +35,15 @@ const manifest: PaperclipPluginManifestV1 = {
             type: "string",
             format: "secret-ref",
             description:
-              "Inline kubeconfig YAML. Paste a kubeconfig or an existing Paperclip secret reference; pasted values are stored as company secrets.",
+              "Inline kubeconfig YAML. Paste a kubeconfig or an existing Paperclip secret reference; pasted values are stored as Paperclip secrets.",
           },
           namespacePrefix: {
             type: "string",
-            description: "Prefix for the per-company tenant namespace (default: paperclip-).",
+            description: "Prefix for the tenant namespace (default: paperclip-).",
           },
-          companySlug: {
+          namespaceSlug: {
             type: "string",
-            description: "Override the auto-derived company slug used in the tenant namespace name.",
+            description: "Slug appended to namespacePrefix to form the tenant namespace name (default: organization).",
           },
           imageRegistry: {
             type: "string",

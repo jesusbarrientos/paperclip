@@ -10,7 +10,6 @@ import {
 const snowflake = z.string().regex(/^[1-9][0-9]{16,19}$/);
 const sourceScope = z
   .object({
-    companyId: z.uuid(),
     endpointId: z.uuid(),
     applicationId: snowflake,
     guildId: snowflake,
@@ -151,7 +150,7 @@ export function parseDiscordNativeCommand(
     guildId: isDm ? null : scope.guildId,
   };
   const digest = createHash("sha256")
-    .update(JSON.stringify([scope.companyId, scope.endpointId, invocation]))
+    .update(JSON.stringify([scope.endpointId, invocation]))
     .digest("hex");
   return Object.freeze({ ...invocation, digest });
 }
@@ -171,7 +170,6 @@ export function isCurrentDiscordCommandRegistration(
     return false;
   const row = action as Record<string, unknown>;
   if (
-    row.companyId !== scope.companyId ||
     row.endpointId !== scope.endpointId ||
     row.conversationId !== null ||
     row.kind !== "discord_command_registration" ||
@@ -232,7 +230,6 @@ export function parseDiscordNativeCommandReceipt(
     return null;
   const row = action as Record<string, unknown>;
   if (
-    row.companyId !== scope.companyId ||
     row.endpointId !== scope.endpointId ||
     row.kind !== "discord_native_command" ||
     row.providerActionId !==

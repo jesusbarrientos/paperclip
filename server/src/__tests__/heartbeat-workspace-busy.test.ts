@@ -208,7 +208,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
   }
 
   interface WorkspaceFixture {
-    companyId: string;
     projectId: string;
     projectWorkspaceId: string;
     holderAgentId: string;
@@ -254,14 +253,12 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
 
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Workspace Busy Project",
       executionWorkspacePolicy: input?.projectWorkspacePolicy ?? null,
     });
 
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary workspace",
       sourceType: "local_path",
@@ -272,7 +269,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     if (agentEnvironmentId) {
       await db.insert(environments).values({
         id: agentEnvironmentId,
-        companyId,
         name: `Workspace busy ${agentEnvironmentDriver} ${agentEnvironmentId}`,
         driver: agentEnvironmentDriver,
         status: "active",
@@ -286,7 +282,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     if (holderProjectWorkspaceId !== projectWorkspaceId) {
       await db.insert(projectWorkspaces).values({
         id: holderProjectWorkspaceId,
-        companyId,
         projectId,
         name: "Secondary workspace",
         sourceType: "local_path",
@@ -301,7 +296,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     ] as const) {
       await db.insert(agents).values({
         id,
-        companyId,
         name,
         role: "engineer",
         status: id === holderAgentId ? "running" : "idle",
@@ -321,7 +315,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     const holderActivityAt = input?.holderActivityAt ?? now;
     await db.insert(heartbeatRuns).values({
       id: holderRunId,
-      companyId,
       agentId: holderAgentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -338,7 +331,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
 
     await db.insert(issues).values({
       id: holderIssueId,
-      companyId,
       title: "Holder issue",
       status: "in_progress",
       priority: "medium",
@@ -358,7 +350,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Deferred issue",
       status: "in_progress",
       priority: "medium",
@@ -375,7 +366,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     });
 
     return {
-      companyId,
       projectId,
       projectWorkspaceId,
       holderAgentId,
@@ -438,7 +428,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     });
     await db.insert(environments).values({
       id: randomUUID(),
-      companyId: fixture.companyId,
       name: `Managed Kubernetes ${fixture.companyId}`,
       driver: "sandbox",
       status: "active",
@@ -491,7 +480,7 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     );
     expect((await heartbeat.getRun(fixture.holderRunId))?.status).toBe("running");
     const retryRuns = await db.select({ id: heartbeatRuns.id }).from(heartbeatRuns).where(
-      and(eq(heartbeatRuns.companyId, fixture.companyId), eq(heartbeatRuns.scheduledRetryReason, WORKSPACE_BUSY_RETRY_REASON)),
+      eq(heartbeatRuns.scheduledRetryReason, WORKSPACE_BUSY_RETRY_REASON),
     );
     expect(retryRuns).toHaveLength(0);
   });
@@ -639,7 +628,7 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     // Existing queued work can contain coalesced assignment or feedback.
     // Only new mention requests are ignored; keep accepted work's rules.
     const [run] = await db.insert(heartbeatRuns).values({
-      companyId: fixture.companyId, agentId: fixture.nonAssigneeAgentId,
+      agentId: fixture.nonAssigneeAgentId,
       invocationSource: "on_demand", status: "queued", responsibleUserId: "responsible-user",
       contextSnapshot: {
         issueId: fixture.issueId, wakeReason: "issue_comment_mentioned", commentId: randomUUID(),
@@ -743,10 +732,7 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
         .select({ id: heartbeatRuns.id })
         .from(heartbeatRuns)
         .where(
-          and(
-            eq(heartbeatRuns.companyId, fixture.companyId),
-            eq(heartbeatRuns.scheduledRetryReason, WORKSPACE_BUSY_RETRY_REASON),
-          ),
+          eq(heartbeatRuns.scheduledRetryReason, WORKSPACE_BUSY_RETRY_REASON),
         )
         .then((rows) => rows.length);
       expect(retryRuns).toBe(0);
@@ -772,10 +758,7 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
       .select({ id: heartbeatRuns.id })
       .from(heartbeatRuns)
       .where(
-        and(
-          eq(heartbeatRuns.companyId, fixture.companyId),
-          eq(heartbeatRuns.scheduledRetryReason, WORKSPACE_BUSY_RETRY_REASON),
-        ),
+        eq(heartbeatRuns.scheduledRetryReason, WORKSPACE_BUSY_RETRY_REASON),
       )
       .then((rows) => rows.length);
     expect(retryRuns).toBe(0);
@@ -817,7 +800,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
 
     await db.insert(heartbeatRuns).values({
       id: priorRunId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -836,7 +818,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       source: "automation",
       triggerDetail: "system",
@@ -853,7 +834,6 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
 
     await db.insert(heartbeatRuns).values({
       id: retryRunId,
-      companyId: fixture.companyId,
       agentId: fixture.agentId,
       invocationSource: "automation",
       triggerDetail: "system",

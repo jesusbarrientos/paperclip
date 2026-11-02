@@ -57,8 +57,8 @@ vi.mock("../context/ToastContext", () => ({
   useToastActions: () => ({ pushToast: mockPushToast }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 
 // Drive the route deterministically: the team is preselected so the detail pane
@@ -308,7 +308,6 @@ describe("TeamCatalog install preview path", () => {
     // auto-loads the categorized preview.
     expect(mockTeamCatalogApi.preview).toHaveBeenCalledTimes(1);
     expect(mockTeamCatalogApi.preview).toHaveBeenCalledWith(
-      "company-1",
       "team-no-deps",
       expect.objectContaining({ collisionStrategy: "rename" }),
     );
@@ -375,7 +374,6 @@ describe("TeamCatalog install preview path", () => {
     await flushReact();
 
     expect(mockTeamCatalogApi.install).toHaveBeenCalledWith(
-      "company-1",
       "team-no-deps",
       expect.objectContaining({
         secretValues: {

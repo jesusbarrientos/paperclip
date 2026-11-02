@@ -82,7 +82,6 @@ function fenceMarkdown(value: string, info = "markdown") {
 export async function loadPipelineConversationBodyDocumentContext(
   dbOrTx: QueryableDb,
   input: {
-    companyId: string;
     caseId: string;
     conversationIssueId?: string | null;
   },
@@ -101,7 +100,6 @@ export async function loadPipelineConversationBodyDocumentContext(
     .from(pipelineCaseDocuments)
     .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
     .where(and(
-      eq(pipelineCaseDocuments.companyId, input.companyId),
       eq(pipelineCaseDocuments.caseId, input.caseId),
       eq(pipelineCaseDocuments.key, PIPELINE_CASE_BODY_CASE_DOCUMENT_KEY),
     ))
@@ -168,7 +166,6 @@ export async function loadPipelineConversationBodyDocumentContext(
     })
     .from(documentAnnotationThreads)
     .where(and(
-      eq(documentAnnotationThreads.companyId, input.companyId),
       eq(documentAnnotationThreads.issueId, input.conversationIssueId),
       eq(documentAnnotationThreads.documentId, bodyRow.documentId),
       eq(documentAnnotationThreads.documentKey, PIPELINE_CASE_BODY_DOCUMENT_KEY),
@@ -194,10 +191,7 @@ export async function loadPipelineConversationBodyDocumentContext(
       createdAt: documentAnnotationComments.createdAt,
     })
     .from(documentAnnotationComments)
-    .where(and(
-      eq(documentAnnotationComments.companyId, input.companyId),
-      inArray(documentAnnotationComments.threadId, threadIds),
-    ))
+    .where(inArray(documentAnnotationComments.threadId, threadIds))
     .orderBy(asc(documentAnnotationComments.createdAt), asc(documentAnnotationComments.id));
 
   const commentsByThread = new Map<string, PipelineConversationBodyDocumentContext["openAnnotationThreads"][number]["comments"]>();

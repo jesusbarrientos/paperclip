@@ -187,7 +187,6 @@ fn matches_task_context_result(result: &Value, expected_canonical: Option<&Value
         return false;
     }
     [
-        ("/value/company/id", "/companyId"),
         ("/value/actor/id", "/actorId"),
         ("/value/activeTask/id", "/taskId"),
         ("/value/run/id", "/runId"),
@@ -258,7 +257,6 @@ mod tests {
                 "operationId": "get_task_context",
                 "callId": "semantic-call-1",
                 "value": {
-                    "company": {"id": "company-1"},
                     "actor": {"id": "actor-1"},
                     "activeTask": {"id": "task-1"},
                     "run": {"id": "run-1"},
@@ -271,7 +269,6 @@ mod tests {
     #[test]
     fn task_context_result_accepts_only_the_expected_canonical_binding() {
         let expected = json!({
-            "companyId": "company-1",
             "actorId": "actor-1",
             "taskId": "task-1",
             "runId": "run-1",
@@ -281,7 +278,6 @@ mod tests {
             "operationId": "get_task_context",
             "callId": "semantic-call-1",
             "value": {
-                "company": {"id": "company-1"},
                 "actor": {"id": "actor-1"},
                 "activeTask": {"id": "task-1"},
                 "run": {"id": "run-1"},
@@ -295,7 +291,6 @@ mod tests {
                 "operationId": "get_task_context",
                 "callId": "semantic-call-1",
                 "value": {
-                    "company": {"id": "company-1"},
                     "actor": {"id": "actor-1"},
                     "activeTask": {"id": "wrong-task"},
                     "run": {"id": "run-1"},

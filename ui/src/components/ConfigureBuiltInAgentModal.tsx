@@ -41,7 +41,6 @@ function parseBudgetMonthlyCents(value: string): number | undefined {
 }
 
 export interface ConfigureBuiltInAgentModalProps {
-  companyId: string;
   state: BuiltInAgentState;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,7 +54,6 @@ export interface ConfigureBuiltInAgentModalProps {
  * plus an optional monthly budget, and submits to the provision endpoint.
  */
 export function ConfigureBuiltInAgentModal({
-  companyId,
   state,
   open,
   onOpenChange,
@@ -98,9 +96,9 @@ export function ConfigureBuiltInAgentModal({
   const setupSupportedInModal = isModelBasedAdapter(adapterType);
 
   const { data: fetchedModels } = useQuery({
-    queryKey: queryKeys.agents.adapterModels(companyId, adapterType, null),
-    queryFn: () => agentsApi.adapterModels(companyId, adapterType, {}),
-    enabled: open && Boolean(companyId) && setupSupportedInModal,
+    queryKey: queryKeys.agents.adapterModels(adapterType, null),
+    queryFn: () => agentsApi.adapterModels(adapterType, {}),
+    enabled: open && setupSupportedInModal,
   });
   const models = fetchedModels ?? [];
 
@@ -127,7 +125,7 @@ export function ConfigureBuiltInAgentModal({
     mutationFn: async () => {
       const adapterConfig: Record<string, unknown> = {};
       if (model.trim()) adapterConfig.model = model.trim();
-      const result = await builtInAgentsApi.provision(companyId, definition.key, {
+      const result = await builtInAgentsApi.provision(definition.key, {
         adapterType,
         adapterConfig,
         ...(budgetMonthlyCents !== undefined ? { budgetMonthlyCents } : {}),
@@ -135,8 +133,8 @@ export function ConfigureBuiltInAgentModal({
       return result;
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.builtInAgents.list(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.builtInAgents.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
       if (result.agentId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(result.agentId) });
       }

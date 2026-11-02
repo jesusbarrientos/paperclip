@@ -10,7 +10,6 @@ import { myValueState } from "./my-value-state";
 function makeSecret(status: CompanySecret["status"]): CompanySecret {
   return {
     id: "sec-1",
-    companyId: "c1",
     scope: "user",
     ownerUserId: "u1",
     userSecretDefinitionId: "def-1",

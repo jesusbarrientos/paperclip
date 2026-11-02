@@ -146,13 +146,11 @@ if (optedIn && !live) {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "PAP-17158 live exercise",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       sourceType: "local_path",
@@ -169,7 +167,7 @@ if (optedIn && !live) {
       process.env.PAPERCLIP_MANAGED_RUNTIME_HTTPS = "off";
       const before = await startRuntimeServicesForWorkspaceControl({
         db,
-        actor: { id: null, name: "Paperclip", companyId },
+        actor: { id: null, name: "Paperclip" },
         issue: null,
         workspace: {
           baseCwd: workspaceRoot,

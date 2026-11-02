@@ -103,7 +103,7 @@ describe("HarnessDriverBackend", () => {
     const session = Object.assign(new FakeHarnessSession(), { steer, turnControlCapabilities: () => ({ ...controls }) });
     const backend = new HarnessDriverBackend({ ...driver, openSession: async () => session });
     const opened = await backend.openSession({ identity: {
-      runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1",
+      runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1",
     } });
     expect(await opened.capabilities()).toMatchObject({ steering: false, queuedFollowUp: false });
     controls = { steering: false, queuedFollowUp: true };
@@ -126,7 +126,7 @@ describe("HarnessDriverBackend", () => {
       recoverSession: async () => ({ recovered: true, session }),
     });
     const opened = await backend.openSession({ identity: {
-      runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1",
+      runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1",
     } });
     expect((await opened.capabilities()).steering).toBe(supported);
     const recovered = await backend.recoverSession(await opened.snapshot(), { signal: new AbortController().signal });
@@ -146,7 +146,7 @@ describe("HarnessDriverBackend", () => {
     }
     const original = new HarnessDriverBackend({ ...driver, openSession: async () => new RecoveryFieldsSession() });
     const session = await original.openSession({ identity: {
-      runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1",
+      runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1",
     }, workingDirectory: fields.workingDirectory });
     const checkpoint = JSON.parse(JSON.stringify(await session.snapshot()));
     expect(checkpoint).toMatchObject(fields);
@@ -186,7 +186,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-incomplete",
         sessionId: "session-incomplete",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -230,7 +229,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-recover-incomplete",
         sessionId: "session-recover-incomplete",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -246,7 +244,7 @@ describe("HarnessDriverBackend", () => {
   it("normalizes harness events, result, terminal, and snapshot", async () => {
     const backend = new HarnessDriverBackend(driver);
     const session = await backend.openSession({
-      identity: { runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
       workingDirectory: "/workspace",
     });
     const events: PrpEvent[] = [];
@@ -285,7 +283,7 @@ describe("HarnessDriverBackend", () => {
       providerIdentity,
       providerRecoveryPolicy: "allow_replacement_after_governed_wait",
       dispositionOnlyRecoveryConsumed: true,
-      identity: { runId: "run-2", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-2", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
     }, {
       signal: new AbortController().signal,
     });
@@ -314,7 +312,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-consumed-recovery",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -337,7 +334,7 @@ describe("HarnessDriverBackend", () => {
     });
 
     await backend.openSession({
-      identity: { runId: "run-signal", sessionId: "session-signal", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-signal", sessionId: "session-signal", issueId: "issue-1", agentId: "agent-1" },
       workingDirectory: "/workspace",
       signal: controller.signal,
     });
@@ -362,7 +359,7 @@ describe("HarnessDriverBackend", () => {
       sessionId: "driver-1",
       providerSessionId: "provider-1",
       providerIdentity,
-      identity: { runId: "run-recover-signal", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-recover-signal", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
     }, {
       signal: controller.signal,
     });
@@ -418,7 +415,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-1",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -481,7 +477,6 @@ describe("HarnessDriverBackend", () => {
     const originalIdentity = {
       runId: "run-1",
       sessionId: "session-1",
-      companyId: "company-1",
       issueId: "issue-1",
       agentId: "agent-1",
     };
@@ -491,7 +486,6 @@ describe("HarnessDriverBackend", () => {
     });
 
     for (const identity of [
-      { ...originalIdentity, runId: "run-forged-company", companyId: "company-2" },
       { ...originalIdentity, runId: "run-forged-issue", issueId: "issue-2" },
       { ...originalIdentity, runId: "run-forged-agent", agentId: "agent-2" },
       { ...originalIdentity, runId: "run-forged-session", sessionId: "session-2" },
@@ -532,7 +526,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-terminal-recovery",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -575,7 +568,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-terminal-inference",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -633,7 +625,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-cross-turn-terminal",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -695,7 +686,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-oversized-terminals",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -728,7 +718,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-oversized-semantic-result",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -753,7 +742,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-1",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -829,7 +817,6 @@ describe("HarnessDriverBackend", () => {
         identity: {
           runId: "run-1",
           sessionId: "session-1",
-          companyId: "company-1",
           issueId: "issue-1",
           agentId: "agent-1",
         },
@@ -878,7 +865,6 @@ describe("HarnessDriverBackend", () => {
       identity: {
         runId: "run-1",
         sessionId: "session-1",
-        companyId: "company-1",
         issueId: "issue-1",
         agentId: "agent-1",
       },
@@ -924,7 +910,7 @@ describe("HarnessDriverBackend", () => {
     }
     const backend = new HarnessDriverBackend({ ...driver, async openSession() { return new LostProviderSession(); } });
     const session = await backend.openSession({
-      identity: { runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
       workingDirectory: "/workspace",
     });
     const iterator = session.events()[Symbol.asyncIterator]();
@@ -965,7 +951,7 @@ describe("HarnessDriverBackend", () => {
     }
     const backend = new HarnessDriverBackend({ ...driver, async openSession() { return new ResolvedThenLostSession(); } });
     const session = await backend.openSession({
-      identity: { runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
       workingDirectory: "/workspace",
     });
     const iterator = session.events()[Symbol.asyncIterator]();
@@ -979,7 +965,7 @@ describe("HarnessDriverBackend", () => {
     const start = vi.spyOn(provider, "startTurn");
     const backend = new HarnessDriverBackend({ ...driver, async openSession() { return provider; } });
     const session = await backend.openSession({
-      identity: { runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
       workingDirectory: "/workspace",
     });
     await session.cancel({ reason: "user stop during startup", signal: new AbortController().signal }).cleanup;
@@ -1006,7 +992,7 @@ describe("HarnessDriverBackend", () => {
     }
     const backend = new HarnessDriverBackend({ ...driver, async openSession() { return new CancelledProviderSession(); } });
     const session = await backend.openSession({
-      identity: { runId: "run-1", sessionId: "session-1", companyId: "company-1", issueId: "issue-1", agentId: "agent-1" },
+      identity: { runId: "run-1", sessionId: "session-1", issueId: "issue-1", agentId: "agent-1" },
       workingDirectory: "/workspace",
     });
     const iterator = session.events()[Symbol.asyncIterator]();

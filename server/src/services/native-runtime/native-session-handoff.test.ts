@@ -21,7 +21,7 @@ describe("bounded fresh-session handoff", () => {
 
   it("restores the handoff on fresh bootstrap and resume failure, without replaying it on resume", () => {
     const input = buildNativeExecutionInput({
-      companyId: "company", runId: "run", agentId: "agent", normalizedSessionId: "session", conversationMode: true,
+      runId: "run", agentId: "agent", normalizedSessionId: "session", conversationMode: true,
       issue: { id: "task", identifier: "BOT-2", title: "Chat", description: null, workMode: "standard" },
       taskPrompt: "GitHub is connected", freshSessionHandoff: "original goal: build the PR review bot", initialCommunicationGuidance: "Lead with the answer",
       workspace: { id: "workspace", cwd: "/workspace", repoUrl: null, repoRef: null, branchName: null },
@@ -46,54 +46,54 @@ const support = await getEmbeddedPostgresTestSupport();
     database = await startEmbeddedPostgresTestDatabase("paperclip-native-handoff-");
     db = createDb(database.connectionString);
     await db.insert(companies).values({ id: companyId, name: "Handoff", issuePrefix: "HAND" });
-    await db.insert(agents).values({ id: agentId, companyId, name: "Dickens", role: "general", adapterType: "paperclip_runner" });
-    await db.insert(issues).values({ id: issueId, companyId, title: "Chat", status: "in_progress", assigneeAgentId: agentId,
+    await db.insert(agents).values({ id: agentId, name: "Dickens", role: "general", adapterType: "paperclip_runner" });
+    await db.insert(issues).values({ id: issueId, title: "Chat", status: "in_progress", assigneeAgentId: agentId,
       conversationAgentId: agentId, conversationUserId: "user", conversationState: "active", conversationSessionGeneration: 2 });
     await db.insert(issueComments).values([
-      { companyId, issueId, body: "OLD TOPIC", authorUserId: "user", createdAt: new Date(1_000) },
-      { id: boundaryId, companyId, issueId, body: "/new", authorUserId: "user", createdAt: new Date(2_000) },
-      { id: requestId, companyId, issueId, body: "Build a GitHub PR review bot\n" + "x".repeat(6_000) + "\nFinal constraint: require a team review", authorUserId: "user", createdAt: new Date(3_000) },
-      { companyId, issueId, body: "Deleted private message", authorUserId: "user", createdAt: new Date(4_000), deletedAt: new Date(5_000) },
-      { companyId, issueId, body: "UNTRUSTED BODY", authorAgentId: agentId, createdAt: new Date(5_000),
+      { issueId, body: "OLD TOPIC", authorUserId: "user", createdAt: new Date(1_000) },
+      { id: boundaryId, issueId, body: "/new", authorUserId: "user", createdAt: new Date(2_000) },
+      { id: requestId, issueId, body: "Build a GitHub PR review bot\n" + "x".repeat(6_000) + "\nFinal constraint: require a team review", authorUserId: "user", createdAt: new Date(3_000) },
+      { issueId, body: "Deleted private message", authorUserId: "user", createdAt: new Date(4_000), deletedAt: new Date(5_000) },
+      { issueId, body: "UNTRUSTED BODY", authorAgentId: agentId, createdAt: new Date(5_000),
         sourceTrust: { preset: "low_trust_review", disposition: "quarantined", sourceIssueId: issueId } },
-      { companyId, issueId, body: "FUTURE MESSAGE", authorUserId: "user", createdAt: new Date(30_000) },
+      { issueId, body: "FUTURE MESSAGE", authorUserId: "user", createdAt: new Date(30_000) },
     ]);
     const { eq } = await import("drizzle-orm");
     await db.update(issues).set({ conversationBoundaryCommentId: boundaryId }).where(eq(issues.id, issueId));
-    await db.insert(issueThreadInteractions).values({ companyId, issueId, kind: "ask_user_questions", status: "answered",
+    await db.insert(issueThreadInteractions).values({ issueId, kind: "ask_user_questions", status: "answered",
       createdByAgentId: agentId, createdAt: new Date(6_000), resolvedAt: new Date(7_000),
       payload: { version: 1, questions: [] }, result: { version: 1, summaryMarkdown: "Use CODEOWNERS and publish a Storybook per PR" },
     });
     // An activity can start before the wake while its answer arrives later.
     // The answer timestamp, not just the activity's start, fences replay.
-    await db.insert(issueThreadInteractions).values({ companyId, issueId, kind: "ask_user_questions", status: "answered",
+    await db.insert(issueThreadInteractions).values({ issueId, kind: "ask_user_questions", status: "answered",
       createdByAgentId: agentId, createdAt: new Date(2_500), resolvedAt: new Date(3_500),
       payload: { version: 1, questions: [] }, result: { version: 1, summaryMarkdown: "LATER CUTOFF DECISION" },
     });
     const laterAnswerRunId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: laterAnswerRunId, companyId, agentId, invocationSource: "automation", triggerDetail: "system", status: "succeeded",
+    await db.insert(heartbeatRuns).values({ id: laterAnswerRunId, agentId, invocationSource: "automation", triggerDetail: "system", status: "succeeded",
       nativeIssueId: issueId, contextSnapshot: { issueId, conversationSessionGeneration: 2 }, createdAt: new Date(2_500), finishedAt: new Date(3_600),
       runnerProfileJson: { sessionCheckpoint: { semanticResult: { summary: "LATER CUTOFF RUN SUMMARY" } } } });
-    await db.insert(heartbeatRunEvents).values({ companyId, agentId, runId: laterAnswerRunId, seq: 1, eventType: "item.completed", createdAt: new Date(3_500),
+    await db.insert(heartbeatRunEvents).values({ agentId, runId: laterAnswerRunId, seq: 1, eventType: "item.completed", createdAt: new Date(3_500),
       payload: { prpEvent: { payload: { kind: "agentMessage", channel: "final", text: "LATER CUTOFF REPLY" } } } });
     const runId = randomUUID(), documentId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, invocationSource: "automation", triggerDetail: "system", status: "succeeded",
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, invocationSource: "automation", triggerDetail: "system", status: "succeeded",
       nativeIssueId: issueId, contextSnapshot: { issueId, conversationSessionGeneration: 2 }, createdAt: new Date(8_000), finishedAt: new Date(9_500),
       runnerProfileJson: { sessionCheckpoint: { semanticResult: { summary: "Waiting for GitHub access before configuring PR checks" } } } });
-    await db.insert(heartbeatRunEvents).values({ companyId, agentId, runId, seq: 1, eventType: "item.completed", createdAt: new Date(9_000),
+    await db.insert(heartbeatRunEvents).values({ agentId, runId, seq: 1, eventType: "item.completed", createdAt: new Date(9_000),
       payload: { prpEvent: { payload: { kind: "agentMessage", channel: "final", text: "Repository research complete; next configure PR checks" } } } });
-    await db.insert(documents).values({ id: documentId, companyId, latestBody: "Saved plan: review changed files by CODEOWNERS", updatedAt: new Date(10_000) });
-    await db.insert(issueDocuments).values({ companyId, issueId, documentId, key: "plan", createdAt: new Date(10_000) });
+    await db.insert(documents).values({ id: documentId, latestBody: "Saved plan: review changed files by CODEOWNERS", updatedAt: new Date(10_000) });
+    await db.insert(issueDocuments).values({ issueId, documentId, key: "plan", createdAt: new Date(10_000) });
     await db.insert(heartbeatRuns).values([
-      { companyId, agentId, status: "succeeded", runtimeMode: "legacy", contextSnapshot: { issueId, conversationSessionGeneration: 2 },
+      { agentId, status: "succeeded", runtimeMode: "legacy", contextSnapshot: { issueId, conversationSessionGeneration: 2 },
         resultJson: { summary: "Legacy answer: repository selection is complete" }, createdAt: new Date(12_000), finishedAt: new Date(13_000) },
-      { companyId, agentId, status: "succeeded", runtimeMode: "legacy", contextSnapshot: { issueId: randomUUID(), conversationSessionGeneration: 2 },
+      { agentId, status: "succeeded", runtimeMode: "legacy", contextSnapshot: { issueId: randomUUID(), conversationSessionGeneration: 2 },
         resultJson: { summary: "UNRELATED TASK ANSWER" }, createdAt: new Date(14_000), finishedAt: new Date(15_000) },
     ]);
   });
   afterAll(async () => database?.cleanup());
   it("preserves the original goal and prior answer while excluding reset, deleted and future history", async () => {
-    const result = await buildNativeSessionHandoff({ db, companyId, issueId, agentId, before: new Date(20_000) });
+    const result = await buildNativeSessionHandoff({ db, issueId, agentId, before: new Date(20_000) });
     expect(result).toContain("Build a GitHub PR review bot");
     expect(result).toContain("Final constraint: require a team review");
     expect(result).toContain('"truncated":true');
@@ -109,24 +109,23 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(result).not.toContain("FUTURE MESSAGE");
     expect(result).not.toContain("UNTRUSTED BODY");
     expect(result).not.toContain("/new");
-    expect(await buildNativeSessionHandoff({ db, companyId: randomUUID(), issueId, agentId, before: new Date(20_000) })).toBeNull();
-    expect(await buildNativeSessionHandoff({ db, companyId, issueId, agentId: randomUUID(), before: new Date(20_000) })).toBeNull();
+    expect(await buildNativeSessionHandoff({ db, issueId, agentId: randomUUID(), before: new Date(20_000) })).toBeNull();
   });
   it("honors the exact wake-comment cutoff when building a fresh replay", async () => {
-    const result = await buildNativeSessionHandoff({ db, companyId, issueId, agentId, before: new Date(20_000), throughCommentId: requestId });
+    const result = await buildNativeSessionHandoff({ db, issueId, agentId, before: new Date(20_000), throughCommentId: requestId });
     expect(result).toContain("Build a GitHub PR review bot");
     expect(result).not.toContain("CODEOWNERS");
     expect(result).not.toContain("Legacy answer");
     expect(result).not.toContain("LATER CUTOFF DECISION");
     expect(result).not.toContain("LATER CUTOFF REPLY");
     expect(result).not.toContain("LATER CUTOFF RUN SUMMARY");
-    expect(await buildNativeSessionHandoff({ db, companyId, issueId, agentId, before: new Date(20_000), throughCommentId: randomUUID() })).toBeNull();
+    expect(await buildNativeSessionHandoff({ db, issueId, agentId, before: new Date(20_000), throughCommentId: randomUUID() })).toBeNull();
   });
 
   it("loads and redacts history once only when a fresh attempt requests it", async () => {
     const select = vi.spyOn(db, "select");
     try {
-      const load = createNativeSessionHandoffLoader({ db, companyId, issueId, agentId, before: new Date(20_000) });
+      const load = createNativeSessionHandoffLoader({ db, issueId, agentId, before: new Date(20_000) });
       expect(select).not.toHaveBeenCalled();
       const first = await load();
       const reads = select.mock.calls.length;
@@ -138,15 +137,15 @@ const support = await getEmbeddedPostgresTestSupport();
 
   it("retains a prior run's quarantine after the current agent and task use standard policy", async () => {
     const runId = randomUUID();
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "succeeded", nativeIssueId: issueId,
+    await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "succeeded", nativeIssueId: issueId,
       contextSnapshot: { issueId, conversationSessionGeneration: 2, executionPolicy: {
         trustPreset: "low_trust_review", authorizationPolicy: { trustPreset: "low_trust_review",
-          trustBoundary: { mode: "low_trust_review", companyId, issueIds: [issueId] } },
+          trustBoundary: { mode: "low_trust_review", issueIds: [issueId] } },
       } }, createdAt: new Date(16_000), finishedAt: new Date(18_000),
       runnerProfileJson: { sessionCheckpoint: { semanticResult: { summary: "QUARANTINED RUN SUMMARY" } } } });
-    await db.insert(heartbeatRunEvents).values({ companyId, agentId, runId, seq: 1, eventType: "item.completed", createdAt: new Date(17_000),
+    await db.insert(heartbeatRunEvents).values({ agentId, runId, seq: 1, eventType: "item.completed", createdAt: new Date(17_000),
       payload: { prpEvent: { payload: { kind: "agentMessage", channel: "final", text: "QUARANTINED RUN REPLY" } } } });
-    const result = await buildNativeSessionHandoff({ db, companyId, issueId, agentId, before: new Date(20_000) });
+    const result = await buildNativeSessionHandoff({ db, issueId, agentId, before: new Date(20_000) });
     expect(result).not.toContain("QUARANTINED RUN REPLY");
     expect(result).not.toContain("QUARANTINED RUN SUMMARY");
     expect(result).toContain("Quarantined low-trust output omitted");

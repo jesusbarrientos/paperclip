@@ -48,7 +48,6 @@ function makeThread(
   const id = overrides.id ?? "thread-1";
   return {
     id,
-    companyId: "co-1",
     issueId: "issue-1",
     documentId: "doc-1",
     documentKey: "plan",
@@ -84,7 +83,6 @@ function makeThread(
     comments: [
       {
         id: "comment-1",
-        companyId: "co-1",
         threadId: id,
         issueId: "issue-1",
         documentId: "doc-1",
@@ -98,7 +96,6 @@ function makeThread(
       },
       {
         id: "comment-2",
-        companyId: "co-1",
         threadId: id,
         issueId: "issue-1",
         documentId: "doc-1",
@@ -127,7 +124,6 @@ const baseThreads: DocumentAnnotationThreadWithComments[] = [
     comments: [
       {
         id: "comment-stale",
-        companyId: "co-1",
         threadId: "stale-1",
         issueId: "issue-1",
         documentId: "doc-1",
@@ -148,7 +144,6 @@ const baseThreads: DocumentAnnotationThreadWithComments[] = [
     comments: [
       {
         id: "comment-resolved",
-        companyId: "co-1",
         threadId: "resolved-1",
         issueId: "issue-1",
         documentId: "doc-1",
@@ -169,7 +164,6 @@ const baseThreads: DocumentAnnotationThreadWithComments[] = [
     comments: [
       {
         id: "comment-orphan",
-        companyId: "co-1",
         threadId: "orphan-1",
         issueId: "issue-1",
         documentId: "doc-1",
@@ -204,7 +198,6 @@ function makeClient() {
 const integratedIssueId = "issue-storybook-1";
 const integratedDoc: IssueDocument = {
   id: "doc-storybook-1",
-  companyId: "co-1",
   issueId: integratedIssueId,
   key: "plan",
   title: "Plan",
@@ -226,7 +219,6 @@ const integratedDoc: IssueDocument = {
 function makeIntegratedIssue(): Issue {
   return {
     id: integratedIssueId,
-    companyId: "co-1",
     projectId: null,
     projectWorkspaceId: null,
     goalId: null,
@@ -261,7 +253,6 @@ function makeIntegratedIssue(): Issue {
     documentSummaries: [
       {
         id: integratedDoc.id,
-        companyId: integratedDoc.companyId,
         issueId: integratedIssueId,
         key: integratedDoc.key,
         title: integratedDoc.title,

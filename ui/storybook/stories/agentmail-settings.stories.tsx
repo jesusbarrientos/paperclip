@@ -9,7 +9,7 @@ const meta = {
   title: "Connections/AgentMail settings",
   component: EmailEndpointSettings,
   parameters: { layout: "padded" },
-  args: { endpointId: ENDPOINT, companyId: COMPANY, assignedAgentName: "Ralph" },
+  args: { endpointId: ENDPOINT, assignedAgentName: "Ralph" },
   beforeEach(context) {
     let inbox: EmailEndpointSummary = {
       id: ENDPOINT, companyId: COMPANY, connectionId: "preview-account", assignedAgentId: "ralph",
@@ -20,7 +20,7 @@ const meta = {
     const original = window.fetch;
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.origin);
-      if (url.pathname === `/api/companies/${COMPANY}/email/inboxes`) return Response.json([inbox]);
+      if (url.pathname === `/api/email/inboxes`) return Response.json([inbox]);
       if (url.pathname === `/api/email/inboxes/${ENDPOINT}/control`) {
         const { action } = JSON.parse(String(init?.body));
         inbox = { ...inbox, status: action === "pause" ? "paused" : action === "remove" ? "archived" : "active" };

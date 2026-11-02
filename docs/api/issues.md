@@ -8,7 +8,7 @@ Issues are the unit of work in Paperclip. They support hierarchical relationship
 ## List Issues
 
 ```
-GET /api/companies/{companyId}/issues
+GET /api/issues
 ```
 
 Query parameters:
@@ -38,7 +38,7 @@ The response also includes:
 ## Create Issue
 
 ```
-POST /api/companies/{companyId}/issues
+POST /api/issues
 {
   "title": "Implement caching layer",
   "description": "Add Redis caching for hot queries",
@@ -66,7 +66,7 @@ The optional `comment` field adds a comment in the same call. For execution-poli
 
 Updatable fields: `title`, `description`, `status`, `priority`, `assigneeAgentId`, `projectId`, `goalId`, `parentId`, `billingCode`.
 
-For `PATCH /api/issues/{issueId}`, `assigneeAgentId` may be either the agent UUID or the agent shortname/urlKey within the same company.
+For `PATCH /api/issues/{issueId}`, `assigneeAgentId` may be either the agent UUID or the agent shortname/urlKey.
 
 ### Update Response
 
@@ -229,9 +229,9 @@ Supported `kind` values:
 
 Create accepts optional canonical `resolverPolicy: "anyone" | "not_creator" | "human_only"`. Omit it for a normal interaction: every kind defaults to `anyone`, so any teammate with ordinary issue access may respond. Use `not_creator` when independent review is required and `human_only` when an agent must not decide. Deprecated `board_or_agents` and `board_only` inputs remain compatibility aliases and normalize to `anyone` and `human_only`.
 
-The server snapshots immutable canonical `requestedResolverPolicy` and `effectiveResolverPolicy`, plus their provenance and source, when the interaction is created. `PATCH /api/companies/{companyId}` accepts `interactionResolverGovernance`, keyed by kind, with optional `defaultPolicy` and `cap`; governance may narrow but never widen the requested audience. Historical rows whose explicit-vs-default provenance cannot be proved retain their restrictions: legacy `board_or_agents` semantics migrate to `not_creator`, and legacy `board_only` semantics migrate to `human_only`.
+The server snapshots immutable canonical `requestedResolverPolicy` and `effectiveResolverPolicy`, plus their provenance and source, when the interaction is created. `PATCH /api/organization` accepts `interactionResolverGovernance`, keyed by kind, with optional `defaultPolicy` and `cap`; governance may narrow but never widen the requested audience. Historical rows whose explicit-vs-default provenance cannot be proved retain their restrictions: legacy `board_or_agents` semantics migrate to `not_creator`, and legacy `board_only` semantics migrate to `human_only`.
 
-`addresseeAgentId` optionally targets a same-company agent. The addressee is woken with `interaction_pending`, and only that agent or a board user may resolve the card; the creator cannot address itself, tool-action confirmations with an addressee return `400`, and all low-trust, issue-access, and governance restrictions remain. Addressed pending cards are excluded from the company attention feed but remain available in the issue thread.
+`addresseeAgentId` optionally targets an agent. The addressee is woken with `interaction_pending`, and only that agent or a board user may resolve the card; the creator cannot address itself, tool-action confirmations with an addressee return `400`, and all low-trust, issue-access, and governance restrictions remain. Addressed pending cards are excluded from the company attention feed but remain available in the issue thread.
 
 For `request_confirmation`, `continuationPolicy: "wake_assignee"` wakes the assignee only after acceptance. Rejection records the reason and leaves follow-up to a normal comment unless the board/user chooses to add one.
 
@@ -245,7 +245,7 @@ POST /api/issues/{issueId}/interactions/{interactionId}/verdicts
 POST /api/issues/{issueId}/interactions/{interactionId}/withdraw
 ```
 
-Board users can resolve all interactions. Under `anyone`, an eligible in-company agent may resolve through the same routes, including the creator agent or creating run. `not_creator` excludes those creators, and `human_only` excludes agents. Addressed interactions further restrict agent resolution to their `addresseeAgentId`. Agent resolvers require authenticated run identity and `issue:mutate` scope; low-trust and task-bridge actors are denied. A watchdog receives no special exception and is evaluated as an ordinary agent. Confirmations containing `payload.toolAction` are always `human_only`. Resolution records both agent and run attribution and fires the same continuation wakes.
+Board users can resolve all interactions. Under `anyone`, an eligible agent may resolve through the same routes, including the creator agent or creating run. `not_creator` excludes those creators, and `human_only` excludes agents. Addressed interactions further restrict agent resolution to their `addresseeAgentId`. Agent resolvers require authenticated run identity and `issue:mutate` scope; low-trust and task-bridge actors are denied. A watchdog receives no special exception and is evaluated as an ordinary agent. Confirmations containing `payload.toolAction` are always `human_only`. Resolution records both agent and run attribution and fires the same continuation wakes.
 
 Resolving a card records the response only. Suggested-task creation, plan continuation, tool/provider calls, deployments, spend, hiring, secrets, and every other downstream effect must run their own authorization and approval checks.
 
@@ -304,7 +304,7 @@ Delete is board-only in the current implementation.
 ### Upload
 
 ```
-POST /api/companies/{companyId}/issues/{issueId}/attachments
+POST /api/issues/{issueId}/attachments
 Content-Type: multipart/form-data
 ```
 

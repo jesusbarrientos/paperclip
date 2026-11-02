@@ -48,13 +48,12 @@ const ATTACHMENT_ID = "00000000-0000-4000-8000-000000000001";
 const WORK_PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
 const REVIEW_KEY = artifactReviewDocumentKey(WORK_PRODUCT_ID);
 
-const issue = { id: "issue-1", companyId: "company-1", identifier: "PAP-1534", workMode: "standard" } as Issue;
+const issue = { id: "issue-1", identifier: "PAP-1534", workMode: "standard" } as Issue;
 
 function makeMarkdownWorkProduct(overrides: Partial<IssueWorkProduct> = {}): IssueWorkProduct {
   const contentPath = `/api/attachments/${ATTACHMENT_ID}/content`;
   return {
     id: WORK_PRODUCT_ID,
-    companyId: "company-1",
     projectId: null,
     issueId: "issue-1",
     executionWorkspaceId: null,
@@ -88,7 +87,6 @@ function makeMarkdownWorkProduct(overrides: Partial<IssueWorkProduct> = {}): Iss
 function makeReviewDocument(overrides: Partial<IssueDocument> = {}): IssueDocument {
   return {
     id: "document-1",
-    companyId: "company-1",
     issueId: "issue-1",
     key: REVIEW_KEY,
     title: "Verification report",
@@ -112,7 +110,6 @@ function makeReviewDocument(overrides: Partial<IssueDocument> = {}): IssueDocume
 function makeMarkdownAttachment(): IssueAttachment {
   return {
     id: ATTACHMENT_ID,
-    companyId: "company-1",
     issueId: "issue-1",
     issueCommentId: null,
     assetId: "asset-1",

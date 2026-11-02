@@ -15,17 +15,17 @@ function providerStatus(error: unknown): number | undefined {
 }
 
 /** Automatic access considers only this caller's grants, never connection management visibility. */
-export function skillSourceGitHubReader(db: Db, companyId: string, actor: Request['actor'], connectionId: string | null): GitHubRead {
+export function skillSourceGitHubReader(db: Db, actor: Request['actor'], connectionId: string | null): GitHubRead {
   let chosen: Authorization | undefined;
   const access = toolAccessService(db);
   const localTrusted = actor.type === 'board' && actor.source === 'local_implicit';
   const headers = async (authorization: Authorization, force = false): Promise<Record<string, string>> => {
     if (actor.type === 'agent') {
-      if (!actor.runId || !actor.agentId || actor.companyId !== companyId) {
+      if (!actor.runId || !actor.agentId) {
         if (connectionId) throw forbidden('Private GitHub skills require an authenticated agent run.');
         return {};
       }
-      const result = await resolveGitHubOperationCredentials(db, { companyId, agentId: actor.agentId, runId: actor.runId });
+      const result = await resolveGitHubOperationCredentials(db, { agentId: actor.agentId, runId: actor.runId });
       if (result.status === 'available') {
         if (connectionId && result.connectionId !== connectionId) throw forbidden('This run cannot use the source’s saved GitHub connection. Choose the run’s authorized connection.');
         authorization.connectionId = result.connectionId ?? null;
@@ -37,14 +37,14 @@ export function skillSourceGitHubReader(db: Db, companyId: string, actor: Reques
     }
     if (actor.type !== 'board') throw forbidden('Authentication required.');
     if (!authorization.connectionId) return {};
-    return access.githubReadHeaders(companyId, authorization.connectionId, actor.userId ?? null, localTrusted, force, authorization.grantId);
+    return access.githubReadHeaders(authorization.connectionId, actor.userId ?? null, localTrusted, force, authorization.grantId);
   };
   const candidates = async (): Promise<Authorization[]> => {
     if (actor.type !== 'board') return [{ connectionId }];
-    const ids = connectionId ? [connectionId] : await access.githubReadConnectionIds(companyId, actor.userId ?? null, localTrusted);
+    const ids = connectionId ? [connectionId] : await access.githubReadConnectionIds(actor.userId ?? null, localTrusted);
     const result: Authorization[] = [];
     for (const id of ids) {
-      for (const grantId of await access.githubReadGrantIds(companyId, id, actor.userId ?? null, localTrusted)) result.push({ connectionId: id, grantId });
+      for (const grantId of await access.githubReadGrantIds(id, actor.userId ?? null, localTrusted)) result.push({ connectionId: id, grantId });
     }
     result.sort((a, b) => Number(b.connectionId === chosen?.connectionId && b.grantId === chosen?.grantId) - Number(a.connectionId === chosen?.connectionId && a.grantId === chosen?.grantId));
     if (!connectionId) result.push({ connectionId: null });
@@ -108,20 +108,20 @@ export function skillSourceGitHubReader(db: Db, companyId: string, actor: Reques
   const callerId = actor.type === 'agent' ? `agent:${actor.agentId}` : `board:${actor.userId ?? actor.source}`;
   let scanLease: ReturnType<typeof limitScans> | undefined;
   read.withScan = async operation => {
-    const lease = limitScans(companyId, callerId);
+    const lease = limitScans(callerId);
     scanLease = lease;
     try { return await operation(); }
     finally { scanLease = undefined; lease.release(); }
   };
   read.openSnapshot = async (input, options = {}) => {
     const ownsLease = !scanLease;
-    const lease = scanLease ?? limitScans(companyId, callerId);
+    const lease = scanLease ?? limitScans(callerId);
     try {
       const snapshot = await authorized(async (values, authorization) => {
         const header = values.Authorization ?? values.authorization;
         if (header && !/^(Bearer|token)\s+\S+$/i.test(header)) throw unprocessable('Reconnect GitHub to download repositories.');
         const token = header?.replace(/^(Bearer|token)\s+/i, '') ?? '';
-        return openGitSkillSnapshot({ ...input, token, cacheScope: JSON.stringify([companyId, actor.type, actor.type === 'agent' ? actor.agentId : actor.userId, actor.type === 'agent' ? actor.runId : actor.source, authorization.connectionId, authorization.grantId]) }, { ...options, beforeDownload: lease.beforeDownload });
+        return openGitSkillSnapshot({ ...input, token, cacheScope: JSON.stringify([actor.type, actor.type === 'agent' ? actor.agentId : actor.userId, actor.type === 'agent' ? actor.runId : actor.source, authorization.connectionId, authorization.grantId]) }, { ...options, beforeDownload: lease.beforeDownload });
       }, options.signal);
       return { ...snapshot, release: async () => { try { await snapshot.release(); } finally { if (ownsLease) lease.release(); } } };
     } catch (error) {

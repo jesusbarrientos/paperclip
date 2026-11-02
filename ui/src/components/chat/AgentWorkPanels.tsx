@@ -105,11 +105,9 @@ export function AgentTaskCard({ task }: { task: Issue }) {
 }
 
 export function AgentTasksPanel({
-  companyId,
   agentId,
   excludeIssueId,
 }: {
-  companyId: string;
   agentId: string;
   /** The conversation issue itself, which is not one of the agent's tasks. */
   excludeIssueId?: string;
@@ -120,8 +118,8 @@ export function AgentTasksPanel({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const tasksQuery = useQuery({
-    queryKey: queryKeys.issues.listParticipatedByAgent(companyId, agentId),
-    queryFn: () => issuesApi.list(companyId, {
+    queryKey: queryKeys.issues.listParticipatedByAgent(agentId),
+    queryFn: () => issuesApi.list({
       participantAgentId: agentId,
       sortField: "updated",
       sortDir: "desc",
@@ -129,8 +127,8 @@ export function AgentTasksPanel({
     }),
   });
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects.list(companyId),
-    queryFn: () => projectsApi.list(companyId),
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
   });
 
   const visible = useMemo(() => {
@@ -275,11 +273,11 @@ export function AgentArtifactCard({ artifact }: { artifact: CompanyArtifact }) {
  * capped so an unusually prolific agent can't stall the panel; the cap only
  * ever drops its oldest artifacts.
  */
-async function listAgentArtifacts(companyId: string, agentId: string) {
+async function listAgentArtifacts(agentId: string) {
   const artifacts: CompanyArtifact[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < ARTIFACT_MAX_PAGES; page += 1) {
-    const response = await artifactsApi.list(companyId, { agentId, limit: ARTIFACT_PAGE_SIZE, cursor });
+    const response = await artifactsApi.list({ agentId, limit: ARTIFACT_PAGE_SIZE, cursor });
     artifacts.push(...response.artifacts);
     if (!response.nextCursor) return { artifacts, truncated: false };
     cursor = response.nextCursor;
@@ -287,10 +285,10 @@ async function listAgentArtifacts(companyId: string, agentId: string) {
   return { artifacts, truncated: true };
 }
 
-export function AgentArtifactsPanel({ companyId, agentId }: { companyId: string; agentId: string }) {
+export function AgentArtifactsPanel({ agentId }: { agentId: string }) {
   const artifactsQuery = useQuery({
-    queryKey: queryKeys.artifacts.byAgent(companyId, agentId),
-    queryFn: () => listAgentArtifacts(companyId, agentId),
+    queryKey: queryKeys.artifacts.byAgent(agentId),
+    queryFn: () => listAgentArtifacts(agentId),
   });
 
   if (artifactsQuery.isPending) return <PanelMessage>Loading artifacts…</PanelMessage>;

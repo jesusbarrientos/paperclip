@@ -36,7 +36,6 @@ afterAll(() => {
 function makeSecret(id: string, overrides: Partial<CompanySecret> = {}): CompanySecret {
   return {
     id,
-    companyId: "co",
     scope: "company",
     ownerUserId: null,
     userSecretDefinitionId: null,

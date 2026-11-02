@@ -96,7 +96,6 @@ const mockFinanceService = vi.hoisted(() => ({
 }));
 const mockBudgetService = vi.hoisted(() => ({
   overview: vi.fn().mockResolvedValue({
-    companyId: "company-1",
     policies: [],
     activeIncidents: [],
     pausedAgentCount: 0,
@@ -185,26 +184,22 @@ describe("cost routes", () => {
     });
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       name: "Budget Agent",
       budgetMonthlyCents: 100,
       spentMonthlyCents: 0,
     });
     mockAgentService.update.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       name: "Budget Agent",
       budgetMonthlyCents: 100,
       spentMonthlyCents: 0,
     });
     mockIssueService.getById.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       identifier: "PC1A2-1",
     });
     mockIssueService.getByIdentifier.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
       identifier: "PC1A2-1",
     });
     mockBudgetService.upsertPolicy.mockResolvedValue(undefined);
@@ -234,7 +229,7 @@ describe("cost routes", () => {
   it("returns finance summary rows for valid requests", async () => {
     const app = createApp();
     const res = await request(app)
-      .get("/api/companies/company-1/costs/finance-summary")
+      .get("/api/costs/finance-summary")
       .query({ from: "2026-02-01T00:00:00.000Z", to: "2026-02-28T23:59:59.999Z" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -252,7 +247,7 @@ describe("cost routes", () => {
 
     expect(res.status).toBe(200);
     expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PC1A2-1");
-    expect(mockCostService.issueTreeSummary).toHaveBeenCalledWith("company-1", "issue-1", {
+    expect(mockCostService.issueTreeSummary).toHaveBeenCalledWith("issue-1", {
       excludeRoot: false,
     });
     expect(res.body).toEqual({
@@ -288,7 +283,7 @@ describe("cost routes", () => {
     });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/budgets")
+      .patch("/api/budgets")
       .send({ budgetMonthlyCents: 2500 });
 
     expect(res.status).toBe(403);
@@ -317,7 +312,6 @@ describe("cost routes", () => {
     const app = createAppWithActor({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       runId: "run-1",
     });
 
@@ -336,7 +330,6 @@ describe("cost routes", () => {
     const app = createAppWithActor({
       type: "agent",
       agentId: "agent-2",
-      companyId: "company-1",
       runId: "run-2",
     });
 
@@ -354,7 +347,6 @@ describe("cost routes", () => {
   it("allows authorized board users to update an agent budget and budget policy", async () => {
     mockAgentService.update.mockResolvedValueOnce({
       id: "agent-1",
-      companyId: "company-1",
       name: "Budget Agent",
       budgetMonthlyCents: 2500,
       spentMonthlyCents: 0,
@@ -365,7 +357,7 @@ describe("cost routes", () => {
       source: "session",
       isInstanceAdmin: false,
       companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      memberships: [{ status: "active", membershipRole: "admin" }],
     });
 
     const res = await request(app)
@@ -375,7 +367,6 @@ describe("cost routes", () => {
     expect(res.status).toBe(200);
     expect(mockAgentService.update).toHaveBeenCalledWith("agent-1", { budgetMonthlyCents: 2500 });
     expect(mockBudgetService.upsertPolicy).toHaveBeenCalledWith(
-      "company-1",
       {
         scopeType: "agent",
         scopeId: "agent-1",
@@ -387,7 +378,6 @@ describe("cost routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
         actorType: "user",
         actorId: "board-user",
         agentId: null,
@@ -443,7 +433,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "CLI Agent",
       role: "engineer",
       status: "active",
@@ -453,7 +442,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       permissions: {},
     });
 
-    const event = await costs.createEvent(companyId, {
+    const event = await costs.createEvent({
       agentId,
       provider: "openai",
       biller: "chatgpt",
@@ -486,7 +475,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Cost Agent",
       role: "engineer",
       status: "active",
@@ -497,14 +485,12 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
       name: "Overflow Project",
       status: "active",
     });
 
     await db.insert(costEvents).values([
       {
-        companyId,
         agentId,
         projectId,
         provider: "openai",
@@ -518,7 +504,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         occurredAt: new Date("2026-04-10T00:00:00.000Z"),
       },
       {
-        companyId,
         agentId,
         projectId,
         provider: "openai",
@@ -538,9 +523,9 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       to: new Date("2026-04-15T23:59:59.999Z"),
     };
 
-    const [byAgentRow] = await costs.byAgent(companyId, range);
-    const [byProjectRow] = await costs.byProject(companyId, range);
-    const [byAgentModelRow] = await costs.byAgentModel(companyId, range);
+    const [byAgentRow] = await costs.byAgent(range);
+    const [byProjectRow] = await costs.byProject(range);
+    const [byAgentModelRow] = await costs.byAgentModel(range);
 
     expect(byAgentRow?.costCents).toBe(4_000_000_000);
     expect(byAgentRow?.inputTokens).toBe(4_000_000_000);
@@ -565,7 +550,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Cost Agent",
       role: "engineer",
       status: "active",
@@ -577,7 +561,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "Root",
         status: "in_progress",
         priority: "medium",
@@ -586,7 +569,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: childIssueId,
-        companyId,
         parentId: rootIssueId,
         title: "Child",
         status: "done",
@@ -596,7 +578,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: grandchildIssueId,
-        companyId,
         parentId: childIssueId,
         title: "Grandchild",
         status: "done",
@@ -606,7 +587,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: harnessIssueId,
-        companyId,
         parentId: rootIssueId,
         title: "Hidden skill test harness",
         status: "done",
@@ -618,7 +598,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: siblingIssueId,
-        companyId,
         title: "Sibling",
         status: "done",
         priority: "medium",
@@ -628,7 +607,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     ]);
     await db.insert(costEvents).values([
       {
-        companyId,
         agentId,
         issueId: rootIssueId,
         provider: "openai",
@@ -642,7 +620,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         occurredAt: new Date("2026-04-10T00:00:00.000Z"),
       },
       {
-        companyId,
         agentId,
         issueId: childIssueId,
         provider: "openai",
@@ -656,7 +633,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         occurredAt: new Date("2026-04-10T00:01:00.000Z"),
       },
       {
-        companyId,
         agentId,
         issueId: grandchildIssueId,
         provider: "openai",
@@ -670,7 +646,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         occurredAt: new Date("2026-04-10T00:02:00.000Z"),
       },
       {
-        companyId,
         agentId,
         issueId: siblingIssueId,
         provider: "openai",
@@ -685,7 +660,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
     ]);
 
-    const summary = await costs.issueTreeSummary(companyId, rootIssueId);
+    const summary = await costs.issueTreeSummary(rootIssueId);
 
     expect(summary).toEqual({
       issueId: rootIssueId,
@@ -717,7 +692,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Run Agent",
       role: "engineer",
       status: "active",
@@ -729,7 +703,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
         title: "Root",
         status: "in_progress",
         priority: "medium",
@@ -738,7 +711,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: childIssueId,
-        companyId,
         parentId: rootIssueId,
         title: "Child",
         status: "in_progress",
@@ -748,7 +720,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: grandchildIssueId,
-        companyId,
         parentId: childIssueId,
         title: "Grandchild",
         status: "done",
@@ -758,7 +729,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: siblingIssueId,
-        companyId,
         title: "Sibling",
         status: "done",
         priority: "medium",
@@ -767,7 +737,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: harnessIssueId,
-        companyId,
         parentId: rootIssueId,
         title: "Harness child",
         status: "done",
@@ -790,7 +759,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 60s run linked to root via contextSnapshot.issueId
       {
         id: linkedViaContextRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -801,7 +769,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 120s run linked to child via activity_log
       {
         id: linkedViaActivityRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -811,7 +778,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 30s run linked to grandchild
       {
         id: grandchildRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -822,7 +788,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 45s harness run under root - should be excluded from visible issue tree rollups
       {
         id: harnessRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -833,7 +798,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // sibling run NOT under root – should be excluded
       {
         id: siblingRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -844,7 +808,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // Still-running run on child (no finishedAt) – should contribute (now - startedAt)
       {
         id: livePartialRunId,
-        companyId,
         agentId,
         invocationSource: "on_demand",
         status: "running",
@@ -854,7 +817,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     ]);
 
     await db.insert(activityLog).values({
-      companyId,
       runId: linkedViaActivityRunId,
       actorType: "agent",
       actorId: agentId,
@@ -865,7 +827,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       details: {},
     });
 
-    const summary = await costs.issueTreeSummary(companyId, rootIssueId);
+    const summary = await costs.issueTreeSummary(rootIssueId);
 
     expect(summary.issueCount).toBe(3);
     // 3 finished runs in tree (root, child via activity, grandchild) + 1 live run
@@ -877,7 +839,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
 
     // excludeRoot drops the root issue's own runs (the 60s contextSnapshot run)
     // while keeping the child + grandchild runs and any live child run.
-    const descendantsOnly = await costs.issueTreeSummary(companyId, rootIssueId, {
+    const descendantsOnly = await costs.issueTreeSummary(rootIssueId, {
       excludeRoot: true,
     });
     expect(descendantsOnly.issueCount).toBe(2);
@@ -899,7 +861,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
 
     await db.insert(financeEvents).values([
       {
-        companyId,
         biller: "openai",
         eventKind: "invoice",
         amountCents: 2_000_000_000,
@@ -909,7 +870,6 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         occurredAt: new Date("2026-04-10T00:00:00.000Z"),
       },
       {
-        companyId,
         biller: "openai",
         eventKind: "invoice",
         amountCents: 2_000_000_000,
@@ -925,8 +885,8 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       to: new Date("2026-04-15T23:59:59.999Z"),
     };
 
-    const summary = await finance.summary(companyId, range);
-    const [byKindRow] = await finance.byKind(companyId, range);
+    const summary = await finance.summary(range);
+    const [byKindRow] = await finance.byKind(range);
 
     expect(summary.debitCents).toBe(4_000_000_000);
     expect(summary.estimatedDebitCents).toBe(2_000_000_000);

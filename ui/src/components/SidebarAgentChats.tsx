@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi } from "@/api/agents";
 import { authApi } from "@/api/auth";
-import { useCompany } from "@/context/CompanyContext";
 import {
   useResourceMemberships,
   useResourceMembershipMutation,
@@ -16,35 +15,32 @@ import { AgentChatPicker } from "./AgentChatPicker";
 import { useSidebar } from "@/context/SidebarContext";
 
 export function SidebarAgentChats() {
-  const { selectedCompanyId } = useCompany();
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
   const userId = session?.user?.id ?? session?.session?.userId;
   return (
-    <CompanyAgentChats
-      key={`${selectedCompanyId}:${userId ?? "local-board"}`}
-      companyId={selectedCompanyId}
+    <AgentChats
+      key={userId ?? "local-board"}
       userId={userId}
     />
   );
 }
 
 // A scope change unmounts the picker, including its open state and search.
-function CompanyAgentChats({ companyId, userId }: { companyId: string | null; userId?: string }) {
+function AgentChats({ userId }: { userId?: string }) {
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents.list(companyId!),
-    queryFn: () => agentsApi.list(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const agents = agentsQuery.data ?? [];
   const [pickerOpen, setPickerOpen] = useState(false);
   const navigate = useNavigate();
   const { isMobile, setSidebarOpen } = useSidebar();
-  const recentIds = useRecentAgentChats(companyId ?? "", userId);
-  const memberships = useResourceMemberships(companyId);
-  const mutation = useResourceMembershipMutation(companyId);
+  const recentIds = useRecentAgentChats(userId);
+  const memberships = useResourceMemberships();
+  const mutation = useResourceMembershipMutation();
   const stars = memberships.data?.starredAgentIds ?? [];
   const location = useLocation();
   const activeRef = location.pathname.match(/\/chats\/([^/]+)/)?.[1];

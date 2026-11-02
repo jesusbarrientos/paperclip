@@ -29,7 +29,7 @@ it.each([LogViewer, ProductionLogViewer])("retains legacy history and reads only
   const first = row(1, "retained history");
   const second = row(2, "new output");
   log.mockResolvedValueOnce({ content: first, nextOffset: first.length });
-  const run = { id: "run-1", companyId: "company-1", agentId: "agent-1", status: "succeeded", logRef: "log" } as HeartbeatRun;
+  const run = { id: "run-1", agentId: "agent-1", status: "succeeded", logRef: "log" } as HeartbeatRun;
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -67,7 +67,7 @@ it.each([LogViewer, ProductionLogViewer])("polls logs when WebSocket constructio
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   vi.stubGlobal("WebSocket", undefined);
   log.mockResolvedValue({ content: "", nextOffset: 0 });
-  const run = { id: "run-1", companyId: "company-1", agentId: "agent-1", status: "running", logRef: "log" } as HeartbeatRun;
+  const run = { id: "run-1", agentId: "agent-1", status: "running", logRef: "log" } as HeartbeatRun;
   const root = createRoot(document.createElement("div"));
   const sockets: Array<{ onopen: (() => void) | null; close: () => void }> = [];
   try {

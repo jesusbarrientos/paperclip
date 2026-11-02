@@ -49,7 +49,6 @@ export function connectionLifecycleType(
 type ActivityCursor = { createdAt: Date; id: string };
 
 type ListConnectionLifecycleEventsInput = {
-  companyId: string;
   /** Omit for every connection in the company. An empty list returns no rows. */
   connectionIds?: string[];
   agentId?: string | null;
@@ -79,12 +78,10 @@ export async function listConnectionLifecycleEvents(
 
   const safeLimit = Math.max(1, Math.min(101, Math.floor(input.limit)));
   const activityConditions: SQL[] = [
-    eq(activityLog.companyId, input.companyId),
     eq(activityLog.entityType, "tool_connection"),
     inArray(activityLog.action, [...CONNECTION_LIFECYCLE_ACTIONS]),
   ];
   const quarantineConditions: SQL[] = [
-    eq(toolAccessAuditEvents.companyId, input.companyId),
     eq(toolAccessAuditEvents.action, "tool_connection.catalog_refresh"),
     sql`(${toolAccessAuditEvents.details}->>'quarantinedCount')::int > 0`,
   ];
@@ -200,7 +197,7 @@ export async function listConnectionLifecycleEvents(
       ? db
         .select({ id: agents.id, name: agents.name })
         .from(agents)
-        .where(and(eq(agents.companyId, input.companyId), inArray(agents.id, [...agentIds])))
+        .where(inArray(agents.id, [...agentIds]))
       : [],
     userIds.size
       ? db

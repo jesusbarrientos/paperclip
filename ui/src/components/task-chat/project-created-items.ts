@@ -3,7 +3,7 @@ import type { TaskChatProjectCreatedItem } from "./task-chat-model";
 
 export function projectCreatedItems(
   events: readonly ActivityEvent[],
-  projects: readonly Pick<Project, "id" | "companyId" | "workspaces">[] = [],
+  projects: readonly Pick<Project, "id" | "workspaces">[] = [],
 ): TaskChatProjectCreatedItem[] {
   const seen = new Set<string>();
   return events.flatMap((event) => {
@@ -17,9 +17,7 @@ export function projectCreatedItems(
     if (typeof details.name !== "string") return [];
     seen.add(event.entityId);
     const project = projects.find(
-      (candidate) =>
-        candidate.id === event.entityId &&
-        candidate.companyId === event.companyId,
+      (candidate) => candidate.id === event.entityId,
     );
     const repositoryDetails = project
       ? project.workspaces.map((workspace) => ({

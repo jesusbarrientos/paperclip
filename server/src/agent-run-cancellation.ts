@@ -13,15 +13,14 @@ export function agentRunWritesRevoked(run: {
 }
 
 /** The caller must supply its write transaction, so Stop and commit serialize. */
-export async function assertAgentRunWriteAllowed(tx: Db, companyId: string, actor: {
+export async function assertAgentRunWriteAllowed(tx: Db, actor: {
   agentId?: string | null;
   runId?: string | null;
   stopId?: string | null;
 }) {
   if (!actor.agentId || !actor.runId) return;
   const [run] = await tx.select({ status: heartbeatRuns.status, resultJson: heartbeatRuns.resultJson })
-    .from(heartbeatRuns).where(and(eq(heartbeatRuns.id, actor.runId),
-      eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, actor.agentId)))
+    .from(heartbeatRuns).where(and(eq(heartbeatRuns.id, actor.runId), eq(heartbeatRuns.agentId, actor.agentId)))
     .for("share");
   const stoppedForThisMutation = run?.status === "cancelled" && actor.stopId &&
     run.resultJson?.issueMutationStopId === actor.stopId;

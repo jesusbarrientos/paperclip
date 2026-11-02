@@ -11,18 +11,17 @@ export type PlanSkillSource = {
 /** Bundled/catalog files are read-only and core inventory is automatically
  * restored. Editable company copies preserve the source bytes and names;
  * selection, rather than deletion, implements the unassigned control. */
-export async function preparePlanSkills(api: SkillApi, companyId: string, variant: PlanVariant) {
-  const company = `/api/companies/${companyId}`;
+export async function preparePlanSkills(api: SkillApi, variant: PlanVariant) {
   const skills: PlanSkillSource[] = [];
   for (const skill of PLAN_SKILLS) {
     const relative = variant === "current" ? skill.current : skill.short;
     const content = await readFile(new URL(`../../${relative}`, import.meta.url), "utf8");
     const name = skill.key.split("/").at(-1)!;
-    const created = await api.post<{ id: string; key: string; sourceType: string }>(`${company}/skills`, {
+    const created = await api.post<{ id: string; key: string; sourceType: string }>(`/api/skills`, {
       name, slug: `eval-${name}`, markdown: content, sharingScope: "company",
     });
     if (created.sourceType !== "local_path") throw new Error("Planning fixture did not create an editable company skill");
-    const served = await api.get<{ content: string; editable: boolean }>(`${company}/skills/${created.id}/files?path=SKILL.md`);
+    const served = await api.get<{ content: string; editable: boolean }>(`/api/skills/${created.id}/files?path=SKILL.md`);
     if (!served.editable || planHash(served.content) !== planHash(content)) throw new Error(`Served skill differs from editable source ${relative}`);
     skills.push({ originalKey: skill.key, key: created.key, id: created.id, sourcePath: relative,
       sha256: planHash(content), bytes: Buffer.byteLength(content), words: content.split(/\s+/).filter(Boolean).length,
@@ -31,24 +30,24 @@ export async function preparePlanSkills(api: SkillApi, companyId: string, varian
   return skills;
 }
 
-export async function selectPlanSkills(api: SkillApi, companyId: string, agentId: string, sources: PlanSkillSource[]) {
+export async function selectPlanSkills(api: SkillApi, agentId: string, sources: PlanSkillSource[]) {
   const selected = sources.filter(s => s.selected).map(s => s.key);
-  await api.post(`/api/agents/${agentId}/skills/sync?companyId=${companyId}`, { desiredSkills: selected, mode: "replace" });
-  return verifyPlanSelection(api, companyId, agentId, sources);
+  await api.post(`/api/agents/${agentId}/skills/sync`, { desiredSkills: selected, mode: "replace" });
+  return verifyPlanSelection(api, agentId, sources);
 }
 
-export async function verifyPlanSelection(api: Pick<RunnerApi, "get">, companyId: string, agentId: string, sources: PlanSkillSource[]) {
+export async function verifyPlanSelection(api: Pick<RunnerApi, "get">, agentId: string, sources: PlanSkillSource[]) {
   const selected = sources.filter(s => s.selected).map(s => s.key);
-  const snapshot = await api.get<{ desiredSkills: string[] }>(`/api/agents/${agentId}/skills?companyId=${companyId}`);
+  const snapshot = await api.get<{ desiredSkills: string[] }>(`/api/agents/${agentId}/skills`);
   if (JSON.stringify([...(snapshot.desiredSkills ?? [])].sort()) !== JSON.stringify([...selected].sort())) {
     throw new Error("Planning skill selection differs from selected variant; comparison is uncomparable");
   }
   return snapshot;
 }
 
-export async function verifyPlanSkills(api: Pick<RunnerApi, "get">, companyId: string, sources: PlanSkillSource[]) {
+export async function verifyPlanSkills(api: Pick<RunnerApi, "get">, sources: PlanSkillSource[]) {
   for (const skill of sources) {
-    const served = await api.get<{ content: string }>(`/api/companies/${companyId}/skills/${skill.id}/files?path=SKILL.md`);
+    const served = await api.get<{ content: string }>(`/api/skills/${skill.id}/files?path=SKILL.md`);
     if (planHash(served.content) !== skill.sha256) throw new Error("Planning guidance changed during execution; comparison is uncomparable");
   }
 }

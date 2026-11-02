@@ -1,14 +1,12 @@
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
-import { companies } from "./companies.js";
 import { companySecretProviderConfigs } from "./company_secret_provider_configs.js";
 
 export const userSecretDefinitions = pgTable(
   "user_secret_definitions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     name: text("name").notNull(),
     description: text("description"),
@@ -27,11 +25,11 @@ export const userSecretDefinitions = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyStatusIdx: index("user_secret_definitions_company_status_idx").on(table.companyId, table.status),
-    companyProviderIdx: index("user_secret_definitions_company_provider_idx").on(table.companyId, table.provider),
+    companyStatusIdx: index("user_secret_definitions_company_status_idx").on(table.status),
+    companyProviderIdx: index("user_secret_definitions_company_provider_idx").on(table.provider),
     providerConfigIdx: index("user_secret_definitions_provider_config_idx").on(table.providerConfigId),
     companyKeyUq: uniqueIndex("user_secret_definitions_company_key_uq")
-      .on(table.companyId, table.key)
+      .on(table.key)
       .where(sql`${table.deletedAt} is null`),
   }),
 );

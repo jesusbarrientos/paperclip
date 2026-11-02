@@ -48,7 +48,7 @@ has no custom UI. Required fields:
   is accepted and normalized. HTTPS is required except on loopback for testing.
 - `shape`: choose from the dropdown of published CreateOS shapes. The bundled
   choices match `https://api.sb.createos.sh/v1/shapes` as of 2026-09-08.
-- `apiKey`: your CreateOS key. Paperclip saves pasted keys as company secrets;
+- `apiKey`: your CreateOS key. Paperclip saves pasted keys as Paperclip secrets;
   a resolved environment key takes precedence over the optional host fallback
   `CREATEOS_API_KEY` for `https://api.sb.createos.sh` only. Custom API endpoints,
   including loopback fixtures, require an explicit environment key. The host
@@ -75,7 +75,7 @@ command, and deletes the sandbox. It therefore uses real provider resources.
 
 ## Implemented behavior
 
-- Company/environment-bound lease metadata and a random workspace marker
+- Environment-bound lease metadata and a random workspace marker
   checked before a resumed lease is trusted. API keys are not lease metadata.
 - State-aware pause/resume with bounded polling. Transient errors are surfaced;
   only missing/terminal sandboxes or a mismatched workspace expire a resume.

@@ -23,7 +23,6 @@ export type TestDriveHarness = (typeof TEST_DRIVE_HARNESSES)[number];
 
 export interface TestDriveOptions {
   dataDir?: string;
-  companyName?: string;
   agentName?: string;
   harness?: TestDriveHarness;
   model?: string;
@@ -41,7 +40,6 @@ type HarnessDefinition = {
 };
 
 export type ResolvedTestDriveBootstrap = HarnessDefinition & {
-  companyName: string;
   agentName: string;
   model?: string;
   credential: string;
@@ -50,7 +48,7 @@ export type ResolvedTestDriveBootstrap = HarnessDefinition & {
 
 export type TestDriveBootstrapResult = {
   reused: boolean;
-  company: Company;
+  organization: Company;
   agent: Agent | null;
 };
 
@@ -234,9 +232,7 @@ export function resolveTestDriveBootstrap(
     throw new Error(`Unsupported test-drive harness: ${String(harness)}.`);
   }
 
-  const companyName = (options.companyName ?? "Test Company").trim();
   const agentName = (options.agentName ?? "CEO").trim();
-  if (!companyName) throw new Error("--company-name cannot be empty.");
   if (!agentName) throw new Error("--agent-name cannot be empty.");
 
   const model = options.model;
@@ -265,7 +261,6 @@ export function resolveTestDriveBootstrap(
 
   return {
     ...definition,
-    companyName,
     agentName,
     ...(model ? { model } : {}),
     credential,
@@ -323,76 +318,60 @@ export async function bootstrapTestDrive(input: {
   instanceId: string;
   env?: NodeJS.ProcessEnv;
 }): Promise<TestDriveBootstrapResult> {
-  const companies = requiredApiResult(
-    await input.api.get<Company[]>("/api/companies"),
-    "reading companies",
+  const organization = requiredApiResult(
+    await input.api.get<Company>("/api/organization"),
+    "reading the organization",
   );
-  const existingCompany = companies[0];
-  if (existingCompany) {
+  const agents = requiredApiResult(
+    await input.api.get<Agent[]>("/api/agents"),
+    "reading agents",
+  );
+  if (agents.length > 0) {
     if (input.linkedWorktree) {
       await reconcileTestDriveWorktreeExecution(input.api, input.instanceId);
     }
-    return { reused: true, company: existingCompany, agent: null };
+    return { reused: true, organization, agent: null };
   }
 
   // Resolve every bootstrap input before the first mutation. In particular,
-  // OpenCode model validation and credential lookup happen before company
-  // creation so an invalid invocation leaves the database untouched.
+  // OpenCode model validation and credential lookup happen before any write
+  // so an invalid invocation leaves the database untouched.
   const resolved = resolveTestDriveBootstrap(input.options, input.env);
-  let company: Company | null = null;
-  try {
-    company = requiredApiResult(
-      await input.api.post<Company>("/api/companies", { name: resolved.companyName }),
-      "creating the test company",
-    );
-    await input.api.post(`/api/companies/${company.id}/user-secret-definitions`, {
-      key: resolved.credentialTarget,
-      name: resolved.credentialName,
-    });
-    await input.api.post(`/api/companies/${company.id}/me/user-secrets`, {
-      definitionKey: resolved.credentialTarget,
-      value: resolved.credential,
-    });
+  await input.api.post("/api/user-secret-definitions", {
+    key: resolved.credentialTarget,
+    name: resolved.credentialName,
+  });
+  await input.api.post("/api/me/user-secrets", {
+    definitionKey: resolved.credentialTarget,
+    value: resolved.credential,
+  });
 
-    const adapterConfig: Record<string, unknown> = {
-      env: {
-        [resolved.credentialTarget]: {
-          type: "user_secret_ref",
-          key: resolved.credentialTarget,
-          version: "latest",
-          required: true,
-        },
+  const adapterConfig: Record<string, unknown> = {
+    env: {
+      [resolved.credentialTarget]: {
+        type: "user_secret_ref",
+        key: resolved.credentialTarget,
+        version: "latest",
+        required: true,
       },
-    };
-    if (resolved.model) adapterConfig.model = resolved.model;
+    },
+  };
+  if (resolved.model) adapterConfig.model = resolved.model;
 
-    const agent = requiredApiResult(
-      await input.api.post<Agent>(`/api/companies/${company.id}/agents`, {
-        name: resolved.agentName,
-        role: "ceo",
-        adapterType: resolved.adapterType,
-        adapterConfig,
-      }),
-      "creating the CEO agent",
-    );
+  const agent = requiredApiResult(
+    await input.api.post<Agent>("/api/agents", {
+      name: resolved.agentName,
+      role: "ceo",
+      adapterType: resolved.adapterType,
+      adapterConfig,
+    }),
+    "creating the CEO agent",
+  );
 
-    if (input.linkedWorktree) {
-      await reconcileTestDriveWorktreeExecution(input.api, input.instanceId);
-    }
-    return { reused: false, company, agent };
-  } catch (error) {
-    if (company) {
-      try {
-        await input.api.delete(`/api/companies/${company.id}`);
-      } catch (cleanupError) {
-        throw new Error(
-          `${errorMessage(error)} Cleanup also failed for newly-created company ${company.id}: ${errorMessage(cleanupError)}`,
-          { cause: error },
-        );
-      }
-    }
-    throw error;
+  if (input.linkedWorktree) {
+    await reconcileTestDriveWorktreeExecution(input.api, input.instanceId);
   }
+  return { reused: false, organization, agent };
 }
 
 function dashboardUrl(server: StartedServer): string {
@@ -450,11 +429,11 @@ export async function testDriveCommand(
         });
         if (result.reused) {
           p.log.message(
-            `Using existing data for ${pc.cyan(result.company.name)}; bootstrap flags were ignored.`,
+            `Using existing data for ${pc.cyan(result.organization.name)}; bootstrap flags were ignored.`,
           );
         } else {
           p.log.success(
-            `Created ${pc.cyan(result.company.name)} with agent ${pc.cyan(result.agent?.name ?? "CEO")}.`,
+            `Created agent ${pc.cyan(result.agent?.name ?? "CEO")} in ${pc.cyan(result.organization.name)}.`,
           );
         }
         if (linkedWorktree) {
@@ -484,7 +463,6 @@ export function registerTestDriveCommand(program: Command): void {
     .command("test-drive")
     .description("Start an isolated, initialized Paperclip instance for manual testing")
     .option("-d, --data-dir <path>", "Paperclip data directory to create or reuse")
-    .option("--company-name <name>", "Initial company name", "Test Company")
     .option("--agent-name <name>", "Initial CEO agent name", "CEO")
     .addOption(
       new Option("--harness <harness>", "Initial agent harness")

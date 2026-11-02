@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentChatsApi } from "@/api/agentChats";
 import { agentsApi } from "@/api/agents";
 import { authApi } from "@/api/auth";
-import { useCompany } from "@/context/CompanyContext";
 import { useAgentChatEnabled } from "@/hooks/useAgentChatEnabled";
 import { recordAgentChatVisit } from "@/lib/recent-agent-chats";
 import { queryKeys } from "@/lib/queryKeys";
@@ -14,13 +13,11 @@ import { isUuidLike, type Issue } from "@paperclipai/shared";
 
 export function AgentChat() {
   const { agentRef = "" } = useParams<{ agentRef: string }>();
-  const { selectedCompanyId } = useCompany();
   const { enabled, loaded } = useAgentChatEnabled();
   const client = useQueryClient();
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const session = useQuery({
     queryKey: queryKeys.auth.session,
@@ -33,42 +30,41 @@ export function AgentChat() {
   );
   const historyAgent = useQuery({
     queryKey: queryKeys.agents.detail(agentRef),
-    queryFn: () => agentsApi.get(agentRef, selectedCompanyId!),
-    enabled: enabled && !!selectedCompanyId && agents.isSuccess && !rosterAgent && isUuidLike(agentRef),
+    queryFn: () => agentsApi.get(agentRef),
+    enabled: enabled && agents.isSuccess && !rosterAgent && isUuidLike(agentRef),
   });
-  const agent = rosterAgent ?? (historyAgent.data?.companyId === selectedCompanyId ? historyAgent.data : undefined);
-  const chatKey = queryKeys.agentChats.detail(selectedCompanyId, userId, agent?.id);
+  const agent = rosterAgent ?? historyAgent.data;
+  const chatKey = queryKeys.agentChats.detail(userId, agent?.id);
   const chat = useQuery({
     queryKey: chatKey,
-    queryFn: () => agentChatsApi.get(selectedCompanyId!, agent!.id),
+    queryFn: () => agentChatsApi.get(agent!.id),
     enabled: enabled && !!agent && session.isFetched,
   });
   const creating = useRef<Promise<Issue> | null>(null);
   useEffect(() => {
     creating.current = null;
-  }, [selectedCompanyId, userId, agent?.id]);
+  }, [userId, agent?.id]);
   useEffect(() => {
     if (enabled && agent && session.isSuccess && chat.isSuccess)
-      recordAgentChatVisit(agent.companyId, userId, agent.id, chat.data?.id ?? null);
-  }, [enabled, agent?.id, agent?.companyId, userId, session.isSuccess, chat.isSuccess, chat.data?.id]);
+      recordAgentChatVisit(userId, agent.id, chat.data?.id ?? null);
+  }, [enabled, agent?.id, userId, session.isSuccess, chat.isSuccess, chat.data?.id]);
   const ensureIssue = useCallback(async () => {
-    if (!agent || !selectedCompanyId) throw new Error("Agent not found");
+    if (!agent) throw new Error("Agent not found");
     if (chat.data) return chat.data;
     const promise = (creating.current ??= agentChatsApi.ensure(
-      selectedCompanyId,
       agent.id,
     ));
     try {
       const issue = await promise;
       client.setQueryData(queryKeys.issues.detail(issue.id), issue);
       client.setQueryData(chatKey, issue);
-      void client.invalidateQueries({ queryKey: queryKeys.agentChats.list(selectedCompanyId, userId) });
+      void client.invalidateQueries({ queryKey: queryKeys.agentChats.list(userId) });
       return issue;
     } catch (error) {
       creating.current = null;
       throw error;
     }
-  }, [agent, selectedCompanyId, chat.data, client, userId]);
+  }, [agent, chat.data, client, userId]);
   if (!loaded || agents.isPending || session.isPending || historyAgent.isFetching && !agent)
     return (
       <p className="text-sm text-muted-foreground">Loading conversation…</p>

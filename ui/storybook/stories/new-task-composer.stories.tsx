@@ -13,7 +13,7 @@ import {
 } from "@paperclipai/shared";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { NewIssueDialog } from "@/components/NewIssueDialog";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useDialog } from "@/context/DialogContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { trackRecentAssignee, trackRecentAssigneeUser } from "@/lib/recent-assignees";
@@ -62,7 +62,6 @@ function NewTaskStory({
   rememberedEffort?: boolean;
 }) {
   const client = useQueryClient();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
   const opened = useRef(false);
   const [submitted, setSubmitted] = useState<Record<string, unknown> | null>(null);
@@ -75,22 +74,22 @@ function NewTaskStory({
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
         location.origin,
       );
-      if (url.pathname === `/api/companies/${COMPANY_ID}/skills`) return Response.json(SKILLS);
-      if (url.pathname === `/api/companies/${COMPANY_ID}/agents`) return Response.json(NEW_TASK_AGENTS);
-      if (url.pathname === `/api/companies/${COMPANY_ID}/routines`) return Response.json(ROUTINES);
-      if (url.pathname === `/api/companies/${COMPANY_ID}/execution-workspaces`) {
+      if (url.pathname === `/api/skills`) return Response.json(SKILLS);
+      if (url.pathname === `/api/agents`) return Response.json(NEW_TASK_AGENTS);
+      if (url.pathname === `/api/routines`) return Response.json(ROUTINES);
+      if (url.pathname === `/api/execution-workspaces`) {
         if (worktrees === "loading") return new Promise<Response>(() => {});
         if (worktrees === "error") return Response.json({ error: "Worktrees unavailable" }, { status: 503 });
         return Response.json(worktrees === "empty" || url.searchParams.get("projectId") !== "project-board-ui" ? [] : WORKTREES);
       }
-      if (url.pathname === `/api/companies/${COMPANY_ID}/assets/images` && init?.method === "POST") {
+      if (url.pathname === `/api/assets/images` && init?.method === "POST") {
         const file = init.body instanceof FormData ? init.body.get("file") : null;
         if (!(file instanceof File)) return Response.json({ error: "Select an image" }, { status: 400 });
         const contentPath = URL.createObjectURL(file);
         imageUrls.push(contentPath);
         return Response.json({ contentPath });
       }
-      if (url.pathname === `/api/companies/${COMPANY_ID}/issues` && init?.method === "POST") {
+      if (url.pathname === `/api/issues` && init?.method === "POST") {
         if (scenario === "saving") return new Promise<Response>(() => {});
         if (scenario === "error")
           return Response.json(
@@ -117,42 +116,37 @@ function NewTaskStory({
   }, [scenario, worktrees]);
 
   useLayoutEffect(() => {
-    if (selectedCompanyId !== COMPANY_ID) {
-      setSelectedCompanyId(COMPANY_ID);
-      return;
-    }
     if (opened.current) return;
     opened.current = true;
     localStorage.removeItem("paperclip:issue-draft");
     localStorage.removeItem("paperclip:recent-assignees");
-    localStorage.removeItem(`paperclip:recent-assignees:${COMPANY_ID}`);
     localStorage.removeItem("paperclip:recent-projects");
-    localStorage.removeItem(`paperclip:recent-projects:${COMPANY_ID}`);
-    localStorage.removeItem(`paperclip:composer-effort:${COMPANY_ID}`);
-    if (rememberedAssignee === "agent") trackRecentAssignee("agent-codex", COMPANY_ID);
-    if (rememberedAssignee === "human") trackRecentAssigneeUser(storybookAuthSession.user.id, COMPANY_ID);
-    if (rememberedProject) trackRecentProject("project-board-ui", COMPANY_ID);
-    if (rememberedEffort) rememberComposerEffort(COMPANY_ID, "high");
+    localStorage.removeItem("paperclip:recent-projects:last");
+    localStorage.removeItem("paperclip:composer-effort");
+    if (rememberedAssignee === "agent") trackRecentAssignee("agent-codex");
+    if (rememberedAssignee === "human") trackRecentAssigneeUser(storybookAuthSession.user.id);
+    if (rememberedProject) trackRecentProject("project-board-ui");
+    if (rememberedEffort) rememberComposerEffort("high");
     client.setQueryData(queryKeys.health, { hiddenSettings: [] });
     client.setQueryData(queryKeys.auth.session, storybookAuthSession);
     client.setQueryData(
-      queryKeys.agents.list(COMPANY_ID),
+      queryKeys.agents.list(),
       NEW_TASK_AGENTS,
     );
-    client.setQueryData(queryKeys.agents.adapterModels(COMPANY_ID, "codex_local"), [
+    client.setQueryData(queryKeys.agents.adapterModels("codex_local"), [
       { id: "gpt-6-sol", label: "GPT-6 Sol" },
       { id: "gpt-6-astra", label: "GPT-6 Astra" },
     ]);
-    client.setQueryData(queryKeys.projects.list(COMPANY_ID), isolation ? storybookProjects : storybookProjects.map((project) => ({
+    client.setQueryData(queryKeys.projects.list(), isolation ? storybookProjects : storybookProjects.map((project) => ({
       ...project, executionWorkspacePolicy: { ...project.executionWorkspacePolicy, enabled: false },
     })));
-    client.setQueryData(queryKeys.issues.mentionPool(COMPANY_ID), storybookIssues);
-    client.setQueryData(queryKeys.companySkills.list(COMPANY_ID), SKILLS);
-    client.setQueryData(queryKeys.routines.list(COMPANY_ID), ROUTINES);
+    client.setQueryData(queryKeys.issues.mentionPool(), storybookIssues);
+    client.setQueryData(queryKeys.companySkills.list(), SKILLS);
+    client.setQueryData(queryKeys.routines.list(), ROUTINES);
     client.setQueryData(queryKeys.instance.experimentalSettings, {
       enableIsolatedWorkspaces: true,
     });
-    const worktreeQueryKey = queryKeys.executionWorkspaces.summaryList(COMPANY_ID, {
+    const worktreeQueryKey = queryKeys.executionWorkspaces.summaryList({
       projectId: "project-board-ui",
       reuseEligible: true,
     });
@@ -183,7 +177,7 @@ function NewTaskStory({
               : {}),
           },
     );
-  }, [client, isolation, openNewIssue, rememberedAssignee, rememberedProject, rememberedEffort, scenario, selectedCompanyId, setSelectedCompanyId, worktrees]);
+  }, [client, isolation, openNewIssue, rememberedAssignee, rememberedProject, rememberedEffort, scenario, worktrees]);
 
   return (
     <div className="min-h-screen bg-background p-8 text-foreground">

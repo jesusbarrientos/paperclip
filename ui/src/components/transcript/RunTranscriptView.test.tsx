@@ -219,7 +219,6 @@ describe("RunTranscriptView", () => {
     const decision: ToolRunDecision = {
       invocation: {
         id: invocationId,
-        companyId: "company-1",
         idempotencyKey: null,
         actorType: "agent",
         actorId: "agent-1",
@@ -250,7 +249,6 @@ describe("RunTranscriptView", () => {
       },
       actionRequest: {
         id: actionRequestId,
-        companyId: "company-1",
         invocationId,
         issueId: "issue-1",
         interactionId: "33333333-3333-4333-8333-333333333333",

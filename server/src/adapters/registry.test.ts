@@ -99,7 +99,6 @@ describe("native ACPX environment checks", () => {
   afterEach(() => vi.restoreAllMocks());
 
   const context = {
-    companyId: "company-test",
     adapterType: "paperclip_runner",
     config: { provider: "acpx", acpxAgent: "claude", model: "claude-sonnet-5" },
   };

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { createNativeGitHubAccess, type NativeGitHubAccess } from "./native-github-access.js";
-const scope = { companyId: "company-a", agentId: "agent-a", issueId: "task-a" };
+const scope = { agentId: "agent-a", issueId: "task-a" };
 const run = (runId: string) => ({ ...scope, runId });
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -73,7 +73,7 @@ it.each([false, true])("keeps one live parent and its original launcher environm
 }, 45_000);
 it("rejects other scopes, concurrent bindings, browser requests and forged authority", async () => {
   const b = await broker();
-  for (const field of ["companyId", "agentId", "issueId"] as const) {
+  for (const field of ["agentId", "issueId"] as const) {
     expect(() => b.activate({ ...run("a"), [field]: "other" })).toThrow("scope mismatch");
   }
   const release = b.activate(run("a"));

@@ -75,8 +75,8 @@ export function ConnectionInstructionsSettings({ connection, provider, template,
   </div>;
 }
 
-export function AgentConnectionInstructions({ companyId, agentId }: { companyId: string; agentId: string }) {
-  const query = useQuery({ queryKey: queryKeys.tools.effectiveProfilesForAgent(companyId, agentId), queryFn: () => toolsApi.getEffectiveProfilesForAgent(companyId, agentId) });
+export function AgentConnectionInstructions({ agentId }: { agentId: string }) {
+  const query = useQuery({ queryKey: queryKeys.tools.effectiveProfilesForAgent(agentId), queryFn: () => toolsApi.getEffectiveProfilesForAgent(agentId) });
   const sources = query.data?.installedConnections.filter((connection) => connection.agentInstructions && connection.enabled && connection.status === "active") ?? [];
   if (query.isLoading) return <p className="text-sm text-muted-foreground">Loading connection instructions…</p>;
   if (query.isError) return <InlineBanner tone="danger" actions={<Button variant="ghost" onClick={() => void query.refetch()}>Retry</Button>}>Couldn’t load connection instructions.</InlineBanner>;

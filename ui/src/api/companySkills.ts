@@ -49,7 +49,7 @@ export interface CatalogListQuery {
 }
 
 export const companySkillsApi = {
-  list: (companyId: string, query: CompanySkillListQuery = {}) => {
+  list: (query: CompanySkillListQuery = {}) => {
     const params = new URLSearchParams();
     if (query.q) params.set("q", query.q);
     if (query.sort) params.set("sort", query.sort);
@@ -57,184 +57,183 @@ export const companySkillsApi = {
     for (const category of query.categories ?? []) params.append("categories[]", category);
     for (const include of query.include ?? []) params.append("include[]", include);
     const search = params.toString();
-    return api.get<CompanySkillListItem[]>(`/companies/${encodeURIComponent(companyId)}/skills${search ? `?${search}` : ""}`);
+    return api.get<CompanySkillListItem[]>(`/skills${search ? `?${search}` : ""}`);
   },
-  categories: (companyId: string) =>
-    api.get<CompanySkillCategoryCount[]>(`/companies/${encodeURIComponent(companyId)}/skills/categories`),
-  detail: (companyId: string, skillId: string) =>
+  categories: () =>
+    api.get<CompanySkillCategoryCount[]>(`/skills/categories`),
+  detail: (skillId: string) =>
     api.get<CompanySkillDetail>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}`,
+      `/skills/${encodeURIComponent(skillId)}`,
     ),
-  versions: (companyId: string, skillId: string) =>
+  versions: (skillId: string) =>
     api.get<CompanySkillVersion[]>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/versions`,
+      `/skills/${encodeURIComponent(skillId)}/versions`,
     ),
-  version: (companyId: string, skillId: string, versionId: string) =>
+  version: (skillId: string, versionId: string) =>
     api.get<CompanySkillVersion>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}`,
+      `/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}`,
     ),
-  createVersion: (companyId: string, skillId: string, payload: CompanySkillVersionCreateRequest = {}) =>
+  createVersion: (skillId: string, payload: CompanySkillVersionCreateRequest = {}) =>
     api.post<CompanySkillVersion>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/versions`,
+      `/skills/${encodeURIComponent(skillId)}/versions`,
       payload,
     ),
   // --- Skill Studio test inputs (PAP-12960 P1 API) ---
-  testInputs: (companyId: string, skillId: string) =>
+  testInputs: (skillId: string) =>
     api.get<CompanySkillTestInput[]>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-inputs`,
+      `/skills/${encodeURIComponent(skillId)}/test-inputs`,
     ),
-  createTestInput: (companyId: string, skillId: string, payload: CompanySkillTestInputCreateRequest) =>
+  createTestInput: (skillId: string, payload: CompanySkillTestInputCreateRequest) =>
     api.post<CompanySkillTestInput>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-inputs`,
+      `/skills/${encodeURIComponent(skillId)}/test-inputs`,
       payload,
     ),
   updateTestInput: (
-    companyId: string,
     skillId: string,
     inputId: string,
     payload: CompanySkillTestInputUpdateRequest,
   ) =>
     api.patch<CompanySkillTestInput>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-inputs/${encodeURIComponent(inputId)}`,
+      `/skills/${encodeURIComponent(skillId)}/test-inputs/${encodeURIComponent(inputId)}`,
       payload,
     ),
-  deleteTestInput: (companyId: string, skillId: string, inputId: string) =>
+  deleteTestInput: (skillId: string, inputId: string) =>
     api.delete<CompanySkillTestInput>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-inputs/${encodeURIComponent(inputId)}`,
+      `/skills/${encodeURIComponent(skillId)}/test-inputs/${encodeURIComponent(inputId)}`,
     ),
   // --- Skill Studio cross-skill run templates ---
-  testRunTemplates: (companyId: string) =>
+  testRunTemplates: () =>
     api.get<CompanySkillTestRunTemplate[]>(
-      `/companies/${encodeURIComponent(companyId)}/skill-test-run-templates`,
+      `/skill-test-run-templates`,
     ),
-  createTestRunTemplate: (companyId: string, payload: CompanySkillTestRunTemplateCreateRequest) =>
+  createTestRunTemplate: (payload: CompanySkillTestRunTemplateCreateRequest) =>
     api.post<CompanySkillTestRunTemplate>(
-      `/companies/${encodeURIComponent(companyId)}/skill-test-run-templates`,
+      `/skill-test-run-templates`,
       payload,
     ),
-  updateTestRunTemplate: (companyId: string, templateId: string, payload: CompanySkillTestRunTemplateUpdateRequest) =>
+  updateTestRunTemplate: (templateId: string, payload: CompanySkillTestRunTemplateUpdateRequest) =>
     api.patch<CompanySkillTestRunTemplate>(
-      `/companies/${encodeURIComponent(companyId)}/skill-test-run-templates/${encodeURIComponent(templateId)}`,
+      `/skill-test-run-templates/${encodeURIComponent(templateId)}`,
       payload,
     ),
-  deleteTestRunTemplate: (companyId: string, templateId: string) =>
+  deleteTestRunTemplate: (templateId: string) =>
     api.delete<CompanySkillTestRunTemplate>(
-      `/companies/${encodeURIComponent(companyId)}/skill-test-run-templates/${encodeURIComponent(templateId)}`,
+      `/skill-test-run-templates/${encodeURIComponent(templateId)}`,
     ),
   // --- Skill Studio test runs ---
-  testRuns: (companyId: string, skillId: string, query: CompanySkillTestRunListQuery = {}) => {
+  testRuns: (skillId: string, query: CompanySkillTestRunListQuery = {}) => {
     const params = new URLSearchParams();
     if (query.inputId) params.set("inputId", query.inputId);
     const search = params.toString();
     return api.get<CompanySkillTestRun[]>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-runs${search ? `?${search}` : ""}`,
+      `/skills/${encodeURIComponent(skillId)}/test-runs${search ? `?${search}` : ""}`,
     );
   },
-  testRunDetail: (companyId: string, skillId: string, runId: string) =>
+  testRunDetail: (skillId: string, runId: string) =>
     api.get<CompanySkillTestRunDetail>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-runs/${encodeURIComponent(runId)}`,
+      `/skills/${encodeURIComponent(skillId)}/test-runs/${encodeURIComponent(runId)}`,
     ),
-  createTestRun: (companyId: string, skillId: string, payload: CompanySkillTestRunCreateRequest) =>
+  createTestRun: (skillId: string, payload: CompanySkillTestRunCreateRequest) =>
     api.post<CompanySkillTestRun>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-runs`,
+      `/skills/${encodeURIComponent(skillId)}/test-runs`,
       payload,
     ),
-  cancelTestRun: (companyId: string, skillId: string, runId: string) =>
+  cancelTestRun: (skillId: string, runId: string) =>
     api.post<CompanySkillTestRun>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-runs/${encodeURIComponent(runId)}/cancel`,
+      `/skills/${encodeURIComponent(skillId)}/test-runs/${encodeURIComponent(runId)}/cancel`,
       {},
     ),
-  deleteTestRun: (companyId: string, skillId: string, runId: string) =>
+  deleteTestRun: (skillId: string, runId: string) =>
     api.delete<CompanySkillTestRun>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/test-runs/${encodeURIComponent(runId)}`,
+      `/skills/${encodeURIComponent(skillId)}/test-runs/${encodeURIComponent(runId)}`,
     ),
-  star: (companyId: string, skillId: string) =>
+  star: (skillId: string) =>
     api.post<CompanySkillStarResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/star`,
+      `/skills/${encodeURIComponent(skillId)}/star`,
       {},
     ),
-  unstar: (companyId: string, skillId: string) =>
+  unstar: (skillId: string) =>
     api.delete<CompanySkillStarResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/star`,
+      `/skills/${encodeURIComponent(skillId)}/star`,
     ),
-  fork: (companyId: string, skillId: string, payload: CompanySkillForkRequest = {}) =>
+  fork: (skillId: string, payload: CompanySkillForkRequest = {}) =>
     api.post<CompanySkillForkResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/fork`,
+      `/skills/${encodeURIComponent(skillId)}/fork`,
       payload,
     ),
-  forkPrecheck: (companyId: string, skillId: string) =>
+  forkPrecheck: (skillId: string) =>
     api.get<CompanySkillForkPrecheckResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/fork-precheck`,
+      `/skills/${encodeURIComponent(skillId)}/fork-precheck`,
     ),
-  comments: (companyId: string, skillId: string) =>
+  comments: (skillId: string) =>
     api.get<CompanySkillComment[]>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/comments`,
+      `/skills/${encodeURIComponent(skillId)}/comments`,
     ),
-  createComment: (companyId: string, skillId: string, payload: CompanySkillCommentCreateRequest) =>
+  createComment: (skillId: string, payload: CompanySkillCommentCreateRequest) =>
     api.post<CompanySkillComment>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/comments`,
+      `/skills/${encodeURIComponent(skillId)}/comments`,
       payload,
     ),
-  updateComment: (companyId: string, skillId: string, commentId: string, payload: CompanySkillCommentUpdateRequest) =>
+  updateComment: (skillId: string, commentId: string, payload: CompanySkillCommentUpdateRequest) =>
     api.patch<CompanySkillComment>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/comments/${encodeURIComponent(commentId)}`,
+      `/skills/${encodeURIComponent(skillId)}/comments/${encodeURIComponent(commentId)}`,
       payload,
     ),
-  deleteComment: (companyId: string, skillId: string, commentId: string) =>
+  deleteComment: (skillId: string, commentId: string) =>
     api.delete<CompanySkillComment>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/comments/${encodeURIComponent(commentId)}`,
+      `/skills/${encodeURIComponent(skillId)}/comments/${encodeURIComponent(commentId)}`,
     ),
-  updateStatus: (companyId: string, skillId: string) =>
+  updateStatus: (skillId: string) =>
     api.get<CompanySkillUpdateStatus>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/update-status`,
+      `/skills/${encodeURIComponent(skillId)}/update-status`,
     ),
-  file: (companyId: string, skillId: string, relativePath: string) =>
+  file: (skillId: string, relativePath: string) =>
     api.get<CompanySkillFileDetail>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files?path=${encodeURIComponent(relativePath)}`,
+      `/skills/${encodeURIComponent(skillId)}/files?path=${encodeURIComponent(relativePath)}`,
     ),
-  updateFile: (companyId: string, skillId: string, path: string, content: string, format: Pick<CompanySkillFileDetail, "encoding" | "executable"> = {}) =>
+  updateFile: (skillId: string, path: string, content: string, format: Pick<CompanySkillFileDetail, "encoding" | "executable"> = {}) =>
     api.patch<CompanySkillFileDetail>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files`,
+      `/skills/${encodeURIComponent(skillId)}/files`,
       { path, content, ...format },
     ),
-  deleteFile: (companyId: string, skillId: string, payload: CompanySkillFileDeleteRequest) =>
+  deleteFile: (skillId: string, payload: CompanySkillFileDeleteRequest) =>
     api.deleteWithBody<CompanySkillFileDeleteResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files`,
+      `/skills/${encodeURIComponent(skillId)}/files`,
       payload,
     ),
-  create: (companyId: string, payload: CompanySkillCreateRequest) =>
+  create: (payload: CompanySkillCreateRequest) =>
     api.post<CompanySkill>(
-      `/companies/${encodeURIComponent(companyId)}/skills`,
+      `/skills`,
       payload,
     ),
-  update: (companyId: string, skillId: string, payload: CompanySkillUpdateRequest) =>
+  update: (skillId: string, payload: CompanySkillUpdateRequest) =>
     api.patch<CompanySkill>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}`,
+      `/skills/${encodeURIComponent(skillId)}`,
       payload,
     ),
-  importFromSource: (companyId: string, source: string) =>
+  importFromSource: (source: string) =>
     api.post<CompanySkillImportResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/import`,
+      `/skills/import`,
       { source },
     ),
-  browseProject: (companyId: string, payload: CompanySkillProjectBrowseRequest) =>
+  browseProject: (payload: CompanySkillProjectBrowseRequest) =>
     api.post<CompanySkillProjectBrowseResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/browse-project`,
+      `/skills/browse-project`,
       payload,
     ),
-  scanProjects: (companyId: string, payload: CompanySkillProjectScanRequest = {}) =>
+  scanProjects: (payload: CompanySkillProjectScanRequest = {}) =>
     api.post<CompanySkillProjectScanResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/scan-projects`,
+      `/skills/scan-projects`,
       payload,
     ),
-  installUpdate: (companyId: string, skillId: string) =>
+  installUpdate: (skillId: string) =>
     api.post<CompanySkill>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/install-update`,
+      `/skills/${encodeURIComponent(skillId)}/install-update`,
       {},
     ),
-  delete: (companyId: string, skillId: string) =>
+  delete: (skillId: string) =>
     api.delete<CompanySkill>(
-      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}`,
+      `/skills/${encodeURIComponent(skillId)}`,
     ),
   catalogList: (query: CatalogListQuery = {}) => {
     const params = new URLSearchParams();
@@ -250,9 +249,9 @@ export const companySkillsApi = {
     api.get<CatalogSkillFileDetail>(
       `/skills/catalog/${encodeURIComponent(catalogRef)}/files?path=${encodeURIComponent(relativePath)}`,
     ),
-  installCatalog: (companyId: string, payload: CompanySkillInstallCatalogRequest) =>
+  installCatalog: (payload: CompanySkillInstallCatalogRequest) =>
     api.post<CompanySkillInstallCatalogResult>(
-      `/companies/${encodeURIComponent(companyId)}/skills/install-catalog`,
+      `/skills/install-catalog`,
       payload,
     ),
 };

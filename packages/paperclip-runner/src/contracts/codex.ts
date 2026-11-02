@@ -76,7 +76,6 @@ export interface CodexRunMetadata {
   fixtureName: string;
   identity: {
     schema: "paperclip.prp.identity.v1";
-    companyId: string;
     issueId: string;
     runId: string;
     environmentLeaseId: string;

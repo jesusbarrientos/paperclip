@@ -24,7 +24,7 @@ describe("stopped task recovery notice", () => {
     client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     vi.mocked(activityApi.runsForIssue).mockResolvedValue([{ runId: "failed-run", agentId: "agent", status: "failed" }] as never);
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "failed-run", agentId: "agent", cause: "legacy_execution_requires_reconciliation",
         nextAction: "Automatic recovery stopped. Recorded work is preserved; actions with unverified outcomes will not be repeated.",
       }} />
@@ -42,7 +42,7 @@ describe("stopped task recovery notice", () => {
   });
   it.each([false, true])("explains cancelled runs and saved input; continue eligibility %s", async canContinue => {
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "cancelled-run", agentId: "agent",
         cause: "legacy_execution_requires_reconciliation", runStatus: "cancelled",
         runError: "Provider cancelled execution", savedMessageCount: 2, canContinue,
@@ -58,12 +58,12 @@ describe("stopped task recovery notice", () => {
     if (canContinue) {
       vi.mocked(agentsApi.retryFailedRun).mockResolvedValue({} as never);
       await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
-      expect(agentsApi.retryFailedRun).toHaveBeenCalledWith("agent", "cancelled-run", "company");
+      expect(agentsApi.retryFailedRun).toHaveBeenCalledWith("agent", "cancelled-run");
     }
   });
   it("keeps removed-chat guidance without suggesting a message to an unavailable destination", async () => {
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "cancelled-run", agentId: "agent",
         cause: "legacy_execution_requires_reconciliation", runStatus: "cancelled", canContinue: false,
         nextAction: "This chat connection was removed. Inspect the stopped run and create a new task to continue the work.",
@@ -76,7 +76,7 @@ describe("stopped task recovery notice", () => {
   });
   it("keeps the required next action for other reconciliation causes", async () => {
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "failed-run", agentId: "agent", cause: "action_outcome_unknown",
         nextAction: "Verify the external action outcome before continuing.",
       }} />
@@ -86,7 +86,7 @@ describe("stopped task recovery notice", () => {
   });
   it.each(["native_continuation_requires_reconciliation", "native_session_cleanup_quarantined"])("links to the source run instead of offering a retry rejected by %s", async (cause) => {
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "failed-run", agentId: "agent",
         cause,
         nextAction: "Inspect the original failure and reconcile the previous execution before continuing.",
@@ -103,7 +103,7 @@ describe("stopped task recovery notice", () => {
     vi.mocked(agentsApi.retryFailedRun).mockResolvedValue({} as never);
     await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-    expect(agentsApi.retryFailedRun).toHaveBeenCalledWith("agent", "failed-run", "company");
+    expect(agentsApi.retryFailedRun).toHaveBeenCalledWith("agent", "failed-run");
     expect(onRetried).toHaveBeenCalledOnce();
   });
 
@@ -114,7 +114,7 @@ describe("stopped task recovery notice", () => {
     vi.mocked(activityApi.runsForIssue).mockResolvedValue([{ runId: "model-run", agentId: "agent",
       status: "failed", errorCode: "native_provider_model_rejected" }] as never);
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="model-task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="model-task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "model-run", agentId: "agent",
         cause: "native_continuation_requires_reconciliation", canRetry: true,
         runError,
@@ -131,7 +131,7 @@ describe("stopped task recovery notice", () => {
 
   it.each(["native_continuation_requires_reconciliation", "uncertain_external_action"])("offers Retry for a server-admitted native failure: %s", async cause => {
     await act(async () => root.render(<QueryClientProvider client={client}>
-      <ExecutionBlockerNotice companyId="company" issueId="task" onRetried={onRetried} blocker={{
+      <ExecutionBlockerNotice issueId="task" onRetried={onRetried} blocker={{
         recoveryActionId: "recovery", runId: "failed-run", agentId: "agent", cause,
         canRetry: true,
         nextAction: "Automatic recovery stopped. Try again or send a new message to continue.",
@@ -141,7 +141,7 @@ describe("stopped task recovery notice", () => {
     expect(button?.textContent).toBe("Retry");
     vi.mocked(agentsApi.retryFailedRun).mockResolvedValue({} as never);
     await act(async () => button!.click());
-    expect(agentsApi.retryFailedRun).toHaveBeenCalledWith("agent", "failed-run", "company");
+    expect(agentsApi.retryFailedRun).toHaveBeenCalledWith("agent", "failed-run");
   });
   it("shows a failed Retry in the same container and allows another attempt", async () => {
     vi.mocked(agentsApi.retryFailedRun).mockRejectedValue(new Error("Environment cleanup is still running."));

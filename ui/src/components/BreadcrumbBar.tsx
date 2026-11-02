@@ -2,7 +2,6 @@ import { Link } from "@/lib/router";
 import { Menu, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
-import { useCompany } from "../context/CompanyContext";
 import { usePanel } from "../context/PanelContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,12 +12,12 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
 import { cn } from "../lib/utils";
 
-type GlobalToolbarContext = { companyId: string | null; companyPrefix: string | null };
+const GLOBAL_TOOLBAR_SLOT_CONTEXT = {};
 
 /** Task identifier rendered in gray monospace beside its breadcrumb label. */
 function CrumbIdentifier({ identifier }: { identifier?: string }) {
@@ -30,23 +29,17 @@ function CrumbIdentifier({ identifier }: { identifier?: string }) {
   );
 }
 
-function GlobalToolbar({
-  context,
-  pageToolbar,
-}: {
-  context: GlobalToolbarContext;
-  pageToolbar?: ReactNode;
-}) {
-  const { slots } = usePluginSlots({ slotTypes: ["globalToolbarButton"], companyId: context.companyId });
-  const { launchers } = usePluginLaunchers({ placementZones: ["globalToolbarButton"], companyId: context.companyId, enabled: !!context.companyId });
+function GlobalToolbar({ pageToolbar }: { pageToolbar?: ReactNode }) {
+  const { slots } = usePluginSlots({ slotTypes: ["globalToolbarButton"] });
+  const { launchers } = usePluginLaunchers({ placementZones: ["globalToolbarButton"] });
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2 empty:hidden">
       {pageToolbar}
       {slots.length > 0 ? (
-        <PluginSlotOutlet slotTypes={["globalToolbarButton"]} context={context} className="flex items-center gap-1" />
+        <PluginSlotOutlet slotTypes={["globalToolbarButton"]} context={GLOBAL_TOOLBAR_SLOT_CONTEXT} className="flex items-center gap-1" />
       ) : null}
       {launchers.length > 0 ? (
-        <PluginLauncherOutlet placementZones={["globalToolbarButton"]} context={context} className="flex items-center gap-1" />
+        <PluginLauncherOutlet placementZones={["globalToolbarButton"]} context={GLOBAL_TOOLBAR_SLOT_CONTEXT} className="flex items-center gap-1" />
       ) : null}
     </div>
   );
@@ -61,23 +54,11 @@ export function BreadcrumbBar({ taskDetailLayout = false }: { taskDetailLayout?:
   } = useBreadcrumbs();
   const { toggleSidebar, isMobile } = useSidebar();
   const { panelVisible, togglePanelVisible } = usePanel();
-  const { selectedCompanyId, selectedCompany } = useCompany();
   const taskPanelOpen = breadcrumbPanelControl?.open ?? panelVisible;
   const toggleTaskPanel = breadcrumbPanelControl?.onToggle ?? togglePanelVisible;
 
-  const globalToolbarSlotContext = useMemo(
-    () => ({
-      companyId: selectedCompanyId ?? null,
-      companyPrefix: selectedCompany?.issuePrefix ?? null,
-    }),
-    [selectedCompanyId, selectedCompany?.issuePrefix],
-  );
-
   const globalToolbarSlots = (
-    <GlobalToolbar
-      context={globalToolbarSlotContext}
-      pageToolbar={isMobile ? null : breadcrumbToolbar}
-    />
+    <GlobalToolbar pageToolbar={isMobile ? null : breadcrumbToolbar} />
   );
 
   if (isMobile && mobileToolbar) {

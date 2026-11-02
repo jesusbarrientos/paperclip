@@ -202,7 +202,7 @@ Before promoting content, verify:
 
 - The image, copy and both actions fit desktop/mobile and both themes.
 - A dialog or bottom-left toast temporarily hides the card, then restores it.
-- Close or follow a link; reload, switch companies and open another tab/browser.
+- Close or follow a link; reload and open another tab/browser.
   The same account should keep that ID dismissed.
 - Edit copy with the same ID: it stays dismissed. Publish a new ID: it appears
   on the next eligible visit. Clearing browser storage alone does not reset
@@ -279,7 +279,7 @@ A failed state lookup never shows a card.
 
 Board-only APIs: `GET /api/announcements/current`,
 `GET /api/announcements/:id/image`, `GET /api/announcements/:id/animation`, and `POST /api/announcements/:id/dismiss`
-with `{ "companyId": "..." }`. Responses use `private, no-store`. Repeated POSTs
+with an empty JSON body (`{}`). Responses use `private, no-store`. Repeated POSTs
 return 204 without duplicate audits. Pending dismissals remain valid after the
 feed moves to another ID. The instance retains only the IDs of validated
 announcements in a publication registry, so offline retries survive withdrawal

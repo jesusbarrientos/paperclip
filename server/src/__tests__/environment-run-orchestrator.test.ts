@@ -74,7 +74,6 @@ import type { EnvironmentRuntimeService } from "../services/environment-runtime.
 function makeEnvironment(driver: string = "local"): Environment {
   return {
     id: "env-1",
-    companyId: "company-1",
     name: "Test Environment",
     description: null,
     driver: driver as Environment["driver"],
@@ -89,7 +88,6 @@ function makeEnvironment(driver: string = "local"): Environment {
 function makeLease(overrides: Partial<EnvironmentLease> = {}): EnvironmentLease {
   return {
     id: "lease-1",
-    companyId: "company-1",
     environmentId: "env-1",
     executionWorkspaceId: null,
     issueId: null,
@@ -133,7 +131,6 @@ function makePersistedExecutionWorkspace(
 ): ExecutionWorkspace {
   return {
     id: "ew-1",
-    companyId: "company-1",
     projectId: "project-1",
     projectWorkspaceId: null,
     sourceIssueId: null,
@@ -170,7 +167,6 @@ function makeRealizeInput(overrides: {
     environment: overrides.environment ?? makeEnvironment("local"),
     lease: overrides.lease ?? makeLease(),
     adapterType: "claude_local",
-    companyId: "company-1",
     issueId: null,
     heartbeatRunId: "run-1",
     executionWorkspace: makeExecutionWorkspace(),
@@ -223,7 +219,6 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     mockBuildWorkspaceRealizationRequest.mockReturnValue({
       version: 1,
       adapterType: "claude_local",
-      companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: null,
       issueId: null,
@@ -261,7 +256,7 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     const runtime = makeMockRuntime({ releaseRunLeases });
     const orchestrator = environmentRunOrchestrator(mockDb, { environmentRuntime: runtime });
     await orchestrator.releaseForRun({
-      heartbeatRunId: "run-1", companyId: "company-1", agentId: "agent-1",
+      heartbeatRunId: "run-1", agentId: "agent-1",
       providerResourceDisposition: "stop_and_retain", cancelActiveWork,
     });
     expect(releaseRunLeases).toHaveBeenCalledWith(
@@ -435,7 +430,6 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     mockBuildWorkspaceRealizationRequest.mockReturnValue({
       version: 1,
       adapterType: "claude_local",
-      companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: null,
       issueId: null,
@@ -513,7 +507,6 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     mockBuildWorkspaceRealizationRequest.mockReturnValue({
       version: 1,
       adapterType: "claude_local",
-      companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: null,
       issueId: null,
@@ -576,7 +569,6 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     mockBuildWorkspaceRealizationRequest.mockReturnValue({
       version: 1,
       adapterType: "claude_local",
-      companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: null,
       issueId: null,
@@ -620,7 +612,6 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     mockBuildWorkspaceRealizationRequest.mockReturnValue({
       version: 1,
       adapterType: "gemini_local",
-      companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: null,
       issueId: null,
@@ -699,7 +690,6 @@ describe("environmentRunOrchestrator — realizeForRun", () => {
     mockBuildWorkspaceRealizationRequest.mockReturnValue({
       version: 1,
       adapterType: "claude_local",
-      companyId: "company-1",
       environmentId: "env-1",
       executionWorkspaceId: null,
       issueId: null,
@@ -757,7 +747,7 @@ describe("native runner lifecycle changes before lease acquisition", () => {
     }));
     const orchestrator = environmentRunOrchestrator({} as never, { environmentRuntime: makeMockRuntime({ acquireRunLease }) });
     const input = {
-      companyId: "company-1", selectedEnvironmentId: "env-1", localEnvironmentId: "local",
+      selectedEnvironmentId: "env-1", localEnvironmentId: "local",
       adapterType: "paperclip_runner", issueId: "existing-task", heartbeatRunId: "run-1", agentId: "agent-1",
       persistedExecutionWorkspace: { id: "existing-workspace", mode: "shared_workspace" as const },
       executionWorkspaceSettings: null,
@@ -787,7 +777,7 @@ describe("native runner lifecycle changes before lease acquisition", () => {
     const acquireRunLease = vi.fn(async (input) => ({ environment: input.environment, lease: makeLease(), leaseContext: {} }));
     const orchestrator = environmentRunOrchestrator({} as never, { environmentRuntime: makeMockRuntime({ acquireRunLease }) });
     await orchestrator.acquireForRun({
-      companyId: "company-1", selectedEnvironmentId: "env-1", localEnvironmentId: "local", adapterType,
+      selectedEnvironmentId: "env-1", localEnvironmentId: "local", adapterType,
       adapterConfig: { lifecycleMode }, issueId: "task-1", heartbeatRunId: "run-1", agentId: "agent-1",
       persistedExecutionWorkspace: null, executionWorkspaceSettings: null,
     });
@@ -806,7 +796,7 @@ describe("admitted native lifecycle recovery", () => {
     const acquireRunLease = vi.fn(async (input) => ({ environment: input.environment, lease: makeLease(), leaseContext: {} }));
     const orchestrator = environmentRunOrchestrator({} as never, { environmentRuntime: makeMockRuntime({ acquireRunLease }) });
     await orchestrator.acquireForRun({
-      companyId: "company-1", selectedEnvironmentId: "env-1", localEnvironmentId: "local",
+      selectedEnvironmentId: "env-1", localEnvironmentId: "local",
       adapterType: "paperclip_runner", adapterConfig: { lifecycleMode }, admittedLifecycleMode,
       issueId: "task-1", heartbeatRunId: "run-1", agentId: "agent-1",
       persistedExecutionWorkspace: null, executionWorkspaceSettings: null,

@@ -49,7 +49,6 @@ export interface ToolRuntimeSupervisorOptions {
 
 export interface ToolRuntimeSlotView {
   id: string;
-  companyId: string;
   connectionKey: string;
   providerType: "mcp_stdio_fixture";
   status: ToolRuntimeSlotStatus;
@@ -117,7 +116,6 @@ function slotView(row: typeof toolRuntimeSlots.$inferSelect): ToolRuntimeSlotVie
   const metadata = asRecord(row.metadata);
   return {
     id: row.id,
-    companyId: row.companyId,
     connectionKey: row.slotKey,
     providerType: "mcp_stdio_fixture",
     status: row.status,
@@ -163,7 +161,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
   }
 
   async function writeAudit(input: {
-    companyId: string;
     slotId?: string | null;
     runId?: string | null;
     issueId?: string | null;
@@ -174,7 +171,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
     details?: Record<string, unknown>;
   }) {
     await db.insert(toolAccessAuditEvents).values({
-      companyId: input.companyId,
       actorType: input.agentId ? "agent" : "system",
       actorId: input.agentId ?? "tool-runtime-supervisor",
       action: input.action,
@@ -191,7 +187,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
   }
 
   async function writeActivity(input: {
-    companyId: string;
     slotId: string;
     runId?: string | null;
     agentId?: string | null;
@@ -199,7 +194,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
     details?: Record<string, unknown>;
   }) {
     await logActivity(db, {
-      companyId: input.companyId,
       actorType: input.agentId ? "agent" : "system",
       actorId: input.agentId ?? "tool-runtime-supervisor",
       action: input.action,
@@ -214,17 +208,11 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
     });
   }
 
-  async function stopExpiredIdleSlots(companyId?: string) {
-    const rows = companyId
-      ? await db
-        .select()
-        .from(toolRuntimeSlots)
-        .where(eq(toolRuntimeSlots.companyId, companyId))
-        .orderBy(desc(toolRuntimeSlots.updatedAt))
-      : await db
-        .select()
-        .from(toolRuntimeSlots)
-        .orderBy(desc(toolRuntimeSlots.updatedAt));
+  async function stopExpiredIdleSlots() {
+    const rows = await db
+      .select()
+      .from(toolRuntimeSlots)
+      .orderBy(desc(toolRuntimeSlots.updatedAt));
     const at = now();
     for (const row of rows) {
       if (row.status !== "idle" && row.status !== "running") continue;
@@ -249,7 +237,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
         })
         .where(eq(toolRuntimeSlots.id, row.id));
       await writeAudit({
-        companyId: row.companyId,
         slotId: row.id,
         action: "runtime_stopped",
         outcome: "success",
@@ -268,19 +255,17 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
   }
 
   async function assertCapacity(input: {
-    companyId: string;
     slotKey: string;
     runId?: string | null;
     issueId?: string | null;
     agentId?: string | null;
   }) {
     const rows = await activeRows();
-    const companyCount = rows.filter((row) => row.companyId === input.companyId).length;
+    const companyCount = rows.filter((row) => true).length;
     const hostCount = rows.filter((row) => stringValue(asRecord(row.metadata).hostId) === hostId).length;
     if (companyCount >= maxCompanySlots || hostCount >= maxHostSlots) {
       const reasonCode = companyCount >= maxCompanySlots ? "runtime_company_capacity_exhausted" : "runtime_host_capacity_exhausted";
       await writeAudit({
-        companyId: input.companyId,
         runId: input.runId,
         issueId: input.issueId,
         agentId: input.agentId,
@@ -384,7 +369,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
         })
         .where(eq(toolRuntimeSlots.id, row.id));
       await writeAudit({
-        companyId: row.companyId,
         slotId: row.id,
         runId: input.runId,
         issueId: input.issueId,
@@ -438,7 +422,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       .where(eq(toolRuntimeSlots.id, row.id))
       .returning();
     await writeAudit({
-      companyId: started.companyId,
       slotId: started.id,
       runId: input.runId,
       issueId: input.issueId,
@@ -449,7 +432,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       details: { slotKey: started.slotKey, providerRef },
     });
     await writeActivity({
-      companyId: started.companyId,
       slotId: started.id,
       runId: input.runId,
       agentId: input.agentId,
@@ -460,7 +442,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
   }
 
   async function getOrCreateSlot(input: {
-    companyId: string;
     applicationId?: string | null;
     connectionId?: string | null;
     connectionKey: string;
@@ -470,15 +451,14 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
     commandTemplateKey?: string | null;
     metadata?: Record<string, unknown>;
   }) {
-    await stopExpiredIdleSlots(input.companyId);
+    await stopExpiredIdleSlots();
     const [existing] = await db
       .select()
       .from(toolRuntimeSlots)
-      .where(and(eq(toolRuntimeSlots.companyId, input.companyId), eq(toolRuntimeSlots.slotKey, input.connectionKey)))
+      .where(eq(toolRuntimeSlots.slotKey, input.connectionKey))
       .limit(1);
     if (existing) return existing;
     await assertCapacity({
-      companyId: input.companyId,
       slotKey: input.connectionKey,
       runId: input.runId,
       issueId: input.issueId,
@@ -488,7 +468,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
     const [created] = await db
       .insert(toolRuntimeSlots)
       .values({
-        companyId: input.companyId,
         applicationId: input.applicationId ?? null,
         connectionId: input.connectionId ?? null,
         slotKey: input.connectionKey,
@@ -542,7 +521,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       .where(eq(toolRuntimeSlots.id, row.id))
       .returning();
     await writeAudit({
-      companyId: row.companyId,
       slotId: row.id,
       runId: input.runId,
       issueId: input.issueId,
@@ -556,7 +534,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
   }
 
   async function ensureRunningSlot(input: {
-    companyId: string;
     applicationId?: string | null;
     connectionId?: string | null;
     connectionKey: string;
@@ -594,7 +571,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       return updated;
     }
     await assertCapacity({
-      companyId: input.companyId,
       slotKey: input.connectionKey,
       runId: input.runId,
       issueId: input.issueId,
@@ -632,7 +608,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
   return {
     async useConnectionSlot<T>(
       input: {
-        companyId: string;
         applicationId?: string | null;
         connectionId?: string | null;
         connectionKey: string;
@@ -681,7 +656,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
           })
           .where(eq(toolRuntimeSlots.id, row.id));
         await writeAudit({
-          companyId: row.companyId,
           slotId: row.id,
           runId: input.runId,
           issueId: input.issueId,
@@ -697,7 +671,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
 
     async useFixtureSlot<T>(
       input: {
-        companyId: string;
         connectionKey: string;
         runId?: string | null;
         issueId?: string | null;
@@ -748,25 +721,18 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       }
     },
 
-    async listSlots(companyId?: string): Promise<ToolRuntimeSlotView[]> {
-      await stopExpiredIdleSlots(companyId);
-      const rows = companyId
-        ? await db
-          .select()
-          .from(toolRuntimeSlots)
-          .where(eq(toolRuntimeSlots.companyId, companyId))
-          .orderBy(desc(toolRuntimeSlots.updatedAt))
-        : await db
-          .select()
-          .from(toolRuntimeSlots)
-          .orderBy(desc(toolRuntimeSlots.updatedAt));
+    async listSlots(): Promise<ToolRuntimeSlotView[]> {
+      await stopExpiredIdleSlots();
+      const rows = await db
+        .select()
+        .from(toolRuntimeSlots)
+        .orderBy(desc(toolRuntimeSlots.updatedAt));
       return rows
         .filter((row) => ACTIVE_SLOT_STATUSES.includes(row.status))
         .map(slotView);
     },
 
     async stopSlot(input: {
-      companyId: string;
       slotId: string;
       runId?: string | null;
       agentId?: string | null;
@@ -775,7 +741,7 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       const [row] = await db
         .select()
         .from(toolRuntimeSlots)
-        .where(and(eq(toolRuntimeSlots.companyId, input.companyId), eq(toolRuntimeSlots.id, input.slotId)))
+        .where(eq(toolRuntimeSlots.id, input.slotId))
         .limit(1);
       if (!row) {
         throw new ToolRuntimeSupervisorError(404, "Runtime slot not found", "runtime_slot_not_found", { slotId: input.slotId });
@@ -808,7 +774,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
         .where(eq(toolRuntimeSlots.id, row.id))
         .returning();
       await writeAudit({
-        companyId: input.companyId,
         slotId: row.id,
         runId: input.runId,
         agentId: input.agentId,
@@ -818,7 +783,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
         details: { slotKey: row.slotKey },
       });
       await writeActivity({
-        companyId: input.companyId,
         slotId: row.id,
         runId: input.runId,
         agentId: input.agentId,
@@ -829,7 +793,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
     },
 
     async restartSlot(input: {
-      companyId: string;
       slotId: string;
       runId?: string | null;
       agentId?: string | null;
@@ -838,7 +801,7 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
       const [row] = await db
         .select()
         .from(toolRuntimeSlots)
-        .where(and(eq(toolRuntimeSlots.companyId, input.companyId), eq(toolRuntimeSlots.id, input.slotId)))
+        .where(eq(toolRuntimeSlots.id, input.slotId))
         .limit(1);
       if (!row) {
         throw new ToolRuntimeSupervisorError(404, "Runtime slot not found", "runtime_slot_not_found", { slotId: input.slotId });
@@ -871,7 +834,6 @@ export function createToolRuntimeSupervisor(db: Db, options: ToolRuntimeSupervis
         .where(eq(toolRuntimeSlots.id, row.id))
         .returning();
       await writeAudit({
-        companyId: input.companyId,
         slotId: row.id,
         runId: input.runId,
         agentId: input.agentId,

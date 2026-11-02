@@ -19,7 +19,7 @@ let container: HTMLDivElement;
 let client: QueryClient;
 
 function renderPanel() {
-  act(() => root.render(<QueryClientProvider client={client}><TaskSkillPanel companyId="company-1" skillId="skill-1" /></QueryClientProvider>));
+  act(() => root.render(<QueryClientProvider client={client}><TaskSkillPanel skillId="skill-1" /></QueryClientProvider>));
 }
 
 beforeEach(() => {

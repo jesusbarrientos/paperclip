@@ -100,7 +100,7 @@ export async function resolveWorkspaceHandoffBoardIdentity(
  */
 export async function resolveLiveWorkspaceRuntimeOrigin(
   db: Db,
-  input: { companyId: string; executionWorkspaceId: string },
+  input: { executionWorkspaceId: string },
 ): Promise<{ url: string; runtimeServiceId: string } | null> {
   const row = await db
     .select({
@@ -111,7 +111,6 @@ export async function resolveLiveWorkspaceRuntimeOrigin(
     .from(workspaceRuntimeServices)
     .where(
       and(
-        eq(workspaceRuntimeServices.companyId, input.companyId),
         eq(workspaceRuntimeServices.executionWorkspaceId, input.executionWorkspaceId),
         eq(workspaceRuntimeServices.status, "running"),
         eq(workspaceRuntimeServices.healthStatus, "healthy"),
@@ -125,7 +124,6 @@ export async function resolveLiveWorkspaceRuntimeOrigin(
 
 export async function issueWorkspaceLoginHandoff(input: {
   db: Db;
-  companyId: string;
   executionWorkspace: { id: string; cwd: string | null };
   actor: WorkspaceLoginHandoffActor;
   next?: string | null;
@@ -135,8 +133,7 @@ export async function issueWorkspaceLoginHandoff(input: {
 }): Promise<WorkspaceLoginHandoffResult> {
   const identity = resolveManagedWorkspaceIdentity({
     workspaceCwd: input.executionWorkspace.cwd,
-    executionWorkspaceId: input.executionWorkspace.id,
-    companyId: input.companyId,
+    executionWorkspaceId: input.executionWorkspace.id
   });
   if (!identity) return { ok: false, failure: { reason: "handoff_not_configured" } };
 
@@ -144,7 +141,6 @@ export async function issueWorkspaceLoginHandoff(input: {
   if (!boardIdentity) return { ok: false, failure: { reason: "no_board_identity" } };
 
   const live = await resolveLiveWorkspaceRuntimeOrigin(input.db, {
-    companyId: input.companyId,
     executionWorkspaceId: input.executionWorkspace.id,
   });
   if (!live) return { ok: false, failure: { reason: "runtime_not_running" } };
@@ -178,7 +174,6 @@ export async function issueWorkspaceLoginHandoff(input: {
     userId: boardIdentity.userId,
     email: boardIdentity.email,
     executionWorkspaceId: identity.executionWorkspaceId,
-    companyId: identity.companyId,
     instanceId: identity.instanceId,
     origin,
     issuerInstanceId: resolvePaperclipInstanceId(),

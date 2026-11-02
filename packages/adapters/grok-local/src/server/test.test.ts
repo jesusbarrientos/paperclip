@@ -77,7 +77,6 @@ describe("grok_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: {
         command: "grok",
@@ -145,7 +144,6 @@ describe("grok_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: { command: "grok", cwd: "/tmp/project" }, // no model → default sentinel
     });
@@ -184,7 +182,6 @@ describe("grok_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: { command: "grok", cwd: "/tmp/project", model: "grok-nonexistent" },
     });
@@ -210,7 +207,6 @@ describe("grok_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: {
         command: "grok",
@@ -247,7 +243,6 @@ describe("grok_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: { command: "grok", cwd: "/tmp/project" },
       executionTarget: { kind: "remote", transport: "sandbox" } as never,
@@ -274,7 +269,6 @@ describe("grok_local testEnvironment", () => {
       .mockResolvedValueOnce({ exitCode: 0, signal: null, timedOut: false, stdout: [JSON.stringify({ type: "text", data: "hello" }), JSON.stringify({ type: "end", stopReason: "EndTurn", sessionId: "s", requestId: "r" })].join("\n"), stderr: "" });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: { command: "grok", cwd: "/sandbox/workspace", managedAiConnection: { provider: "xai" } },
       executionTarget: { kind: "remote", transport: "sandbox" } as never,
@@ -297,7 +291,6 @@ describe("grok_local testEnvironment", () => {
     );
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: { command: "grok", cwd: "/sandbox/workspace", managedAiConnection: { provider: "xai" } },
       executionTarget: { kind: "remote", transport: "sandbox" } as never,
@@ -330,7 +323,6 @@ describe("grok_local testEnvironment", () => {
       });
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "grok_local",
       config: { command: "grok", cwd: "/tmp/project" },
     });

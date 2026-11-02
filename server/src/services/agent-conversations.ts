@@ -89,9 +89,9 @@ When the user asks to approve a plan before handoff, publish the plan and create
 
 When a user answers a pending confirmation in chat, read the latest cards and user comments, identify the specific proposal and decision, and persist it before acting: POST /api/issues/{issueId}/interactions/{interactionId}/resolve-from-comment with { commentId: the user message ID, decision: "accept" or "reject" }. Use call_api on native runners. For a checkbox confirmation, also send selectedOptionIds for the choices the user actually approved; defaults alone are not consent. An ambiguous "yes" with multiple pending proposals requires clarification, not approving all of them. A requested revision is not acceptance. Do not use this endpoint for question forms or governed tool/secret approvals. Respect resolver-policy denials. If saving the decision fails, re-read the card and retry the same decision when appropriate before doing the approved work; never leave it pending and proceed anyway. If a card is already resolved, use its recorded outcome. Do not ask the user to clear a card after recording their answer.
 
-Before handing off work, inspect available projects and repositories. Every task you create from this chat must belong to a suitable project. Reuse an appropriate existing project; otherwise use create_project. Consider all relevant available repositories and pass repositoryIds for one or multiple repositories when the work spans them. For existing GitHub repositories you can access that are absent from the catalog, pass their HTTPS repositoryUrls; this registers them with the project without creating remote GitHub repositories. You may combine known IDs and URLs and attach multiple repositories. The direct HTTP equivalent is POST /api/companies/{companyId}/projects with name, repositoryIds and/or repositoryUrls arrays, and an idempotencyKey. Include all selected repositories in that creation; do not combine these arrays with workspace. Never invent repository IDs or substitute inaccessible repositories. Ask when the choice is materially ambiguous or required access is missing. Non-code projects may need no repository.
+Before handing off work, inspect available projects and repositories. Every task you create from this chat must belong to a suitable project. Reuse an appropriate existing project; otherwise use create_project. Consider all relevant available repositories and pass repositoryIds for one or multiple repositories when the work spans them. For existing GitHub repositories you can access that are absent from the catalog, pass their HTTPS repositoryUrls; this registers them with the project without creating remote GitHub repositories. You may combine known IDs and URLs and attach multiple repositories. The direct HTTP equivalent is POST /api/projects with name, repositoryIds and/or repositoryUrls arrays, and an idempotencyKey. Include all selected repositories in that creation; do not combine these arrays with workspace. Never invent repository IDs or substitute inaccessible repositories. Ask when the choice is materially ambiguous or required access is missing. Non-code projects may need no repository.
 
-Create ordinary assigned tasks, never subtasks of this conversation. Give each task a clear outcome, context, acceptance criteria, project, and appropriate assignee. Use create_task with initialPlan to copy the relevant plan into the new task before execution starts. If using the HTTP API directly, POST /api/companies/{companyId}/issues with projectId, assigneeAgentId, status: "todo", initialPlan containing the relevant plan Markdown, and an idempotencyKey; omit parentId. Putting a plan in description does not create the task's plan document. Verify the new task's plan document before claiming the handoff is complete. Preserve the original plan here. Carry forward only the remaining execution steps, not completed planning, approval, project creation, or task creation steps. Include the source conversation ID, approved plan revision ID, and accepted interaction ID so the worker can verify the recorded approval. State the approved scope and what is already done; do not claim the new plan document has its own approval. The worker should execute that authorized scope, and ask again only if scope changes or another applicable gate requires it. When splitting work, include the relevant part of the plan in each task. Create and link each task before claiming it exists.
+Create ordinary assigned tasks, never subtasks of this conversation. Give each task a clear outcome, context, acceptance criteria, project, and appropriate assignee. Use create_task with initialPlan to copy the relevant plan into the new task before execution starts. If using the HTTP API directly, POST /api/issues with projectId, assigneeAgentId, status: "todo", initialPlan containing the relevant plan Markdown, and an idempotencyKey; omit parentId. Putting a plan in description does not create the task's plan document. Verify the new task's plan document before claiming the handoff is complete. Preserve the original plan here. Carry forward only the remaining execution steps, not completed planning, approval, project creation, or task creation steps. Include the source conversation ID, approved plan revision ID, and accepted interaction ID so the worker can verify the recorded approval. State the approved scope and what is already done; do not claim the new plan document has its own approval. The worker should execute that authorized scope, and ask again only if scope changes or another applicable gate requires it. When splitting work, include the relevant part of the plan in each task. Create and link each task before claiming it exists.
 
 For review or follow-up tasks, include the existing source materials the assignee needs, not just task identifiers or a rubric. Read the source task's saved documents and comments, then copy the relevant existing content into the handoff or attach resources the recipient can actually read. A new task's tools may only expose its own documents and history. Supplying existing source material is coordination, not creating the assigned deliverable.
 
@@ -105,10 +105,8 @@ export function currentConversationCommentCondition() {
     select 1 from ${issues} conversation_issue
     join ${issueComments} conversation_boundary
       on conversation_boundary.id = conversation_issue.conversation_boundary_comment_id
-      and conversation_boundary.company_id = conversation_issue.company_id
       and conversation_boundary.issue_id = conversation_issue.id
     where conversation_issue.id = ${issueComments.issueId}
-      and conversation_issue.company_id = ${issueComments.companyId}
       and conversation_issue.conversation_agent_id is not null
       and (${issueComments.createdAt}, ${issueComments.id}) < (conversation_boundary.created_at, conversation_boundary.id)
   )`;
@@ -127,7 +125,7 @@ export async function prepareConversationTurn(
     const [issue] = await tx
       .select()
       .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.companyId, run.companyId)))
+      .where(eq(issues.id, issueId))
       .for("update");
     if (!isConversation(issue))
       return { context, reset: false, conversation: false };
@@ -144,8 +142,7 @@ export async function prepareConversationTurn(
           .where(
             and(
               eq(issueComments.id, commentId),
-              eq(issueComments.issueId, issueId),
-              eq(issueComments.companyId, run.companyId),
+              eq(issueComments.issueId, issueId)
             ),
           )
       : [];
@@ -182,12 +179,10 @@ export async function prepareConversationTurn(
         status: "expired", resolvedAt: new Date(), updatedAt: new Date(),
         resolvedByUserId: comment.authorUserId,
         result: { version: 1, outcome: "withdrawn", reason: "New conversation session", answers: [], summaryMarkdown: null },
-      }).where(and(eq(issueThreadInteractions.companyId, issue.companyId),
-        eq(issueThreadInteractions.issueId, issue.id), eq(issueThreadInteractions.status, "pending"),
+      }).where(and(eq(issueThreadInteractions.issueId, issue.id), eq(issueThreadInteractions.status, "pending"),
         eq(issueThreadInteractions.kind, "ask_user_questions"))).returning({ id: issueThreadInteractions.id });
       publication = (
         await persistActivity(tx as unknown as Db, {
-          companyId: issue.companyId,
           actorType: "system",
           actorId: "conversation",
           action: "issue.conversation_session_started",
@@ -202,7 +197,6 @@ export async function prepareConversationTurn(
         .delete(agentTaskSessions)
         .where(
           and(
-            eq(agentTaskSessions.companyId, issue.companyId),
             eq(agentTaskSessions.agentId, issue.conversationAgentId!),
             eq(agentTaskSessions.taskKey, issue.id),
           ),
@@ -215,7 +209,7 @@ export async function prepareConversationTurn(
     if (context.interactionKind === "ask_user_questions" && context.interactionStatus === "answered"
       && typeof context.interactionId === "string" && typeof context.conversationReplyBoundaryCommentId !== "string") {
       const [answered] = await tx.select({ id: issueThreadInteractions.id }).from(issueThreadInteractions).where(and(
-        eq(issueThreadInteractions.id, context.interactionId), eq(issueThreadInteractions.companyId, run.companyId),
+        eq(issueThreadInteractions.id, context.interactionId),
         eq(issueThreadInteractions.issueId, issueId), eq(issueThreadInteractions.kind, "ask_user_questions"),
         eq(issueThreadInteractions.status, "answered"),
       ));
@@ -223,18 +217,16 @@ export async function prepareConversationTurn(
         const progress = await tx.select({
           id: issueComments.id,
           handled: sql<boolean>`exists (select 1 from ${heartbeatRuns} completed
-            where completed.company_id = ${run.companyId}::uuid and completed.agent_id = ${issue.conversationAgentId}::uuid
+            where completed.agent_id = ${issue.conversationAgentId}::uuid
               and completed.status = 'succeeded' and completed.context_snapshot->>'issueId' = ${issueId}
               and completed.context_snapshot->>'conversationSessionGeneration' = ${String(generation)}
               and coalesce(completed.context_snapshot->>'wakeCommentId', completed.context_snapshot->>'commentId') = issue_comments.id::text
-              and (exists (select 1 from issue_comments reply where reply.company_id = ${run.companyId}::uuid
-                and reply.issue_id = ${issueId}::uuid and reply.created_by_run_id = completed.id
+              and (exists (select 1 from issue_comments reply where reply.issue_id = ${issueId}::uuid and reply.created_by_run_id = completed.id
                 and reply.author_agent_id = ${issue.conversationAgentId}::uuid and reply.deleted_at is null)
-                or exists (select 1 from issue_thread_interactions question where question.company_id = ${run.companyId}::uuid
-                  and question.issue_id = ${issueId}::uuid and question.source_run_id = completed.id
+                or exists (select 1 from issue_thread_interactions question where question.issue_id = ${issueId}::uuid and question.source_run_id = completed.id
                   and question.created_by_agent_id = ${issue.conversationAgentId}::uuid)))`,
         }).from(issueComments).where(and(
-          eq(issueComments.companyId, run.companyId), eq(issueComments.issueId, issueId),
+          eq(issueComments.issueId, issueId),
           isNull(issueComments.deletedAt), isNull(issueComments.createdByRunId), isNull(issueComments.authorAgentId),
           sql`${issueComments.authorUserId} is not null`,
           comment ? sql`(${issueComments.createdAt}, ${issueComments.id}) > (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${comment.id}::uuid)` : sql`false`,
@@ -249,7 +241,7 @@ export async function prepareConversationTurn(
         // Freeze the visible history too. Include prior replies, but never pull
         // an unhandled or newly arriving message into this historical answer.
         const [replayThrough] = await tx.select({ id: issueComments.id }).from(issueComments).where(and(
-          eq(issueComments.companyId, run.companyId), eq(issueComments.issueId, issueId), isNull(issueComments.deletedAt),
+          eq(issueComments.issueId, issueId), isNull(issueComments.deletedAt),
           firstUnhandled ? sql`(${issueComments.createdAt}, ${issueComments.id}) < (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${firstUnhandled}::uuid)` : undefined,
         )).orderBy(desc(issueComments.createdAt), desc(issueComments.id)).limit(1);
         context.conversationReplayThroughCommentId = replayThrough?.id ?? commentId;
@@ -292,7 +284,7 @@ export async function settleConversationTurn(
     const [issue] = await tx
       .select()
       .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.companyId, run.companyId)))
+      .where(eq(issues.id, issueId))
       .for("update");
     if (
       !isConversation(issue) ||
@@ -317,7 +309,6 @@ export async function settleConversationTurn(
       ? await tx.select({ id: issueThreadInteractions.id })
           .from(issueThreadInteractions)
           .where(and(
-            eq(issueThreadInteractions.companyId, run.companyId),
             eq(issueThreadInteractions.issueId, issueId),
             eq(issueThreadInteractions.sourceRunId, run.id),
             eq(issueThreadInteractions.createdByAgentId, issue.conversationAgentId!),
@@ -385,7 +376,6 @@ export async function settleConversationTurn(
       );
     publication = (
       await persistActivity(tx as unknown as Db, {
-        companyId: issue.companyId,
         actorType: "system",
         actorId: "conversation",
         action: "issue.updated",
@@ -408,7 +398,6 @@ export async function settleConversationTurn(
 /** Fresh provider context uses only messages in this session, up to this turn. */
 export async function conversationReplay(
   db: Db,
-  companyId: string,
   issueId: string,
   wakeCommentId: string | null,
   throughCommentId?: string,
@@ -416,7 +405,7 @@ export async function conversationReplay(
   const [issue] = await db
     .select()
     .from(issues)
-    .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)));
+    .where(eq(issues.id, issueId));
   if (!isConversation(issue)) return "";
   const [boundary] = issue.conversationBoundaryCommentId
     ? await db
@@ -441,7 +430,6 @@ export async function conversationReplay(
     .from(issueComments)
     .where(
       and(
-        eq(issueComments.companyId, companyId),
         eq(issueComments.issueId, issueId),
         isNull(issueComments.deletedAt),
         boundary
@@ -470,7 +458,6 @@ export async function conversationReplay(
 /** Comment rows form a durable outbox for the narrow commit-to-enqueue crash window. */
 export async function undeliveredConversationComments(
   db: Db,
-  companyId: string,
   issueId: string,
 ) {
   return db
@@ -478,12 +465,10 @@ export async function undeliveredConversationComments(
     .from(issueComments)
     .where(
       and(
-        eq(issueComments.companyId, companyId),
         eq(issueComments.issueId, issueId),
         isNull(issueComments.deletedAt),
         sql`${issueComments.clientRequestId} is not null`,
-        sql`not exists (select 1 from ${agentWakeupRequests} where ${agentWakeupRequests.companyId} = ${companyId}
-      and ${agentWakeupRequests.idempotencyKey} = 'conversation-comment:' || ${issueComments.id}::text)`,
+        sql`not exists (select 1 from ${agentWakeupRequests} where ${agentWakeupRequests.idempotencyKey} = 'conversation-comment:' || ${issueComments.id}::text)`,
       ),
     )
     .orderBy(issueComments.createdAt, issueComments.id)
@@ -495,20 +480,17 @@ export async function resumeConversationForReset(db: Db, comment: typeof issueCo
   if (!comment.authorUserId || !isConversationReset(comment.body)) return;
   const publications: ActivityPublication[] = [];
   await db.transaction(async (tx) => {
-    const [issue] = await tx.select().from(issues).where(and(
-      eq(issues.id, comment.issueId), eq(issues.companyId, comment.companyId),
-    )).for("update");
+    const [issue] = await tx.select().from(issues).where(eq(issues.id, comment.issueId)).for("update");
     if (!isConversation(issue) || comment.conversationSessionGeneration != null) return;
     const released = await tx.update(issueTreeHolds).set({
       status: "released", releasedAt: new Date(), updatedAt: new Date(),
       releasedByActorType: "user", releasedByUserId: comment.authorUserId,
       releaseReason: "Resumed by /new", releaseMetadata: { commentId: comment.id, wakeAgents: false },
-    }).where(and(eq(issueTreeHolds.companyId, issue.companyId),
-      eq(issueTreeHolds.rootIssueId, issue.id), eq(issueTreeHolds.mode, "pause"),
+    }).where(and(eq(issueTreeHolds.rootIssueId, issue.id), eq(issueTreeHolds.mode, "pause"),
       eq(issueTreeHolds.status, "active"))).returning();
     for (const hold of released) {
       publications.push((await persistActivity(tx as unknown as Db, {
-        companyId: issue.companyId, actorType: "user", actorId: comment.authorUserId!,
+        actorType: "user", actorId: comment.authorUserId!,
         action: "issue.tree_hold_released", entityType: "issue", entityId: issue.id,
         details: { holdId: hold.id, mode: "pause", reason: "Resumed by /new", commentId: comment.id },
       })).publication);
@@ -520,7 +502,8 @@ export async function resumeConversationForReset(db: Db, comment: typeof issueCo
 /** Serialize durable outbox delivery across API servers; the normal wake queue owns execution. */
 export async function deliverConversationComments(
   db: Db,
-  issue: { id: string; companyId: string; conversationAgentId: string | null },
+  issue: { id: string;
+ conversationAgentId: string | null },
   enqueue: (
     agentId: string,
     options: {
@@ -546,7 +529,6 @@ export async function deliverConversationComments(
       if (!locks[0]?.acquired) return false;
       for (const comment of await undeliveredConversationComments(
         tx as unknown as Db,
-        issue.companyId,
         issue.id,
       )) {
         await resumeConversationForReset(db, comment);

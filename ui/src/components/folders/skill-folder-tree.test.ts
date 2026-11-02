@@ -13,7 +13,6 @@ import {
 
 function folder(partial: Partial<FolderListItem> & { id: string; slug: string; path: string }): FolderListItem {
   return {
-    companyId: "co",
     kind: "skill",
     parentId: null,
     name: partial.slug,

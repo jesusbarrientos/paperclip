@@ -6,7 +6,7 @@ describe("mock backlog task creation", () => {
     const adapter = new CapabilityMockControlPlaneAdapter();
     const base = adapter.snapshot();
     await adapter.start();
-    await adapter.openFixtureRun({ identity: { runId: "run-1", sessionId: "session-1", companyId: base.company.id, issueId: base.tasks[0]!.id, agentId: base.actors[0]!.id }, backendKind: "mock", sourceInstanceId: "backlog-test", capabilities: ["delegation:tasks:create"] });
+    await adapter.openFixtureRun({ identity: { runId: "run-1", sessionId: "session-1", issueId: base.tasks[0]!.id, agentId: base.actors[0]!.id }, backendKind: "mock", sourceInstanceId: "backlog-test", capabilities: ["delegation:tasks:create"] });
     const call = { runId: "run-1", idempotencyKey: "later", command: { kind: "create_task" as const, title: "Later", status: "backlog" as const, assigneeActorId: base.actors[0]!.id, blockedByTaskIds: blocked ? [base.tasks[0]!.id] : [] } };
     const receipt = await adapter.applyCommand(call);
     await adapter.applyCommand(call);

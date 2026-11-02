@@ -30,7 +30,7 @@ describe("runtime skill revision cache", () => {
   const contents: Record<string, string> = { "SKILL.md": "# Test", "references/a.md": "Supporting content" };
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "runtime-cache-"));
-    skill = { id: randomUUID(), companyId: randomUUID(), sourceType: "github", sourceLocator: "https://github.com/org/repo",
+    skill = { id: randomUUID(), sourceType: "github", sourceLocator: "https://github.com/org/repo",
       sourceRef: "a".repeat(40), slug: "test", markdown: contents["SKILL.md"], metadata: { owner: "org", repo: "repo", repoSkillDir: "skills/test" },
       fileInventory: [{ path: "SKILL.md", kind: "skill" }, { path: "references/a.md", kind: "reference" }],
     } as CompanySkill;
@@ -81,11 +81,11 @@ describe("runtime skill revision cache", () => {
     expect(await launch()).toEqual({ source: first.source, reads: 0 });
   });
 
-  it("fingerprints installed content and ownership, excluding cosmetic metadata", async () => {
+  it("fingerprints installed content, excluding cosmetic metadata", async () => {
     const spec = runtimeSkillCacheSpec(root, skill)!;
     expect(runtimeSkillCacheSpec(root, { ...skill, name: "Renamed", updatedAt: new Date(), metadata: { ...skill.metadata, starred: true, ref: "new-branch" } })!.fingerprint).toBe(spec.fingerprint);
     expect(runtimeSkillCacheSpec(root, { ...skill, fileInventory: [...skill.fileInventory].reverse() })!.fingerprint).toBe(spec.fingerprint);
-    for (const update of [{ companyId: randomUUID() }, { sourceRef: "b".repeat(40) }, { markdown: "changed" },
+    for (const update of [{ sourceRef: "b".repeat(40) }, { markdown: "changed" },
       { metadata: { ...skill.metadata, repoSkillDir: "other" } }]) {
       expect(runtimeSkillCacheSpec(root, { ...skill, ...update })!.fingerprint).not.toBe(spec.fingerprint);
     }

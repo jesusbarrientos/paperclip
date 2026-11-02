@@ -60,34 +60,29 @@ describePostgres("task-scoped runtime session reset", () => {
     await db.insert(agents).values([
       {
         id: agentId,
-        companyId,
         name: "Selected agent",
         adapterType: "paperclip_runner",
       },
       {
         id: otherAgentId,
-        companyId,
         name: "Other agent",
         adapterType: "paperclip_runner",
       },
       {
         id: foreignAgentId,
-        companyId: otherCompanyId,
         name: "Foreign agent",
         adapterType: "paperclip_runner",
       },
     ]);
     await db.insert(issues).values([
-      { id: issueId, companyId, title: "Selected task", identifier },
+      { id: issueId, title: "Selected task", identifier },
       {
         id: otherIssueId,
-        companyId,
         title: "Other task",
         identifier: otherIdentifier,
       },
       {
         id: foreignIssueId,
-        companyId: otherCompanyId,
         title: "Foreign task",
         identifier: foreignIdentifier,
       },
@@ -101,7 +96,6 @@ describePostgres("task-scoped runtime session reset", () => {
       { taskKey: identifier, agentId: otherAgentId },
       {
         taskKey: identifier,
-        companyId: otherCompanyId,
         agentId: foreignAgentId,
       },
       { taskKey: "__heartbeat__" },
@@ -114,7 +108,6 @@ describePostgres("task-scoped runtime session reset", () => {
       { taskKey: foreignIdentifier },
     ].map((row) => ({
       id: randomUUID(),
-      companyId,
       agentId,
       adapterType: "paperclip_runner",
       sessionDisplayId: randomUUID(),
@@ -125,14 +118,12 @@ describePostgres("task-scoped runtime session reset", () => {
     await db.insert(agentRuntimeState).values([
       {
         agentId,
-        companyId,
         adapterType: "paperclip_runner",
         sessionId: "selected-legacy",
         stateJson: { preserved: true },
       },
       {
         agentId: otherAgentId,
-        companyId,
         adapterType: "paperclip_runner",
         sessionId: "other-legacy",
         stateJson: { untouched: true },
@@ -144,7 +135,6 @@ describePostgres("task-scoped runtime session reset", () => {
       .from(agentRuntimeState)
       .where(eq(agentRuntimeState.agentId, otherAgentId));
     return {
-      companyId,
       agentId,
       otherAgentId,
       issueId,
@@ -173,7 +163,7 @@ describePostgres("task-scoped runtime session reset", () => {
       const expected = seeded.before.filter(
         (row) =>
           !(
-            row.companyId === seeded.companyId &&
+            true &&
             row.agentId === seeded.agentId &&
             row.adapterType === "paperclip_runner" &&
             [seeded.issueId, seeded.identifier].includes(row.taskKey)
@@ -217,27 +207,6 @@ describePostgres("task-scoped runtime session reset", () => {
       ).toEqual(expected.sort((a, b) => a.id.localeCompare(b.id)));
     },
   );
-
-  it("never expands a foreign issue's aliases, while preserving exact local opaque-key deletion", async () => {
-    const seeded = await fixture();
-    const reset = await heartbeatService(db).resetRuntimeSession(
-      seeded.agentId,
-      { taskKey: seeded.foreignIssueId },
-    );
-    expect(reset?.clearedTaskSessions).toBe(1);
-    const expected = seeded.before.filter(
-      (row) =>
-        !(
-          row.agentId === seeded.agentId &&
-          row.taskKey === seeded.foreignIssueId
-        ),
-    );
-    expect(
-      (await db.select().from(agentTaskSessions)).sort((a, b) =>
-        a.id.localeCompare(b.id),
-      ),
-    ).toEqual(expected.sort((a, b) => a.id.localeCompare(b.id)));
-  });
 
   it("retains the existing explicit all-sessions reset without touching other agents", async () => {
     const seeded = await fixture();

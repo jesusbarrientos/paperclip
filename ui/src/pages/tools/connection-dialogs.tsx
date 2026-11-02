@@ -127,11 +127,9 @@ type ProbeResult = {
  * draft before the operator activates it — per the Phase 0B spec surface map.
  */
 export function AddConnectionDialog({
-  companyId,
   defaultApplicationId,
   onClose,
 }: {
-  companyId: string;
   defaultApplicationId?: string | null;
   onClose: () => void;
 }) {
@@ -139,16 +137,16 @@ export function AddConnectionDialog({
   const { pushToast } = useToast();
 
   const apps = useQuery({
-    queryKey: queryKeys.tools.applications(companyId),
-    queryFn: () => toolsApi.listApplications(companyId),
+    queryKey: queryKeys.tools.applications(),
+    queryFn: () => toolsApi.listApplications(),
   });
   const secrets = useQuery({
-    queryKey: queryKeys.secrets.list(companyId),
-    queryFn: () => secretsApi.list(companyId),
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
   });
   const templates = useQuery({
-    queryKey: queryKeys.tools.stdioTemplates(companyId),
-    queryFn: () => toolsApi.listStdioTemplates(companyId),
+    queryKey: queryKeys.tools.stdioTemplates(),
+    queryFn: () => toolsApi.listStdioTemplates(),
   });
 
   const [step, setStep] = useState<1 | 2>(defaultApplicationId ? 2 : 1);
@@ -218,7 +216,7 @@ export function AddConnectionDialog({
         config,
         credentialRefs,
       };
-      return toolsApi.createConnection(companyId, input);
+      return toolsApi.createConnection(input);
     },
     onSuccess: (conn) => {
       setDraft(conn);
@@ -249,8 +247,8 @@ export function AddConnectionDialog({
   const activate = useMutation({
     mutationFn: (id: string) => toolsApi.updateConnection(id, { status: "active", enabled: true }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.tools.connections(companyId) });
-      qc.invalidateQueries({ queryKey: queryKeys.tools.applications(companyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.tools.connections() });
+      qc.invalidateQueries({ queryKey: queryKeys.tools.applications() });
       pushToast({ title: "Connection activated", tone: "success" });
       onClose();
     },

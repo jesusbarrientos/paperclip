@@ -24,7 +24,6 @@ function createEventBusStub() {
 
 function createSessionLookupDb(session: {
   id: string;
-  companyId: string;
   agentId: string;
   taskKey: string;
 }) {
@@ -40,7 +39,6 @@ function createSessionLookupDb(session: {
 
 describe("plugin agent sessions", () => {
   it("delivers the message body in wake context and returns final assistant text on done", async () => {
-    const companyId = "company-1";
     const agentId = "agent-1";
     const sessionId = "session-1";
     const notifyWorker = vi.fn();
@@ -50,7 +48,6 @@ describe("plugin agent sessions", () => {
     const services = buildHostServices(
       createSessionLookupDb({
         id: sessionId,
-        companyId,
         agentId,
         taskKey: "plugin:paperclip.gateway:session:session-1",
       }),
@@ -63,7 +60,6 @@ describe("plugin agent sessions", () => {
     await expect(
       services.agentSessions.sendMessage({
         sessionId,
-        companyId,
         prompt: "hello",
         reason: "gateway_chat_message",
       }),
@@ -89,7 +85,6 @@ describe("plugin agent sessions", () => {
     );
 
     publishLiveEvent({
-      companyId,
       type: "heartbeat.run.status",
       payload: {
         runId: "run-1",

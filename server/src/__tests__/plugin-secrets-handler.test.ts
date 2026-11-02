@@ -52,22 +52,12 @@ describe("extractSecretRefBindingsFromConfig", () => {
 });
 
 describe("createPluginSecretsHandler fail-closed guards", () => {
-  it("requires company context before touching the database", async () => {
-    const db = { select: vi.fn(() => { throw new Error("db should not be touched"); }) };
-    const handler = createPluginSecretsHandler({ db: db as never, pluginId });
-
-    await expect(
-      handler.resolve({ secretRef: { type: "secret_ref", secretId: randomUUID() } }),
-    ).rejects.toThrow(/companyId is required/i);
-    expect(db.select).not.toHaveBeenCalled();
-  });
-
   it("rejects legacy string refs before provider resolution", async () => {
     const db = { select: vi.fn(() => { throw new Error("db should not be touched"); }) };
     const handler = createPluginSecretsHandler({ db: db as never, pluginId });
 
     await expect(
-      handler.resolve({ companyId: randomUUID(), secretRef: randomUUID() }),
+      handler.resolve({ secretRef: randomUUID() }),
     ).rejects.toThrow(/use \{ type: "secret_ref"/i);
     expect(db.select).not.toHaveBeenCalled();
   });
@@ -107,17 +97,12 @@ describeEmbeddedPostgres("createPluginSecretsHandler shared vault integration", 
     rmSync(secretsTmpDir, { recursive: true, force: true });
   });
 
-  async function seedCompany(name: string) {
-    const companyId = randomUUID();
+  async function seedOrganization() {
     await db.insert(companies).values({
-      id: companyId,
-      name,
-      issuePrefix: `P${companyId.slice(0, 7)}`.toUpperCase(),
+      name: "Plugin Co",
+      issuePrefix: "PLUG",
       status: "active",
-      createdAt: new Date(),
-      updatedAt: new Date(),
     });
-    return companyId;
   }
 
   async function seedPlugin() {
@@ -146,21 +131,20 @@ describeEmbeddedPostgres("createPluginSecretsHandler shared vault integration", 
 
   it("resolves bound plugin refs through secretService and emits plugin_worker access events", async () => {
     await seedPlugin();
-    const companyId = await seedCompany("Plugin Co");
+    await seedOrganization();
     const svc = secretService(db);
-    const secret = await svc.create(companyId, {
+    const secret = await svc.create({
       name: `plugin-api-key-${randomUUID()}`,
       provider: "local_encrypted",
       value: "resolved-plugin-secret",
     });
-    await svc.syncSecretRefsForTarget(companyId, { targetType: "plugin", targetId: pluginId }, [
+    await svc.syncSecretRefsForTarget({ targetType: "plugin", targetId: pluginId }, [
       { secretId: secret.id, configPath: "apiKey" },
     ], { replaceAll: true });
 
     const handler = createPluginSecretsHandler({ db, pluginId });
     await expect(
       handler.resolve({
-        companyId,
         secretRef: { type: "secret_ref", secretId: secret.id, version: "latest" },
       }),
     ).resolves.toBe("resolved-plugin-secret");
@@ -171,7 +155,6 @@ describeEmbeddedPostgres("createPluginSecretsHandler shared vault integration", 
       .where(eq(secretAccessEvents.secretId, secret.id));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      companyId,
       secretId: secret.id,
       consumerType: "plugin_worker",
       consumerId: pluginId,
@@ -180,34 +163,5 @@ describeEmbeddedPostgres("createPluginSecretsHandler shared vault integration", 
       outcome: "success",
       errorCode: null,
     });
-  });
-
-  it("fails closed for cross-company resolve before secret provider access", async () => {
-    await seedPlugin();
-    const companyA = await seedCompany("A");
-    const companyB = await seedCompany("B");
-    const svc = secretService(db);
-    const foreignSecret = await svc.create(companyB, {
-      name: `foreign-plugin-secret-${randomUUID()}`,
-      provider: "local_encrypted",
-      value: "foreign-value",
-    });
-    await svc.syncSecretRefsForTarget(companyB, { targetType: "plugin", targetId: pluginId }, [
-      { secretId: foreignSecret.id, configPath: "apiKey" },
-    ], { replaceAll: true });
-
-    const handler = createPluginSecretsHandler({ db, pluginId });
-    await expect(
-      handler.resolve({
-        companyId: companyA,
-        secretRef: { type: "secret_ref", secretId: foreignSecret.id, version: "latest" },
-      }),
-    ).rejects.toThrow(/not bound/i);
-
-    const events = await db
-      .select()
-      .from(secretAccessEvents)
-      .where(eq(secretAccessEvents.secretId, foreignSecret.id));
-    expect(events).toHaveLength(0);
   });
 });

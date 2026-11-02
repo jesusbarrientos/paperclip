@@ -51,8 +51,8 @@ export function publicMcpIngressRoutes(oauth: PublicMcpOAuth, execute: ReturnTyp
     res.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
     res.vary("Accept");
     if (req.path.endsWith(".md") || req.accepts(["html", "text/markdown"]) === "text/markdown") {
-      res.type("text/markdown").send(mcpSetupMarkdown(resource, company.data));
-    } else res.type("html").send(renderMcpSetup(resource, company.data));
+      res.type("text/markdown").send(mcpSetupMarkdown(resource));
+    } else res.type("html").send(renderMcpSetup(resource));
   });
   router.use(["/mcp/oauth", PUBLIC_MCP_PATH], (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");

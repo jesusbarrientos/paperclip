@@ -8,7 +8,7 @@ Query the audit trail of all mutations across the company.
 ## List Activity
 
 ```
-GET /api/companies/{companyId}/activity
+GET /api/activity
 ```
 
 Query parameters:

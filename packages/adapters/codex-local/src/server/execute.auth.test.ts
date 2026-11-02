@@ -36,8 +36,7 @@ describe("codex managed-home auth fail-fast", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-1",
       "codex-home",
@@ -55,7 +54,6 @@ describe("codex managed-home auth fail-fast", () => {
         runId: "run-failfast",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
           name: "CodexCoder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -107,8 +105,7 @@ describe("codex sandbox-target credential gate", () => {
       paperclipHome,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-1",
       "codex-home",
@@ -134,7 +131,6 @@ describe("codex sandbox-target credential gate", () => {
     await expect(
       assertCodexCredentialsLaunchable({
         runId: "run-sandbox-login",
-        companyId: "company-1",
         configuredCodexHome: managedAgentHome,
         configuredApiKey: null,
         effectiveCodexHome: managedAgentHome,
@@ -163,7 +159,6 @@ describe("codex sandbox-target credential gate", () => {
     await expect(
       assertCodexCredentialsLaunchable({
         runId: "run-sandbox-nologin",
-        companyId: "company-1",
         configuredCodexHome: managedAgentHome,
         configuredApiKey: null,
         effectiveCodexHome: managedAgentHome,
@@ -183,7 +178,6 @@ describe("codex sandbox-target credential gate", () => {
     await expect(
       assertCodexCredentialsLaunchable({
         runId: "run-probe-error",
-        companyId: "company-1",
         configuredCodexHome: managedAgentHome,
         configuredApiKey: null,
         effectiveCodexHome: managedAgentHome,
@@ -205,7 +199,6 @@ describe("codex sandbox-target credential gate", () => {
     await expect(
       assertCodexCredentialsLaunchable({
         runId: "run-probe-timeout",
-        companyId: "company-1",
         configuredCodexHome: managedAgentHome,
         configuredApiKey: null,
         effectiveCodexHome: managedAgentHome,
@@ -223,7 +216,6 @@ describe("codex sandbox-target credential gate", () => {
     await expect(
       assertCodexCredentialsLaunchable({
         runId: "run-local",
-        companyId: "company-1",
         configuredCodexHome: managedAgentHome,
         configuredApiKey: null,
         effectiveCodexHome: managedAgentHome,
@@ -242,7 +234,6 @@ describe("codex sandbox-target credential gate", () => {
     await expect(
       assertCodexCredentialsLaunchable({
         runId: "run-api-key",
-        companyId: "company-1",
         configuredCodexHome: managedAgentHome,
         configuredApiKey: "sk-agent",
         effectiveCodexHome: managedAgentHome,

@@ -81,7 +81,7 @@ describe("BuiltInAgentGate (PAP-12978)", () => {
     flushSync(() => {
       root!.render(
         <QueryClientProvider client={queryClient}>
-          <BuiltInAgentGate agentKey="briefs" companyId="c1" featureLabel="Briefs">
+          <BuiltInAgentGate agentKey="briefs" featureLabel="Briefs">
             <div data-testid="feature">brief content</div>
           </BuiltInAgentGate>
         </QueryClientProvider>,
@@ -150,7 +150,7 @@ describe("BuiltInAgentGate (PAP-12978)", () => {
       resumeButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
-    expect(resumeMock).toHaveBeenCalledWith("agent-1", "c1");
+    expect(resumeMock).toHaveBeenCalledWith("agent-1");
   });
 
   it("renders the feature when ready", async () => {

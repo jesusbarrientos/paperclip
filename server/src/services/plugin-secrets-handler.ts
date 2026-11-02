@@ -29,13 +29,6 @@ function invalidSecretRef(secretRef: unknown): Error {
   return err;
 }
 
-function requireCompanyId(companyId: unknown): string {
-  if (typeof companyId !== "string" || companyId.trim().length === 0) {
-    throw unprocessable("companyId is required for plugin secret resolution");
-  }
-  return companyId.trim();
-}
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -153,8 +146,6 @@ export function extractSecretRefPathsFromConfig(
 export interface PluginSecretsResolveParams {
   /** Shared secret reference object from company-scoped plugin config. */
   secretRef: string | EnvSecretRefBinding;
-  /** Authorized company context for this worker invocation. */
-  companyId?: string;
   /** Config path that produced this ref. Required when a secret appears in multiple paths. */
   configPath?: string;
   actorType?: "agent" | "user" | "system" | "plugin";
@@ -195,13 +186,11 @@ export function createPluginSecretsHandler(
   const rateLimiter = createRateLimiter(30, 60_000);
 
   async function lookupBinding(input: {
-    companyId: string;
     secretId: string;
     versionSelector: SecretVersionSelector;
     configPath?: string;
   }) {
     const conditions = [
-      eq(companySecretBindings.companyId, input.companyId),
       eq(companySecretBindings.targetType, "plugin"),
       eq(companySecretBindings.targetId, pluginId),
       eq(companySecretBindings.secretId, input.secretId),
@@ -228,9 +217,7 @@ export function createPluginSecretsHandler(
       const bindingRef = parseSecretRefBinding(params.secretRef);
       if (!bindingRef) throw invalidSecretRef(params.secretRef);
 
-      const companyId = requireCompanyId(params.companyId);
-
-      if (!rateLimiter.check(`${companyId}:${pluginId}`)) {
+      if (!rateLimiter.check(pluginId)) {
         const err = new Error("Rate limit exceeded for secret resolution");
         err.name = "RateLimitExceededError";
         throw err;
@@ -238,7 +225,6 @@ export function createPluginSecretsHandler(
 
       const versionSelector = bindingRef.version ?? "latest";
       const bindings = await lookupBinding({
-        companyId,
         secretId: bindingRef.secretId,
         versionSelector,
         configPath: params.configPath,
@@ -258,7 +244,7 @@ export function createPluginSecretsHandler(
       }
 
       const binding = bindings[0]!;
-      return secretService(db).resolveSecretValue(companyId, bindingRef.secretId, versionSelector, {
+      return secretService(db).resolveSecretValue(bindingRef.secretId, versionSelector, {
         bindingContext: {
           consumerType: "plugin",
           consumerId: pluginId,

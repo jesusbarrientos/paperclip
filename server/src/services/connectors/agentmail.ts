@@ -109,7 +109,6 @@ const schema = z
 export async function executeAgentmailTool(
   db: Db,
   binding: {
-    companyId: string;
     agentId: string;
     runId: string;
     issueId: string;
@@ -127,16 +126,15 @@ export async function executeAgentmailTool(
     },
   });
   const inboxes = await service.assignedInboxes(
-    binding.companyId,
     binding.agentId,
   );
   if (!inboxes.length) throw forbidden("No active assigned AgentMail inbox");
   if (input.action === "inboxes") return inboxes;
-  await service.authorizeRead(binding.companyId, binding.issueId, {
+  await service.authorizeRead(binding.issueId, {
     agentId: binding.agentId,
     runId: binding.runId,
   });
-  const thread = await service.thread(binding.companyId, binding.issueId);
+  const thread = await service.thread(binding.issueId);
   if (thread && !inboxes.some((inbox) => inbox.id === thread.endpoint.id))
     throw notFound("Email task not found");
   if (input.action === "thread") return thread;
@@ -144,13 +142,12 @@ export async function executeAgentmailTool(
     if (!input.publicationId) throw forbidden("Publication ID required");
     const delivery = await service.publication(
       input.publicationId,
-      binding.companyId,
     );
-    await service.authorizeRead(binding.companyId, delivery.issueId, {
+    await service.authorizeRead(delivery.issueId, {
       agentId: binding.agentId,
       runId: binding.runId,
     });
-    const target = await service.thread(binding.companyId, delivery.issueId);
+    const target = await service.thread(delivery.issueId);
     if (!target || !inboxes.some((inbox) => inbox.id === target.endpoint.id))
       throw notFound("Email delivery not found");
     return delivery;
@@ -165,7 +162,7 @@ export async function executeAgentmailTool(
       input.request.conversationId !== thread?.conversationId)
   )
     throw forbidden("Email send must belong to the current task");
-  return service.queueSend(binding.companyId, input.request, {
+  return service.queueSend(input.request, {
     agentId: binding.agentId,
     runId: binding.runId,
   });

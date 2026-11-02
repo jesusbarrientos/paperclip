@@ -7,7 +7,7 @@ export const attentionApi = {
    * unions every attention source (approvals, interactions, recovery, reviews,
    * failures, budget…) into one ranked queue with the §0 contract.
    */
-  list: (companyId: string, options: AttentionFeedQuery = {}) => {
+  list: (options: AttentionFeedQuery = {}) => {
     const params = new URLSearchParams();
     if (options.includeDismissed) params.set("includeDismissed", "true");
     if (options.archived) params.set("archived", "true");
@@ -19,6 +19,6 @@ export const attentionApi = {
     if (options.cursor) params.set("cursor", options.cursor);
     if (options.limit !== undefined) params.set("limit", String(options.limit));
     const query = params.toString();
-    return api.get<AttentionFeed>(`/companies/${companyId}/attention${query ? `?${query}` : ""}`);
+    return api.get<AttentionFeed>(`/attention${query ? `?${query}` : ""}`);
   },
 };

@@ -8,7 +8,6 @@ export interface NativeFinalizationResultV1 {
   runtimeMode: "native";
   runId: string;
   issueId: string;
-  companyId: string;
   result: Record<string, unknown>;
   terminal: {
     schema: "paperclip.prp.terminal.v1";

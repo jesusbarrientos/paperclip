@@ -18,7 +18,7 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { heartbeatService, getTaskDrainStatus, startTaskDrain, stopTaskDrain } from "../services/heartbeat.ts";
-import { subscribeCompanyLiveEvents } from "../services/live-events.ts";
+import { subscribeLiveEvents } from "../services/live-events.ts";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -89,7 +89,6 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Drain Race Agent",
       role: "engineer",
       status: "idle",
@@ -110,7 +109,6 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Work claimed just before a drain trips",
       status: "todo",
       priority: "high",
@@ -118,17 +116,16 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
       responsibleUserId: "responsible-user",
     });
 
-    return { companyId, agentId, issueId };
+    return { agentId, issueId };
   }
 
   async function seedQueuedRun() {
-    const { companyId, agentId, issueId } = await seedAgentAndIssue();
+    const { agentId, issueId } = await seedAgentAndIssue();
     const runId = randomUUID();
     const wakeupRequestId = randomUUID();
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
       agentId,
       source: "assignment",
       status: "queued",
@@ -136,7 +133,6 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -145,11 +141,11 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
       contextSnapshot: { issueId, wakeReason: "issue_assigned" },
     });
 
-    return { companyId, agentId, issueId, runId, wakeupRequestId };
+    return { agentId, issueId, runId, wakeupRequestId };
   }
 
   it("releases the run, wakeup, and issue lock when a task drain trips right after the run is claimed", async () => {
-    const { companyId, issueId, runId, wakeupRequestId } = await seedQueuedRun();
+    const { issueId, runId, wakeupRequestId } = await seedQueuedRun();
     const heartbeat = heartbeatService(db);
 
     // The claim path publishes a "heartbeat.run.status" live event with
@@ -158,7 +154,7 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
     // drain from that same event reproduces the gap the fix closes: the
     // drain trips after the first admission check passed but before the
     // second one runs.
-    const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       const payload = event.payload as { runId?: string; status?: string };
       if (event.type === "heartbeat.run.status" && payload.runId === runId && payload.status === "running") {
         startTaskDrain({});
@@ -328,7 +324,7 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
   }
 
   it("leaves the run row running for the orphan reaper when the atomic release fails", async () => {
-    const { companyId, issueId, runId, wakeupRequestId } = await seedQueuedRun();
+    const { issueId, runId, wakeupRequestId } = await seedQueuedRun();
     // Fault the release transaction on the issue-lock write, so executeRun's
     // suppression branch catches the failure, logs it, and returns instead
     // of throwing. There is no in-process fallback or retry for this path.
@@ -336,7 +332,7 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
     const failingDb = withFailingTransactionalUpdate(db, issues, () => releaseStarted);
     const heartbeat = heartbeatService(failingDb);
 
-    const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+    const unsubscribe = subscribeLiveEvents((event) => {
       const payload = event.payload as { runId?: string; status?: string };
       if (event.type === "heartbeat.run.status" && payload.runId === runId && payload.status === "running") {
         startTaskDrain({});

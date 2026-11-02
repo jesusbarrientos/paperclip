@@ -9,7 +9,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 import { issueThreadInteractions } from "./issue_thread_interactions.js";
@@ -24,7 +23,6 @@ export const issueQuestionResponseDeliveries = pgTable(
   "issue_question_response_deliveries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "cascade" }),
     interactionId: uuid("interaction_id").notNull().references(() => issueThreadInteractions.id, { onDelete: "cascade" }),
     sourceRunId: uuid("source_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
@@ -49,7 +47,6 @@ export const issueQuestionResponseDeliveries = pgTable(
     correlationUq: uniqueIndex("issue_question_response_deliveries_correlation_uq").on(table.correlationId),
     pendingIdx: index("issue_question_response_deliveries_pending_idx").on(table.status, table.createdAt),
     companyIssueIdx: index("issue_question_response_deliveries_company_issue_idx").on(
-      table.companyId,
       table.issueId,
       table.createdAt,
     ),

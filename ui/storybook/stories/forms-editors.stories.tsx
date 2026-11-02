@@ -201,7 +201,6 @@ const adapterErrors = {
 const storybookSecrets: CompanySecret[] = [
 	  {
 	    id: "secret-openai",
-	    companyId: "company-storybook",
 	    scope: "company",
 	    ownerUserId: null,
 	    userSecretDefinitionId: null,
@@ -225,7 +224,6 @@ const storybookSecrets: CompanySecret[] = [
   },
 	  {
 	    id: "secret-github",
-	    companyId: "company-storybook",
 	    scope: "company",
 	    ownerUserId: null,
 	    userSecretDefinitionId: null,
@@ -291,7 +289,6 @@ const routineVariables: RoutineVariable[] = [
 
 const storybookProject: Project = {
   id: "project-board-ui",
-  companyId: "company-storybook",
   urlKey: "board-ui",
   goalId: "goal-company",
   goalIds: ["goal-company"],
@@ -694,7 +691,6 @@ function RoutineRunDialogStory() {
       <RoutineRunVariablesDialog
         open={open}
         onOpenChange={setOpen}
-        companyId="company-storybook"
         routineName="Weekly release review"
         projects={[storybookProject]}
         agents={storybookAgents}

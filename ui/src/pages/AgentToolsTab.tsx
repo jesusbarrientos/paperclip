@@ -25,6 +25,7 @@ import {
 import { cn } from "../lib/utils";
 import { brandChipBadge } from "../lib/status-colors";
 import { installPayload, installStateFrom, isAgentInstalled, INSTALLED_HINT } from "../lib/tool-installs";
+import { useOrganization } from "../context/OrganizationContext";
 
 function isGitHubConnection(connection: ToolConnection): boolean {
   return (connection.config?.sourceTemplateKey ?? connection.transportConfig?.sourceTemplateKey) === "github";
@@ -332,26 +333,27 @@ const DENIED_TOOLS_DISPLAY_LIMIT = 30;
  * prompt can narrow the list but never expand it, and the side panel explains
  * which access profiles and rules shape the final list.
  */
-export function AgentToolsTab({ agent, companyId }: { agent: AgentDetailRecord; companyId: string }) {
+export function AgentToolsTab({ agent }: { agent: AgentDetailRecord }) {
   const queryClient = useQueryClient();
+  const { organization } = useOrganization();
   const [installDraft, setInstallDraft] = useState<Record<string, boolean>>({});
   const lastSavedInstallRef = useRef<Record<string, boolean>>({});
   const skipNextInstallAutosaveRef = useRef(true);
   const failedInstallDraftRef = useRef<{ connectionId: string; installed: boolean } | null>(null);
 
   const effective = useQuery({
-    queryKey: queryKeys.tools.effectiveProfilesForAgent(companyId, agent.id),
-    queryFn: () => toolsApi.getEffectiveProfilesForAgent(companyId, agent.id),
+    queryKey: queryKeys.tools.effectiveProfilesForAgent(agent.id),
+    queryFn: () => toolsApi.getEffectiveProfilesForAgent(agent.id),
   });
 
   const connectionsQuery = useQuery({
-    queryKey: queryKeys.tools.connections(companyId),
-    queryFn: () => toolsApi.listConnections(companyId),
+    queryKey: queryKeys.tools.connections(),
+    queryFn: () => toolsApi.listConnections(),
   });
 
   const policiesQuery = useQuery({
-    queryKey: queryKeys.tools.policies(companyId),
-    queryFn: () => toolsApi.listPolicies(companyId),
+    queryKey: queryKeys.tools.policies(),
+    queryFn: () => toolsApi.listPolicies(),
   });
 
   const connectionList = connectionsQuery.data?.connections ?? [];
@@ -399,6 +401,7 @@ export function AgentToolsTab({ agent, companyId }: { agent: AgentDetailRecord; 
 
   const syncInstall = useMutation({
     mutationFn: ({ connection, installed }: { connection: ToolConnection; installed: boolean }) => {
+      if (!organization) throw new Error("Organization not loaded");
       const nextState = installStateFrom(connection.installs);
       if (!nextState.onAll) {
         if (installed) nextState.agentIds.add(agent.id);
@@ -406,7 +409,7 @@ export function AgentToolsTab({ agent, companyId }: { agent: AgentDetailRecord; 
       }
       return toolsApi.putConnectionInstalls(
         connection.id,
-        installPayload(connection.companyId ?? companyId, nextState),
+        installPayload(nextState, organization.id),
       );
     },
     onSuccess: async (_snapshot, variables) => {
@@ -416,8 +419,8 @@ export function AgentToolsTab({ agent, companyId }: { agent: AgentDetailRecord; 
         [variables.connection.id]: variables.installed,
       };
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.tools.connections(companyId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.tools.effectiveProfilesForAgent(companyId, agent.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tools.connections() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tools.effectiveProfilesForAgent(agent.id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.tools.testAgentAccessesForConnection(variables.connection.id) }),
       ]);
     },
@@ -434,7 +437,7 @@ export function AgentToolsTab({ agent, companyId }: { agent: AgentDetailRecord; 
     lastSavedInstallRef.current = {};
     skipNextInstallAutosaveRef.current = true;
     failedInstallDraftRef.current = null;
-  }, [agent.id, companyId]);
+  }, [agent.id]);
 
   useEffect(() => {
     const next = Object.fromEntries(

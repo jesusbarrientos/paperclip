@@ -368,10 +368,9 @@ const GUEST_COMMAND =
         issuePrefix: `Q${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
         requireBoardApprovalForNewAgents: false,
       });
-      await db.insert(projects).values({ id: projectId, companyId, name: "Paperclip App", status: "in_progress" });
+      await db.insert(projects).values({ id: projectId, name: "Paperclip App", status: "in_progress" });
       await db.insert(projectWorkspaces).values({
         id: projectWorkspaceId,
-        companyId,
         projectId,
         name: "Primary",
         cwd: workspaceRoot,
@@ -380,7 +379,6 @@ const GUEST_COMMAND =
       for (const [id, name] of [[leasedWorkspaceId, "lane-b"], [otherWorkspaceId, "posthog-mcp"]] as const) {
         await db.insert(executionWorkspaces).values({
           id,
-          companyId,
           projectId,
           projectWorkspaceId,
           mode: "isolated_workspace",
@@ -401,7 +399,6 @@ const GUEST_COMMAND =
       // `port` column is the only surviving record of the leased pair.
       await db.insert(workspaceRuntimeServices).values({
         id: leasedRuntimeId,
-        companyId,
         projectId,
         projectWorkspaceId,
         executionWorkspaceId: leasedWorkspaceId,
@@ -427,13 +424,13 @@ const GUEST_COMMAND =
         stoppedAt: new Date(),
       });
 
-      return { companyId, projectId, projectWorkspaceId, leasedWorkspaceId, otherWorkspaceId, leasedRuntimeId };
+      return { projectId, projectWorkspaceId, leasedWorkspaceId, otherWorkspaceId, leasedRuntimeId };
     }
 
     function startInput(seed: Awaited<ReturnType<typeof seedIncident>>, executionWorkspaceId: string) {
       return {
         invocationId: "pap-17419-reservation",
-        actor: { id: null, name: "Paperclip", companyId: seed.companyId },
+        actor: { id: null, name: "Paperclip" },
         issue: null,
         db,
         workspace: {

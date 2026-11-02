@@ -72,11 +72,11 @@ export type BoardActor = {
   source: string;
   userId: string;
   companyIds: string[];
-  memberships: { companyId: string; membershipRole: string; status: string }[];
+  memberships: { membershipRole: string; status: string }[];
   isInstanceAdmin: boolean;
 };
 
-export type SeededCompany = { companyId: string; userId: string; actor: BoardActor };
+export type SeededCompany = { userId: string; actor: BoardActor };
 
 /** Creates a company whose board user holds company-scoped read and write grants. */
 export async function seedCompanyWithBoardAccess(db: Db, name: string): Promise<SeededCompany> {
@@ -101,14 +101,13 @@ export async function seedCompanyWithBoardAccess(db: Db, name: string): Promise<
     grantedByUserId: null,
   });
   return {
-    companyId,
     userId,
     actor: {
       type: "board",
       source: "session",
       userId,
       companyIds: [companyId],
-      memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+      memberships: [{ membershipRole: "owner", status: "active" }],
       isInstanceAdmin: false,
     },
   };

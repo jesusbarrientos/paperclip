@@ -11,7 +11,6 @@ function runtimeServiceRow(
   const now = new Date("2026-07-31T10:00:00.000Z");
   return {
     id: randomUUID(),
-    companyId: randomUUID(),
     projectId: randomUUID(),
     projectWorkspaceId: randomUUID(),
     executionWorkspaceId: null,

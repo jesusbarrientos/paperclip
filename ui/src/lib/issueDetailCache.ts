@@ -39,7 +39,6 @@ function isCompleteIssueSnapshot(value: unknown): value is Issue {
   const issue = value as Partial<Issue>;
   return (
     isNonEmptyString(issue.id)
-    && isNonEmptyString(issue.companyId)
     && typeof issue.title === "string"
     && typeof issue.status === "string"
     && typeof issue.workMode === "string"

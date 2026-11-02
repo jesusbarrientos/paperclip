@@ -67,12 +67,11 @@ export interface RetainedBoardSend {
 }
 
 export function boardSendDraftKey(
-  companyId: string,
   issueId: string,
   endpointId: string,
   conversationId: string,
 ) {
-  return `paperclip:board-send:v1:${JSON.stringify([companyId, issueId, endpointId, conversationId])}`;
+  return `paperclip:board-send:v1:${JSON.stringify([issueId, endpointId, conversationId])}`;
 }
 
 export function readBoardSendDraft(key: string): RetainedBoardSend | null {

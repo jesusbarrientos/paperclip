@@ -26,7 +26,6 @@ describe("codex local skill sync", () => {
 
     const ctx = {
       agentId: "agent-1",
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         env: {
@@ -45,7 +44,6 @@ describe("codex local skill sync", () => {
   it("does not apply the legacy operational skill default to the native runner", async () => {
     const snapshot = await listCodexSkills({
       agentId: "agent-native",
-      companyId: "company-1",
       adapterType: "paperclip_runner",
       config: {},
     });
@@ -61,7 +59,6 @@ describe("codex local skill sync", () => {
 
     const configuredCtx = {
       agentId: "agent-2",
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         env: {
@@ -87,7 +84,6 @@ describe("codex local skill sync", () => {
 
     const snapshot = await listCodexSkills({
       agentId: "agent-3",
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         env: {

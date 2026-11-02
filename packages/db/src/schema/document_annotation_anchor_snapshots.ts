@@ -4,7 +4,6 @@ import type {
   DocumentAnnotationAnchorState,
 } from "@paperclipai/shared";
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { documentAnnotationThreads } from "./document_annotation_threads.js";
 import { documentRevisions } from "./document_revisions.js";
 import { documents } from "./documents.js";
@@ -13,7 +12,6 @@ export const documentAnnotationAnchorSnapshots = pgTable(
   "document_annotation_anchor_snapshots",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     threadId: uuid("thread_id").notNull().references(() => documentAnnotationThreads.id, { onDelete: "cascade" }),
     documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
     fromRevisionId: uuid("from_revision_id").references(() => documentRevisions.id, { onDelete: "set null" }),
@@ -29,12 +27,10 @@ export const documentAnnotationAnchorSnapshots = pgTable(
   },
   (table) => ({
     companyThreadCreatedAtIdx: index("document_annotation_anchor_snapshots_company_thread_created_at_idx").on(
-      table.companyId,
       table.threadId,
       table.createdAt,
     ),
     companyDocumentRevisionIdx: index("document_annotation_anchor_snapshots_company_document_revision_idx").on(
-      table.companyId,
       table.documentId,
       table.toRevisionNumber,
     ),

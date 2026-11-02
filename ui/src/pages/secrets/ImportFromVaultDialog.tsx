@@ -57,7 +57,6 @@ type Step = "select" | "review" | "result";
 interface ImportFromVaultDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  companyId: string;
   providerConfigs: CompanySecretProviderConfig[];
   existingSecrets: CompanySecret[];
   initialProviderConfigId?: string | null;
@@ -331,7 +330,6 @@ const EMPTY_PREVIEW: PreviewState = { candidates: [], nextToken: null };
 export function ImportFromVaultDialog({
   open,
   onOpenChange,
-  companyId,
   providerConfigs,
   existingSecrets,
   initialProviderConfigId,
@@ -386,7 +384,7 @@ export function ImportFromVaultDialog({
     setPreviewError(null);
     setPreview(EMPTY_PREVIEW);
     secretsApi
-      .remoteImportPreview(companyId, {
+      .remoteImportPreview({
         providerConfigId: vaultId,
         query: debouncedQuery || null,
         nextToken: null,
@@ -410,7 +408,7 @@ export function ImportFromVaultDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, vaultId, debouncedQuery, companyId]);
+  }, [open, step, vaultId, debouncedQuery]);
 
   // When the vault changes, drop any selection (they're scoped to a vault).
   useEffect(() => {
@@ -467,11 +465,11 @@ export function ImportFromVaultDialog({
   const readyReviewCount = draftList.length - blockedReviewCount;
 
   const importMutation = useMutation({
-    mutationFn: (input: RemoteImportInput) => secretsApi.remoteImport(companyId, input),
+    mutationFn: (input: RemoteImportInput) => secretsApi.remoteImport(input),
     onSuccess: (result) => {
       setImportResult(result);
       setStep("result");
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
       onImportComplete?.(result);
       const vaultName =
         awsVaults.find((vault) => vault.id === vaultId)?.displayName ?? "AWS";
@@ -510,7 +508,7 @@ export function ImportFromVaultDialog({
     setPreviewLoading(true);
     setPreviewError(null);
     secretsApi
-      .remoteImportPreview(companyId, {
+      .remoteImportPreview({
         providerConfigId: vaultId,
         query: debouncedQuery || null,
         nextToken: null,
@@ -534,7 +532,7 @@ export function ImportFromVaultDialog({
     if (!vaultId || !preview.nextToken || pageLoading) return;
     setPageLoading(true);
     secretsApi
-      .remoteImportPreview(companyId, {
+      .remoteImportPreview({
         providerConfigId: vaultId,
         query: debouncedQuery || null,
         nextToken: preview.nextToken,

@@ -30,43 +30,32 @@ npx paperclipai issue checkout <issue-id> --agent-id <agent-id>
 npx paperclipai issue release <issue-id>
 ```
 
-## Company Commands
+## Organization Commands
+
+Each instance serves exactly one organization, so these commands take no id:
 
 ```sh
-npx paperclipai company list
-npx paperclipai company get <company-id>
-npx paperclipai company current [--company-id <company-id>]
-
-# Export to portable folder package (writes manifest + markdown files)
-npx paperclipai company export <company-id> --out ./exports/acme --include company,agents
-
-# Preview import (no writes)
-npx paperclipai company import \
-  <owner>/<repo>/<path> \
-  --target existing \
-  --company-id <company-id> \
-  --ref main \
-  --collision rename \
-  --dry-run
-
-# Apply import
-npx paperclipai company import \
-  ./exports/acme \
-  --target new \
-  --new-company-name "Acme Imported" \
-  --include company,agents
+npx paperclipai organization get
+npx paperclipai organization update --payload-json '{"name":"Acme"}'
+npx paperclipai organization export --out ./org --include organization,agents,projects,issues,skills
+npx paperclipai organization import ./org --dry-run
+npx paperclipai organization import ./org.zip --collision rename --yes
+npx paperclipai organization import paperclipai/companies/demo --ref main --yes
 ```
 
-`company import` is unavailable against cloud-managed instances — the
-server answers `403` with `code: "cloud_managed"`. Export remains available
-there.
+`organization export` writes the portable package into `--out`; a non-empty
+directory needs interactive confirmation or `--force`. `organization import`
+reads a local folder, a `.zip`, a GitHub URL, or `owner/repo[/path]` shorthand
+and always imports into the instance's organization. It previews first, then
+applies; the server may run the apply as a background job, which the CLI polls
+until it finishes. Large local packages upload as a resumable chunked transfer.
+`--agent-safe` switches to the routes CEO agent keys may call (no `replace`
+collisions, packages up to about 8 MB). See
+[Importing & Exporting](../guides/board-operator/importing-and-exporting.md) and
+`doc/CLI.md` for every option.
 
-With agent authentication, use `company list` or `company current` to resolve
-the scoped company. `company list` first tries the board-wide list; if that is
-forbidden, it falls back to `--company-id`, `PAPERCLIP_COMPANY_ID`, context, or
-`/api/agents/me` and returns only that scoped company. `company create` requires
-board/instance-admin authentication because it is an instance-wide setup
-command.
+Import is unavailable against cloud-managed instances — the server answers
+`403` with `code: "cloud_managed"`. Export remains available there.
 
 ## Agent Commands
 
@@ -87,15 +76,15 @@ npx paperclipai skills inspect github-pr-workflow
 
 # Install a catalog skill into the company skill library
 # This does not attach the skill to any agent.
-npx paperclipai skills install github-pr-workflow --company-id <company-id>
-npx paperclipai skills install github-pr-workflow --as pr-flow --force --company-id <company-id>
+npx paperclipai skills install github-pr-workflow
+npx paperclipai skills install github-pr-workflow --as pr-flow --force
 
 # External sources still use import instead of catalog install
-npx paperclipai skills import ./skills/my-skill --company-id <company-id>
-npx paperclipai skills import owner/repo/path/to/skill --company-id <company-id>
+npx paperclipai skills import ./skills/my-skill
+npx paperclipai skills import owner/repo/path/to/skill
 
 # Attach desired company skills to an agent after install/import
-npx paperclipai skills agent sync <agent-id> --skill github-pr-workflow --mode add --company-id <company-id>
+npx paperclipai skills agent sync <agent-id> --skill github-pr-workflow --mode add
 ```
 
 ## Approval Commands

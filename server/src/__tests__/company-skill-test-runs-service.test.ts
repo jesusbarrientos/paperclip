@@ -80,7 +80,6 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Tester",
       role: "engineer",
       status: "idle",
@@ -89,8 +88,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     });
     await db.insert(companySkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/review`,
+      key: "company/review",
       slug: "review",
       name: "Review Skill",
       description: null,
@@ -102,12 +100,12 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
       fileInventory: [{ path: "SKILL.md", kind: "skill" }],
       metadata: { sourceKind: "managed_local" },
     });
-    return { companyId, skillId, agentId };
+    return { skillId, agentId };
   }
 
-  const runDeps = (companyId: string) => ({
-    createHarnessIssue: async (issue: Parameters<Parameters<typeof svc.createTestRun>[4]["createHarnessIssue"]>[0]) => {
-      await db.insert(issues).values({ ...issue, companyId, priority: "medium" });
+  const runDeps = () => ({
+    createHarnessIssue: async (issue: Parameters<Parameters<typeof svc.createTestRun>[3]["createHarnessIssue"]>[0]) => {
+      await db.insert(issues).values({ ...issue, priority: "medium" });
       return { id: issue.id };
     },
     wakeHarnessIssue: async () => null,
@@ -115,21 +113,20 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
   });
 
   it("cleans up the harness issue if persisting the test run fails", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const cleanedIssueIds: string[] = [];
     let createdIssueId: string | null = null;
     let wakeCalls = 0;
 
     await expect(
       svc.createTestRun(
-        companyId,
         skillId,
         { content: "test this skill", agentId },
         { type: "user", userId: "local-board" },
         {
           createHarnessIssue: async (issue) => {
             createdIssueId = issue.id;
-            await db.insert(issues).values({ ...issue, companyId, priority: "medium" });
+            await db.insert(issues).values({ ...issue, priority: "medium" });
             return { id: issue.id };
           },
           wakeHarnessIssue: async () => {
@@ -160,13 +157,12 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
   });
 
   it("appends the built-in default template while keeping the input snapshot clean", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const run = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "test this skill", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
 
     expect(run.inputSnapshot).toBe("test this skill");
@@ -174,7 +170,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     expect(run.templateName).toBe("Default test template");
     expect(run.templateBody).toContain("{{skillName}}");
     expect(run.renderedTemplateBody).toContain("Skills Studio test for `Review Skill`");
-    expect(run.renderedTemplateBody).toContain(`company/${companyId}/review`);
+    expect(run.renderedTemplateBody).toContain("company/review");
     expect(run.renderedTemplateBody).toContain("issue document `output`");
     expect(run.harnessIssueDescription).toBe(`test this skill\n\n---\n\n${run.renderedTemplateBody}`);
 
@@ -187,13 +183,12 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
   });
 
   it("honors No template without weakening the clean run snapshot", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const run = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "test this skill", agentId, templateId: null },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
 
     expect(run.inputSnapshot).toBe("test this skill");
@@ -212,23 +207,22 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
   });
 
   it("manages custom templates and renders only explicit placeholders", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
-    const template = await svc.createTestRunTemplate(companyId, {
+    const { skillId, agentId } = await seedSkillAndAgent();
+    const template = await svc.createTestRunTemplate({
       name: "Focused smoke",
       description: "Short run",
       body: "Run {{skillName}} v{{skillVersion}} for {{runId}} on {{issueId}} into {{outputDocumentKey}}.",
     }, { type: "user", userId: "local-board" });
 
-    const listed = await svc.listTestRunTemplates(companyId);
+    const listed = await svc.listTestRunTemplates();
     expect(listed.map((entry) => entry.id)).toEqual(["built-in:default-test-template", template.id]);
     expect(listed[0]?.builtIn).toBe(true);
 
     const run = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "custom template run", agentId, templateId: template.id },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
     expect(run.templateId).toBe(template.id);
     expect(run.templateName).toBe("Focused smoke");
@@ -238,13 +232,13 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     expect(run.renderedTemplateBody).toContain("into output");
 
     await expect(
-      svc.createTestRunTemplate(companyId, {
+      svc.createTestRunTemplate({
         name: "Bad template",
         body: "Use {{unknownPlaceholder}}.",
       }, { type: "user", userId: "local-board" }),
     ).rejects.toThrow(/unknown template placeholder/i);
 
-    const updated = await svc.updateTestRunTemplate(companyId, template.id, {
+    const updated = await svc.updateTestRunTemplate(template.id, {
       name: "Focused smoke v2",
       body: "Use {{skillKey}}.",
     }, { type: "user", userId: "local-board" });
@@ -252,65 +246,47 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     expect(updated?.body).toBe("Use {{skillKey}}.");
 
     await expect(
-      svc.updateTestRunTemplate(companyId, "built-in:default-test-template", { name: "Changed" }),
+      svc.updateTestRunTemplate("built-in:default-test-template", { name: "Changed" }),
     ).rejects.toThrow(/read-only/i);
 
-    const deleted = await svc.deleteTestRunTemplate(companyId, template.id);
+    const deleted = await svc.deleteTestRunTemplate(template.id);
     expect(deleted?.deletedAt).toBeInstanceOf(Date);
-    expect((await svc.listTestRunTemplates(companyId)).map((entry) => entry.id)).toEqual([
+    expect((await svc.listTestRunTemplates()).map((entry) => entry.id)).toEqual([
       "built-in:default-test-template",
     ]);
   });
 
-  it("rejects unknown or cross-company template ids", async () => {
+  it("rejects unknown template ids", async () => {
     const first = await seedSkillAndAgent();
-    const second = await seedSkillAndAgent();
-    const otherTemplate = await svc.createTestRunTemplate(second.companyId, {
-      name: "Other company",
-      body: "Other {{skillName}}.",
-    }, { type: "user", userId: "local-board" });
 
     await expect(
       svc.createTestRun(
-        first.companyId,
         first.skillId,
         { content: "test", agentId: first.agentId, templateId: randomUUID() },
         { type: "user", userId: "local-board" },
-        runDeps(first.companyId),
-      ),
-    ).rejects.toThrow(/test run template not found/i);
-
-    await expect(
-      svc.createTestRun(
-        first.companyId,
-        first.skillId,
-        { content: "test", agentId: first.agentId, templateId: otherTemplate.id },
-        { type: "user", userId: "local-board" },
-        runDeps(first.companyId),
+        runDeps(),
       ),
     ).rejects.toThrow(/test run template not found/i);
   });
 
   it("re-run can use the viewed template body snapshot after source template edits", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
-    const template = await svc.createTestRunTemplate(companyId, {
+    const { skillId, agentId } = await seedSkillAndAgent();
+    const template = await svc.createTestRunTemplate({
       name: "Snapshot me",
       body: "Original {{skillName}}.",
     }, { type: "user", userId: "local-board" });
     const first = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "repeatable", agentId, templateId: template.id },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
 
-    await svc.updateTestRunTemplate(companyId, template.id, {
+    await svc.updateTestRunTemplate(template.id, {
       body: "Edited {{skillName}}.",
     }, { type: "user", userId: "local-board" });
 
     const reRun = await svc.createTestRun(
-      companyId,
       skillId,
       {
         content: first.inputSnapshot,
@@ -323,7 +299,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
         },
       },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
     expect(reRun.skillVersionId).toBe(first.skillVersionId);
     expect(reRun.templateId).toBe(template.id);
@@ -334,24 +310,23 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
   });
 
   it("only deletes terminal runs and soft-deletes them out of history", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const run = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "test this skill", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
 
     // In-flight run must be cancelled first.
     await expect(
-      svc.deleteTestRun(companyId, skillId, run.id, { hideHarnessIssue: async () => null }),
+      svc.deleteTestRun(skillId, run.id, { hideHarnessIssue: async () => null }),
     ).rejects.toThrow(/cancel the run/i);
 
-    await svc.completeTestRunForIssue({ companyId, issueId: run.issueId, outcome: "succeeded" });
+    await svc.completeTestRunForIssue({ issueId: run.issueId, outcome: "succeeded" });
 
     const hidden: string[] = [];
-    const deleted = await svc.deleteTestRun(companyId, skillId, run.id, {
+    const deleted = await svc.deleteTestRun(skillId, run.id, {
       hideHarnessIssue: async (issueId) => {
         hidden.push(issueId);
       },
@@ -362,76 +337,70 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     expect(hidden).toEqual([run.issueId]);
 
     // Gone from listings and detail.
-    expect(await svc.listTestRuns(companyId, skillId)).toHaveLength(0);
-    expect(await svc.getTestRunDetail(companyId, skillId, run.id)).toBeNull();
+    expect(await svc.listTestRuns(skillId)).toHaveLength(0);
+    expect(await svc.getTestRunDetail(skillId, run.id)).toBeNull();
 
     // Deleting again is a no-op 404 (returns null).
     expect(
-      await svc.deleteTestRun(companyId, skillId, run.id, { hideHarnessIssue: async () => null }),
+      await svc.deleteTestRun(skillId, run.id, { hideHarnessIssue: async () => null }),
     ).toBeNull();
   });
 
   it("re-run pins an explicit skill version instead of the live head", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const first = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "first run", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
     const pinnedVersionId = first.skillVersionId;
 
     const reRun = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "first run", agentId, skillVersionId: pinnedVersionId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
     expect(reRun.skillVersionId).toBe(pinnedVersionId);
 
     // A bogus version id is rejected rather than silently falling back to head.
     await expect(
       svc.createTestRun(
-        companyId,
         skillId,
         { content: "first run", agentId, skillVersionId: randomUUID() },
         { type: "user", userId: "local-board" },
-        runDeps(companyId),
+        runDeps(),
       ),
     ).rejects.toThrow(/skill version not found/i);
   });
 
   it("ignores superseded test harness issue transitions", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const first = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "first run", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
     const replacement = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "replacement run", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
 
-    const listed = await svc.listTestRuns(companyId, skillId);
+    const listed = await svc.listTestRuns(skillId);
     expect(listed.map((run) => run.id)).toEqual([replacement.id, first.id]);
     expect(listed.find((run) => run.id === first.id)?.supersededAt).toBeInstanceOf(Date);
-    expect(await svc.getTestRunDetail(companyId, skillId, first.id)).not.toBeNull();
-    expect(await svc.markTestRunRunning(companyId, first.issueId)).toBeNull();
+    expect(await svc.getTestRunDetail(skillId, first.id)).not.toBeNull();
+    expect(await svc.markTestRunRunning(first.issueId)).toBeNull();
     expect(await svc.completeTestRunForIssue({
-      companyId,
       issueId: first.issueId,
       outcome: "succeeded",
     })).toBeNull();
     const cancelledIssueIds: string[] = [];
-    expect(await svc.cancelTestRun(companyId, skillId, first.id, {
+    expect(await svc.cancelTestRun(skillId, first.id, {
       cancelHarnessIssue: async (issueId) => {
         cancelledIssueIds.push(issueId);
       },
@@ -454,16 +423,16 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     expect(firstRow?.outputSnapshot).toBe("");
 
     const hiddenIssueIds: string[] = [];
-    const deletedFirst = await svc.deleteTestRun(companyId, skillId, first.id, {
+    const deletedFirst = await svc.deleteTestRun(skillId, first.id, {
       hideHarnessIssue: async (issueId) => {
         hiddenIssueIds.push(issueId);
       },
     });
     expect(deletedFirst?.id).toBe(first.id);
     expect(hiddenIssueIds).toEqual([first.issueId]);
-    expect((await svc.listTestRuns(companyId, skillId)).map((run) => run.id)).toEqual([replacement.id]);
+    expect((await svc.listTestRuns(skillId)).map((run) => run.id)).toEqual([replacement.id]);
 
-    const runningReplacement = await svc.markTestRunRunning(companyId, replacement.issueId);
+    const runningReplacement = await svc.markTestRunRunning(replacement.issueId);
     expect(runningReplacement?.status).toBe("running");
   });
 
@@ -483,21 +452,19 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Tester",
       role: "engineer",
       status: "idle",
       adapterType: "codex_local",
       adapterConfig: {
         model: "gpt-5.4",
-        paperclipSkillSync: { desiredSkills: [`company/${companyId}/review`] },
+        paperclipSkillSync: { desiredSkills: ["company/review"] },
         instructionsFilePath: "/tmp/AGENTS.md",
       },
     });
     await db.insert(companySkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/review`,
+      key: "company/review",
       slug: "review",
       name: "Review Skill",
       description: null,
@@ -510,18 +477,17 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
       metadata: { sourceKind: "managed_local" },
     });
 
-    const input = await svc.createTestInput(companyId, skillId, {
+    const input = await svc.createTestInput(skillId, {
       name: "cases/simple",
       content: "Try the review skill",
     }, { type: "user", userId: "local-board" });
-    const run = await svc.createTestRun(companyId, skillId, {
+    const run = await svc.createTestRun(skillId, {
       inputId: input.id,
       agentId,
     }, { type: "user", userId: "local-board" }, {
       createHarnessIssue: async (issue) => {
         await db.insert(issues).values({
           ...issue,
-          companyId,
           priority: "medium",
         });
         return { id: issue.id };
@@ -541,7 +507,6 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     const documentId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId,
       title: "Output",
       format: "markdown",
       latestBody: "## Result\n\nThe skill responded.",
@@ -549,14 +514,12 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
       updatedByAgentId: agentId,
     });
     await db.insert(issueDocuments).values({
-      companyId,
       issueId: run.issueId,
       documentId,
       key: "output",
     });
 
     const completed = await svc.completeTestRunForIssue({
-      companyId,
       issueId: run.issueId,
       outcome: "succeeded",
     });
@@ -568,9 +531,9 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
       .set({ harnessIssueExpiresAt: new Date(Date.now() - 60_000) })
       .where(eq(companySkillTestRuns.id, run.id));
 
-    const pruned = await svc.pruneExpiredTestHarnessIssues(companyId);
+    const pruned = await svc.pruneExpiredTestHarnessIssues();
     expect(pruned.pruned).toBe(1);
-    const detail = await svc.getTestRunDetail(companyId, skillId, run.id);
+    const detail = await svc.getTestRunDetail(skillId, run.id);
     expect(detail?.taskExpired).toBe(true);
     expect(detail?.harnessIssue).toBeNull();
     expect(detail?.outputSnapshot).toBe("## Result\n\nThe skill responded.");
@@ -585,39 +548,35 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
   });
 
   it("hydrates rich documents, attachments, and work products scoped to the run's harness issue", async () => {
-    const { companyId, skillId, agentId } = await seedSkillAndAgent();
+    const { skillId, agentId } = await seedSkillAndAgent();
     const run = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "produce rich output", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
-    // Sibling run in the same company whose content must not leak into `run`'s detail.
+    // Sibling run whose content must not leak into `run`'s detail.
     const otherRun = await svc.createTestRun(
-      companyId,
       skillId,
       { content: "unrelated run", agentId },
       { type: "user", userId: "local-board" },
-      runDeps(companyId),
+      runDeps(),
     );
 
     async function seedIssueContent(issueId: string, marker: string) {
       const documentId = randomUUID();
       await db.insert(documents).values({
         id: documentId,
-        companyId,
         title: `Output ${marker}`,
         format: "markdown",
         latestBody: `## Result ${marker}`,
         createdByAgentId: agentId,
         updatedByAgentId: agentId,
       });
-      await db.insert(issueDocuments).values({ companyId, issueId, documentId, key: "output" });
+      await db.insert(issueDocuments).values({ issueId, documentId, key: "output" });
       const assetId = randomUUID();
       await db.insert(assets).values({
         id: assetId,
-        companyId,
         provider: "local",
         objectKey: `skill-tests/${marker}.png`,
         contentType: "image/png",
@@ -627,11 +586,10 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
         createdByAgentId: agentId,
       });
       const attachmentId = randomUUID();
-      await db.insert(issueAttachments).values({ id: attachmentId, companyId, issueId, assetId });
+      await db.insert(issueAttachments).values({ id: attachmentId, issueId, assetId });
       const workProductId = randomUUID();
       await db.insert(issueWorkProducts).values({
         id: workProductId,
-        companyId,
         issueId,
         type: "artifact",
         provider: "paperclip",
@@ -652,7 +610,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     const mine = await seedIssueContent(run.issueId, "mine");
     await seedIssueContent(otherRun.issueId, "other");
 
-    const detail = await svc.getTestRunDetail(companyId, skillId, run.id);
+    const detail = await svc.getTestRunDetail(skillId, run.id);
     expect(detail).not.toBeNull();
     expect(detail?.harnessContent.available).toBe(true);
     expect(detail?.harnessContent.unavailableReason).toBeNull();
@@ -661,7 +619,6 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     const doc = detail!.harnessContent.documents[0]!;
     expect(doc).toEqual(expect.objectContaining({
       id: mine.documentId,
-      companyId,
       issueId: run.issueId,
       key: "output",
       title: "Output mine",
@@ -678,7 +635,6 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     const attachment = detail!.harnessContent.attachments[0]!;
     expect(attachment).toEqual(expect.objectContaining({
       id: mine.attachmentId,
-      companyId,
       issueId: run.issueId,
       contentType: "image/png",
       byteSize: 2048,
@@ -692,7 +648,6 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     const workProduct = detail!.harnessContent.workProducts[0]!;
     expect(workProduct).toEqual(expect.objectContaining({
       id: mine.workProductId,
-      companyId,
       issueId: run.issueId,
       type: "artifact",
       provider: "paperclip",
@@ -717,28 +672,21 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     expect(detail?.artifacts).toHaveLength(2);
   });
 
-  it("keeps hydration company-scoped and reports a deleted harness issue", async () => {
+  it("reports a deleted harness issue", async () => {
     const first = await seedSkillAndAgent();
-    const second = await seedSkillAndAgent();
     const run = await svc.createTestRun(
-      first.companyId,
       first.skillId,
       { content: "scoped run", agentId: first.agentId },
       { type: "user", userId: "local-board" },
-      runDeps(first.companyId),
+      runDeps(),
     );
-
-    // Cross-company access never resolves another company's run.
-    expect(await svc.getTestRunDetail(second.companyId, first.skillId, run.id)).toBeNull();
-    expect(await svc.getTestRunDetail(second.companyId, second.skillId, run.id)).toBeNull();
-
     // Harness issue marked deleted outside the retention path -> clear "deleted"
     // state, while stored run snapshots stay usable.
     await db
       .update(companySkillTestRuns)
       .set({ harnessIssueDeletedAt: new Date() })
       .where(eq(companySkillTestRuns.id, run.id));
-    const detail = await svc.getTestRunDetail(first.companyId, first.skillId, run.id);
+    const detail = await svc.getTestRunDetail(first.skillId, run.id);
     expect(detail).not.toBeNull();
     expect(detail?.harnessIssue).toBeNull();
     expect(detail?.inputSnapshot).toBe("scoped run");

@@ -21,7 +21,7 @@ type Copy = typeof copies.$inferSelect;
 export class AgentDirectoryReuseInvalidatedError extends Error {}
 const completed = new Set(["saved", "unchanged", "resolved", "unavailable"]);
 const transports = new Map<string, PreparedAdapterExecutionTargetRuntime>();
-const key = (row: Pick<Copy, "companyId" | "runId">) => `${row.companyId}:${row.runId}`;
+const key = (row: Pick<Copy, "runId">) => row.runId;
 export function isAgentDirectoryCopy(row: Pick<Copy, "receipt"> | null): boolean {
   return row?.receipt?.schema === AGENT_FILES_CONTRACT;
 }
@@ -31,21 +31,21 @@ function baseline(row: Copy) {
   return snapshot;
 }
 function actor(row: Copy): AuthorizationActor {
-  return { type: "agent", companyId: row.companyId, agentId: row.agentId, runId: row.runId, onBehalfOfUserId: row.responsibleUserId };
+  return { type: "agent", agentId: row.agentId, runId: row.runId, onBehalfOfUserId: row.responsibleUserId };
 }
-export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string, runId: string) => Promise<Copy | null>, patch: (row: Copy, values: Partial<typeof copies.$inferInsert>) => Promise<Copy>, environmentRuntime?: EnvironmentRuntimeService) {
+export function agentDirectoryWorkingCopyService(db: Db, get: (runId: string) => Promise<Copy | null>, patch: (row: Copy, values: Partial<typeof copies.$inferInsert>) => Promise<Copy>, environmentRuntime?: EnvironmentRuntimeService) {
   const store = agentFileStore(db);
   const ownerFile = (row: Copy) => path.join(path.dirname(row.localRoot), "owner.json");
   async function owns(row: Copy) {
     if (row.receipt?.warm !== true) return true;
     return await fs.readFile(ownerFile(row), "utf8").then(s => JSON.parse(s).runId === row.runId).catch(error => error.code === "ENOENT" && row.processStoppedAt !== null);
   }
-  async function canReuse(companyId: string, agentId: string, runId: string) {
-    const row = await get(companyId, runId);
+  async function canReuse(agentId: string, runId: string) {
+    const row = await get(runId);
     if (!row || row.agentId !== agentId || row.state !== "warm_saved" || row.errorCode || !await owns(row)) return false;
     const entry = baseline(row).entries.get(row.entryFile);
     if (entry?.kind !== "file" || entry.hash !== row.receipt?.sessionEntryHash) return false;
-    return store.locked(companyId, agentId, actor(row), false, async (_tx, _agent, root) =>
+    return store.locked(agentId, actor(row), false, async (_tx, _agent, root) =>
       directorySnapshotSha256(checkpointSnapshot(await cachedAgentFileManifest(root))) === row.baseHash);
   }
   async function transport(row: Copy, target: AdapterExecutionTarget, recovering: boolean) {
@@ -66,24 +66,24 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
       workspaceBaseline: baseline(row), workspaceGitSnapshot: null, workspaceFileMode: "all",
       workspaceExclude: [".paperclip-runtime", ".paperclip-runtime/**"] });
   }
-  async function prepareCopy(input: { companyId: string; agentId: string; runId: string; target?: AdapterExecutionTarget | null; cwd: string; warm?: boolean; reuseRunId?: string; onWarmHandoff?: (copy: Copy) => void }, serialHeld = false): Promise<Copy | null> {
-    const [agent] = await db.select().from(agents).where(and(eq(agents.id, input.agentId), eq(agents.companyId, input.companyId)));
+  async function prepareCopy(input: { agentId: string; runId: string; target?: AdapterExecutionTarget | null; cwd: string; warm?: boolean; reuseRunId?: string; onWarmHandoff?: (copy: Copy) => void }, serialHeld = false): Promise<Copy | null> {
+    const [agent] = await db.select().from(agents).where(eq(agents.id, input.agentId));
     if (!agent) throw notFound("Agent not found");
     if (agentInstructionsBundleMode(agent) !== "managed") return null;
-    const bound = await resolveInstructionActor(db, { type: "agent", companyId: input.companyId, agentId: input.agentId, runId: input.runId });
+    const bound = await resolveInstructionActor(db, { type: "agent", agentId: input.agentId, runId: input.runId });
     const root = resolveManagedInstructionsRoot(agent);
     if (input.reuseRunId) {
-      const prior = await get(input.companyId, input.reuseRunId);
+      const prior = await get(input.reuseRunId);
       if (!prior || prior.agentId !== input.agentId) throw conflict("Managed warm directory owner changed");
       return serial(prior, async current => {
         if (current.state !== "warm_saved" || current.errorCode || !await owns(current) || current.location !== (input.target?.kind === "remote" ? `remote:${input.target.environmentId ?? ""}` : "local")) throw conflict("Managed warm directory is not reusable");
         const receipt = { ...current.receipt, cleanup: input.target?.kind === "remote" ? { leaseId: input.target.leaseId ?? null, remoteCwd: input.target.remoteCwd } : undefined };
         // Insert before taking the agent-row lock: this foreign key needs an
         // independent transaction, and must survive post-handoff failures.
-        const [successor] = await db.insert(copies).values({ runId: input.runId, companyId: input.companyId, agentId: input.agentId, responsibleUserId: bound.onBehalfOfUserId!,
+        const [successor] = await db.insert(copies).values({ runId: input.runId, agentId: input.agentId, responsibleUserId: bound.onBehalfOfUserId!,
           entryFile: current.entryFile, baseHash: current.baseHash, localRoot: current.localRoot, executionRoot: current.executionRoot, location: current.location, state: "prepared", receipt }).returning();
         let handedOff = false;
-        try { return await store.locked(input.companyId, input.agentId, bound, false, async (_tx, lockedAgent, canonical) => {
+        try { return await store.locked(input.agentId, bound, false, async (_tx, lockedAgent, canonical) => {
           // The reservation's earlier check is only a hint. Serialize this last
           // validation and ownership transfer with every canonical writer.
           if (current.entryFile !== deriveBundleState(lockedAgent).entryFile ||
@@ -105,7 +105,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
         }); } catch (error) {
           // No process used this proposed owner. Remove it after the canonical
           // lock releases so the same run can restore a fresh directory.
-          if (!handedOff) await db.delete(copies).where(and(eq(copies.companyId, input.companyId), eq(copies.runId, input.runId)));
+          if (!handedOff) await db.delete(copies).where(and(eq(copies.runId, input.runId)));
           throw error;
         }
       }, "agent_directory_handoff");
@@ -118,7 +118,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
       ? path.posix.join(input.target.remoteCwd, ".paperclip-runtime", "agent-files", input.agentId, input.runId)
       : localRoot;
     const location = input.target?.kind === "remote" ? `remote:${input.target.environmentId ?? ""}` : "local";
-    let row = await get(input.companyId, input.runId);
+    let row = await get(input.runId);
     if (row && (row.localRoot !== localRoot || row.executionRoot !== executionRoot || row.agentId !== input.agentId || row.location !== location)) throw conflict("Agent directory belongs to a different execution environment");
     if (row && !serialHeld) {
       // Restart preparation can replace a completed copy under the same run ID.
@@ -140,10 +140,10 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
       nextAttemptAt: null, errorCode: null, errorMessage: null };
     if (row) row = await patch(row, preparing);
     else {
-      await db.insert(copies).values({ runId: input.runId, companyId: input.companyId, agentId: input.agentId, responsibleUserId: bound.onBehalfOfUserId!, ...preparing });
-      row = (await get(input.companyId, input.runId))!;
+      await db.insert(copies).values({ runId: input.runId, agentId: input.agentId, responsibleUserId: bound.onBehalfOfUserId!, ...preparing });
+      row = (await get(input.runId))!;
     }
-    const { snapshot, storageWarning } = await store.locked(input.companyId, input.agentId, bound, false, async (_tx, _agent, canonical) => {
+    const { snapshot, storageWarning } = await store.locked(input.agentId, bound, false, async (_tx, _agent, canonical) => {
       // Storage quotas govern saves, never admission to a future run. Restore
       // existing bytes so the agent can work normally and remove excess files.
       // Path/link validation remains mandatory even for an over-quota folder.
@@ -226,8 +226,8 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
         const nextHash = directorySnapshotSha256(snapshot);
         const changed = nextHash !== row.baseHash;
         const { storageWarning } = changed
-          ? await store.apply({ companyId: row.companyId, agentId: row.agentId, sourceDir: path.join(captured.directory, "files"), baseline: baseline(row), checkpoint: captured.manifest }, actor(row))
-          : await store.locked(row.companyId, row.agentId, actor(row), true, async () => ({
+          ? await store.apply({ agentId: row.agentId, sourceDir: path.join(captured.directory, "files"), baseline: baseline(row), checkpoint: captured.manifest }, actor(row))
+          : await store.locked(row.agentId, actor(row), true, async () => ({
             storageWarning: typeof row.receipt?.storageWarning === "string" ? row.receipt.storageWarning : null,
           }));
         row = await patch(row, { state: stopped ? (changed ? "saved" : "unchanged") : "warm_saved", baseHash: nextHash,
@@ -258,9 +258,9 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
     if (row.receipt?.warm === true && !completed.has(row.state)) {
       row = await checkpoint(row, target, true);
       await release(row, target);
-      return (await get(row.companyId, row.runId))!;
+      return (await get(row.runId))!;
     }
-    if (completed.has(row.state)) { await release(row); return (await get(row.companyId, row.runId))!; }
+    if (completed.has(row.state)) { await release(row); return (await get(row.runId))!; }
     row = await patch(row, { processStoppedAt: row.processStoppedAt ?? new Date() });
     // The stopped working copy is the only temporary tree. Retry transient I/O
     // at this boundary, then clean it up; there are no preserved run snapshots.
@@ -275,7 +275,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
         if (candidateHash === row.baseHash) {
           row = await patch(row, { state: "unchanged", errorCode: null, errorMessage: null, nextAttemptAt: null });
         } else {
-          ({ storageWarning } = await store.apply({ companyId: row.companyId, agentId: row.agentId, sourceDir: row.localRoot, baseline: baseline(row) }, actor(row)));
+          ({ storageWarning } = await store.apply({ agentId: row.agentId, sourceDir: row.localRoot, baseline: baseline(row) }, actor(row)));
           row = await patch(row, { state: "saved", candidateHash, errorCode: null, errorMessage: null, nextAttemptAt: null });
         }
         row = await patch(row, { receipt: { ...row.receipt, storageWarning } });
@@ -294,7 +294,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
       }
     }
     await release(row);
-    return (await get(row.companyId, row.runId))!;
+    return (await get(row.runId))!;
   }
   function releaseIsNoop(row: Copy) {
     return row.state === "superseded" || !row.processStoppedAt ||
@@ -336,7 +336,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
   async function destroyedRemoteCopy(row: Copy): Promise<boolean> {
     const cleanup = row.receipt?.cleanup as { leaseId?: string; remoteCwd?: string } | undefined;
     const leases = await db.select().from(environmentLeases).where(and(
-      eq(environmentLeases.companyId, row.companyId), eq(environmentLeases.heartbeatRunId, row.runId),
+      eq(environmentLeases.heartbeatRunId, row.runId),
       cleanup?.leaseId ? eq(environmentLeases.id, cleanup.leaseId)
         : eq(environmentLeases.environmentId, row.location.slice("remote:".length)),
     ));
@@ -370,11 +370,8 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
     const cleanup = row.receipt?.cleanup as { leaseId?: string; remoteCwd?: string } | undefined;
     // Older preview receipts did not record the lease ID. Accept only a unique
     // lease still bound to this run and environment in that compatibility case.
-    const leases = await db.select().from(environmentLeases).where(and(
-      eq(environmentLeases.companyId, row.companyId),
-      cleanup?.leaseId ? eq(environmentLeases.id, cleanup.leaseId) : and(
-        eq(environmentLeases.environmentId, row.location.slice("remote:".length)), eq(environmentLeases.heartbeatRunId, row.runId)),
-    ));
+    const leases = await db.select().from(environmentLeases).where(cleanup?.leaseId ? eq(environmentLeases.id, cleanup.leaseId) : and(
+                eq(environmentLeases.environmentId, row.location.slice("remote:".length)), eq(environmentLeases.heartbeatRunId, row.runId)));
     if (leases.length !== 1) return false;
     const lease = leases[0]!;
     const termination = lease.metadata?.remoteExecutionTermination as { state?: string } | undefined;
@@ -392,7 +389,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
     // Duplicate stop callbacks and restart recovery must not race while moving
     // the stopped working copy. This lock is outside the writable tree.
     return withDirectoryMergeLock(path.resolve(row.localRoot, "../../.."), async () => {
-      const current = await get(row.companyId, row.runId);
+      const current = await get(row.runId);
       if (!current) throw notFound("Agent directory copy not found");
       return fn(current);
     }, process.env, operation);
@@ -401,7 +398,7 @@ export function agentDirectoryWorkingCopyService(db: Db, get: (companyId: string
     checkpointWarm: (row: Copy, target?: AdapterExecutionTarget | null) => serial(row, current => current.receipt?.warm === true ? checkpoint(current, target) : Promise.resolve(current), "agent_directory_checkpoint"),
     collectStopped: (row: Copy, target?: AdapterExecutionTarget | null) => serial(row, current => collectStopped(current, target), "agent_directory_collect"),
     release: async (row: Copy) => {
-      const current = await get(row.companyId, row.runId);
+      const current = await get(row.runId);
       // This check changes no receipt or bytes. A concurrent stop merely leaves
       // cleanup to its owner or the recovery sweep; it grants no new authority.
       if (!current || releaseIsNoop(current)) return;

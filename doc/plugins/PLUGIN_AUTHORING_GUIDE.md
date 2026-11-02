@@ -173,10 +173,10 @@ paths; they always remain under `/api/plugins/:pluginId/api/*`.
 ## Managed Paperclip resources
 
 Plugins that provide durable Paperclip business objects should declare them in
-the manifest and let the host create or relink the actual records per company.
+the manifest and let the host create or relink the actual records in the instance's organization.
 Do this for plugin-owned agents, projects, routines, and skills.
 Do not hide long-lived work behind private plugin state when it should be visible
-to the board, scoped to a company, audited, budgeted, and assigned like normal
+to the board, audited, budgeted, and assigned like normal
 Paperclip work.
 
 Content-oriented plugins, such as LLM Wiki-style ingestion or durable knowledge
@@ -192,7 +192,7 @@ Use these surfaces:
   normal Paperclip agents with plugin ownership metadata, not background plugin
   workers.
 - Managed projects: declare top-level `projects[]` and require
-  `projects.managed`. Use this when the plugin needs a stable company-scoped
+  `projects.managed`. Use this when the plugin needs a stable
   project for its issues, routines, or workspace-oriented UI. Keep plugin work
   in a project instead of scattering generated issues across unrelated projects.
 - Managed routines: declare top-level `routines[]` and require
@@ -207,8 +207,9 @@ Use these surfaces:
 Managed resources are resolved by stable plugin keys, not hardcoded database
 ids. In a worker action or data handler, call `ctx.agents.managed.reconcile()`,
 `ctx.projects.managed.reconcile()`, `ctx.routines.managed.reconcile()`, and
-`ctx.skills.managed.reconcile()` for
-the current `companyId`. `reconcile()` creates the missing resource, relinks a
+`ctx.skills.managed.reconcile()` with
+the resource key; there is no company argument because the instance serves
+exactly one organization. `reconcile()` creates the missing resource, relinks a
 recoverable binding, or returns the existing resource. `reset()` reapplies the
 manifest defaults when the operator wants to restore the plugin's suggested
 configuration.
@@ -304,21 +305,18 @@ export default manifest;
 ```
 
 In the worker, expose a small setup action or settings-page action that
-reconciles the resources for the selected company:
+reconciles the resources:
 
 ```ts
 import { definePlugin } from "@paperclipai/plugin-sdk";
 
 export default definePlugin({
   setup(ctx) {
-    ctx.actions.register("setup-company", async (params) => {
-      const companyId = String(params.companyId ?? "");
-      if (!companyId) throw new Error("companyId is required");
-
-      const project = await ctx.projects.managed.reconcile("research", companyId);
-      const agent = await ctx.agents.managed.reconcile("researcher", companyId);
-      const routine = await ctx.routines.managed.reconcile("weekly-brief", companyId);
-      const skill = await ctx.skills.managed.reconcile("weekly-brief-skills", companyId);
+    ctx.actions.register("setup", async () => {
+      const project = await ctx.projects.managed.reconcile("research");
+      const agent = await ctx.agents.managed.reconcile("researcher");
+      const routine = await ctx.routines.managed.reconcile("weekly-brief");
+      const skill = await ctx.skills.managed.reconcile("weekly-brief-skills");
 
       return { project, agent, routine, skill };
     });
@@ -406,7 +404,7 @@ Currently exposed components include:
 
 - `MarkdownBlock` and `MarkdownEditor` for rendered and editable markdown.
 - `FileTree` for serializable file and directory trees.
-- `IssuesList` for a native company-scoped issue table.
+- `IssuesList` for a native issue table.
 - `AssigneePicker` for the same agent/user selector used in the new issue pane.
   Use the controlled `value` format `agent:<id>`, `user:<id>`, or `""`.
 - `ProjectPicker` for the same project selector used in the new issue pane.
@@ -416,19 +414,17 @@ Currently exposed components include:
 ```tsx
 import { AssigneePicker, ProjectPicker } from "@paperclipai/plugin-sdk/ui";
 
-export function PluginAssignmentControls({ companyId }: { companyId: string }) {
+export function PluginAssignmentControls() {
   const [assignee, setAssignee] = useState("");
   const [projectId, setProjectId] = useState("");
 
   return (
     <>
       <AssigneePicker
-        companyId={companyId}
         value={assignee}
         onChange={(value) => setAssignee(value)}
       />
       <ProjectPicker
-        companyId={companyId}
         value={projectId}
         onChange={setProjectId}
       />
@@ -542,7 +538,7 @@ export const manifest = {
 Use this when:
 
 - The data lives outside any project workspace.
-- Reads and writes need company-scoped configuration.
+- Reads and writes need plugin-level configuration.
 - The operator picks the path once in plugin settings and the worker resolves
   files relative to that root.
 
@@ -576,12 +572,12 @@ through `FileTree`. The file browser example uses `ctx.projects.listWorkspaces`
 to pick a workspace and renders its on-disk tree through `FileTree` with lazy
 loading. Pick the boundary per data source, not per plugin.
 
-## Company routes
+## Board routes
 
-Plugins may declare a `page` slot with `routePath` to own a company route like:
+Plugins may declare a `page` slot with `routePath` to own a board route (routes carry no company prefix) like:
 
 ```text
-/:companyPrefix/<routePath>
+/<routePath>
 ```
 
 Rules:
@@ -622,7 +618,7 @@ For image-supplied plugins and the persistent shell lifecycle, see
 ### Organization switcher
 
 Declare one `organizationSwitcher` slot with `ui.sidebar.register`. The host
-passes `PluginOrganizationSwitcherProps`: current company display data, collapsed
+passes `PluginOrganizationSwitcherProps`: the instance's organization display data, collapsed
 and open state, navigation/logout callbacks, and an icon renderer. Use the host
 logout callback; authenticate remote account requests at their owning service.
 `currentCompany` describes the host-local company. A distribution plugin must

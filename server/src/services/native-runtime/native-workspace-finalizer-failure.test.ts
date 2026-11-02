@@ -11,8 +11,8 @@ vi.mock("./native-workspace-sync.js", () => ({
   resumeNativeWorkspaceSync: sync.resume,
 }));
 vi.mock("../environments.js", () => ({ environmentService: () => ({
-  getLeaseById: async () => ({ id: "lease", companyId: "company", environmentId: "environment", providerLeaseId: "sandbox", status: "active" }),
-  getById: async () => ({ id: "environment", companyId: "company" }),
+  getLeaseById: async () => ({ id: "lease", environmentId: "environment", providerLeaseId: "sandbox", status: "active" }),
+  getById: async () => ({ id: "environment" }),
 }) }));
 vi.mock("../environment-execution-target.js", () => ({ resolveEnvironmentExecutionTarget: async () => ({ kind: "remote" }) }));
 vi.mock("../workspace-operations.js", () => ({ workspaceOperationService: () => ({
@@ -22,7 +22,7 @@ import { resumeNativeWorkspaceFinalization } from "./native-workspace-finalizer.
 
 function fixtureDb(): Db {
   const responses = [[{
-    companyId: "company", runtimeMode: "native", issueId: "issue", resultId: "result",
+    runtimeMode: "native", issueId: "issue", resultId: "result",
     runnerProfileJson: { nativeWorkspaceSync: {}, nativeExecutionInput: { binding: {} } },
   }], [{ phase: "result_accepted", nextAttemptAt: null, resultId: "result" }], []];
   return { select: () => {

@@ -45,7 +45,6 @@ function makeRecoveryActionRow(overrides: Record<string, unknown> = {}) {
   const now = new Date("2026-05-09T19:30:00.000Z");
   return {
     id: randomUUID(),
-    companyId: "company-1",
     sourceIssueId: "source-1",
     recoveryIssueId: null,
     kind: "missing_disposition",
@@ -112,7 +111,6 @@ describe("issueRecoveryActionService", () => {
     };
 
     const result = await issueRecoveryActionService(fakeDb as never).upsertSourceScoped({
-      companyId: "company-1",
       sourceIssueId: "source-1",
       kind: "missing_disposition",
       ownerType: "agent",
@@ -187,7 +185,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     await db.insert(agents).values([
       {
         id: managerId,
-        companyId,
         name: "CTO",
         role: "cto",
         status: "idle",
@@ -198,7 +195,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       },
       {
         id: coderId,
-        companyId,
         name: "Coder",
         role: "engineer",
         status: "idle",
@@ -211,7 +207,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     ]);
     await db.insert(issues).values({
       id: sourceIssueId,
-      companyId,
       title: "Implement backend recovery",
       status: "in_progress",
       priority: "medium",
@@ -220,11 +215,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       identifier: `${prefix}-1`,
     });
     const [sourceIssue] = await db.select().from(issues).where(eq(issues.id, sourceIssueId));
-    return { companyId, managerId, coderId, sourceIssueId, prefix, sourceIssue: sourceIssue! };
+    return { managerId, coderId, sourceIssueId, prefix, sourceIssue: sourceIssue! };
   }
 
   async function seedHeartbeatRun(input: {
-    companyId: string;
     agentId: string;
     runId: string;
     issueId?: string;
@@ -232,7 +226,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   }) {
     await db.insert(heartbeatRuns).values({
       id: input.runId,
-      companyId: input.companyId,
       agentId: input.agentId,
       invocationSource: "manual",
       status: input.status ?? "running",
@@ -261,7 +254,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: fixture.companyId,
       agentId: fixture.coderId,
       status,
       runtimeMode: "native",
@@ -274,7 +266,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     });
     const svc = issueRecoveryActionService(db);
     await svc.upsertSourceScoped({
-      companyId: fixture.companyId,
       sourceIssueId: fixture.sourceIssueId,
       kind: "active_run_watchdog",
       ownerType: "agent",
@@ -289,22 +280,22 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   }
 
   it.each(["queued", "running"])("projects the exact %s native run without a legacy scheduled retry", async (status) => {
-    const { companyId, sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery(status);
+    const { sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery(status);
     const expected = { runId, status, workspaceOperationId: null };
-    expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toEqual(expected);
-    expect((await svc.listActiveForIssues(companyId, [sourceIssueId])).get(sourceIssueId)?.nativeRunActivity).toEqual(expected);
+    expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toEqual(expected);
+    expect((await svc.listActiveForIssues([sourceIssueId])).get(sourceIssueId)?.nativeRunActivity).toEqual(expected);
     const response = await request(createApp()).get(`/api/issues/${sourceIssueId}`).expect(200);
     expect(response.body.scheduledRetry).toBeNull();
     expect(response.body.activeRecoveryAction.nativeRunActivity).toEqual(expected);
   });
 
   it("projects an actual long-running export while its original heartbeat remains failed, then clears it", async () => {
-    const { companyId, sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("failed");
+    const { sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("failed");
     let release!: () => void;
     let started!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });
     const entered = new Promise<void>((resolve) => { started = resolve; });
-    const work = workspaceOperationService(db).createRecorder({ companyId, issueId: sourceIssueId, heartbeatRunId: runId }).recordOperation({
+    const work = workspaceOperationService(db).createRecorder({ issueId: sourceIssueId, heartbeatRunId: runId }).recordOperation({
       phase: "workspace_finalize", metadata: { owningService: "native_workspace_finalizer" },
       run: async () => { started(); await held; return { status: "succeeded" }; },
     });
@@ -315,31 +306,30 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       operationId = operation!.id;
       // A slow callback remains live independently of elapsed wall-clock time.
       await db.update(workspaceOperations).set({ startedAt: new Date("2000-01-01T00:00:00Z") }).where(eq(workspaceOperations.id, operationId));
-      const scope = { companyId, issueId: sourceIssueId, runId, operationId };
+      const scope = { issueId: sourceIssueId, runId, operationId };
       expect(isNativeWorkspaceFinalizationOperationActive(scope)).toBe(true);
-      expect(isNativeWorkspaceFinalizationOperationActive({ ...scope, companyId: randomUUID() })).toBe(false);
-      expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toEqual({
+      expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toEqual({
         runId, status: "running", workspaceOperationId: operationId,
       });
     } finally { release(); await work; }
-    expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toBeNull();
+    expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toBeNull();
     // Even a stranded DB row cannot turn a joined callback back into activity.
     await db.update(workspaceOperations).set({ status: "running", finishedAt: null }).where(eq(workspaceOperations.id, operationId!));
-    expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toBeNull();
+    expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toBeNull();
   });
 
   it("keeps the activity claim until a timed-out export callback actually joins", async () => {
-    const { companyId, sourceIssueId, runId } = await seedNativeFinalizationRecovery("failed");
+    const { sourceIssueId, runId } = await seedNativeFinalizationRecovery("failed");
     let release!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });
-    const work = workspaceOperationService(db).createRecorder({ companyId, issueId: sourceIssueId, heartbeatRunId: runId }).recordOperation({
+    const work = workspaceOperationService(db).createRecorder({ issueId: sourceIssueId, heartbeatRunId: runId }).recordOperation({
       phase: "workspace_finalize", metadata: { owningService: "native_workspace_finalizer" }, timeoutMs: 10,
       run: async () => { await held; return { status: "succeeded" }; },
     });
     try {
       await expect(work).rejects.toThrow("exceeded");
       const [operation] = await db.select().from(workspaceOperations).where(eq(workspaceOperations.heartbeatRunId, runId));
-      const scope = { companyId, issueId: sourceIssueId, runId, operationId: operation!.id };
+      const scope = { issueId: sourceIssueId, runId, operationId: operation!.id };
       expect(isNativeWorkspaceFinalizationOperationActive(scope)).toBe(true);
       release();
       await held;
@@ -349,50 +339,47 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("does not treat an orphaned running export record as live after controller loss", async () => {
-    const { companyId, sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("failed");
+    const { sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("failed");
     await db.insert(workspaceOperations).values({
-      companyId, issueId: sourceIssueId, heartbeatRunId: runId,
+      issueId: sourceIssueId, heartbeatRunId: runId,
       phase: "workspace_finalize", status: "running",
       metadata: { owningService: "native_workspace_finalizer" },
     });
-    expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toBeNull();
+    expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toBeNull();
   });
 
-  it.each(["company", "issue", "legacy", "finished"])("rejects an apparently live run with the wrong %s authority", async (mismatch) => {
-    const { companyId, sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("running");
+  it.each(["issue", "legacy", "finished"])("rejects an apparently live run with the wrong %s authority", async (mismatch) => {
+    const { sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("running");
     const other = await seedCompany();
     await db.update(heartbeatRuns).set({
-      ...(mismatch === "company" ? { companyId: other.companyId, agentId: other.coderId } : {}),
       ...(mismatch === "issue" ? { nativeIssueId: other.sourceIssueId } : {}),
       ...(mismatch === "legacy" ? { runtimeMode: "legacy" } : {}),
       ...(mismatch === "finished" ? { finishedAt: new Date() } : {}),
     }).where(eq(heartbeatRuns.id, runId));
-    expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toBeNull();
+    expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toBeNull();
   });
 
-  it.each(["company", "issue", "run", "phase", "owner", "finished"])(
+  it.each(["issue", "run", "phase", "owner", "finished"])(
     "does not borrow native finalization activity with a different %s binding", async (mismatch) => {
-      const { companyId, sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("failed");
+      const { sourceIssueId, runId, svc } = await seedNativeFinalizationRecovery("failed");
       const other = await seedNativeFinalizationRecovery("running");
       await db.insert(workspaceOperations).values({
-        companyId: mismatch === "company" ? other.companyId : companyId,
         issueId: mismatch === "issue" ? other.sourceIssueId : sourceIssueId,
         heartbeatRunId: mismatch === "run" ? other.runId : runId,
         phase: mismatch === "phase" ? "workspace_prepare" : "workspace_finalize",
         status: "running", finishedAt: mismatch === "finished" ? new Date() : null,
         metadata: { owningService: mismatch === "owner" ? "different_service" : "native_workspace_finalizer" },
       });
-      expect((await svc.getActiveForIssue(companyId, sourceIssueId))?.nativeRunActivity).toBeNull();
-      expect((await svc.listActiveForIssues(companyId, [sourceIssueId, other.sourceIssueId])).get(sourceIssueId)?.nativeRunActivity).toBeNull();
+      expect((await svc.getActiveForIssue(sourceIssueId))?.nativeRunActivity).toBeNull();
+      expect((await svc.listActiveForIssues([sourceIssueId, other.sourceIssueId])).get(sourceIssueId)?.nativeRunActivity).toBeNull();
     },
   );
 
-  it("upserts one active source-scoped action per issue and keeps company scoping explicit", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+  it("upserts one active source-scoped action per issue", async () => {
+    const { managerId, sourceIssueId } = await seedCompany();
     const svc = issueRecoveryActionService(db);
 
     const first = await svc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "stranded_assigned_issue",
       ownerType: "agent",
@@ -404,7 +391,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       wakePolicy: { type: "wake_owner" },
     });
     const second = await svc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "stranded_assigned_issue",
       ownerType: "agent",
@@ -419,15 +405,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     expect(second.id).toBe(first.id);
     expect(second.attemptCount).toBe(2);
     expect(second.evidence).toMatchObject({ latestRunId: "run-2" });
-    expect(await svc.getActiveForIssue(companyId, sourceIssueId)).toMatchObject({ id: first.id });
-    expect(await svc.getActiveForIssue(randomUUID(), sourceIssueId)).toBeNull();
+    expect(await svc.getActiveForIssue(sourceIssueId)).toMatchObject({ id: first.id });
   });
 
   it("enforces maxAttempts once and removes every automatic recovery path", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     const svc = issueRecoveryActionService(db);
     const base = {
-      companyId,
       sourceIssueId,
       kind: "active_run_watchdog" as const,
       ownerType: "agent" as const,
@@ -471,10 +455,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("preserves legacy recovery ownership when new evidence is folded into an active action", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const svc = issueRecoveryActionService(db);
     const legacy = await svc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "stranded_assigned_issue",
       ownerType: "agent",
@@ -491,7 +474,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     });
 
     const updated = await svc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "stranded_assigned_issue",
       ownerType: "board",
@@ -523,7 +505,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("escalates stranded assigned work into a source action instead of a recovery issue", async () => {
-    const { companyId, coderId, sourceIssue } = await seedCompany();
+    const { coderId, sourceIssue } = await seedCompany();
     const enqueueWakeup = vi.fn(async () => null);
     const recovery = recoveryService(db, { enqueueWakeup });
     const latestRun = {
@@ -557,7 +539,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       .where(eq(issueRecoveryActions.sourceIssueId, sourceIssue.id));
     expect(actionRows).toHaveLength(1);
     expect(actionRows[0]).toMatchObject({
-      companyId,
       kind: "stranded_assigned_issue",
       status: "active",
       ownerType: "board",
@@ -578,7 +559,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const recoveryIssues = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stranded_issue_recovery")));
+      .where(eq(issues.originKind, "stranded_issue_recovery"));
     expect(recoveryIssues).toHaveLength(0);
     expect(updatedIssue?.assigneeAgentId).toBe(coderId);
     expect(enqueueWakeup).not.toHaveBeenCalled();
@@ -641,7 +622,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     // The fingerprint carries the canonical remote ref, so the same branch stays
     // one action and a different branch would make a distinct fingerprint.
     expect(actions[0]?.fingerprint).toBe(
-      `source_scoped_recovery:${sourceIssue.companyId}:${sourceIssue.id}:configuration_incomplete:workspace_base_ref:origin/fix/foo`,
+      `source_scoped_recovery:${sourceIssue.id}:configuration_incomplete:workspace_base_ref:origin/fix/foo`,
     );
   });
 
@@ -679,7 +660,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       attemptCount: 2,
     });
     expect(actions[0]?.fingerprint).toBe(
-      `source_scoped_recovery:${sourceIssue.companyId}:${sourceIssue.id}:configuration_incomplete:workspace_base_ref:origin/fix/foo`,
+      `source_scoped_recovery:${sourceIssue.id}:configuration_incomplete:workspace_base_ref:origin/fix/foo`,
     );
 
     // The operator gets one notice, bound to the one action.
@@ -814,10 +795,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   );
 
   it("stands down while the latest run was cancelled by a board operator", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "cancelled",
@@ -839,10 +819,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("stands down after an operator interrupt cancellation", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "cancelled",
@@ -862,10 +841,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("still recovers system-cancelled runs with no operator attribution", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "cancelled",
@@ -889,11 +867,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("schedules a provider-quota monitor for the original assignee without creating recovery work", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "failed",
@@ -938,12 +915,11 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("schedules another provider-quota monitor after a prior quota monitor fired", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.update(issues).set({ monitorAttemptCount: 1 }).where(eq(issues.id, sourceIssueId));
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "failed",
@@ -969,12 +945,11 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("skips provider-quota monitor scheduling for todo issues without aborting reconciliation", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.update(issues).set({ status: "todo" }).where(eq(issues.id, sourceIssueId));
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "failed",
@@ -1004,12 +979,11 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("does not create takeover recovery when a quota monitor cannot be scheduled", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.update(issues).set({ status: "in_review" }).where(eq(issues.id, sourceIssueId));
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "failed",
@@ -1039,7 +1013,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("schedules a quota monitor for a cross-agent active review participant", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const stageId = randomUUID();
     await db.update(issues).set({
       status: "in_review",
@@ -1078,7 +1052,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: managerId,
       invocationSource: "automation",
       status: "failed",
@@ -1109,7 +1082,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("does not restamp an in_review quota monitor when the assignee has a newer terminal run", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const stageId = randomUUID();
     await db.update(issues).set({
       status: "in_review",
@@ -1140,7 +1113,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const participantRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: participantRunId,
-      companyId,
       agentId: managerId,
       invocationSource: "automation",
       status: "failed",
@@ -1169,7 +1141,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
 
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
       agentId: coderId,
       invocationSource: "automation",
       status: "failed",
@@ -1196,7 +1167,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("classifies review recovery from the active participant run instead of a newer assignee run", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const stageId = randomUUID();
     await db.update(issues).set({
       status: "in_review",
@@ -1228,7 +1199,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const assigneeRunId = randomUUID();
     await db.insert(heartbeatRuns).values([{
       id: participantRunId,
-      companyId,
       agentId: managerId,
       invocationSource: "automation",
       status: "failed",
@@ -1239,7 +1209,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       contextSnapshot: { issueId: sourceIssueId },
     }, {
       id: assigneeRunId,
-      companyId,
       agentId: coderId,
       invocationSource: "automation",
       status: "failed",
@@ -1272,7 +1241,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("blocks a cross-agent review participant with incomplete configuration", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const stageId = randomUUID();
     await db.update(issues).set({
       status: "in_review",
@@ -1302,7 +1271,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: managerId,
       invocationSource: "automation",
       status: "failed",
@@ -1339,10 +1307,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("uses the default quota backoff when the provider does not state a reset time", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "failed",
@@ -1368,11 +1335,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("classifies model lookup failures as configuration incomplete without waking a recovery owner", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: coderId,
       invocationSource: "manual",
       status: "failed",
@@ -1403,11 +1369,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("does not classify stale configuration failures from a non-assignee run", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId: managerId,
       invocationSource: "manual",
       status: "failed",
@@ -1435,7 +1400,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("reuses the same source-scoped action when latest run IDs change while the cause stays the same", async () => {
-    const { companyId, managerId, coderId, sourceIssue } = await seedCompany();
+    const { managerId, coderId, sourceIssue } = await seedCompany();
     const enqueueWakeup = vi.fn(async () => null);
     const recovery = recoveryService(db, { enqueueWakeup });
     const firstLatestRun = {
@@ -1471,7 +1436,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       .where(eq(issueRecoveryActions.sourceIssueId, sourceIssue.id));
     expect(actionRows).toHaveLength(1);
     expect(actionRows[0]).toMatchObject({
-      companyId,
       kind: "stranded_assigned_issue",
       status: "active",
       previousOwnerAgentId: coderId,
@@ -1484,7 +1448,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("deduplicates workspace-incoherence recovery actions by the typed workspace fingerprint", async () => {
-    const { companyId, coderId, sourceIssue } = await seedCompany();
+    const { coderId, sourceIssue } = await seedCompany();
     const enqueueWakeup = vi.fn(async () => null);
     const recovery = recoveryService(db, { enqueueWakeup });
     const workspaceFingerprint = `workspace_incoherence:v1:sha256:${"a".repeat(64)}`;
@@ -1553,7 +1517,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       .where(eq(issueRecoveryActions.sourceIssueId, sourceIssue.id));
     expect(actionRows).toHaveLength(1);
     expect(actionRows[0]).toMatchObject({
-      companyId,
       kind: "workspace_validation",
       cause: "workspace_validation_failed",
       status: "active",
@@ -1594,7 +1557,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("keeps the source issue blocked when source-scoped wakeup is claimed synchronously", async () => {
-    const { companyId, managerId, coderId, sourceIssue } = await seedCompany();
+    const { managerId, coderId, sourceIssue } = await seedCompany();
     await db.update(agents).set({ status: "paused" }).where(eq(agents.id, managerId));
     const enqueueWakeup = vi.fn(async () => {
       await db
@@ -1642,7 +1605,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       .where(eq(issueRecoveryActions.sourceIssueId, sourceIssue.id));
     expect(actionRows).toHaveLength(1);
     expect(actionRows[0]).toMatchObject({
-      companyId,
       kind: "stranded_assigned_issue",
       status: "active",
       previousOwnerAgentId: coderId,
@@ -1663,11 +1625,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("does not create nested recovery artifacts when issue-backed fallback work itself fails", async () => {
-    const { companyId, managerId, sourceIssueId, prefix } = await seedCompany();
+    const { managerId, sourceIssueId, prefix } = await seedCompany();
     const recoveryIssueId = randomUUID();
     await db.insert(issues).values({
       id: recoveryIssueId,
-      companyId,
       title: "Recover stalled issue",
       status: "in_progress",
       priority: "medium",
@@ -1701,16 +1662,15 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const recoveryIssues = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stranded_issue_recovery")));
+      .where(eq(issues.originKind, "stranded_issue_recovery"));
     expect(recoveryIssues).toHaveLength(1);
     expect(recoveryIssues[0]?.status).toBe("blocked");
   });
 
   it("exposes active recovery actions on the issue read API", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "missing_disposition",
       ownerType: "agent",
@@ -1737,9 +1697,8 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("projects recovery action metadata into the structured wake payload", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     const action = await issueRecoveryActionService(db).upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "workspace_validation",
       ownerType: "agent",
@@ -1759,7 +1718,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
 
     const payload = await buildPaperclipWakePayload({
       db,
-      companyId,
       contextSnapshot: {
         issueId: sourceIssueId,
         wakeReason: "source_scoped_recovery_action",
@@ -1780,12 +1738,12 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("accepts new verified evidence after an automatic no-replay disposition without reopening on duplicate requests", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     const runId = randomUUID();
-    await seedHeartbeatRun({ companyId, agentId: coderId, runId, issueId: sourceIssueId, status: "failed" });
+    await seedHeartbeatRun({ agentId: coderId, runId, issueId: sourceIssueId, status: "failed" });
     await db.update(issues).set({ status: "blocked" }).where(eq(issues.id, sourceIssueId));
     const [action] = await db.insert(issueRecoveryActions).values({
-      companyId, sourceIssueId, kind: "active_run_watchdog", status: "resolved", outcome: "blocked",
+      sourceIssueId, kind: "active_run_watchdog", status: "resolved", outcome: "blocked",
       ownerType: "board", returnOwnerAgentId: coderId, cause: "uncertain_external_action", fingerprint: runId,
       nextAction: "Preserve recorded work without replay.",
       evidence: { runId, automaticRecovery: { replay: "blocked", actionOutcome: "unknown" } },
@@ -1808,7 +1766,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
 
   async function seedReconciledDelivery() {
     const fixture = await seedCompany();
-    const { companyId, coderId, sourceIssueId } = fixture;
+    const { coderId, sourceIssueId } = fixture;
     const responsibleUserId = randomUUID();
     await db.insert(authUsers).values({
       id: responsibleUserId,
@@ -1820,15 +1778,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     });
     await db
       .update(companies)
-      .set({ defaultResponsibleUserId: responsibleUserId })
-      .where(eq(companies.id, companyId));
+      .set({ defaultResponsibleUserId: responsibleUserId });
     await db
       .update(agents)
       .set({ runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } })
       .where(eq(agents.id, coderId));
     const previousRunId = randomUUID();
     await seedHeartbeatRun({
-      companyId,
       agentId: coderId,
       runId: previousRunId,
       issueId: sourceIssueId,
@@ -1837,7 +1793,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     // Occupy the agent's only dispatch slot, independently of this issue. These
     // tests exercise real wake admission, but cannot launch a provider process.
     await seedHeartbeatRun({
-      companyId,
       agentId: coderId,
       runId: randomUUID(),
       status: "running",
@@ -1845,7 +1800,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const [action] = await db
       .insert(issueRecoveryActions)
       .values({
-        companyId,
         sourceIssueId,
         kind: "active_run_watchdog",
         status: "resolved",
@@ -1914,7 +1868,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("reconciles a lost wake acknowledgement after the exact successor has already finished", async () => {
-    const { action, heartbeat, companyId, previousRunId } =
+    const { action, heartbeat, previousRunId } =
       await seedReconciledDelivery();
     let successorId: string | undefined;
     await deliverReconciledExecutions(db, async (...args) => {
@@ -1944,10 +1898,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       .select()
       .from(heartbeatRuns)
       .where(
-        and(
-          eq(heartbeatRuns.companyId, companyId),
-          eq(heartbeatRuns.id, successorId!),
-        ),
+        eq(heartbeatRuns.id, successorId!),
       );
     expect(successor).toMatchObject({
       status: "succeeded",
@@ -2014,11 +1965,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   );
 
   it("keeps reconciliation pending behind unrelated issue work without creating a second deferred outbox", async () => {
-    const { action, heartbeat, sourceIssueId, companyId, coderId } =
+    const { action, heartbeat, sourceIssueId, coderId } =
       await seedReconciledDelivery();
     const occupiedRunId = randomUUID();
     await seedHeartbeatRun({
-      companyId,
       agentId: coderId,
       runId: occupiedRunId,
       issueId: sourceIssueId,
@@ -2084,10 +2034,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("resolves an active recovery action and removes it from active projections", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "missing_disposition",
       ownerType: "agent",
@@ -2122,7 +2071,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       resolutionNote: "Operator confirmed the source issue is complete.",
     });
     expect(resolved.body.recoveryAction.resolvedAt).toBeTruthy();
-    expect(await recoveryActionSvc.getActiveForIssue(companyId, sourceIssueId)).toBeNull();
+    expect(await recoveryActionSvc.getActiveForIssue(sourceIssueId)).toBeNull();
     expect(
       await db
         .select()
@@ -2143,15 +2092,15 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it.each(["ask_user_questions", "request_confirmation"] as const)("does not retry past a new pending %s", async (kind) => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.update(issues).set({ status: "blocked", assigneeAgentId: coderId }).where(eq(issues.id, sourceIssueId));
     const action = await issueRecoveryActionService(db).upsertSourceScoped({
-      companyId, sourceIssueId, kind: "deliberate_wait_without_target", ownerType: "board",
+      sourceIssueId, kind: "deliberate_wait_without_target", ownerType: "board",
       returnOwnerAgentId: coderId, cause: "deliberate_wait_without_target", fingerprint: "disposition:pending-interaction",
       nextAction: "Review the outcome.", wakePolicy: { type: "board_escalation" },
     });
     const [interaction] = await db.insert(issueThreadInteractions).values({
-      companyId, issueId: sourceIssueId, kind, status: "pending", createdByAgentId: coderId,
+      issueId: sourceIssueId, kind, status: "pending", createdByAgentId: coderId,
       payload: kind === "request_confirmation"
         ? { version: 1, prompt: "Confirm the next step." }
         : { version: 1, questions: [{ id: "next", prompt: "Which step?", selectionMode: "single", options: [{ id: "a", label: "A" }] }] },
@@ -2165,7 +2114,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     expect(await db.select().from(issues).where(eq(issues.id, sourceIssueId))).toEqual([
       expect.objectContaining({ status: "blocked", assigneeAgentId: coderId }),
     ]);
-    expect(await issueRecoveryActionService(db).getActiveForIssue(companyId, sourceIssueId)).toMatchObject({ id: action.id });
+    expect(await issueRecoveryActionService(db).getActiveForIssue(sourceIssueId)).toMatchObject({ id: action.id });
     expect(await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, interaction!.id))).toEqual([
       expect.objectContaining({ status: "pending" }),
     ]);
@@ -2177,10 +2126,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("retries an exhausted disposition action once, preserving the owner and audit trail", async () => {
-    const { companyId, coderId, sourceIssueId } = await seedCompany();
+    const { coderId, sourceIssueId } = await seedCompany();
     await db.update(issues).set({ status: "blocked", assigneeAgentId: coderId }).where(eq(issues.id, sourceIssueId));
     const action = await issueRecoveryActionService(db).upsertSourceScoped({
-      companyId, sourceIssueId, kind: "deliberate_wait_without_target", ownerType: "board",
+      sourceIssueId, kind: "deliberate_wait_without_target", ownerType: "board",
       previousOwnerAgentId: coderId, returnOwnerAgentId: coderId, cause: "deliberate_wait_without_target",
       fingerprint: "disposition:exhausted", evidence: { terminalReason: "unchanged_source_state_exhausted", sourceAttemptCount: 2, sourceMaxAttempts: 2 },
       nextAction: "Review the outcome.", wakePolicy: { type: "board_escalation" },
@@ -2199,14 +2148,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("hands restored work back to the recorded return owner and records the outcome", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: coderId })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "workspace_validation",
       ownerType: "agent",
@@ -2254,14 +2202,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("does not enqueue a restored wake when todo status and assignee are unchanged", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "todo", assigneeAgentId: coderId })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "workspace_validation",
       ownerType: "agent",
@@ -2292,14 +2239,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("resolves an active recovery action by returning the source issue to todo", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2333,18 +2279,17 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       outcome: "restored",
       resolutionNote: "Try the source issue again.",
     });
-    expect(await recoveryActionSvc.getActiveForIssue(companyId, sourceIssueId)).toBeNull();
+    expect(await recoveryActionSvc.getActiveForIssue(sourceIssueId)).toBeNull();
   });
 
   it("marks a recovery action stale when a blocked source issue is manually moved to todo", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2378,7 +2323,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       resolutionNote: "Recovery action became stale because the source issue was manually moved from blocked to todo.",
     });
     expect(actionRow?.resolvedAt).toBeTruthy();
-    expect(await recoveryActionSvc.getActiveForIssue(companyId, sourceIssueId)).toBeNull();
+    expect(await recoveryActionSvc.getActiveForIssue(sourceIssueId)).toBeNull();
 
     const detail = await request(app).get(`/api/issues/${sourceIssueId}`).expect(200);
     expect(detail.body.activeRecoveryAction).toBeNull();
@@ -2397,10 +2342,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("folds stale recovery during read projection after the source issue reaches done", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2444,14 +2388,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("keeps active recovery visible when a plain comment does not create a live path", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2469,7 +2412,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       .send({ body: "I am looking at this, but not changing the disposition." })
       .expect(201);
 
-    expect(await recoveryActionSvc.getActiveForIssue(companyId, sourceIssueId)).toMatchObject({
+    expect(await recoveryActionSvc.getActiveForIssue(sourceIssueId)).toMatchObject({
       id: action.id,
       status: "active",
     });
@@ -2478,14 +2421,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("folds stale recovery when a structured resume comment restores todo dispatch", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2514,7 +2456,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       outcome: "cancelled",
       resolutionNote: "Recovery action became stale because the source issue was manually moved from blocked to todo.",
     });
-    expect(await recoveryActionSvc.getActiveForIssue(companyId, sourceIssueId)).toBeNull();
+    expect(await recoveryActionSvc.getActiveForIssue(sourceIssueId)).toBeNull();
 
     const activityRows = await db
       .select()
@@ -2528,14 +2470,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("rejects peer-agent source issue updates that would hide another owner's recovery action", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2549,7 +2490,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const app = createApp({
       type: "agent",
       agentId: coderId,
-      companyId,
       runId: randomUUID(),
       source: "agent_jwt",
     });
@@ -2573,14 +2513,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("rejects peer-agent recovery action resolution on a board-owned source issue", async () => {
-    const { companyId, managerId, coderId, sourceIssueId } = await seedCompany();
+    const { managerId, coderId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2594,7 +2533,6 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const app = createApp({
       type: "agent",
       agentId: coderId,
-      companyId,
       runId: randomUUID(),
       source: "agent_jwt",
     });
@@ -2623,14 +2561,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("keeps the named recovery owner from completing a board-owned source issue", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     await db
       .update(issues)
       .set({ status: "blocked", assigneeAgentId: null, assigneeUserId: "board-user" })
       .where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2645,12 +2582,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const app = createApp({
       type: "agent",
       agentId: managerId,
-      companyId,
       runId,
       source: "agent_jwt",
     });
     await seedHeartbeatRun({
-      companyId,
       agentId: managerId,
       runId,
       issueId: sourceIssueId,
@@ -2676,10 +2611,9 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("rejects blocked recovery resolution when the source issue has no first-class blockers", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2718,11 +2652,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("allows blocked recovery resolution when the source issue has an unresolved first-class blocker", async () => {
-    const { companyId, managerId, sourceIssueId, prefix } = await seedCompany();
+    const { managerId, sourceIssueId, prefix } = await seedCompany();
     const blockerIssueId = randomUUID();
     await db.insert(issues).values({
       id: blockerIssueId,
-      companyId,
       title: "Unblock recovery disposition",
       status: "todo",
       priority: "medium",
@@ -2731,14 +2664,12 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       identifier: `${prefix}-2`,
     });
     await db.insert(issueRelations).values({
-      companyId,
       issueId: blockerIssueId,
       relatedIssueId: sourceIssueId,
       type: "blocks",
     });
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2772,14 +2703,13 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       outcome: "blocked",
       resolutionNote: "The source issue is explicitly blocked by a follow-up.",
     });
-    expect(await recoveryActionSvc.getActiveForIssue(companyId, sourceIssueId)).toBeNull();
+    expect(await recoveryActionSvc.getActiveForIssue(sourceIssueId)).toBeNull();
   });
 
   it("rejects false-positive recovery resolution without an explicit source issue status", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2816,11 +2746,10 @@ describeEmbeddedPostgres("issue recovery actions", () => {
   });
 
   it("allows false-positive recovery resolution to restore a blocked source issue in the same request", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
+    const { managerId, sourceIssueId } = await seedCompany();
     await db.update(issues).set({ status: "blocked" }).where(eq(issues.id, sourceIssueId));
     const recoveryActionSvc = issueRecoveryActionService(db);
     const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
       sourceIssueId,
       kind: "issue_graph_liveness",
       ownerType: "agent",
@@ -2854,44 +2783,5 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       outcome: "false_positive",
       resolutionNote: "Recovery signal was stale; return to review.",
     });
-  });
-
-  it("enforces company scope when resolving recovery actions", async () => {
-    const { companyId, managerId, sourceIssueId } = await seedCompany();
-    const recoveryActionSvc = issueRecoveryActionService(db);
-    const action = await recoveryActionSvc.upsertSourceScoped({
-      companyId,
-      sourceIssueId,
-      kind: "missing_disposition",
-      ownerType: "agent",
-      ownerAgentId: managerId,
-      cause: "successful_run_missing_issue_disposition",
-      fingerprint: "missing-disposition:fingerprint",
-      evidence: { sourceRunId: "run-1" },
-      nextAction: "Choose a valid issue disposition.",
-      wakePolicy: { type: "wake_owner" },
-    });
-    const app = createApp({
-      type: "agent",
-      agentId: randomUUID(),
-      companyId: randomUUID(),
-      runId: randomUUID(),
-      source: "agent_jwt",
-    });
-
-    await request(app)
-      .post(`/api/issues/${sourceIssueId}/recovery-actions/resolve`)
-      .send({
-        actionId: action.id,
-        outcome: "restored",
-        sourceIssueStatus: "done",
-      })
-      .expect(404);
-
-    const [actionRow] = await db
-      .select()
-      .from(issueRecoveryActions)
-      .where(eq(issueRecoveryActions.id, action.id));
-    expect(actionRow?.status).toBe("active");
   });
 });

@@ -13,7 +13,6 @@ import { tooManyRequests, unprocessable } from "../../errors.js";
 const authority = {
   endpoint: {
     id: "endpoint",
-    companyId: "company",
     providerAccountId: "T1",
     botExternalId: "UBOT",
     allowDirectMessages: true,
@@ -129,7 +128,6 @@ describe("Slack access and publication boundaries", () => {
     expect(
       await slackPublicationAllowed(
         db,
-        "company",
         "endpoint",
         "task",
         "C1",
@@ -139,7 +137,6 @@ describe("Slack access and publication boundaries", () => {
     expect(
       await slackPublicationAllowed(
         db,
-        "company",
         "endpoint",
         "task",
         "G2",
@@ -149,7 +146,6 @@ describe("Slack access and publication boundaries", () => {
     expect(
       await slackPublicationAllowed(
         db,
-        "company",
         "endpoint",
         "task",
         "D1",
@@ -159,7 +155,6 @@ describe("Slack access and publication boundaries", () => {
     expect(
       await slackPublicationAllowed(
         db,
-        "company",
         "endpoint",
         "task",
         "D2",

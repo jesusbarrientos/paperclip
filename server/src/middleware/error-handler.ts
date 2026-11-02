@@ -107,7 +107,6 @@ function recordResponsibleUserDenialFromHttpError(
   void recordResponsibleUserDenialOnActiveRun(db, {
     runId: req.actor.runId ?? null,
     agentId: req.actor.agentId ?? null,
-    companyId: req.actor.companyId ?? null,
     code: details?.code,
   }).catch((recordErr) => {
     logger.warn(

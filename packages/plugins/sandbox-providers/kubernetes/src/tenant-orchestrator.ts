@@ -4,7 +4,6 @@ import { buildCiliumNetworkPolicyManifest } from "./cilium-network-policy.js";
 
 export interface EnsureTenantInput {
   namespace: string;
-  companyId: string;
   paperclipServerNamespace: string;
   serviceAccountAnnotations: Record<string, string>;
   egressMode: "standard" | "cilium";
@@ -66,7 +65,6 @@ async function ensureNamespace(clients: KubeClients, input: EnsureTenantInput): 
           metadata: {
             name: input.namespace,
             labels: {
-              "paperclip.io/company-id": input.companyId,
               "paperclip.io/managed-by": "paperclip-k8s-plugin",
               "pod-security.kubernetes.io/enforce": "restricted",
               "pod-security.kubernetes.io/audit": "restricted",

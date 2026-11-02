@@ -12,20 +12,18 @@ import { queryKeys } from "@/lib/queryKeys";
  * agent id, or "" for the company's built-in Summarizer (the default).
  */
 export function SummarizerAgentSelect({
-  companyId,
   value,
   onChange,
   enabled = true,
 }: {
-  companyId: string | null | undefined;
   value: string;
   onChange: (agentId: string) => void;
   enabled?: boolean;
 }) {
   const agentsQuery = useQuery({
-    queryKey: companyId ? queryKeys.agents.list(companyId) : ["agents", "none"],
-    queryFn: () => agentsApi.list(companyId!),
-    enabled: Boolean(companyId) && enabled,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
+    enabled: enabled,
   });
   const agentById = useMemo(
     () => new Map((agentsQuery.data ?? []).map((agent) => [agent.id, agent])),

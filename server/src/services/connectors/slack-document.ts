@@ -23,7 +23,6 @@ export async function authorizeSlackDocument(
     .from(chatActions)
     .where(
       and(
-        eq(chatActions.companyId, authority.endpoint.companyId),
         eq(chatActions.endpointId, authority.endpoint.id),
         eq(chatActions.kind, "slack_tool_write"),
         eq(chatActions.status, "processed"),
@@ -52,7 +51,6 @@ export async function authorizeSlackDocument(
       .from(chatActions)
       .where(
         and(
-          eq(chatActions.companyId, authority.endpoint.companyId),
           eq(chatActions.endpointId, authority.endpoint.id),
           eq(chatActions.kind, "slack_private_source"),
           sql`${chatActions.payload}->>'issueId' = ${authority.issueId}`,

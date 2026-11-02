@@ -201,7 +201,6 @@ export function managedAiSessionFingerprintConfig(
 export async function prepareManagedAiRuntime(
   db: Db,
   input: {
-    companyId: string;
     agentId: string;
     responsibleUserId: string | null;
     adapterType: string;
@@ -260,7 +259,7 @@ export async function prepareManagedAiRuntime(
     const credentialRef = selection.grant.credentialSecretRefs.find((ref) => ref.configPath === "ai.credential");
     if (!credentialRef) throw unprocessable("The selected AI credential is unavailable");
     const readFreshness = async () => (await db.select({ epoch: companySecrets.aiSessionEpoch, version: companySecrets.latestVersion })
-      .from(companySecrets).where(and(eq(companySecrets.companyId, input.companyId), eq(companySecrets.id, credentialRef.secretId))).limit(1))[0];
+      .from(companySecrets).where(eq(companySecrets.id, credentialRef.secretId)).limit(1))[0];
     const freshness = await readFreshness();
     const value = await service.credential(selection);
     const afterRead = await readFreshness();
@@ -268,7 +267,7 @@ export async function prepareManagedAiRuntime(
     home = await mkdtemp(
       path.join(
         os.tmpdir(),
-        `paperclip-ai-${input.companyId}-${selection.grant.id}-`,
+        `paperclip-ai-${selection.grant.id}-`,
       ),
     );
     const providerHome = path.join(home, "provider");
@@ -334,10 +333,7 @@ export async function prepareManagedAiRuntime(
                   .select()
                   .from(connectionGrants)
                   .where(
-                    and(
-                      eq(connectionGrants.id, selection.grant.id),
-                      eq(connectionGrants.companyId, input.companyId),
-                    ),
+                    eq(connectionGrants.id, selection.grant.id),
                   )
                   .for("update");
                 // A missing or revoked grant blocks the write-back. Among
@@ -357,10 +353,7 @@ export async function prepareManagedAiRuntime(
                   .select({ id: companySecrets.id })
                   .from(companySecrets)
                   .where(
-                    and(
-                      eq(companySecrets.id, ref.secretId),
-                      eq(companySecrets.companyId, input.companyId),
-                    ),
+                    eq(companySecrets.id, ref.secretId),
                   )
                   .for("update");
                 const current = await aiConnectionService(

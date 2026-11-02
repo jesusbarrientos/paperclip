@@ -44,22 +44,20 @@ interface Draft {
  * of their agents may archive. The one-click Undo/Unarchive affordance and the
  * "Archived by …" attribution live elsewhere (inbox rows / properties pane).
  */
-export function InboxAgentPolicyControl({ companyId }: { companyId: string | null | undefined }) {
+export function InboxAgentPolicyControl() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
   const lastServerKeyRef = useRef<string | null>(null);
 
   const policyQuery = useQuery({
-    queryKey: companyId ? queryKeys.inboxAgentPolicy.mine(companyId) : ["inbox-agent-policy", "none"],
-    queryFn: () => inboxAgentPolicyApi.getMine(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.inboxAgentPolicy.mine(),
+    queryFn: () => inboxAgentPolicyApi.getMine(),
   });
   const policy = policyQuery.data;
 
   const agentsQuery = useQuery({
-    queryKey: companyId ? queryKeys.agents.list(companyId) : ["agents", "none"],
-    queryFn: () => agentsApi.list(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   const selectableAgents = useMemo(
     () => (agentsQuery.data ?? []).filter(isAgentTaskTarget),
@@ -96,12 +94,12 @@ export function InboxAgentPolicyControl({ companyId }: { companyId: string | nul
 
   const updateMutation = useMutation({
     mutationFn: (next: Draft) =>
-      inboxAgentPolicyApi.updateMine(companyId!, {
+      inboxAgentPolicyApi.updateMine({
         mode: next.mode,
         allowedAgentIds: next.mode === "allowlist" ? next.allowedAgentIds : [],
       }),
     onSuccess: (saved) => {
-      queryClient.setQueryData<InboxAgentPolicy>(queryKeys.inboxAgentPolicy.mine(companyId!), saved);
+      queryClient.setQueryData<InboxAgentPolicy>(queryKeys.inboxAgentPolicy.mine(), saved);
     },
   });
 

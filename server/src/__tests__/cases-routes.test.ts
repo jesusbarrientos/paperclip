@@ -153,9 +153,8 @@ describeEmbeddedPostgres("cases routes", () => {
     return company!;
   }
 
-  async function seedAgent(companyId: string) {
+  async function seedAgent() {
     const [agent] = await db.insert(agents).values({
-      companyId,
       name: "Cases Agent",
       role: "engineer",
       adapterType: "codex_local",
@@ -176,7 +175,6 @@ describeEmbeddedPostgres("cases routes", () => {
   it("gates every case route when enableCases is off", async () => {
     const company = await seedCompany("OFF");
     const [caseRow] = await db.insert(cases).values({
-      companyId: company.id,
       caseNumber: 1,
       identifier: `${company.issuePrefix}-C1`,
       caseType: "bug",
@@ -184,8 +182,8 @@ describeEmbeddedPostgres("cases routes", () => {
     }).returning();
     const http = request(app(boardActor));
 
-    await http.get(`/api/companies/${company.id}/cases`).expect(403);
-    await http.post(`/api/companies/${company.id}/cases`).send({ caseType: "bug", title: "Bug" }).expect(403);
+    await http.get(`/api/cases`).expect(403);
+    await http.post(`/api/cases`).send({ caseType: "bug", title: "Bug" }).expect(403);
     await http.get(`/api/cases/${caseRow!.id}`).expect(403);
     await http.patch(`/api/cases/${caseRow!.id}`).send({ status: "in_progress" }).expect(403);
     await http.put(`/api/cases/${caseRow!.id}/documents/body`).send({ body: "Body" }).expect(403);
@@ -228,7 +226,6 @@ describeEmbeddedPostgres("cases routes", () => {
     await enableCases();
     const company = await seedCompany("FALL");
     const [caseRow] = await db.insert(cases).values({
-      companyId: company.id,
       caseNumber: 1,
       identifier: `${company.issuePrefix}-C1`,
       caseType: "bug",
@@ -245,7 +242,7 @@ describeEmbeddedPostgres("cases routes", () => {
     const http = request(app(boardActor));
 
     const first = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({
         caseType: "security",
         key: "CVE-1",
@@ -254,7 +251,7 @@ describeEmbeddedPostgres("cases routes", () => {
       })
       .expect(201);
     const second = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({
         caseType: "security",
         key: "CVE-1",
@@ -277,13 +274,13 @@ describeEmbeddedPostgres("cases routes", () => {
     const http = request(app(boardActor));
 
     const requests = [
-      http.post(`/api/companies/${company.id}/cases`).send({
+      http.post(`/api/cases`).send({
         caseType: "release_note",
         key: "2026-07-07",
         title: "Release note A",
         fields: { channel: "stable" },
       }),
-      http.post(`/api/companies/${company.id}/cases`).send({
+      http.post(`/api/cases`).send({
         caseType: "release_note",
         key: "2026-07-07",
         title: "Release note B",
@@ -303,17 +300,17 @@ describeEmbeddedPostgres("cases routes", () => {
     expect([{ channel: "stable" }, { channel: "canary" }]).toContainEqual(all[0]!.fields);
   });
 
-  it("upserts keyless cases by company and type", async () => {
+  it("upserts keyless cases by type", async () => {
     await enableCases();
     const company = await seedCompany("NUL");
     const http = request(app(boardActor));
 
     const first = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "release_note", title: "Draft release note" })
       .expect(201);
     const second = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "release_note", title: "Updated release note" })
       .expect(200);
 
@@ -330,7 +327,7 @@ describeEmbeddedPostgres("cases routes", () => {
     const http = request(app(boardActor));
 
     const created = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "blog_post", key: "launch", title: "Launch post" })
       .expect(201);
 
@@ -342,28 +339,25 @@ describeEmbeddedPostgres("cases routes", () => {
   it("auto-links run writes to their issue with a work link and event", async () => {
     await enableCases();
     const company = await seedCompany("RUN");
-    const agent = await seedAgent(company.id);
+    const agent = await seedAgent();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: company.id,
       agentId: agent.id,
       status: "running",
     });
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       title: "Source task",
       status: "in_progress",
       executionRunId: runId,
     }).returning();
     const created = await request(app(boardActor))
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "bug", title: "Bug" })
       .expect(201);
 
     const agentActor: Express.Request["actor"] = {
       type: "agent",
-      companyId: company.id,
       agentId: agent.id,
       runId,
       source: "agent_jwt",
@@ -392,26 +386,24 @@ describeEmbeddedPostgres("cases routes", () => {
   it("lets a run-scoped agent JWT complete the case happy path without manual linking", async () => {
     await enableCases();
     const company = await seedCompany("JWT");
-    const agent = await seedAgent(company.id);
+    const agent = await seedAgent();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: company.id,
       agentId: agent.id,
       status: "running",
     });
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       title: "Agent case source",
       status: "in_progress",
       executionRunId: runId,
     }).returning();
-    const token = createLocalAgentJwt(agent.id, company.id, agent.adapterType, runId);
+    const token = createLocalAgentJwt(agent.id, agent.adapterType, runId);
     expect(token).toBeTruthy();
 
     const http = request(authenticatedApp());
     const createResponse = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .set("Authorization", `Bearer ${token}`)
       .set("X-Paperclip-Run-Id", runId)
       .send({
@@ -450,7 +442,6 @@ describeEmbeddedPostgres("cases routes", () => {
     const links = await db.select().from(caseIssueLinks);
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({
-      companyId: company.id,
       caseId,
       issueId: issue!.id,
       role: "origin",
@@ -478,119 +469,21 @@ describeEmbeddedPostgres("cases routes", () => {
     expect(eventRows.filter((event) => event.runId === runId)).toHaveLength(eventRows.length);
   });
 
-  it("rejects cross-company agent access across the cases route surface", async () => {
-    await enableCases();
-    const ownCompany = await seedCompany("OWN");
-    const otherCompany = await seedCompany("OTH");
-    const agent = await seedAgent(ownCompany.id);
-    const [otherIssue] = await db.insert(issues).values({
-      companyId: otherCompany.id,
-      identifier: `${otherCompany.issuePrefix.toUpperCase()}-1`,
-      title: "Other company task",
-      status: "todo",
-    }).returning();
-    const [caseRow] = await db.insert(cases).values({
-      companyId: otherCompany.id,
-      caseNumber: 1,
-      identifier: `${otherCompany.issuePrefix.toUpperCase()}-C1`,
-      caseType: "bug",
-      title: "Other company case",
-    }).returning();
-    const [ownCase] = await db.insert(cases).values({
-      companyId: ownCompany.id,
-      caseNumber: 1,
-      identifier: `${ownCompany.issuePrefix.toUpperCase()}-C1`,
-      caseType: "bug",
-      title: "Own company case",
-    }).returning();
-    await db.insert(caseEvents).values({
-      companyId: otherCompany.id,
-      caseId: caseRow!.id,
-      kind: "created",
-      actorType: "system",
-      payload: {},
-    });
-
-    const agentActor: Express.Request["actor"] = {
-      type: "agent",
-      companyId: ownCompany.id,
-      agentId: agent.id,
-      source: "agent_key",
-      keyId: "key-1",
-      onBehalfOfUserId: "user-1",
-      onBehalfOfMemberships: [],
-    };
-    const http = request(app(agentActor));
-
-    await http.get(`/api/companies/${otherCompany.id}/cases`).expect(403);
-    await http
-      .post(`/api/companies/${otherCompany.id}/cases`)
-      .send({ caseType: "bug", title: "Wrong company create" })
-      .expect(403);
-    await http.get(`/api/cases/${caseRow!.id}`).expect(404);
-    await http.get(`/api/cases/${caseRow!.identifier}`).expect(404);
-    await http.patch(`/api/cases/${caseRow!.id}`).send({ status: "in_progress" }).expect(404);
-    await http.put(`/api/cases/${caseRow!.id}/documents/body`).send({ body: "Body" }).expect(404);
-    await http
-      .post(`/api/cases/${caseRow!.id}/links`)
-      .send({ issueId: otherIssue!.id, role: "reference" })
-      .expect(404);
-    await http
-      .post(`/api/cases/${caseRow!.id}/attachments`)
-      .attach("file", Buffer.from("artifact"), "artifact.txt")
-      .expect(404);
-    await http.get(`/api/cases/${caseRow!.id}/events`).expect(404);
-    await http.get(`/api/issues/${otherIssue!.id}/cases`).expect(404);
-    await http.get(`/api/issues/${otherIssue!.identifier}/cases`).expect(404);
-
-    const limitedBoardActor: Express.Request["actor"] = {
-      type: "board",
-      userId: "limited-board-user",
-      source: "session",
-      isInstanceAdmin: false,
-      companyIds: [ownCompany.id],
-      memberships: [{ companyId: ownCompany.id, membershipRole: "operator", status: "active" }],
-    };
-    const limitedBoardHttp = request(app(limitedBoardActor));
-    const ownCaseResponse = await limitedBoardHttp.get(`/api/cases/${ownCase!.id}`).expect(200);
-    expect(ownCaseResponse.body.id).toBe(ownCase!.id);
-    await limitedBoardHttp.get(`/api/cases/${caseRow!.id}`).expect(404);
-    await limitedBoardHttp.get(`/api/cases/${caseRow!.identifier}`).expect(404);
-    await limitedBoardHttp.get(`/api/issues/${otherIssue!.id}/cases`).expect(404);
-    await limitedBoardHttp.get(`/api/issues/${otherIssue!.identifier}/cases`).expect(404);
-
-    const scopedAdminHttp = request(app({ ...limitedBoardActor, isInstanceAdmin: true }));
-    await scopedAdminHttp.get(`/api/cases/${caseRow!.id}`).expect(404);
-    await scopedAdminHttp.get(`/api/cases/${caseRow!.identifier}`).expect(404);
-    await scopedAdminHttp.get(`/api/issues/${otherIssue!.id}/cases`).expect(404);
-    await scopedAdminHttp.get(`/api/issues/${otherIssue!.identifier}/cases`).expect(404);
-
-    expect(await db.select().from(cases)).toHaveLength(2);
-    expect(await db.select().from(caseDocuments)).toHaveLength(0);
-    expect(await db.select().from(documents)).toHaveLength(0);
-    expect(await db.select().from(caseIssueLinks)).toHaveLength(0);
-    expect(await db.select().from(caseAttachments)).toHaveLength(0);
-    expect(await db.select().from(assets)).toHaveLength(0);
-    expect(await db.select().from(caseEvents)).toHaveLength(1);
-  });
-
   it("supports documents, manual issue links, attachment links, events, and list filters", async () => {
     await enableCases();
     const company = await seedCompany("SUR");
     const [label] = await db.insert(labels).values({
-      companyId: company.id,
       name: "Needs Review",
       color: "#f59e0b",
     }).returning();
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       identifier: `${company.issuePrefix.toUpperCase()}-12`,
       title: "Related task",
       status: "todo",
     }).returning();
     const http = request(app(boardActor));
     const created = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "incident", title: "Production incident", status: "in_progress" })
       .expect(201);
 
@@ -600,15 +493,14 @@ describeEmbeddedPostgres("cases routes", () => {
     await http.post(`/api/cases/${created.body.id}/attachments`).attach("file", Buffer.from("artifact"), "artifact.txt").expect(201);
 
     const activeList = await http
-      .get(`/api/companies/${company.id}/cases`)
+      .get(`/api/cases`)
       .query({ status: "active", label: label!.id, q: "Production" })
       .expect(200);
     expect(activeList.body).toHaveLength(1);
     expect(activeList.body[0].id).toBe(created.body.id);
 
-    const [project] = await db.insert(projects).values({ companyId: company.id, name: "Launch" }).returning();
+    const [project] = await db.insert(projects).values({ name: "Launch" }).returning();
     const [projectCase] = await db.insert(cases).values({
-      companyId: company.id,
       projectId: project!.id,
       caseNumber: 50,
       identifier: `${company.issuePrefix.toUpperCase()}-C50`,
@@ -617,13 +509,12 @@ describeEmbeddedPostgres("cases routes", () => {
       status: "draft",
     }).returning();
     const multiFiltered = await http
-      .get(`/api/companies/${company.id}/cases`)
+      .get(`/api/cases`)
       .query({ types: ["incident", "brief"], statuses: ["in_progress", "draft"], projectIds: [project!.id], includeNoProject: "true" })
       .expect(200);
     expect(multiFiltered.body.map((row: { id: string }) => row.id).sort()).toEqual([created.body.id, projectCase!.id].sort());
 
     await db.insert(cases).values(Array.from({ length: 205 }, (_, index) => ({
-      companyId: company.id,
       caseNumber: 100 + index,
       identifier: `${company.issuePrefix.toUpperCase()}-C${100 + index}`,
       caseType: "incident",
@@ -632,7 +523,7 @@ describeEmbeddedPostgres("cases routes", () => {
       updatedAt: new Date(`2030-01-01T00:${String(index % 60).padStart(2, "0")}:00.000Z`),
     })));
     const deepFiltered = await http
-      .get(`/api/companies/${company.id}/cases`)
+      .get(`/api/cases`)
       .query({ q: "Production", limit: 1 })
       .expect(200);
     expect(deepFiltered.body).toHaveLength(1);
@@ -660,16 +551,14 @@ describeEmbeddedPostgres("cases routes", () => {
   it("enriches events and revisions with actor name and run→issue attribution", async () => {
     await enableCases();
     const company = await seedCompany("ATT");
-    const agent = await seedAgent(company.id);
+    const agent = await seedAgent();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: company.id,
       agentId: agent.id,
       status: "running",
     });
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       title: "Attribution source task",
       status: "in_progress",
       executionRunId: runId,
@@ -677,7 +566,6 @@ describeEmbeddedPostgres("cases routes", () => {
 
     const agentActor: Express.Request["actor"] = {
       type: "agent",
-      companyId: company.id,
       agentId: agent.id,
       runId,
       source: "agent_jwt",
@@ -687,7 +575,7 @@ describeEmbeddedPostgres("cases routes", () => {
     const http = request(app(agentActor));
 
     const created = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "blog_post", title: "Attribution post" })
       .expect(201);
     // Two revisions on the body document.
@@ -721,7 +609,7 @@ describeEmbeddedPostgres("cases routes", () => {
     const company = await seedCompany("DOC");
     const http = request(app(boardActor));
     const created = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "blog_post", title: "Document controls" })
       .expect(201);
 
@@ -771,7 +659,7 @@ describeEmbeddedPostgres("cases routes", () => {
     const company = await seedCompany("ANN");
     const http = request(app(boardActor));
     const created = await http
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "brief", title: "Annotated case" })
       .expect(201);
     const document = await http
@@ -852,29 +740,29 @@ describeEmbeddedPostgres("cases routes", () => {
     const company = await seedCompany("TREE");
     const boardHttp = request(app(boardActor));
     const parent = await boardHttp
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "epic", title: "Parent epic" })
       .expect(201);
     const child = await boardHttp
-      .post(`/api/companies/${company.id}/cases`)
+      .post(`/api/cases`)
       .send({ caseType: "task", title: "Child task", parentCaseId: parent.body.id })
       .expect(201);
 
     const children = await boardHttp
-      .get(`/api/companies/${company.id}/cases`)
+      .get(`/api/cases`)
       .query({ parent: parent.body.id })
       .expect(200);
     expect(children.body).toHaveLength(1);
     expect(children.body[0].id).toBe(child.body.id);
 
     const searchOnly = await boardHttp
-      .get(`/api/companies/${company.id}/cases`)
+      .get(`/api/cases`)
       .query({ q: "Child task" })
       .expect(200);
     expect(searchOnly.body.map((row: { id: string }) => row.id)).toEqual([child.body.id]);
 
     const searchWithAncestors = await boardHttp
-      .get(`/api/companies/${company.id}/cases`)
+      .get(`/api/cases`)
       .query({ q: "Child task", includeAncestors: "true" })
       .expect(200);
     expect(searchWithAncestors.body).toEqual(expect.arrayContaining([
@@ -887,7 +775,6 @@ describeEmbeddedPostgres("cases routes", () => {
 
     // Link the child case to an issue, then resolve cases-for-issue.
     const [issue] = await db.insert(issues).values({
-      companyId: company.id,
       title: "Issue with cases",
       status: "todo",
     }).returning();

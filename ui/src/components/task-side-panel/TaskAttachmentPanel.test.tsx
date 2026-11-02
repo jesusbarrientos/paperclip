@@ -33,8 +33,8 @@ describe("text attachment tabs", () => {
   });
   it("retains attachment tabs when workspace browsing is disabled", () => {
     const tab = taskPanelAttachmentTab("file-1", "AGENTS.md");
-    writeTaskSidePanelState("user", "company", "task", { state: { tabs: [tab], activeTabId: tab.id }, launcherOpen: false, userInteracted: true, autoPlanHandled: false, updatedAt: 1 });
-    expect(readTaskSidePanelState("user", "company", "task", false)?.state.tabs).toEqual([tab]);
+    writeTaskSidePanelState("user", "task", { state: { tabs: [tab], activeTabId: tab.id }, launcherOpen: false, userInteracted: true, autoPlanHandled: false, updatedAt: 1 });
+    expect(readTaskSidePanelState("user", "task", false)?.state.tabs).toEqual([tab]);
     expect(taskPanelAttachmentTab("file-1", "Renamed.md").id).toBe(tab.id);
   });
   it("switches rendered/raw Markdown and keeps a download action", async () => {

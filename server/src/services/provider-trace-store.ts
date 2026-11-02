@@ -49,7 +49,6 @@ function asMetadata(row: TraceRow): ProviderTraceMetadata {
     schema: "paperclip.provider_trace_metadata.v1",
     id: row.id,
     runId: row.runId,
-    companyId: row.companyId,
     status: row.status as ProviderTraceMetadata["status"],
     provider: row.provider,
     frameCount: row.frameCount,
@@ -325,7 +324,6 @@ export function providerTraceStore(db: Db) {
     }
     if (newlyExpired) {
       await logActivity(db, {
-        companyId: row.companyId,
         actorType: "system",
         actorId: "provider-trace-expiry",
         runId: row.runId,
@@ -365,7 +363,6 @@ export function providerTraceStore(db: Db) {
 
   async function prepare(input: {
     runId: string;
-    companyId: string;
     provider: string;
     requestedBy: string;
   }) {
@@ -400,7 +397,6 @@ export function providerTraceStore(db: Db) {
       .insert(providerTraceRecords)
       .values({
         runId: input.runId,
-        companyId: input.companyId,
         status: "capturing",
         provider: input.provider,
         traceRef,
@@ -413,13 +409,8 @@ export function providerTraceStore(db: Db) {
     return { metadata: asMetadata(row), path: filePath };
   }
 
-  async function getByRun(runId: string, companyId?: string) {
-    const where = companyId
-      ? and(
-          eq(providerTraceRecords.runId, runId),
-          eq(providerTraceRecords.companyId, companyId),
-        )
-      : eq(providerTraceRecords.runId, runId);
+  async function getByRun(runId: string) {
+    const where = eq(providerTraceRecords.runId, runId);
     return db
       .select()
       .from(providerTraceRecords)
@@ -428,8 +419,8 @@ export function providerTraceStore(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
-  async function getReadableByRun(runId: string, companyId: string) {
-    const row = await getByRun(runId, companyId);
+  async function getReadableByRun(runId: string) {
+    const row = await getByRun(runId);
     if (!row) return null;
     const now = new Date();
     if (row.deletedAt) {
@@ -448,26 +439,22 @@ export function providerTraceStore(db: Db) {
     return row;
   }
 
-  async function listMetadataForRuns(companyId: string, runIds: string[]) {
+  async function listMetadataForRuns(runIds: string[]) {
     if (runIds.length === 0) return [];
     const rows = await db
       .select()
       .from(providerTraceRecords)
       .where(
-        and(
-          eq(providerTraceRecords.companyId, companyId),
-          inArray(providerTraceRecords.runId, runIds.slice(0, 100)),
-        ),
+        inArray(providerTraceRecords.runId, runIds.slice(0, 100)),
       );
     return rows.map(asMetadata);
   }
 
   async function finalize(
     runId: string,
-    companyId: string,
     failureReason?: string | null,
   ) {
-    const row = await getReadableByRun(runId, companyId);
+    const row = await getReadableByRun(runId);
     if (!row) return null;
     let bytes: Buffer;
     try {
@@ -488,7 +475,7 @@ export function providerTraceStore(db: Db) {
         ))
         .returning()
         .then((rows) => rows[0] ?? null);
-      if (!finalized) await getReadableByRun(runId, companyId);
+      if (!finalized) await getReadableByRun(runId);
       return finalized;
     }
     let invalidRecordCount = 0;
@@ -531,12 +518,12 @@ export function providerTraceStore(db: Db) {
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
-    if (!finalized) await getReadableByRun(runId, companyId);
+    if (!finalized) await getReadableByRun(runId);
     return finalized;
   }
 
-  async function inspect(runId: string, companyId: string) {
-    const row = await getReadableByRun(runId, companyId);
+  async function inspect(runId: string) {
+    const row = await getReadableByRun(runId);
     if (!row) return { trace: null, entries: [] };
     const entries = await readEntries(row.traceRef).catch(() => []);
     return {
@@ -547,18 +534,17 @@ export function providerTraceStore(db: Db) {
     };
   }
 
-  async function readExactEntries(runId: string, companyId: string) {
-    const row = await getReadableByRun(runId, companyId);
+  async function readExactEntries(runId: string) {
+    const row = await getReadableByRun(runId);
     if (!row) return null;
     return readEntries(row.traceRef);
   }
 
   async function revealFrame(
     runId: string,
-    companyId: string,
     frameId: number,
   ) {
-    const row = await getReadableByRun(runId, companyId);
+    const row = await getReadableByRun(runId);
     if (!row) return null;
     const entry = (await readEntries(row.traceRef)).find(
       (candidate) =>
@@ -569,14 +555,14 @@ export function providerTraceStore(db: Db) {
       : null;
   }
 
-  async function download(runId: string, companyId: string) {
-    const row = await getReadableByRun(runId, companyId);
+  async function download(runId: string) {
+    const row = await getReadableByRun(runId);
     if (!row) return null;
     return { row, bytes: await readTraceBytes(row.traceRef) };
   }
 
-  async function remove(runId: string, companyId: string) {
-    const row = await getByRun(runId, companyId);
+  async function remove(runId: string) {
+    const row = await getByRun(runId);
     if (!row || row.deletedAt) return null;
     // Manual deletion is filesystem-first and strict: a reported success must
     // never leave raw sidecars orphaned behind an inaccessible database row.

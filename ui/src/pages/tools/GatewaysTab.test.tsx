@@ -17,8 +17,8 @@ const pushToastMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/tools", () => ({
   toolsApi: {
-    listGateways: (companyId: string) => listGatewaysMock(companyId),
-    listProfiles: (companyId: string) => listProfilesMock(companyId),
+    listGateways: () => listGatewaysMock(),
+    listProfiles: () => listProfilesMock(),
     createGateway: vi.fn(),
     createGatewayToken: vi.fn(),
     revokeGatewayToken: vi.fn(),
@@ -27,13 +27,13 @@ vi.mock("@/api/tools", () => ({
 
 vi.mock("@/api/agents", () => ({
   agentsApi: {
-    list: (companyId: string) => listAgentsMock(companyId),
+    list: () => listAgentsMock(),
   },
 }));
 
 vi.mock("@/api/projects", () => ({
   projectsApi: {
-    list: (companyId: string) => listProjectsMock(companyId),
+    list: () => listProjectsMock(),
   },
 }));
 
@@ -64,7 +64,6 @@ async function flushReact() {
 function profile(overrides: Partial<ToolProfileWithDetails> = {}): ToolProfileWithDetails {
   return {
     id: "profile-1",
-    companyId: "company-1",
     profileKey: "engineering",
     name: "Engineering",
     description: null,
@@ -93,7 +92,6 @@ function profile(overrides: Partial<ToolProfileWithDetails> = {}): ToolProfileWi
 function token(overrides: Partial<ToolMcpGatewayToken> = {}): ToolMcpGatewayToken {
   return {
     id: "token-1",
-    companyId: "company-1",
     gatewayId: "gateway-1",
     name: "Token",
     tokenPrefix: "pcgw_token",
@@ -120,7 +118,6 @@ function token(overrides: Partial<ToolMcpGatewayToken> = {}): ToolMcpGatewayToke
 function gateway(overrides: Partial<ToolMcpGatewayWithTokens> = {}): ToolMcpGatewayWithTokens {
   return {
     id: "gateway-1",
-    companyId: "company-1",
     gatewayPublicId: "gw_public",
     name: "Dotta's MacBook",
     displaySlug: "dottas-macbook",
@@ -250,7 +247,7 @@ describe("GatewaysTab", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await render(
       <QueryClientProvider client={client}>
-        <GatewaysTab companyId="company-1" />
+        <GatewaysTab />
       </QueryClientProvider>,
     );
 

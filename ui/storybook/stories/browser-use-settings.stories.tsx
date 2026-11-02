@@ -9,12 +9,10 @@ import { BrowserUseSettingsPanel } from "@/pages/apps/app-detail/BrowserUseSetti
 import { BrowserStoryProviders, mockBrowserUse } from "../fixtures/browser-use";
 const connection = {
   id: "browser-use-cloud-connection",
-  companyId: "storybook-company",
 } as ToolConnection;
 const grant = (id: string, kind: "organization" | "user"): ConnectionGrant =>
   ({
     id,
-    companyId: connection.companyId,
     connectionId: connection.id,
     kind,
     status: "active",

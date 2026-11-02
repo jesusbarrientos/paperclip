@@ -10,9 +10,9 @@ const getIssue = vi.hoisted(() => vi.fn());
 vi.mock("../api/issues", () => ({ issuesApi: { get: getIssue } }));
 vi.mock("@/lib/router", () => ({
   Link: ({ to, ...props }: ComponentProps<"a"> & { to: string }) => <a href={to} {...props} />,
-  useCaseHref: () => () => "",
+  caseHref: () => "",
 }));
-vi.mock("../context/CompanyContext", () => ({ useOptionalCompany: () => null }));
+vi.mock("../context/OrganizationContext", () => ({ useOptionalOrganization: () => null }));
 
 afterEach(() => vi.clearAllMocks());
 

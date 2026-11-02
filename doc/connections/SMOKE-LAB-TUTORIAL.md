@@ -72,7 +72,7 @@ the URL bar, e.g. `PAP`). Replace it in the example paths.
 3. Click **Start services**.
    **You should see:** two service cards flip to a green **running** dot:
    - **Fake OAuth 2.0 provider** — its URL is on the instance's own host
-     (`…/api/companies/{companyId}/smoke-lab/oauth/authorize`); the provider runs
+     (`…/api/smoke-lab/oauth/authorize`); the provider runs
      in-process, so there is no separate port.
    - **HTTP MCP fixture** — a loopback sidecar with a `http://127.0.0.1:<port>/mcp`
      URL.

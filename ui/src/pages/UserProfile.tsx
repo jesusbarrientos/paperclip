@@ -15,7 +15,6 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { IssueStatusBadge } from "../components/StatusBadge";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 import { useHiddenSettings } from "../hooks/useHiddenSettings";
 import { queryKeys } from "../lib/queryKeys";
 import {
@@ -29,8 +28,7 @@ import {
   relativeTime,
 } from "../lib/utils";
 
-const NO_COMPANY = "__none__";
-const PROFILE_SETTINGS_PATH = "/company/settings/instance/profile";
+const PROFILE_SETTINGS_PATH = "/organization/settings/instance/profile";
 
 function initials(name: string | null | undefined) {
   const value = name?.trim() || "User";
@@ -204,14 +202,12 @@ function UsageList({
 
 export function UserProfile() {
   const { userSlug = "" } = useParams<{ userSlug: string }>();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const companyId = selectedCompanyId ?? NO_COMPANY;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.userProfile(companyId, userSlug),
-    queryFn: () => userProfilesApi.get(companyId, userSlug),
-    enabled: !!selectedCompanyId && !!userSlug,
+    queryKey: queryKeys.userProfile(userSlug),
+    queryFn: () => userProfilesApi.get(userSlug),
+    enabled: !!userSlug,
   });
   // The edit link only belongs on the viewer's own profile, and never when the
   // hosting operator hides the profile settings surface the link points at.
@@ -262,9 +258,6 @@ export function UserProfile() {
     [data?.topProviders],
   );
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={UserRound} message="Select an organization to view user profiles." />;
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="dashboard" />;

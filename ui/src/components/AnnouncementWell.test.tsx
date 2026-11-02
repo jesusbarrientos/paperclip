@@ -7,11 +7,11 @@ import { AnnouncementWell } from "./AnnouncementWell";
 import { announcementPreview } from "@/lib/announcement-preview";
 
 const state = vi.hoisted(() => ({
-  userId: "alice" as string | null, settled: true, companyId: "company", loading: false,
+  userId: "alice" as string | null, settled: true, loading: false,
   onboardingOpen: false, toasts: [] as unknown[], dismiss: vi.fn(), hook: vi.fn(),
 }));
-vi.mock("@/api/companies-query", () => ({ useAccountIdentity: () => ({ userId: state.userId, settled: state.settled }) }));
-vi.mock("@/context/CompanyContext", () => ({ useCompany: () => ({ selectedCompanyId: state.companyId, loading: state.loading }) }));
+vi.mock("@/api/account-identity", () => ({ useAccountIdentity: () => ({ userId: state.userId, settled: state.settled }) }));
+vi.mock("@/context/OrganizationContext", () => ({ useOrganization: () => ({ loading: state.loading }) }));
 vi.mock("@/context/DialogContext", () => ({ useDialogState: () => ({ onboardingOpen: state.onboardingOpen }) }));
 vi.mock("@/context/ToastContext", () => ({ useOptionalToastActions: () => null, useOptionalToastState: () => state.toasts }));
 vi.mock("@/hooks/useAnnouncement", () => ({ useAnnouncement: (options: { enabled: boolean }) => {
@@ -28,13 +28,13 @@ describe("announcement placement gates", () => {
   const render = async () => { await act(async () => root.render(<AnnouncementWell health={health} />)); };
   const visible = () => Boolean(container.querySelector('[aria-label="Paperclip announcements"]'));
   beforeEach(() => {
-    Object.assign(state, { userId: "alice", settled: true, companyId: "company", loading: false, onboardingOpen: false, toasts: [] });
+    Object.assign(state, { userId: "alice", settled: true, loading: false, onboardingOpen: false, toasts: [] });
     vi.clearAllMocks();
     health = { deploymentMode: "authenticated" } as HealthStatus;
     container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   });
   afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
-  it("waits for identity, company and onboarding, and uses local-board in no-login mode", async () => {
+  it("waits for identity, organization and onboarding, and uses local-board in no-login mode", async () => {
     state.settled = false; await render(); expect(visible()).toBe(false);
     state.settled = true; state.loading = true; await render(); expect(visible()).toBe(false);
     state.loading = false; state.onboardingOpen = true; await render(); expect(visible()).toBe(false);

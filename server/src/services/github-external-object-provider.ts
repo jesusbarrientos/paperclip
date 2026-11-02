@@ -15,7 +15,7 @@ type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface GitHubExternalObjectProviderOptions {
   fetch?: FetchLike;
-  tokenProvider?: (companyId: string) => Promise<string | null> | string | null;
+  tokenProvider?: () => Promise<string | null> | string | null;
   secretNames?: readonly string[];
 }
 
@@ -317,12 +317,12 @@ async function safeJson(response: Response) {
   }
 }
 
-async function defaultTokenProvider(db: Db, companyId: string, secretNames: readonly string[]) {
+async function defaultTokenProvider(db: Db, secretNames: readonly string[]) {
   const secrets = secretService(db);
   for (const secretName of secretNames) {
-    const secret = await secrets.getByName(companyId, secretName);
+    const secret = await secrets.getByName(secretName);
     if (!secret) continue;
-    const token = await secrets.resolveSecretValue(companyId, secret.id, "latest");
+    const token = await secrets.resolveSecretValue(secret.id, "latest");
     const trimmed = token.trim();
     if (trimmed) return trimmed;
   }
@@ -337,7 +337,7 @@ export function createGitHubExternalObjectProvider(
   const secretNames = opts.secretNames ?? DEFAULT_GITHUB_TOKEN_SECRET_NAMES;
   const tokenProvider = Object.prototype.hasOwnProperty.call(opts, "tokenProvider") && opts.tokenProvider !== undefined
     ? opts.tokenProvider
-    : ((companyId: string) => defaultTokenProvider(db, companyId, secretNames));
+    : (() => defaultTokenProvider(db, secretNames));
 
   const detector: ExternalObjectDetector = {
     key: "github",
@@ -364,7 +364,7 @@ export function createGitHubExternalObjectProvider(
     return {
       providerKey: "github",
       objectType,
-      async resolve({ companyId, object }) {
+      async resolve({ object }) {
         const identity = parseGitHubObject(object);
         if (!identity || identity.objectType !== objectType) {
           return {
@@ -378,7 +378,7 @@ export function createGitHubExternalObjectProvider(
 
         let token: string | null = null;
         try {
-          token = typeof tokenProvider === "function" ? await tokenProvider(companyId) : tokenProvider;
+          token = typeof tokenProvider === "function" ? await tokenProvider() : tokenProvider;
         } catch {
           return {
             ok: false,

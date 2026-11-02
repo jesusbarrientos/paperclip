@@ -11,7 +11,6 @@ const MIN = 60 * 1000;
 function event(overrides: Partial<ToolGatewayActivityEvent> = {}): ToolGatewayActivityEvent {
   return {
     id: "evt-1",
-    companyId: COMPANY,
     action: "tool_gateway.call_completed",
     actorType: "agent",
     actorId: "agent-fable",
@@ -119,7 +118,7 @@ const POLICIES = [
 ];
 
 function defaultActivityKey() {
-  return queryKeys.tools.activity(COMPANY, { window: "24h" });
+  return queryKeys.tools.activity({ window: "24h" });
 }
 
 function Seeded({ events }: { events: ToolGatewayActivityEvent[] }) {
@@ -134,20 +133,20 @@ function Seeded({ events }: { events: ToolGatewayActivityEvent[] }) {
       pageParams: [null],
     });
     // Filtered-empty: typing "refund" resolves to an empty page.
-    c.setQueryData(queryKeys.tools.activity(COMPANY, { window: "24h", search: "refund" }), {
+    c.setQueryData(queryKeys.tools.activity({ window: "24h", search: "refund" }), {
       pages: [{ events: [], nextCursor: null }],
       pageParams: [null],
     });
-    c.setQueryData(queryKeys.tools.applications(COMPANY), { applications: APPLICATIONS });
-    c.setQueryData(queryKeys.agents.list(COMPANY), AGENTS);
-    c.setQueryData(queryKeys.tools.policies(COMPANY), { policies: POLICIES });
+    c.setQueryData(queryKeys.tools.applications(), { applications: APPLICATIONS });
+    c.setQueryData(queryKeys.agents.list(), AGENTS);
+    c.setQueryData(queryKeys.tools.policies(), { policies: POLICIES });
     return c;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
     <QueryClientProvider client={client}>
       <div className="mx-auto max-w-5xl p-6">
-        <AuditTab companyId={COMPANY} />
+        <AuditTab />
       </div>
     </QueryClientProvider>
   );

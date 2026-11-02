@@ -26,7 +26,7 @@ function seededClient() {
       queries: { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false },
     },
   });
-  c.setQueryData(queryKeys.apps.gallery(COMPANY), { apps: GALLERY });
+  c.setQueryData(queryKeys.apps.gallery(), { apps: GALLERY });
   return c;
 }
 

@@ -108,7 +108,7 @@ const baseTimestamps = {
 describe("IssueChatThread system notice routing", () => {
   it("renders the typed disposition notice in the classic thread without reading its prose", () => {
     const comment: IssueChatComment = {
-      id: "typed-recovery", companyId: "company-1", issueId: "issue-1", authorType: "system", authorAgentId: null, authorUserId: null,
+      id: "typed-recovery", issueId: "issue-1", authorType: "system", authorAgentId: null, authorUserId: null,
       body: "Unrelated wording", presentation: { kind: "system_notice", tone: "warning", title: "Different title", detailsDefaultOpen: false, density: "compact" },
       metadata: { version: 1, sections: [], recovery: { kind: "disposition_repair_escalated", actionId: "action", assigneeAgentId: "agent", attemptCount: 3, maxAttempts: 3, reason: "unchanged_source_state_exhausted" } }, ...baseTimestamps,
     };
@@ -121,7 +121,6 @@ describe("IssueChatThread system notice routing", () => {
   it("renders authorType=system comments as a SystemNotice rather than a user bubble", () => {
     const comment: IssueChatComment = {
       id: "comment-system",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -165,7 +164,6 @@ describe("IssueChatThread system notice routing", () => {
   it("renders a system notice with a malformed createdAt without tripping the error boundary (PAP-16607)", () => {
     const comment: IssueChatComment = {
       id: "comment-system-bad-date",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -193,7 +191,6 @@ describe("IssueChatThread system notice routing", () => {
   it("expands metadata when detailsDefaultOpen is true", () => {
     const comment: IssueChatComment = {
       id: "comment-system-open",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -230,7 +227,6 @@ describe("IssueChatThread system notice routing", () => {
   it("falls back to legacy user bubble + handoff callout for old text-only comments", () => {
     const comment: IssueChatComment = {
       id: "comment-legacy",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "user",
       authorAgentId: null,
@@ -252,7 +248,6 @@ describe("IssueChatThread system notice routing", () => {
   it("keeps regular user comments rendering as user bubbles", () => {
     const comment: IssueChatComment = {
       id: "comment-user",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "user",
       authorAgentId: null,
@@ -273,7 +268,6 @@ describe("IssueChatThread system notice routing", () => {
   it("keeps agent-authored comments rendering as assistant bubbles even with system_notice presentation absent", () => {
     const comment: IssueChatComment = {
       id: "comment-agent",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "agent",
       authorAgentId: "agent-1",
@@ -298,7 +292,6 @@ describe("IssueChatThread system notice routing", () => {
     const agentMap = new Map<string, Agent>([[codexAgent.id, codexAgent]]);
     const comment: IssueChatComment = {
       id: "comment-system-runagent",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -339,7 +332,6 @@ describe("IssueChatThread system notice routing", () => {
     });
     const comment: IssueChatComment = {
       id: "comment-copy-link",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -378,7 +370,6 @@ describe("IssueChatThread system notice routing", () => {
   it("labels system notice source as Paperclip when no run agent can be resolved", () => {
     const comment: IssueChatComment = {
       id: "comment-system-no-author",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -407,7 +398,6 @@ describe("IssueChatThread system notice routing", () => {
   it("falls back to Paperclip in the system notice header when run agent is unknown to agentMap", () => {
     const comment: IssueChatComment = {
       id: "comment-system-unknown-agent",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -438,7 +428,6 @@ describe("IssueChatThread system notice routing", () => {
     const agentMap = new Map<string, Agent>([[owner.id, owner]]);
     const comment: IssueChatComment = {
       id: "comment-agent-system",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "agent",
       authorAgentId: "agent-1",
@@ -473,7 +462,6 @@ describe("IssueChatThread system notice routing", () => {
   it("collapses compact system notices to a single quiet row and expands to the full card", () => {
     const comment: IssueChatComment = {
       id: "comment-compact",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -529,7 +517,6 @@ describe("IssueChatThread system notice routing", () => {
   it("renders a compact notice already expanded when detailsDefaultOpen is true", () => {
     const comment: IssueChatComment = {
       id: "comment-compact-open",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -564,7 +551,6 @@ describe("IssueChatThread system notice routing", () => {
     const agentMap = new Map<string, Agent>([[owner.id, owner]]);
     const comment: IssueChatComment = {
       id: "comment-compact-agent",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "agent",
       authorAgentId: "agent-1",
@@ -593,7 +579,6 @@ describe("IssueChatThread system notice routing", () => {
   it("keeps notices without density rendering as the full card (graceful fallback)", () => {
     const comment: IssueChatComment = {
       id: "comment-no-density",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -621,7 +606,6 @@ describe("IssueChatThread system notice routing", () => {
   it("folds stale successful-run disposition warnings into the activity log disclosure style", () => {
     const comment: IssueChatComment = {
       id: "comment-stale-disposition-warning",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -698,7 +682,6 @@ describe("IssueChatThread system notice routing", () => {
   it("folds a required disposition warning while a live continuation is running the issue", () => {
     const comment: IssueChatComment = {
       id: "comment-live-disposition-warning",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -743,7 +726,6 @@ describe("IssueChatThread system notice routing", () => {
   it("keeps the required disposition warning loud when no live continuation exists", () => {
     const comment: IssueChatComment = {
       id: "comment-stuck-disposition-warning",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,
@@ -786,7 +768,6 @@ describe("IssueChatThread system notice routing", () => {
   it("folds a required disposition warning when a live run starts after the issue payload was fetched", () => {
     const comment: IssueChatComment = {
       id: "comment-realtime-disposition-warning",
-      companyId: "company-1",
       issueId: "issue-1",
       authorType: "system",
       authorAgentId: null,

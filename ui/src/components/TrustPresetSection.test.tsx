@@ -23,7 +23,6 @@ function renderSection(permissions: Partial<AgentPermissions>) {
         <TrustPresetSection
           permissions={permissions}
           onChange={onChange}
-          companyId="company-1"
           projectCandidates={[{ id: "project-1", label: "Paperclip App" }]}
           issueCandidates={[{ id: "issue-1", label: "PAP-1 · Review PR" }]}
         />
@@ -59,7 +58,6 @@ describe("TrustPresetSection", () => {
         trustPreset: "low_trust_review",
         trustBoundary: {
           mode: "low_trust_review",
-          companyId: "company-1",
           projectIds: ["project-1"],
         },
       },
@@ -80,7 +78,6 @@ describe("TrustPresetSection", () => {
         trustPreset: "low_trust_review",
         trustBoundary: {
           mode: "low_trust_review",
-          companyId: "company-1",
           projectIds: ["project-1", "project-2"],
         },
       },

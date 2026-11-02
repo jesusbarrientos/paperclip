@@ -12,7 +12,7 @@ const querySchema: JsonSchemaNode = { type: "object", required: ["query"], prope
 const codeSchema: JsonSchemaNode = { type: "object", required: ["code"], properties: { code: { type: "string", title: "Code", default: 'return { message: "Paperclip connector review" };', description: "Example only. Real tools supply their own argument schema." } } };
 const action = (id: string, name: string, description: string, schema = querySchema, broad = false, readOnly = false): RemoteMcpTool => ({
   id, toolName: id, title: name, description, inputSchema: schema as Record<string, unknown>, broad,
-  companyId: "company-storybook", applicationId: null, connectionId: "review-fixture", entryKind: "tool",
+  applicationId: null, connectionId: "review-fixture", entryKind: "tool",
   outputSchema: null, annotations: { readOnlyHint: readOnly }, riskLevel: readOnly ? "read" : "write",
   isReadOnly: readOnly, isWrite: !readOnly, isDestructive: false, status: "active",
   addedAt: new Date("2026-09-21"), version: null, schemaHash: null,

@@ -90,7 +90,7 @@ const manifest: PaperclipPluginManifestV1 = {
             type: "string",
             format: "secret-ref",
             description:
-              "Environment-specific Daytona API key. Paste a key or an existing Paperclip secret reference; saved environments store pasted values as company secrets. Falls back to DAYTONA_API_KEY if omitted.",
+              "Environment-specific Daytona API key. Paste a key or an existing Paperclip secret reference; saved environments store pasted values as Paperclip secrets. Falls back to DAYTONA_API_KEY if omitted.",
           },
           apiUrl: {
             type: "string",

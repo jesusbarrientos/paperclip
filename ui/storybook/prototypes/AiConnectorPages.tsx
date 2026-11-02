@@ -30,7 +30,7 @@ for (const slug of ["github", "gmail"]) {
 }
 function asConnection(account: AiConnectionSummary): ToolConnection {
   return {
-    id: account.id, companyId, applicationId: `app-${account.provider}`, name: account.name, uid: account.id,
+    id: account.id, applicationId: `app-${account.provider}`, name: account.name, uid: account.id,
     connectionKind: "managed", ownership: "customer", connectionPurpose: "ai", transport: "runtime_auth", authKind: account.method === "subscription" ? "oauth" : "api_key",
     credentialSource: "paperclip_vault", credentialPolicy: account.ownership === "shared" ? "shared" : "per_user",
     status: account.status === "revoked" ? "disabled" : "active", enabled: account.status !== "revoked",
@@ -44,7 +44,7 @@ function asConnection(account: AiConnectionSummary): ToolConnection {
 function grantsFor(account: AiConnectionSummary, readOnly: boolean): ConnectionGrantsResponse {
   return { connection: { id: account.id, uid: account.id }, currentUserId: "dotta", members,
     capabilities: Object.fromEntries(Object.entries(capabilities).map(([key, value]) => [key, typeof value === "boolean" ? !readOnly && value : value])) as typeof capabilities,
-    grants: [{ id: account.grantId, companyId, connectionId: account.id,
+    grants: [{ id: account.grantId, connectionId: account.id,
       kind: account.ownership === "shared" ? "organization" : "user", subjectUserId: account.ownerUserId ?? null,
       providerTenant: { name: account.accountLabel ?? account.name }, credentialSecretRefs: [],
       status: account.status === "connected" ? "active" : account.status === "revoked" ? "revoked" : "expired",
@@ -81,13 +81,13 @@ export function AiConnectorPages({ initialConnections = AI_REVIEW_CONNECTIONS, d
       const rows = store.accounts.filter((row) => !store.removed.has(row.id));
       const applications: ToolApplication[] = gallery.map((app) => ({ id: `app-${app.slug}`, companyId, applicationKey: `app-gallery:${app.slug}:review`, name: app.name, description: app.description, type: "mcp_http", status: "active", pluginId: null, ownerAgentId: null, ownerUserId: "dotta", metadata: { sourceTemplateKey: app.slug }, archivedAt: null, createdAt: date, updatedAt: date }));
       const reply = (value: unknown) => Promise.resolve(Response.json(value));
-      if (path === `/api/companies/${companyId}/tools/gallery`) return reply({ apps: gallery, capabilities: { canCreateOrganizationGrant: !readOnly, organizationGrantReason: null, canSetCompanyInstall: !readOnly, companyInstallReason: null } });
-      if (path === `/api/companies/${companyId}/tools/applications`) return reply({ applications });
-      if (path === `/api/companies/${companyId}/tools/connections`) return reply({ connections: rows.map(asConnection) });
-      if (path === `/api/companies/${companyId}/tools/profiles`) return reply({ profiles: [...store.profiles.values()] });
-      if (path === `/api/companies/${companyId}/tools/policies`) return reply({ policies: [] });
-      if (path === `/api/companies/${companyId}/agents`) return reply(agents);
-      if (path === `/api/companies/${companyId}/user-directory`) return reply({ users: members.map((member) => ({ principalId: member.userId, status: "active", user: { name: member.name, email: member.email } })) });
+      if (path === `/api/tools/gallery`) return reply({ apps: gallery, capabilities: { canCreateOrganizationGrant: !readOnly, organizationGrantReason: null, canSetCompanyInstall: !readOnly, companyInstallReason: null } });
+      if (path === `/api/tools/applications`) return reply({ applications });
+      if (path === `/api/tools/connections`) return reply({ connections: rows.map(asConnection) });
+      if (path === `/api/tools/profiles`) return reply({ profiles: [...store.profiles.values()] });
+      if (path === `/api/tools/policies`) return reply({ policies: [] });
+      if (path === `/api/agents`) return reply(agents);
+      if (path === `/api/user-directory`) return reply({ users: members.map((member) => ({ principalId: member.userId, status: "active", user: { name: member.name, email: member.email } })) });
       const match = path.match(/^\/api\/tool-connections\/([^/]+)(.*)$/);
       if (match) {
         const row = store.accounts.find((candidate) => candidate.id === match[1]);
@@ -112,7 +112,7 @@ export function AiConnectorPages({ initialConnections = AI_REVIEW_CONNECTIONS, d
         if (suffix === "/catalog") return reply({ catalog: [] });
         return Response.json({ error: `Unsupported review operation: ${suffix}` }, { status: 400 });
       }
-      if (path.startsWith(`/api/companies/${companyId}/tools/apps/`) && path.endsWith("/finish")) {
+      if (path.startsWith(`/api/tools/apps/`) && path.endsWith("/finish")) {
         const id = path.split("/").at(-2)!;
         const profile = { id: `profile-${id}`, companyId, profileKey: `app:${id}`, entries: [], bindings: payload.access === "all_agents" ? [{ targetType: "company", targetId: companyId }] : (payload.access?.agentIds ?? []).map((targetId: string) => ({ targetType: "agent", targetId })) };
         store.profiles.set(id, profile);
@@ -122,7 +122,7 @@ export function AiConnectorPages({ initialConnections = AI_REVIEW_CONNECTIONS, d
       if (method !== "GET" && path.startsWith("/api/")) return Response.json({ error: "This review does not perform live operations." }, { status: 400 });
       return previous(input, init);
     };
-    navigate(detail ? `/PAP/apps/${initialConnections[0]?.id ?? "claude-dotta"}/permissions` : "/PAP/apps", { replace: true });
+    navigate(detail ? `/apps/${initialConnections[0]?.id ?? "claude-dotta"}/permissions` : "/apps", { replace: true });
     setReady(true);
     return () => { window.fetch = previous; client.clear(); };
   }, []);
@@ -133,12 +133,12 @@ export function AiConnectorPages({ initialConnections = AI_REVIEW_CONNECTIONS, d
       <BreadcrumbBar />
       <div className="pt-6">
       <Routes>
-        <Route path="/:companyPrefix/apps" element={<Browse renderAccountDetails={(connection) => {
+        <Route path="/apps" element={<Browse renderAccountDetails={(connection) => {
           const row = store.accounts.find((account) => account.id === connection.id);
           return row ? <p className="text-xs text-muted-foreground">{aiMethodLabel(row.provider, row.method)} · {row.ownership === "shared" ? "Company shared" : "Personal"}{row.isDefault ? " · Personal default" : ""}{row.accountLabel ? ` · ${row.accountLabel}` : ""}</p> : null;
         }} />} />
-        <Route path="/:companyPrefix/apps/connect" element={<Setup accounts={store.accounts} onSave={update} />} />
-        <Route path="/:companyPrefix/apps/:connectionId/:tab" element={<AppDetail onReconnect={(connection) => navigate(`/apps/connect?source=${connection.config?.sourceTemplateKey}&stage=setup&reconnect=${connection.id}`)} renderActions={(connection) => {
+        <Route path="/apps/connect" element={<Setup accounts={store.accounts} onSave={update} />} />
+        <Route path="/apps/:connectionId/:tab" element={<AppDetail onReconnect={(connection) => navigate(`/apps/connect?source=${connection.config?.sourceTemplateKey}&stage=setup&reconnect=${connection.id}`)} renderActions={(connection) => {
           const account = store.accounts.find((row) => row.id === connection.id);
           return account ? <AiReviewBoundary label="App component: AI account controls inside existing AppDetail"><AiConnectionAccountControls account={account} currentUserId="dotta" grant={grantsFor(account, readOnly).grants[0]} readOnly={readOnly}
             onMakeDefault={() => {
@@ -166,8 +166,8 @@ function Setup({ accounts, onSave }: { accounts: AiConnectionSummary[]; onSave: 
   function complete(grantKind: string, agentIds: string[], allAgents: boolean) {
     const id = reconnect?.id ?? `review-${provider}-${accounts.length}`;
     const personal = reconnect ? reconnect.ownership === "personal" : grantKind === "user";
-    onSave(reconnect ? { ...reconnect, status: "connected" } : { id, grantId: `grant-${id}`, companyId, provider, method, name, ownership: personal ? "personal" : "shared", ownerUserId: personal ? "dotta" : undefined, ownerName: personal ? "Dotta" : undefined, status: "connected", isDefault: personal && !accounts.some((row) => row.ownerUserId === "dotta" && row.provider === provider && row.method === method && row.isDefault) });
-    if (!reconnect) void fetch(`/api/companies/${companyId}/tools/apps/${id}/finish`, { method: "POST", body: JSON.stringify({ access: allAgents ? "all_agents" : { agentIds } }) });
+    onSave(reconnect ? { ...reconnect, status: "connected" } : { id, grantId: `grant-${id}`, provider, method, name, ownership: personal ? "personal" : "shared", ownerUserId: personal ? "dotta" : undefined, ownerName: personal ? "Dotta" : undefined, status: "connected", isDefault: personal && !accounts.some((row) => row.ownerUserId === "dotta" && row.provider === provider && row.method === method && row.isDefault) });
+    if (!reconnect) void fetch(`/api/tools/apps/${id}/finish`, { method: "POST", body: JSON.stringify({ access: allAgents ? "all_agents" : { agentIds } }) });
     setSavedId(id); setState({ phase: "connected" });
   }
   if (!(provider in AI_PROVIDERS)) return <><p className="text-sm">This review focuses on AI authentication. The existing connector remains in the same list.</p><Button onClick={() => navigate("/apps")}>Back to Connectors</Button></>;

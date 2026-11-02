@@ -67,10 +67,9 @@ export function issueTreeControlRoutes(
     const root = await getAccessibleResource(req, res, resolveRootIssue(req), "Root issue not found");
     if (!root) return;
 
-    const preview = await treeControlSvc.preview(root.companyId, root.id, req.body);
+    const preview = await treeControlSvc.preview(root.id, req.body);
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: root.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -102,12 +101,11 @@ export function issueTreeControlRoutes(
       userId: actor.actorType === "user" ? actor.actorId : null,
       runId: actor.runId,
     };
-    let result = await treeControlSvc.createHold(root.companyId, root.id, {
+    let result = await treeControlSvc.createHold(root.id, {
       ...req.body,
       actor: actorInput,
     });
     await logActivity(db, {
-      companyId: root.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -145,7 +143,6 @@ export function issueTreeControlRoutes(
               },
             );
             await logActivity(db, {
-              companyId: root.companyId,
               actorType: actor.actorType,
               actorId: actor.actorId,
               agentId: actor.agentId,
@@ -162,7 +159,6 @@ export function issueTreeControlRoutes(
             });
           } catch (error) {
             await Promise.resolve(logActivity(db, {
-              companyId: root.companyId,
               actorType: actor.actorType,
               actorId: actor.actorId,
               agentId: actor.agentId,
@@ -184,7 +180,6 @@ export function issueTreeControlRoutes(
       }
 
       const cancelledWakeups = await treeControlSvc.cancelUnclaimedWakeupsForTree(
-        root.companyId,
         root.id,
         result.hold.mode === "pause"
           ? "Cancelled because an active subtree pause hold was created"
@@ -192,7 +187,6 @@ export function issueTreeControlRoutes(
       );
       for (const wakeup of cancelledWakeups) {
         await logActivity(db, {
-          companyId: root.companyId,
           actorType: actor.actorType,
           actorId: actor.actorId,
           agentId: actor.agentId,
@@ -212,9 +206,8 @@ export function issueTreeControlRoutes(
     }
 
     if (result.hold.mode === "cancel") {
-      const statusUpdate = await treeControlSvc.cancelIssueStatusesForHold(root.companyId, root.id, result.hold.id);
+      const statusUpdate = await treeControlSvc.cancelIssueStatusesForHold(root.id, result.hold.id);
       await logActivity(db, {
-        companyId: root.companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -238,12 +231,12 @@ export function issueTreeControlRoutes(
     if (result.hold.mode === "restore") {
       let statusUpdate;
       try {
-        statusUpdate = await treeControlSvc.restoreIssueStatusesForHold(root.companyId, root.id, result.hold.id, {
+        statusUpdate = await treeControlSvc.restoreIssueStatusesForHold(root.id, result.hold.id, {
           reason: result.hold.reason,
           actor: actorInput,
         });
       } catch (error) {
-        await treeControlSvc.releaseHold(root.companyId, root.id, result.hold.id, {
+        await treeControlSvc.releaseHold(root.id, result.hold.id, {
           reason: "Restore operation failed before subtree status updates completed",
           metadata: {
             cleanup: "restore_failed_before_apply",
@@ -256,7 +249,6 @@ export function issueTreeControlRoutes(
         result = { ...result, hold: statusUpdate.restoreHold };
       }
       await logActivity(db, {
-        companyId: root.companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -303,7 +295,6 @@ export function issueTreeControlRoutes(
             .catch(() => null);
           if (!wakeRun) continue;
           await logActivity(db, {
-            companyId: root.companyId,
             actorType: actor.actorType,
             actorId: actor.actorId,
             agentId: actor.agentId,
@@ -334,7 +325,7 @@ export function issueTreeControlRoutes(
     const issueId = req.params.id as string;
     const issue = await getAccessibleResource(req, res, issuesSvc.getById(issueId), "Issue not found");
     if (!issue) return;
-    const activePauseHold = await treeControlSvc.getActivePauseHoldGate(issue.companyId, issue.id);
+    const activePauseHold = await treeControlSvc.getActivePauseHoldGate(issue.id);
     res.json({ activePauseHold });
   });
 
@@ -345,7 +336,7 @@ export function issueTreeControlRoutes(
     const statusParam = typeof req.query.status === "string" ? req.query.status : null;
     const modeParam = typeof req.query.mode === "string" ? req.query.mode : null;
     const includeMembers = req.query.includeMembers === "true";
-    const holds = await treeControlSvc.listHolds(root.companyId, root.id, {
+    const holds = await treeControlSvc.listHolds(root.id, {
       status: statusParam === "active" || statusParam === "released" ? statusParam : undefined,
       mode:
         modeParam === "pause" || modeParam === "resume" || modeParam === "cancel" || modeParam === "restore"
@@ -367,7 +358,7 @@ export function issueTreeControlRoutes(
       return;
     }
 
-    const hold = await treeControlSvc.getHold(root.companyId, holdId);
+    const hold = await treeControlSvc.getHold(holdId);
     if (!hold || hold.rootIssueId !== root.id) {
       res.status(404).json({ error: "Issue tree hold not found" });
       return;
@@ -397,7 +388,7 @@ export function issueTreeControlRoutes(
       // Releasing a pause does not authorize replay of uncertain provider actions.
       // Check before release so a rejected wake leaves the subtree paused.
       if (req.body.metadata?.wakeAgents === true) {
-        const activeHold = await treeControlSvc.getHold(root.companyId, holdId);
+        const activeHold = await treeControlSvc.getHold(holdId);
         const issueIds =
           activeHold?.mode === "pause" && activeHold.rootIssueId === root.id
             ? (activeHold.members ?? [])
@@ -407,18 +398,17 @@ export function issueTreeControlRoutes(
         if (issueIds.length > 0) {
           const candidates = await db.select({ id: issueRows.id, identifier: issueRows.identifier })
             .from(issueRows).where(and(
-              eq(issueRows.companyId, root.companyId), inArray(issueRows.id, issueIds),
+              inArray(issueRows.id, issueIds),
               inArray(issueRows.status, RESUME_EXECUTABLE_STATUSES), isNotNull(issueRows.assigneeAgentId),
             ));
           for (const task of candidates) {
-            const blocked = await getExecutionBlocker(db, root.companyId, task.id);
+            const blocked = await getExecutionBlocker(db, task.id);
             if (blocked) throw conflict(`Cannot wake ${task.identifier ?? "this task"}: ${blocked.nextAction}`);
           }
         }
       }
       const actor = getActorInfo(req);
       const hold = await treeControlSvc.releaseHold(
-        root.companyId,
         root.id,
         holdId,
         {
@@ -433,7 +423,6 @@ export function issueTreeControlRoutes(
         },
       );
       await logActivity(db, {
-        companyId: root.companyId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -458,7 +447,6 @@ export function issueTreeControlRoutes(
             const issue = await issuesSvc.getById(member.issueId);
             if (
               !issue ||
-              issue.companyId !== root.companyId ||
               !issue.assigneeAgentId ||
               !RESUME_EXECUTABLE_STATUSES.includes(issue.status)
             )
@@ -488,7 +476,6 @@ export function issueTreeControlRoutes(
             wakeFailures.push({ issueId: member.issueId, message });
             await Promise.resolve(
               logActivity(db, {
-                companyId: root.companyId,
                 actorType: actor.actorType,
                 actorId: actor.actorId,
                 agentId: actor.agentId,

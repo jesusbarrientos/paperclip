@@ -147,7 +147,7 @@ URL, the callback URI, and the company. If any of those change:
   re-enter it, because it cannot register on your behalf in a console it does
   not control.
 
-Credentials are never reused across issuers or across companies.
+Credentials are never reused across issuers or across instances.
 
 ### Endpoint addresses are validated before they are used
 

@@ -50,7 +50,6 @@ if (!embeddedPostgresSupport.supported) {
 }
 
 interface SeededNativeRun {
-  companyId: string;
   issueId: string;
   agentId: string;
   runId: string;
@@ -153,7 +152,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Codex runner",
       role: "engineer",
       status: "running",
@@ -163,7 +161,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: `RUN-${runId.slice(0, 8)}`,
       title: "Exercise the hidden native coordinator",
       description: "Verify transport and durable server boundaries.",
@@ -174,7 +171,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     });
     await db.insert(completionContracts).values({
       id: completionContractId,
-      companyId,
       issueId,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -189,7 +185,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -207,7 +202,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
       .set({ executionRunId: runId })
       .where(eq(issues.id, issueId));
     return {
-      companyId,
       issueId,
       agentId,
       runId,
@@ -220,7 +214,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
 
   function store(seed: SeededNativeRun): NativeRunCoordinatorStore {
     return new NativeRunCoordinatorStore(db, {
-      companyId: seed.companyId,
       issueId: seed.issueId,
       runId: seed.runId,
       agentId: seed.agentId,
@@ -240,18 +233,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     const stateRoot = mkdtempSync(resolve(tmpdir(), "paperclip-runner-state-"));
     scratchDirectories.push(stateRoot);
     const coordinator = runnerPrpCoordinator(db, { stateRoot });
-    await expect(
-      coordinator.prepare({
-        ...seed,
-        companyId: randomUUID(),
-        normalizedSessionId: seed.sessionId,
-        environmentLeaseId: "environment-lease-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        runnerVersion: "0.3.0",
-        runnerDigest: `sha256:${"a".repeat(64)}`,
-      }),
-    ).rejects.toThrow("runner_prp_run_not_authorized");
     const prepared = await coordinator.prepare({
       ...seed,
       normalizedSessionId: seed.sessionId,
@@ -275,7 +256,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     ]);
     expect(
       runnerPrpWebSocketInternals.activeRegistration({
-        companyId: seed.companyId,
         runId: seed.runId,
       }),
     ).toBe(true);
@@ -293,7 +273,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     await prepared.release();
     expect(
       runnerPrpWebSocketInternals.activeRegistration({
-        companyId: seed.companyId,
         runId: seed.runId,
       }),
     ).toBe(false);
@@ -303,7 +282,6 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
   it("rechecks task ownership and returns semantic receipts", async () => {
     const seed = await seedNativeRun();
     const authority = new PaperclipRunnerSemanticAuthority(db, {
-      companyId: seed.companyId,
       issueId: seed.issueId,
       runId: seed.runId,
       agentId: seed.agentId,

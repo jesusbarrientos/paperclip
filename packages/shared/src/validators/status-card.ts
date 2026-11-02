@@ -68,7 +68,6 @@ export const statusCardFingerprintSchema = z.record(
 
 export const statusCardSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   createdByUserId: z.string().nullable(),
   createdByAgentId: z.string().guid().nullable(),
   title: z.string().nullable(),

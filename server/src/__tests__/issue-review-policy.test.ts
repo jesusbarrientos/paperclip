@@ -48,7 +48,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     await db.insert(agents).values([
       {
         id: requesterAgentId,
-        companyId,
         name: "Requester",
         role: "engineer",
         status: "idle",
@@ -59,7 +58,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
       },
       {
         id: peerAgentId,
-        companyId,
         name: "Peer reviewer",
         role: "engineer",
         status: "idle",
@@ -71,14 +69,13 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     ]);
     const [issue] = await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Review this",
       status: "in_review",
       priority: "medium",
       reviewPolicy: policy,
       createdByAgentId: requesterAgentId,
     }).returning();
-    return { issue, companyId, requesterAgentId, peerAgentId };
+    return { issue, requesterAgentId, peerAgentId };
   }
 
   it("does no database work for the default anyone policy", async () => {
@@ -89,7 +86,7 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     }) as Db;
 
     await expect(assertIssueReviewVerdictActorAllowed(noQueryDb, {
-      issue: { id: randomUUID(), companyId: randomUUID(), reviewPolicy: null },
+      issue: { id: randomUUID(), reviewPolicy: null },
       actor: { type: "agent", id: randomUUID() },
     })).resolves.toBeUndefined();
   });
@@ -98,7 +95,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     const seeded = await seedReview("not_creator");
     expect(seeded.issue.reviewPolicy).toBe("not_creator");
     await db.insert(activityLog).values({
-      companyId: seeded.companyId,
       actorType: "agent",
       actorId: seeded.requesterAgentId,
       agentId: seeded.requesterAgentId,
@@ -130,7 +126,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     const seeded = await seedReview("not_creator");
     await db.insert(activityLog).values([
       {
-        companyId: seeded.companyId,
         actorType: "agent",
         actorId: seeded.requesterAgentId,
         agentId: seeded.requesterAgentId,
@@ -141,7 +136,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
         createdAt: new Date("2026-08-06T00:00:00.000Z"),
       },
       {
-        companyId: seeded.companyId,
         actorType: "agent",
         actorId: seeded.peerAgentId,
         agentId: seeded.peerAgentId,
@@ -169,7 +163,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
   it("classifies only confirmations created by the review requester as review verdicts", async () => {
     const seeded = await seedReview("not_creator");
     await db.insert(activityLog).values({
-      companyId: seeded.companyId,
       actorType: "agent",
       actorId: seeded.requesterAgentId,
       agentId: seeded.requesterAgentId,
@@ -200,7 +193,6 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
   it("classifies an unbound legacy confirmation only when the review requester created it", async () => {
     const seeded = await seedReview("not_creator");
     await db.insert(activityLog).values({
-      companyId: seeded.companyId,
       actorType: "agent",
       actorId: seeded.requesterAgentId,
       agentId: seeded.requesterAgentId,

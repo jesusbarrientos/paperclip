@@ -84,14 +84,12 @@ describeEmbeddedPostgres(
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Native worker",
         adapterType: "paperclip_runner",
         status: "running",
       });
       await db.insert(issues).values({
         id: issueId,
-        companyId,
         title: "Native ownership fixture",
         status: "in_progress",
         assigneeAgentId: agentId,
@@ -104,7 +102,6 @@ describeEmbeddedPostgres(
       // reapOrphanedRuns into markNativeOwnershipUnverified.
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId,
         status: "failed",
         runtimeMode: "native",
@@ -114,7 +111,6 @@ describeEmbeddedPostgres(
       });
       await db.insert(nativeRunFinalizations).values({
         runId,
-        companyId,
         issueId,
         phase: "retryable_failure",
         attempt: 0,

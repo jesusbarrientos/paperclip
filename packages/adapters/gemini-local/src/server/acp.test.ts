@@ -203,7 +203,6 @@ function buildContext(root: string, overrides: Partial<AdapterExecutionContext> 
     runId: "run-1",
     agent: {
       id: "agent-1",
-      companyId: "company-1",
       name: "Gemini ACP",
       adapterType: "gemini_local",
       adapterConfig: {},
@@ -777,7 +776,6 @@ describe("gemini_local ACP lane", () => {
 
     const result = await testGeminiAcpEnvironment({
       adapterType: "gemini_local",
-      companyId: "company-1",
       config: {
         engine: "acp",
         cwd: root,

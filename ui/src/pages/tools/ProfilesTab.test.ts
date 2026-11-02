@@ -10,7 +10,6 @@ import { resolveAllowList } from "./ProfilesTab";
 
 function tool(partial: Partial<ToolCatalogEntry> & { id: string; toolName: string }): ToolCatalogEntry {
   return {
-    companyId: "c1",
     applicationId: "app-slack",
     connectionId: "conn-1",
     entryKind: "tool",
@@ -40,7 +39,6 @@ function tool(partial: Partial<ToolCatalogEntry> & { id: string; toolName: strin
 function entry(partial: Partial<ToolProfileEntry> & Pick<ToolProfileEntry, "selectorType">): ToolProfileEntry {
   return {
     id: `e-${Math.round(Math.random() * 1e9)}`,
-    companyId: "c1",
     profileId: "p1",
     effect: "include",
     applicationId: null,
@@ -58,7 +56,6 @@ function entry(partial: Partial<ToolProfileEntry> & Pick<ToolProfileEntry, "sele
 function profile(partial: Partial<ToolProfileWithDetails>): ToolProfileWithDetails {
   return {
     id: "p1",
-    companyId: "c1",
     profileKey: "k",
     name: "Profile",
     description: null,

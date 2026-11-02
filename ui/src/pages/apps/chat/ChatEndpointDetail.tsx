@@ -283,7 +283,7 @@ export function ChatEndpointDetail() {
       </div>
     );
   if (endpoint.provider === "agentmail" && activeTab === "settings")
-    return <EmailEndpointSettings key={endpoint.id} endpointId={endpoint.id} companyId={endpoint.companyId} assignedAgentName={endpoint.assignedAgentName} />;
+    return <EmailEndpointSettings key={endpoint.id} endpointId={endpoint.id} assignedAgentName={endpoint.assignedAgentName} />;
   const setupIncomplete =
     endpoint.setup?.step !== "complete" &&
     ["draft", "verifying", "attention", "revoked"].includes(endpoint.status);
@@ -358,8 +358,8 @@ function EmailAccess({ endpoint }: { endpoint: ChatEndpoint }) {
     enabled: Boolean(endpoint.connectionId),
   });
   const agents = useQuery({
-    queryKey: queryKeys.agents.list(endpoint.companyId),
-    queryFn: () => agentsApi.list(endpoint.companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
   if (!endpoint.connectionId || agents.isError || connection.isError) return (
     <div className="space-y-3">
@@ -373,7 +373,7 @@ function EmailAccess({ endpoint }: { endpoint: ChatEndpoint }) {
   return <section className="max-w-3xl space-y-4">
     <h2 className="text-lg font-semibold">Access</h2>
     {credentialId !== endpoint.connectionId && <p className="text-sm text-muted-foreground">These settings apply to the saved AgentMail account and all inboxes using it.</p>}
-    <EmailConnectionAccess key={credentialId} companyId={endpoint.companyId} connectionId={credentialId} agents={agents.data} />
+    <EmailConnectionAccess key={credentialId} connectionId={credentialId} agents={agents.data} />
   </section>;
 }
 
@@ -389,7 +389,7 @@ function Settings({
   const [messageCopied, setMessageCopied] = useState(false);
   const avatarAgent = useQuery({
     queryKey: queryKeys.agents.detail(endpoint.assignedAgentId),
-    queryFn: () => agentsApi.get(endpoint.assignedAgentId, endpoint.companyId),
+    queryFn: () => agentsApi.get(endpoint.assignedAgentId),
     enabled: endpoint.provider === "slack",
   });
   const mentionMessage = `@${(endpoint.botUsername ?? endpoint.botLabel ?? endpoint.assignedAgentName).replace(/^@/, "")} you there?`;
@@ -457,7 +457,7 @@ function Settings({
               avatarUrl={agentAvatarUrl(resolveAgentAppearance(avatarAgent.data?.appearance, endpoint.assignedAgentId), 512, 1, "rest")}
             />
       )}
-      {endpoint.provider === "slack" && <SlackToolsSettings companyId={endpoint.companyId} endpointId={endpointId} connectionId={endpoint.connectionId} />}
+      {endpoint.provider === "slack" && <SlackToolsSettings endpointId={endpointId} connectionId={endpoint.connectionId} />}
       {endpoint.provider === "slack" && <ChatCommunicationInstructions
         key={endpoint.id}
         value={endpoint.communicationInstructions ?? ""}
@@ -650,7 +650,7 @@ function Access({
       <div>
         <h2 className="text-lg font-semibold">External identity access</h2>
       </div>
-      {endpoint.provider === "slack" && <SlackSearchAccess companyId={endpoint.companyId} endpointId={endpointId} />}
+      {endpoint.provider === "slack" && <SlackSearchAccess endpointId={endpointId} />}
       {endpoint.provider === "slack" && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold">Invite others to connect their Slack accounts</h3>
@@ -920,11 +920,11 @@ function Activity({
         : chatEndpointsApi.setup(endpointId, { action }),
     onSuccess: async (next, action) => {
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.chatEndpoints.list(next.companyId),
+        queryKey: queryKeys.chatEndpoints.list(),
       });
       if (endpoint.provider === "agentmail") {
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["email-inboxes", next.companyId] }),
+          queryClient.invalidateQueries({ queryKey: ["email-inboxes"] }),
           queryClient.invalidateQueries({ queryKey: queryKeys.chatEndpoints.detail(endpointId) }),
         ]);
       }

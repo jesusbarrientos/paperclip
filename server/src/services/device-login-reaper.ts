@@ -166,7 +166,6 @@ export function createDeviceLoginReaper(deps: DeviceLoginReaperDeps) {
       // reaper still reclaims the stalled row on a later sweep.
       const pendingWrite = terminalCleanupWrite(false, "timed_out", null);
       const claimed = await store.withCompanyAdapterPromotionLock(
-        row.companyId,
         row.startedByUserId,
         row.adapterType,
         () =>

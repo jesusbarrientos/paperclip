@@ -43,11 +43,11 @@ export function useNewAgentFixtures(agent: Agent, outcome: TestOutcome, delayMs:
           : request.environmentId === "environment-storybook-local" ? "Local machine" : "Organization default";
         return Response.json(runtimeTestResult(test[1], result, request.adapterConfig?.model ?? "", environment));
       }
-      if (url.pathname === `/api/companies/${PREVIEW_COMPANY_ID}/agents` && method === "GET") {
+      if (url.pathname === `/api/agents` && method === "GET") {
         return Response.json([...storybookAgents, current.current.agent]);
       }
       if (url.pathname === `/api/agents/${PREVIEW_AGENT_ID}` && method === "GET") return Response.json(current.current.agent);
-      if (url.pathname === `/api/companies/${PREVIEW_COMPANY_ID}/issues` && method === "POST") {
+      if (url.pathname === `/api/issues` && method === "POST") {
         const request = await body();
         current.current.onTaskCreated(request.title);
         return Response.json({ ...storybookIssues[0], ...request, id: "issue-new-agent-preview", identifier: "PAP-PREVIEW", companyId: PREVIEW_COMPANY_ID });

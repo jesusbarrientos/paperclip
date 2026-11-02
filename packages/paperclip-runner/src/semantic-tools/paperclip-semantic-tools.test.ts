@@ -125,7 +125,7 @@ describe("run-scoped semantic tool authority", () => {
     });
 
     await expect(
-      dispatcher.dispatch(call("search_tasks", { companyId: "forged" })),
+      dispatcher.dispatch(call("search_tasks", { unexpectedField: "forged" })),
     ).resolves.toMatchObject({ ok: false, error: { code: "input_invalid" } });
     await expect(
       dispatcher.dispatch(
@@ -409,22 +409,12 @@ describe("run-scoped semantic tool authority", () => {
     expect(executions).toBe(0);
   });
 
-  it("denies cross-company contexts and malformed protocol identities", async () => {
-    const crossCompany = new PaperclipSemanticDispatcher({
-      contextProvider: () => runContext({ actorCompanyId: "company_other" }),
+  it("denies malformed protocol identities", async () => {
+    const dispatcher = new PaperclipSemanticDispatcher({
+      contextProvider: () => runContext(),
       bindings: [binding("get_task_context", {})],
     });
-    await expect(
-      crossCompany.listAlwaysAvailableTools(correlation.runId),
-    ).resolves.toEqual([]);
-    await expect(
-      crossCompany.dispatch(call("get_task_context", {})),
-    ).resolves.toMatchObject({
-      ok: false,
-      error: { code: "company_mismatch" },
-    });
-
-    const malformed = await crossCompany.dispatch({
+    const malformed = await dispatcher.dispatch({
       ...call("get_task_context", {}),
       callId: "bad call id",
     });
@@ -437,7 +427,7 @@ describe("run-scoped semantic tool authority", () => {
 
     const malformedAuthority = new PaperclipSemanticDispatcher({
       contextProvider: () =>
-        ({ ...runContext(), companyId: "bad company id" }) as never,
+        ({ ...runContext(), runId: "bad run id" }) as never,
       bindings: [binding("get_task_context", {})],
     });
     await expect(
@@ -456,23 +446,19 @@ function runContext(
   overrides: {
     actorClaims?: readonly string[];
     delegatedClaims?: readonly string[];
-    actorCompanyId?: string;
     executionRunId?: string;
   } = {},
 ): PaperclipSemanticRunContext {
   return {
     runId: correlation.runId,
-    companyId: "company_semantic_test",
     actor: {
       id: "actor_semantic_test",
-      companyId: overrides.actorCompanyId ?? "company_semantic_test",
       status: "active",
       role: "engineer",
       claims: overrides.actorClaims ?? [],
     },
     activeTask: {
       id: "task_semantic_test",
-      companyId: "company_semantic_test",
       assigneeActorId: "actor_semantic_test",
       executionRunId: overrides.executionRunId ?? correlation.runId,
       status: "in_progress",

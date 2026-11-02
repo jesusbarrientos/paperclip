@@ -84,27 +84,21 @@ describeEmbeddedPostgres("registry.listConfigs (startup config delivery)", () =>
     return companyId;
   }
 
-  it("returns every company-scoped config row for a plugin", async () => {
+  it("returns the plugin's single config row, replaced on upsert", async () => {
     const registry = pluginRegistryService(db);
     const pluginId = await seedPlugin("paperclip.gateway-test", 1);
-    const companyA = await seedCompany();
-    const companyB = await seedCompany();
+    await seedCompany();
 
-    await registry.upsertConfig(pluginId, companyA, {
-      companyId: companyA,
+    await registry.upsertConfig(pluginId, {
       configJson: { slackBotToken: "xoxb-a", slackAppToken: "xapp-a" },
     });
-    await registry.upsertConfig(pluginId, companyB, {
-      companyId: companyB,
+    await registry.upsertConfig(pluginId, {
       configJson: { slackBotToken: "xoxb-b", slackAppToken: "xapp-b" },
     });
 
     const rows = await registry.listConfigs(pluginId);
-    expect(rows).toHaveLength(2);
-
-    const byCompany = new Map(rows.map((r) => [r.companyId, r]));
-    expect(byCompany.get(companyA)?.configJson).toMatchObject({ slackBotToken: "xoxb-a" });
-    expect(byCompany.get(companyB)?.configJson).toMatchObject({ slackBotToken: "xoxb-b" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.configJson).toMatchObject({ slackBotToken: "xoxb-b" });
   });
 
   it("only returns rows for the requested plugin (no cross-plugin bleed)", async () => {
@@ -113,12 +107,10 @@ describeEmbeddedPostgres("registry.listConfigs (startup config delivery)", () =>
     const otherPluginId = await seedPlugin("paperclip.other-test", 2);
     const companyA = await seedCompany();
 
-    await registry.upsertConfig(pluginId, companyA, {
-      companyId: companyA,
+    await registry.upsertConfig(pluginId, {
       configJson: { marker: "mine" },
     });
-    await registry.upsertConfig(otherPluginId, companyA, {
-      companyId: companyA,
+    await registry.upsertConfig(otherPluginId, {
       configJson: { marker: "theirs" },
     });
 

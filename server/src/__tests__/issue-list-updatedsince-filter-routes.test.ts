@@ -41,15 +41,14 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
     await tempDb?.cleanup();
   });
 
-  function createApp(companyId: string) {
+  function createApp() {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "board",
         userId: "cloud-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        memberships: [{ membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
         isInstanceAdmin: false,
       };
@@ -64,7 +63,7 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
     return `P${randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase()}`;
   }
 
-  async function seedCloudTenantMember(companyId: string) {
+  async function seedCloudTenantMember() {
     await db.insert(companyMemberships).values({
       principalType: "user",
       principalId: "cloud-user-1",
@@ -80,19 +79,16 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
   }
 
   it("returns 0 issues when updatedSince is in the future", async () => {
-    const companyId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Existing issue",
       status: "todo",
       priority: "medium",
@@ -100,9 +96,9 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
 
     const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ updatedSince: futureDate, limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -110,7 +106,6 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
   });
 
   it("returns only issues updated after a past updatedSince timestamp", async () => {
-    const companyId = randomUUID();
     const staleIssueId = randomUUID();
     const freshIssueId = randomUUID();
     const since = new Date("2026-07-01T00:00:00.000Z");
@@ -118,16 +113,14 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
     const freshUpdatedAt = new Date("2026-07-02T00:00:00.000Z");
 
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
     await db.insert(issues).values([
       {
         id: staleIssueId,
-        companyId,
         title: "Stale issue",
         status: "todo",
         priority: "medium",
@@ -135,7 +128,6 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
       },
       {
         id: freshIssueId,
-        companyId,
         title: "Fresh issue",
         status: "todo",
         priority: "medium",
@@ -143,9 +135,9 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ updatedSince: since.toISOString(), limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -153,18 +145,16 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
   });
 
   it("returns 400 for a malformed updatedSince timestamp", async () => {
-    const companyId = randomUUID();
     await db.insert(companies).values({
-      id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember();
 
-    const app = createApp(companyId);
+    const app = createApp();
     const res = await request(app)
-      .get(`/api/companies/${companyId}/issues`)
+      .get(`/api/issues`)
       .query({ updatedSince: "not-a-date", limit: "20" });
 
     expect(res.status).toBe(400);

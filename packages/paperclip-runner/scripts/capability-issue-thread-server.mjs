@@ -169,7 +169,6 @@ function issueThreadSeed(runner, scenario) {
     actors: [
       {
         id: "actor-1",
-        companyId: "company-1",
         name: "Mock Engineer",
         role: "engineer",
         status: "active",
@@ -180,7 +179,6 @@ function issueThreadSeed(runner, scenario) {
     tasks: [
       {
         id: "task-31",
-        companyId: "company-1",
         identifier: "MCK-31",
         title: "Wire the runner spike to the mock control plane",
         description: `Scenario ${scenario}. All records in this thread are mock records.`,
@@ -484,7 +482,6 @@ export function createCapabilityIssueThreadMiddleware(options = {}) {
       scenario: { id: scenario },
       taskId: "task-31",
       actorId: "actor-1",
-      companyId: "company-1",
       ...(options.requestedModel === undefined ? {} : { requestedModel: options.requestedModel }),
     });
     const entry = {
@@ -945,7 +942,6 @@ export function createCapabilityIssueThreadMiddleware(options = {}) {
             scenario: snapshot.config.scenario,
             capabilities: snapshot.config.capabilities,
             explicitClaims: snapshot.config.explicitClaims,
-            companyId: snapshot.authority.companyId,
             actorId: snapshot.authority.actorId,
             taskId: snapshot.authority.taskId,
             turnTimeoutMs: snapshot.config.turnTimeoutMs,

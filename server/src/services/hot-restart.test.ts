@@ -47,7 +47,6 @@ describe("hot-restart path compatibility", () => {
           activeRuns: [
             {
               runId: "run-1",
-              companyId: "company-1",
               agentId: "agent-1",
               adapterType: "paperclip_runner",
               status: "running",
@@ -521,7 +520,6 @@ describe("hot-restart path compatibility", () => {
         signal: "SIGTERM",
         activeRuns: [{
           runId: "captured-run",
-          companyId: "company",
           agentId: "agent",
           adapterType: "codex_local",
           status: "running",

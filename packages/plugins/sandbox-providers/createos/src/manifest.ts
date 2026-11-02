@@ -22,7 +22,7 @@ const manifest: PaperclipPluginManifestV1 = {
       required: ["apiUrl", "shape"],
       properties: {
         apiUrl: { type: "string", title: "API URL", default: "https://api.sb.createos.sh", description: "https://api.sb.createos.sh" },
-        apiKey: { type: "string", format: "secret-ref", description: "CreateOS API key or Paperclip secret reference. Saved keys become company secrets. The official API endpoint can use CREATEOS_API_KEY from the host; custom endpoints require an explicit key." },
+        apiKey: { type: "string", format: "secret-ref", description: "CreateOS API key or Paperclip secret reference. Saved keys become Paperclip secrets. The official API endpoint can use CREATEOS_API_KEY from the host; custom endpoints require an explicit key." },
         shape: {
           type: "string",
           title: "Shape",

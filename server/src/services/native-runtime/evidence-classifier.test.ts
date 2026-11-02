@@ -37,7 +37,6 @@ function result(status: "satisfied" | "not_satisfied", objectiveSatisfied: boole
 
 const input = {
   db: evidenceDb(),
-  companyId: "company",
   issueId: "issue",
   runId: "run",
   contract: {

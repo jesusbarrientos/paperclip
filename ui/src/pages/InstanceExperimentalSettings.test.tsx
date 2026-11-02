@@ -22,8 +22,8 @@ vi.mock("@/api/instanceSettings", () => ({
   instanceSettingsApi: mockInstanceSettingsApi,
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompany: { id: "butter", issuePrefix: "BUT" } }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "butter", issuePrefix: "BUT" } }),
 }));
 
 vi.mock("../context/BreadcrumbContext", () => ({
@@ -172,7 +172,7 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
     flushSync(() => {
       root!.render(
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={["/BUT/company/settings/instance/experimental"]}>
+          <MemoryRouter initialEntries={["/BUT/organization/settings/instance/experimental"]}>
             <InstanceExperimentalSettings />
           </MemoryRouter>
         </QueryClientProvider>,
@@ -265,7 +265,7 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
       await flushReact();
       expect(mockInstanceSettingsApi.updateExperimental).toHaveBeenLastCalledWith({ enablePublicMcp: enabled });
       expect(container.querySelector(selector)?.getAttribute("aria-checked")).toBe(String(enabled));
-      expect(Boolean(container.querySelector('a[href="/BUT/apps/assistant-connection"]'))).toBe(enabled);
+      expect(Boolean(container.querySelector('a[href="/apps/assistant-connection"]'))).toBe(enabled);
     }
   });
 
@@ -808,7 +808,7 @@ describe("InstanceExperimentalSettings — cloud-managed keys", () => {
     flushSync(() => {
       root!.render(
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={["/BUT/company/settings/instance/experimental"]}>
+          <MemoryRouter initialEntries={["/BUT/organization/settings/instance/experimental"]}>
             <InstanceExperimentalSettings />
           </MemoryRouter>
         </QueryClientProvider>,
@@ -963,7 +963,7 @@ describe("InstanceExperimentalSettings — card ordering and headings (PAP-393)"
     flushSync(() => {
       root!.render(
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={["/BUT/company/settings/instance/experimental"]}>
+          <MemoryRouter initialEntries={["/BUT/organization/settings/instance/experimental"]}>
             <InstanceExperimentalSettings />
           </MemoryRouter>
         </QueryClientProvider>,
@@ -1080,7 +1080,7 @@ describe("InstanceExperimentalSettings — operator-hidden cards", () => {
     flushSync(() => {
       root!.render(
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={["/BUT/company/settings/instance/experimental"]}>
+          <MemoryRouter initialEntries={["/BUT/organization/settings/instance/experimental"]}>
             <InstanceExperimentalSettings />
           </MemoryRouter>
         </QueryClientProvider>,

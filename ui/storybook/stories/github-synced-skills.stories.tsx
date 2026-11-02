@@ -22,8 +22,8 @@ function SourcesStory({ view = "sources", empty = false, needsConnection = false
   }, [empty, needsConnection, view, repositories, repositoryUrl, scan]);
   if (!ready) return null;
   return <Routes>
-    <Route path="/:companyPrefix/skills/sources/:sourceId" element={<SkillSources />} />
-    <Route path="/:companyPrefix/apps/*" element={<div className="flex flex-col gap-3 p-6">
+    <Route path="/skills/sources/:sourceId" element={<SkillSources />} />
+    <Route path="/apps/*" element={<div className="flex flex-col gap-3 p-6">
       <h1 className="text-xl font-semibold">GitHub connections in Apps</h1>
       <p className="text-sm text-muted-foreground">In the running app, this opens the standard GitHub connection setup. This preview doesn’t connect real accounts.</p>
       <Link to="/skills/sources/new" className="text-sm underline">Return to skill import</Link>

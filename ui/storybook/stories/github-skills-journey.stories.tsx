@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CONNECTABLE_APP_DEFINITIONS } from "@paperclipai/shared";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
-import { CompanySkills } from "@/pages/CompanySkills";
+import { OrganizationSkills } from "@/pages/OrganizationSkills";
 import { SkillSources } from "@/pages/SkillSources";
 import { SkillStudio } from "@/pages/SkillStudio";
 import { PluginLauncherProvider } from "@/plugins/launchers";
@@ -56,12 +56,12 @@ function GitHubSkillsJourney({ step = "start" }: { step?: Step }) {
         discovery: { repositoryId: "123456", repositoryUrl: "https://github.com/acme/team-skills", fullName: "acme/team-skills", trackingRef: "main", commitSha: COMMIT, candidates: discovered, warnings: [] },
       }));
     }
-    client.setQueryData(queryKeys.apps.gallery(COMPANY_ID), {
+    client.setQueryData(queryKeys.apps.gallery(), {
       apps: CONNECTABLE_APP_DEFINITIONS.filter(app => app.slug === "github").map(app => ({ ...app, ownershipAvailability: { platform_shared: true, platform_provisioned: false, customer: true, dcr: true } })),
       capabilities: { canSetCompanyInstall: true, canCreateOrganizationGrant: true, canConnectAsCurrentUser: true },
     });
-    client.setQueryData(queryKeys.tools.applications(COMPANY_ID), { applications: [] });
-    client.setQueryData(queryKeys.tools.connections(COMPANY_ID), { connections: [] });
+    client.setQueryData(queryKeys.tools.applications(), { applications: [] });
+    client.setQueryData(queryKeys.tools.connections(), { connections: [] });
     initialNavigate.current(routes[step], { replace: true });
     setReady(true);
     return () => {
@@ -76,11 +76,11 @@ function GitHubSkillsJourney({ step = "start" }: { step?: Step }) {
   if (!ready) return null;
   return <PluginLauncherProvider>
     <Routes>
-      <Route path="/:companyPrefix" element={<Layout />}>
+      <Route path="/" element={<Layout />}>
         <Route path="skills/sources" element={<SkillSources />} />
         <Route path="skills/sources/:sourceId" element={<SkillSources />} />
         <Route path="skills/studio/:skillId" element={<SkillStudio />} />
-        <Route path="skills/*" element={<CompanySkills />} />
+        <Route path="skills/*" element={<OrganizationSkills />} />
         <Route path="*" element={<OutsideJourney />} />
       </Route>
     </Routes>

@@ -1,7 +1,6 @@
 /** Server-authored context. Each message retains its author and trust boundary. */
 export interface ExecutionContinuationEnvelope {
   version: 1;
-  companyId: string;
   issueId: string;
   trigger: {
     reason: string;

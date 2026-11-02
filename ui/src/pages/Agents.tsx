@@ -8,7 +8,6 @@ import { builtInAgentsApi, type BuiltInAgentState } from "../api/builtInAgents";
 import { environmentsApi } from "../api/environments";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
-import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
@@ -195,7 +194,6 @@ export type AgentsView = "list" | "org";
 
 export function Agents({ initialView = "list" }: { initialView?: AgentsView } = {}) {
   const agentChat = useAgentChatEnabled();
-  const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
@@ -215,7 +213,6 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   const { data: instanceSettings } = useQuery({
     queryKey: queryKeys.instance.settings,
     queryFn: () => instanceSettingsApi.get(),
-    enabled: !!selectedCompanyId,
   });
   const builtInAgentsEnabled = instanceSettings?.experimental.enableBuiltInAgents === true;
   const tab: FilterTab = requestedTab === "builtin" && !builtInAgentsEnabled ? "all" : requestedTab;
@@ -225,9 +222,9 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   );
 
   const { data: builtInAgents } = useQuery({
-    queryKey: queryKeys.builtInAgents.list(selectedCompanyId!),
-    queryFn: () => builtInAgentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && builtInAgentsEnabled,
+    queryKey: queryKeys.builtInAgents.list(),
+    queryFn: () => builtInAgentsApi.list(),
+    enabled: builtInAgentsEnabled,
   });
   const builtInByAgentId = useMemo(() => {
     const map = new Map<string, BuiltInAgentState>();
@@ -241,49 +238,46 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   const [configureState, setConfigureState] = useState<BuiltInAgentState | null>(null);
 
   const { data: agents, isLoading, error } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const { data: orgTree } = useQuery({
-    queryKey: queryKeys.org(selectedCompanyId!),
-    queryFn: () => agentsApi.org(selectedCompanyId!),
-    enabled: !!selectedCompanyId && effectiveView === "org",
+    queryKey: queryKeys.org(),
+    queryFn: () => agentsApi.org(),
+    enabled: effectiveView === "org",
   });
 
   const environmentsEnabled = instanceSettings?.experimental.enableEnvironments === true;
 
   const { data: environments } = useQuery({
-    queryKey: queryKeys.environments.list(selectedCompanyId!),
-    queryFn: () => environmentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && environmentsEnabled,
+    queryKey: queryKeys.environments.list(),
+    queryFn: () => environmentsApi.list(),
+    enabled: environmentsEnabled,
   });
 
   const { data: environmentCapabilities } = useQuery({
-    queryKey: queryKeys.environments.capabilities(selectedCompanyId!),
-    queryFn: () => environmentsApi.capabilities(selectedCompanyId!),
-    enabled: !!selectedCompanyId && environmentsEnabled,
+    queryKey: queryKeys.environments.capabilities(),
+    queryFn: () => environmentsApi.capabilities(),
+    enabled: environmentsEnabled,
   });
 
-  const runsQueryKey = [...queryKeys.liveRuns(selectedCompanyId!), "agents-page"] as const;
+  const runsQueryKey = [...queryKeys.liveRuns(), "agents-page"] as const;
   const sharedRuns = useSharedPollingQuery({
-    companyId: selectedCompanyId,
     resourceKey: "live-runs:agents-page",
     queryKey: runsQueryKey,
-    enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     leaderOnly: true,
   });
   const { data: runs, dataUpdatedAt: runsUpdatedAt } = useQuery({
     queryKey: runsQueryKey,
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(),
     enabled: sharedRuns.enabled,
     refetchInterval: sharedRuns.refetchInterval,
   });
   usePublishSharedQueryData(sharedRuns, runs, runsUpdatedAt);
-  const membershipsQuery = useResourceMemberships(selectedCompanyId);
-  const membershipMutation = useResourceMembershipMutation(selectedCompanyId);
+  const membershipsQuery = useResourceMemberships();
+  const membershipMutation = useResourceMembershipMutation();
 
   // Map agentId -> first live run + live run count
   const liveRunByAgent = useMemo(() => {
@@ -327,14 +321,11 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
   }, [setBreadcrumbs]);
 
   useEffect(() => {
-    if (selectedCompanyId && requestedTab === "builtin" && instanceSettings && !builtInAgentsEnabled) {
+    if (requestedTab === "builtin" && instanceSettings && !builtInAgentsEnabled) {
       navigate("/agents/all", { replace: true });
     }
-  }, [builtInAgentsEnabled, instanceSettings, navigate, requestedTab, selectedCompanyId]);
+  }, [builtInAgentsEnabled, instanceSettings, navigate, requestedTab]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Bot} message="Select an organization to view agents." />;
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="list" />;
@@ -569,10 +560,9 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
           No organizational hierarchy defined.
         </p>
       )}
-      {configureState && selectedCompanyId && (
+      {configureState && (
         <Suspense fallback={null}>
           <ConfigureBuiltInAgentModal
-            companyId={selectedCompanyId}
             state={configureState}
             open={configureState !== null}
             onOpenChange={(open) => {

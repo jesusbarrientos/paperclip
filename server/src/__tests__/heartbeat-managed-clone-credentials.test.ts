@@ -42,7 +42,7 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     const first = await createLocalSourceRepo();
     const second = await createLocalSourceRepo();
     try {
-      const anchor = await ensureManagedProjectWorkspace({ companyId: "repo-only", projectId: "two", repoUrl: first });
+      const anchor = await ensureManagedProjectWorkspace({ projectId: "two", repoUrl: first });
       await execFile("git", ["checkout", "-b", "project-branch"], { cwd: second });
       const resolveGitAuth = vi.fn(async () => null);
       const input = {
@@ -71,7 +71,7 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
   it("fails task preparation when any attached repository cannot be cloned", async () => {
     const first = await createLocalSourceRepo();
     try {
-      const anchor = await ensureManagedProjectWorkspace({ companyId: "repo-failure", projectId: "two", repoUrl: first });
+      const anchor = await ensureManagedProjectWorkspace({ projectId: "two", repoUrl: first });
       await expect(prepareProjectRepositoryWorkspaces({
         cwd: anchor.cwd, anchorRepoUrl: first,
         workspaces: [{ id: "missing", repoUrl: path.join(first, "missing.git"), repoRef: null }],
@@ -85,7 +85,7 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     const first = await createLocalSourceRepo();
     const second = await createLocalSourceRepo();
     try {
-      const anchor = await ensureManagedProjectWorkspace({ companyId: "local-project", projectId: "two", repoUrl: first });
+      const anchor = await ensureManagedProjectWorkspace({ projectId: "two", repoUrl: first });
       await fs.writeFile(path.join(second, "README.md"), "local changes");
       await fs.writeFile(path.join(second, ".gitignore"), "secret.txt\n");
       await fs.writeFile(path.join(second, "secret.txt"), "private");
@@ -105,7 +105,7 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     const second = await createLocalSourceRepo();
     try {
       const results = await Promise.all([first, second].map((repoUrl) => ensureManagedProjectWorkspace({
-        companyId: "company-multiple", projectId: "project-multiple", repoUrl,
+        projectId: "project-multiple", repoUrl,
       })));
       expect(results[0]!.cwd).not.toBe(results[1]!.cwd);
       for (let i = 0; i < results.length; i++) {
@@ -119,9 +119,8 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
   it("rechecks the repository when another process wins the checkout rename", async () => {
     const first = await createLocalSourceRepo();
     const second = await createLocalSourceRepo();
-    const companyId = "cross-process-race";
     const projectId = "same-name";
-    const sharedCwd = resolveManagedProjectWorkspaceDir({ companyId, projectId });
+    const sharedCwd = resolveManagedProjectWorkspaceDir({ projectId });
     try {
       // A different process does not share managedCheckoutMaterializations. Publish
       // its completed checkout after this caller chose its destination, before rename.
@@ -131,7 +130,7 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
         }
         return null;
       });
-      const result = await ensureManagedProjectWorkspace({ companyId, projectId, repoUrl: first, resolveGitAuth });
+      const result = await ensureManagedProjectWorkspace({ projectId, repoUrl: first, resolveGitAuth });
       expect((await execFile("git", ["remote", "get-url", "origin"], { cwd: result.cwd })).stdout.trim()).toBe(first);
       expect((await execFile("git", ["remote", "get-url", "origin"], { cwd: sharedCwd })).stdout.trim()).toBe(second);
       expect(result.cwd).not.toBe(sharedCwd);
@@ -144,7 +143,6 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     const sourceRepo = await createLocalSourceRepo();
     try {
       const result = await ensureManagedProjectWorkspace({
-        companyId: "company-noauth",
         projectId: "project-1",
         repoUrl: sourceRepo,
       });
@@ -161,7 +159,6 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     const resolveGitAuth = vi.fn(async () => null);
     try {
       const result = await ensureManagedProjectWorkspace({
-        companyId: "company-nullauth",
         projectId: "project-1",
         repoUrl: sourceRepo,
         resolveGitAuth,
@@ -186,7 +183,6 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
       secretName: "GH_TOKEN",
     }));
     const error = await ensureManagedProjectWorkspace({
-      companyId: "company-authfail",
       projectId: "project-1",
       repoUrl: missingRepo,
       resolveGitAuth,
@@ -203,12 +199,10 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     try {
       const [first, second] = await Promise.all([
         ensureManagedProjectWorkspace({
-          companyId: "company-concurrent",
           projectId: "project-1",
           repoUrl: sourceRepo,
         }),
         ensureManagedProjectWorkspace({
-          companyId: "company-concurrent",
           projectId: "project-1",
           repoUrl: sourceRepo,
         }),
@@ -231,7 +225,6 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
     // git-credentials.test.ts); a plain missing-repo failure must not suggest credentials.
     const missingRepo = path.join(os.tmpdir(), "paperclip-definitely-missing", "repo.git");
     const error = await ensureManagedProjectWorkspace({
-      companyId: "company-noauthfail",
       projectId: "project-1",
       repoUrl: missingRepo,
     }).then(
@@ -244,30 +237,26 @@ describe("ensureManagedProjectWorkspace clone credentials", () => {
 
   it("leaves neither the target nor temp directories behind when the clone fails", async () => {
     const missingRepo = path.join(os.tmpdir(), "paperclip-definitely-missing", "repo.git");
-    const companyId = "company-cleanup";
-    const projectId = "project-1";
+    const projectId = "project-clone-fails";
     await expect(ensureManagedProjectWorkspace({
-      companyId,
       projectId,
       repoUrl: missingRepo,
     })).rejects.toThrow();
     // Filesystem-path repo "URLs" derive no repo name, so the managed dir is the _default slot.
-    const cwd = resolveManagedProjectWorkspaceDir({ companyId, projectId });
+    const cwd = resolveManagedProjectWorkspaceDir({ projectId });
     await expect(fs.stat(cwd)).rejects.toMatchObject({ code: "ENOENT" });
     const siblings = await fs.readdir(path.dirname(cwd));
     expect(siblings.filter((name) => name.includes(".clone-"))).toEqual([]);
   });
 
   it("keeps using a pre-existing non-git directory as-is without attempting a clone", async () => {
-    const companyId = "company-existing";
-    const projectId = "project-1";
+    const projectId = "project-non-git-dir";
     const sourceRepo = await createLocalSourceRepo();
     try {
-      const cwd = resolveManagedProjectWorkspaceDir({ companyId, projectId });
+      const cwd = resolveManagedProjectWorkspaceDir({ projectId });
       await fs.mkdir(cwd, { recursive: true });
       await fs.writeFile(path.join(cwd, "keep.txt"), "operator data\n", "utf8");
       const result = await ensureManagedProjectWorkspace({
-        companyId,
         projectId,
         repoUrl: sourceRepo,
       });

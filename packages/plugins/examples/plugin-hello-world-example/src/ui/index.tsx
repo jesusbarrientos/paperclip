@@ -10,8 +10,7 @@ export function HelloWorldDashboardWidget({ context }: PluginWidgetProps) {
     <section aria-label={WIDGET_LABEL}>
       <strong>Hello world</strong>
       <div>This widget was added by @paperclipai/plugin-hello-world-example.</div>
-      {/* Include host context so authors can see where scoped IDs come from. */}
-      <div>Company context: {context.companyId}</div>
+      <div>Viewing as user: {context.userId ?? "unknown"}</div>
     </section>
   );
 }

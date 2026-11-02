@@ -1,5 +1,4 @@
 import { pgTable, uuid, text, timestamp, jsonb, index } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
@@ -7,7 +6,6 @@ export const activityLog = pgTable(
   "activity_log",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     actorType: text("actor_type").notNull().default("system"),
     actorId: text("actor_id").notNull(),
     action: text("action").notNull(),
@@ -20,14 +18,12 @@ export const activityLog = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyCreatedIdx: index("activity_log_company_created_idx").on(table.companyId, table.createdAt),
+    companyCreatedIdx: index("activity_log_company_created_idx").on(table.createdAt),
     companyAgentCreatedIdx: index("activity_log_company_agent_created_idx").on(
-      table.companyId,
       table.agentId,
       table.createdAt,
     ),
     companyResponsibleUserCreatedIdx: index("activity_log_company_responsible_user_created_idx").on(
-      table.companyId,
       table.responsibleUserId,
       table.createdAt,
     ),

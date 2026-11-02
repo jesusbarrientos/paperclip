@@ -426,7 +426,6 @@ export interface PluginManagedAgentResolution {
   pluginKey: string;
   resourceKind: "agent";
   resourceKey: string;
-  companyId: string;
   agentId: string | null;
   agent: Agent | null;
   status: "missing" | "resolved" | "created" | "relinked" | "reset";
@@ -441,7 +440,6 @@ export interface PluginManagedProjectResolution {
   pluginKey: string;
   resourceKind: "project";
   resourceKey: string;
-  companyId: string;
   projectId: string | null;
   project: Project | null;
   status: "missing" | "resolved" | "created" | "relinked" | "reset";
@@ -451,7 +449,6 @@ export interface PluginManagedRoutineResolution {
   pluginKey: string;
   resourceKind: "routine";
   resourceKey: string;
-  companyId: string;
   routineId: string | null;
   routine: Routine | null;
   status: "missing" | "missing_refs" | "resolved" | "created" | "relinked" | "reset";
@@ -462,7 +459,6 @@ export interface PluginManagedSkillResolution {
   pluginKey: string;
   resourceKind: "skill";
   resourceKey: string;
-  companyId: string;
   skillId: string | null;
   skill: CompanySkill | null;
   status: "missing" | "resolved" | "created" | "relinked" | "reset";
@@ -605,11 +601,6 @@ export interface PluginDatabaseDeclaration {
   coreReadTables?: PluginDatabaseCoreReadTable[];
 }
 
-export type PluginApiRouteCompanyResolution =
-  | { from: "body"; key: string }
-  | { from: "query"; key: string }
-  | { from: "issue"; param: string };
-
 export interface PluginApiRouteDeclaration {
   /** Stable plugin-defined route key passed to the worker. */
   routeKey: string;
@@ -623,8 +614,6 @@ export interface PluginApiRouteDeclaration {
   capability: "api.routes.register";
   /** Optional checkout policy enforced by the host before worker dispatch. */
   checkoutPolicy?: PluginApiRouteCheckoutPolicy;
-  /** How the host resolves company access for this route. */
-  companyResolution?: PluginApiRouteCompanyResolution;
 }
 
 export interface PluginObjectReferenceRefreshPolicy {
@@ -845,8 +834,6 @@ export interface PluginConfig {
   id: string;
   /** FK to `plugins.id`. Unique together with `companyId`. */
   pluginId: string;
-  /** FK to `companies.id`. */
-  companyId: string;
   /** Operator-provided configuration values (validated against `instanceConfigSchema`). */
   configJson: Record<string, unknown>;
   /** Most recent config validation error, if any. */
@@ -864,7 +851,6 @@ export interface PluginConfig {
  */
 export interface PluginCompanySettings {
   id: string;
-  companyId: string;
   pluginId: string;
   enabled: boolean;
   settingsJson: Record<string, unknown>;

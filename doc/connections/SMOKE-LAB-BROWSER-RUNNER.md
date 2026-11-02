@@ -81,7 +81,7 @@ company asset and putting its served URL in the step's `screenshotArtifactRef`.
 
 - **Demo OAuth creds:** `smoke@paperclip.test` / `smoke-password` (`SMOKE_LAB_DEMO_*`). Email is pre-filled on the consent page; you type the password.
 - **Fake OAuth scopes:** only `smoke:openid smoke:profile smoke:email` are accepted — any other `scope` → `400`.
-- **Consent page:** `GET /api/companies/:cid/smoke-lab/oauth/authorize?client_id=…&redirect_uri=…&scope=…&state=…&response_type=code` renders the "SMOKE TEST — not a real provider" login+consent form. Submitting valid creds → `302` to `redirect_uri?code=…` (wrong creds → `403`). The redirect target is a dead loopback callback — don't wait for it to load; assert on the **302 + `code=` in the Location header**, then let the failed navigation commit before driving the Paperclip UI.
+- **Consent page:** `GET /api/smoke-lab/oauth/authorize?client_id=…&redirect_uri=…&scope=…&state=…&response_type=code` renders the "SMOKE TEST — not a real provider" login+consent form. Submitting valid creds → `302` to `redirect_uri?code=…` (wrong creds → `403`). The redirect target is a dead loopback callback — don't wait for it to load; assert on the **302 + `code=` in the Location header**, then let the failed navigation commit before driving the Paperclip UI.
 - **Two connections per install:** `remote_http` (HTTP MCP fixture, used for P1/P2/P5/P6/P7) and `local_stdio` (used for P3/P4). `install-fixtures` is idempotent.
 - **Lifecycle tools** (from the catalog): HTTP → read `todo.list`, write `todo.add`, deny `email.send`, quarantine `fixture.schemaFlip`; stdio → read `time.now`, write `slow.ping`, deny `crash.now`.
 
@@ -100,7 +100,7 @@ For each `ciSmokeLabScenarios` entry, drive the browser + board API through:
 3. **allowed-read** — `POST /api/tool-connections/:id/test-calls` with the read
    tool; expect `decision:"allowed"`, no error; confirm an audit row; screenshot Activity.
 4. **ask-first-write-approved** — create a `require_approval` policy
-   (`POST /api/companies/:cid/tools/policies`), issue the write test-call
+   (`POST /api/tools/policies`), issue the write test-call
    (`decision:"ask_first"` + `actionRequestId`), open **Review**, approve
    (`POST /api/tool-gateway/action-requests/:id/approve` `{companyId}`), poll to `done`.
 5. **denied-blocked-call** — create a `block` policy, issue the denied tool;
@@ -114,9 +114,9 @@ For each `ciSmokeLabScenarios` entry, drive the browser + board API through:
    {enabled:false}` then re-enable. Screenshot the connection.
 8. **audit-evidence** — re-assert the audit row; screenshot Activity.
 
-Record each step: `POST /api/companies/:cid/smoke-lab/runs/:runId/steps` with
+Record each step: `POST /api/smoke-lab/runs/:runId/steps` with
 `{ path, scenarioStep, status, detail, screenshotArtifactRef:{kind,url}, durationMs }`.
-For a viewable screenshot: `POST /api/companies/:cid/assets/images` (multipart
+For a viewable screenshot: `POST /api/assets/images` (multipart
 field `file`, PNG) → use `<base>${contentPath}` as the ref `url`.
 
 **Run lifecycle:** `POST …/smoke-lab/runs {trigger:"manual"|"ci"|"routine", summary}`

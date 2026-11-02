@@ -55,7 +55,7 @@ export { CHAT_RUN_PRESENTATION_AUTHORIZATION_REASON };
  */
 export async function resolveChatRunPresentationAuthorizationReason(
   db: Db,
-  input: { companyId: string; issueId: string; runId: string },
+  input: { issueId: string; runId: string },
 ): Promise<
   typeof CHAT_RUN_PRESENTATION_AUTHORIZATION_REASON | "internal_agent_write"
 > {
@@ -63,10 +63,7 @@ export async function resolveChatRunPresentationAuthorizationReason(
     .select({ resultJson: heartbeatRuns.resultJson })
     .from(heartbeatRuns)
     .where(
-      and(
-        eq(heartbeatRuns.id, input.runId),
-        eq(heartbeatRuns.companyId, input.companyId),
-      ),
+      eq(heartbeatRuns.id, input.runId),
     )
     .limit(1);
   if (
@@ -80,7 +77,6 @@ export async function resolveChatRunPresentationAuthorizationReason(
   }
   const bindings = await resolveChatOriginPublicationBindings(
     db,
-    input.companyId,
     input.issueId,
     input.runId,
   );
@@ -102,7 +98,6 @@ type ChatRunMilestoneCandidate = {
   runErrorCode: string | null;
   runUpdatedAt: Date;
   issueId: string;
-  companyId: string;
   endpointId: string;
   conversationId: string;
   agentName: string;
@@ -116,7 +111,6 @@ type SafeNativeChatProgressCandidate = {
   runId: string;
   agentId: string;
   issueId: string;
-  companyId: string;
   endpointId: string;
   conversationId: string;
   agentName: string;
@@ -211,7 +205,6 @@ async function enqueueSafeNativeChatProgress(
         runId: heartbeatRuns.id,
         agentId: heartbeatRuns.agentId,
         issueId: chatConversations.issueId,
-        companyId: chatConversations.companyId,
         endpointId: chatConversations.endpointId,
         conversationId: chatConversations.id,
         agentName: agents.name,
@@ -221,7 +214,6 @@ async function enqueueSafeNativeChatProgress(
         heartbeatRuns,
         and(
           eq(heartbeatRuns.id, heartbeatRunEvents.runId),
-          eq(heartbeatRuns.companyId, heartbeatRunEvents.companyId),
           eq(heartbeatRuns.agentId, heartbeatRunEvents.agentId),
           eq(heartbeatRuns.runtimeMode, "native"),
           eq(heartbeatRuns.status, "running"),
@@ -230,7 +222,6 @@ async function enqueueSafeNativeChatProgress(
       .innerJoin(
         chatConversations,
         and(
-          eq(chatConversations.companyId, heartbeatRuns.companyId),
           sql`${issueIdFromContext} = ${chatConversations.issueId}::text`,
           inArray(chatConversations.state, ["active", "waiting"]),
         ),
@@ -238,7 +229,6 @@ async function enqueueSafeNativeChatProgress(
       .innerJoin(
         chatEndpoints,
         and(
-          eq(chatEndpoints.companyId, chatConversations.companyId),
           eq(chatEndpoints.id, chatConversations.endpointId),
           eq(chatEndpoints.publicationMode, "automatic"),
           eq(chatEndpoints.assignedAgentId, heartbeatRuns.agentId),
@@ -248,7 +238,6 @@ async function enqueueSafeNativeChatProgress(
       .innerJoin(
         basePublication,
         and(
-          eq(basePublication.companyId, heartbeatRuns.companyId),
           eq(basePublication.endpointId, chatConversations.endpointId),
           eq(basePublication.conversationId, chatConversations.id),
           eq(basePublication.issueId, chatConversations.issueId),
@@ -274,7 +263,6 @@ async function enqueueSafeNativeChatProgress(
               .from(laterEvent)
               .where(
                 and(
-                  eq(laterEvent.companyId, heartbeatRunEvents.companyId),
                   eq(laterEvent.runId, heartbeatRunEvents.runId),
                   gt(laterEvent.seq, heartbeatRunEvents.seq),
                   inArray(laterEvent.eventType, [
@@ -326,10 +314,7 @@ async function enqueueSafeNativeChatProgress(
           .select({ id: issues.id })
           .from(issues)
           .where(
-            and(
-              eq(issues.id, row.issueId),
-              eq(issues.companyId, row.companyId),
-            ),
+            eq(issues.id, row.issueId),
           )
           .for("update", { skipLocked: true })
           .then((currentRows) => currentRows[0] ?? null);
@@ -343,7 +328,6 @@ async function enqueueSafeNativeChatProgress(
           .where(
             and(
               eq(heartbeatRuns.id, row.runId),
-              eq(heartbeatRuns.companyId, row.companyId),
               eq(heartbeatRuns.agentId, row.agentId),
               eq(heartbeatRuns.runtimeMode, "native"),
               eq(heartbeatRuns.status, "running"),
@@ -359,7 +343,6 @@ async function enqueueSafeNativeChatProgress(
           .innerJoin(
             chatEndpoints,
             and(
-              eq(chatEndpoints.companyId, chatConversations.companyId),
               eq(chatEndpoints.id, chatConversations.endpointId),
           eq(chatEndpoints.publicationMode, "automatic"),
               eq(chatEndpoints.assignedAgentId, row.agentId),
@@ -367,7 +350,6 @@ async function enqueueSafeNativeChatProgress(
           )
           .where(
             and(
-              eq(chatConversations.companyId, row.companyId),
               eq(chatConversations.id, row.conversationId),
               eq(chatConversations.endpointId, row.endpointId),
               eq(chatConversations.issueId, row.issueId),
@@ -388,7 +370,6 @@ async function enqueueSafeNativeChatProgress(
           .from(heartbeatRunEvents)
           .where(
             and(
-              eq(heartbeatRunEvents.companyId, row.companyId),
               eq(heartbeatRunEvents.runId, row.runId),
               inArray(heartbeatRunEvents.eventType, [
                 ...SAFE_NATIVE_CHAT_PROGRESS_EVENT_TYPES,
@@ -417,7 +398,6 @@ async function enqueueSafeNativeChatProgress(
           .from(chatPublications)
           .where(
             and(
-              eq(chatPublications.companyId, row.companyId),
               eq(chatPublications.endpointId, row.endpointId),
               eq(chatPublications.conversationId, row.conversationId),
               eq(chatPublications.issueId, row.issueId),
@@ -442,7 +422,6 @@ async function enqueueSafeNativeChatProgress(
           .from(chatPublications)
           .where(
             and(
-              eq(chatPublications.companyId, row.companyId),
               eq(chatPublications.endpointId, row.endpointId),
               eq(chatPublications.conversationId, row.conversationId),
               eq(chatPublications.issueId, row.issueId),
@@ -473,7 +452,6 @@ async function enqueueSafeNativeChatProgress(
 
         const bindings = await resolveChatOriginPublicationBindings(
           tx,
-          row.companyId,
           row.issueId,
           row.runId,
         );
@@ -488,7 +466,6 @@ async function enqueueSafeNativeChatProgress(
         }
         if (
           await hasChatRunOwnedProviderInteraction(tx, {
-            companyId: row.companyId,
             issueId: row.issueId,
             runId: row.runId,
           })
@@ -500,14 +477,10 @@ async function enqueueSafeNativeChatProgress(
           .from(chatPublications)
           .innerJoin(
             issueComments,
-            and(
-              eq(issueComments.companyId, chatPublications.companyId),
-              eq(issueComments.id, chatPublications.commentId),
-            ),
+            eq(issueComments.id, chatPublications.commentId),
           )
           .where(
             and(
-              eq(chatPublications.companyId, row.companyId),
               eq(chatPublications.endpointId, row.endpointId),
               eq(chatPublications.conversationId, row.conversationId),
               eq(chatPublications.issueId, row.issueId),
@@ -525,7 +498,6 @@ async function enqueueSafeNativeChatProgress(
         const insertedRows = await tx
           .insert(chatPublications)
           .values({
-            companyId: row.companyId,
             endpointId: row.endpointId,
             conversationId: row.conversationId,
             issueId: row.issueId,
@@ -582,17 +554,14 @@ export async function enqueueChatRunMilestones(
     select 1
     from issue_question_response_deliveries question_delivery
     inner join issue_thread_interactions question_interaction
-      on question_interaction.company_id = question_delivery.company_id
-      and question_interaction.issue_id = question_delivery.issue_id
+      on question_interaction.issue_id = question_delivery.issue_id
       and question_interaction.id = question_delivery.interaction_id
     inner join chat_publications question_prompt
-      on question_prompt.company_id = question_delivery.company_id
-      and question_prompt.issue_id = question_delivery.issue_id
+      on question_prompt.issue_id = question_delivery.issue_id
       and question_prompt.payload ->> 'interactionId' = question_delivery.interaction_id::text
       and question_prompt.idempotency_key = 'interaction:' || question_delivery.interaction_id::text || ':' || question_prompt.endpoint_id::text
       and question_prompt.state = 'published'
-    where question_delivery.company_id = ${heartbeatRuns.companyId}
-      and question_delivery.issue_id::text = ${issueIdFromContext}
+    where question_delivery.issue_id::text = ${issueIdFromContext}
       and question_delivery.target_run_id = ${heartbeatRuns.id}
       and question_delivery.status in ('delivered', 'fallback_queued')
       and question_interaction.kind = 'ask_user_questions'
@@ -602,14 +571,12 @@ export async function enqueueChatRunMilestones(
     select 1
     from issue_thread_interactions interaction
     inner join chat_publications interaction_prompt
-      on interaction_prompt.company_id = interaction.company_id
-      and interaction_prompt.issue_id = interaction.issue_id
+      on interaction_prompt.issue_id = interaction.issue_id
       and interaction_prompt.payload ->> 'interactionId' = interaction.id::text
       and interaction_prompt.idempotency_key = 'interaction:' || interaction.id::text || ':' || interaction_prompt.endpoint_id::text
       and interaction_prompt.state = 'published'
     inner join agent_wakeup_requests continuation_wake
-      on continuation_wake.company_id = interaction.company_id
-      and continuation_wake.run_id = ${heartbeatRuns.id}
+      on continuation_wake.run_id = ${heartbeatRuns.id}
       and continuation_wake.agent_id = ${heartbeatRuns.agentId}
       and continuation_wake.status <> 'skipped'
       and continuation_wake.idempotency_key = case
@@ -618,8 +585,7 @@ export async function enqueueChatRunMilestones(
           then 'question-response:' || interaction.id::text
         else 'interaction:' || interaction.id::text || ':' || interaction.status
       end
-    where interaction.company_id = ${heartbeatRuns.companyId}
-      and interaction.issue_id::text = ${issueIdFromContext}
+    where interaction.issue_id::text = ${issueIdFromContext}
       and interaction.id::text = ${heartbeatRuns.contextSnapshot} ->> 'interactionId'
       and interaction.source_run_id::text = ${heartbeatRuns.contextSnapshot} ->> 'sourceRunId'
       and (
@@ -654,7 +620,6 @@ export async function enqueueChatRunMilestones(
         runErrorCode: heartbeatRuns.errorCode,
         runUpdatedAt: heartbeatRuns.updatedAt,
         issueId: chatConversations.issueId,
-        companyId: chatConversations.companyId,
         endpointId: chatConversations.endpointId,
         conversationId: chatConversations.id,
         agentName: agents.name,
@@ -663,7 +628,6 @@ export async function enqueueChatRunMilestones(
       .innerJoin(
         chatConversations,
         and(
-          eq(chatConversations.companyId, heartbeatRuns.companyId),
           sql`${issueIdFromContext} = ${chatConversations.issueId}::text`,
           inArray(chatConversations.state, ["active", "waiting"]),
         ),
@@ -671,7 +635,6 @@ export async function enqueueChatRunMilestones(
       .innerJoin(
         chatEndpoints,
         and(
-          eq(chatEndpoints.companyId, chatConversations.companyId),
           eq(chatEndpoints.id, chatConversations.endpointId),
           eq(chatEndpoints.publicationMode, "automatic"),
           eq(chatEndpoints.assignedAgentId, heartbeatRuns.agentId),
@@ -681,7 +644,6 @@ export async function enqueueChatRunMilestones(
       .leftJoin(
         chatPublications,
         and(
-          eq(chatPublications.companyId, heartbeatRuns.companyId),
           eq(chatPublications.endpointId, chatConversations.endpointId),
           sql`${chatPublications.idempotencyKey} = 'run:' || ${heartbeatRuns.id}::text || ':' || ${milestoneFromStatus} || ':' || ${chatConversations.endpointId}::text`,
         ),
@@ -739,14 +701,10 @@ export async function enqueueChatRunMilestones(
                 .from(chatPublications)
                 .innerJoin(
                   issueComments,
-                  and(
-                    eq(issueComments.companyId, chatPublications.companyId),
-                    eq(issueComments.id, chatPublications.commentId),
-                  ),
+                  eq(issueComments.id, chatPublications.commentId),
                 )
                 .where(
                   and(
-                    eq(chatPublications.companyId, heartbeatRuns.companyId),
                     eq(
                       chatPublications.endpointId,
                       chatConversations.endpointId,
@@ -763,8 +721,7 @@ export async function enqueueChatRunMilestones(
             sql`exists (
               select 1
               from ${chatMessageLinks}
-              where ${chatMessageLinks.companyId} = ${heartbeatRuns.companyId}
-                and ${chatMessageLinks.conversationId} = ${chatConversations.id}
+              where ${chatMessageLinks.conversationId} = ${chatConversations.id}
                 and ${chatMessageLinks.direction} = 'inbound'
                 and (
                   ${chatMessageLinks.commentId}::text = (${heartbeatRuns.contextSnapshot} ->> 'wakeCommentId')
@@ -775,8 +732,7 @@ export async function enqueueChatRunMilestones(
             sql`exists (
               select 1
               from chat_publications prompt
-              where prompt.company_id = ${heartbeatRuns.companyId}
-                and prompt.conversation_id = ${chatConversations.id}
+              where prompt.conversation_id = ${chatConversations.id}
                 and prompt.issue_id = ${chatConversations.issueId}
                 and prompt.state = 'published'
                 and prompt.payload ->> 'interactionId' = ${heartbeatRuns.contextSnapshot} ->> 'interactionId'
@@ -786,14 +742,12 @@ export async function enqueueChatRunMilestones(
               select 1
               from issue_question_response_deliveries target_delivery
               inner join chat_publications target_prompt
-                on target_prompt.company_id = target_delivery.company_id
-                and target_prompt.issue_id = target_delivery.issue_id
+                on target_prompt.issue_id = target_delivery.issue_id
                 and target_prompt.conversation_id = ${chatConversations.id}
                 and target_prompt.payload ->> 'interactionId' = target_delivery.interaction_id::text
                 and target_prompt.idempotency_key = 'interaction:' || target_delivery.interaction_id::text || ':' || target_prompt.endpoint_id::text
                 and target_prompt.state = 'published'
-              where target_delivery.company_id = ${heartbeatRuns.companyId}
-                and target_delivery.target_run_id = ${heartbeatRuns.id}
+              where target_delivery.target_run_id = ${heartbeatRuns.id}
                 and target_delivery.status in ('delivered', 'fallback_queued')
             )`,
           ),
@@ -834,12 +788,11 @@ export async function enqueueChatRunMilestones(
       if (inserted >= limit) break;
       const milestone = milestoneForStatus(row.runStatus, row.runErrorCode);
       if (!milestone) continue;
-      const bindingCacheKey = `${row.companyId}:${row.issueId}:${row.runId}`;
+      const bindingCacheKey = `${row.issueId}:${row.runId}`;
       let bindings = bindingsCache.get(bindingCacheKey);
       if (!bindings) {
         bindings = await resolveChatOriginPublicationBindings(
           db,
-          row.companyId,
           row.issueId,
           row.runId,
         );
@@ -861,7 +814,6 @@ export async function enqueueChatRunMilestones(
           hasProviderInteraction = await hasChatRunOwnedProviderInteraction(
             db,
             {
-              companyId: row.companyId,
               issueId: row.issueId,
               runId: row.runId,
             },
@@ -876,14 +828,10 @@ export async function enqueueChatRunMilestones(
           .from(chatPublications)
           .innerJoin(
             issueComments,
-            and(
-              eq(issueComments.companyId, chatPublications.companyId),
-              eq(issueComments.id, chatPublications.commentId),
-            ),
+            eq(issueComments.id, chatPublications.commentId),
           )
           .where(
             and(
-              eq(chatPublications.companyId, row.companyId),
               eq(chatPublications.endpointId, row.endpointId),
               eq(chatPublications.conversationId, row.conversationId),
               eq(issueComments.authorType, "agent"),
@@ -897,7 +845,6 @@ export async function enqueueChatRunMilestones(
       const result = await db
         .insert(chatPublications)
         .values({
-          companyId: row.companyId,
           endpointId: row.endpointId,
           conversationId: row.conversationId,
           issueId: row.issueId,

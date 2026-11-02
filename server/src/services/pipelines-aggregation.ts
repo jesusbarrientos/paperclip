@@ -106,7 +106,7 @@ function stageAutomationFromConfig(stage: typeof pipelineStages.$inferSelect) {
 
 export async function listPipelineAttention(
   db: Db,
-  input: { companyId: string; caller: AttentionCaller; limit?: number },
+  input: { caller: AttentionCaller; limit?: number },
 ) {
   const limit = boundedLimit(input.limit, PIPELINE_ATTENTION_DEFAULT_LIMIT, PIPELINE_ATTENTION_MAX_LIMIT);
 
@@ -129,8 +129,6 @@ export async function listPipelineAttention(
     ))
     .leftJoin(suggestionAgent, sql`${suggestionAgent.id}::text = ${pipelineCases.pendingSuggestion}->>'suggestedByAgentId'`)
     .where(and(
-      eq(pipelineCases.companyId, input.companyId),
-      eq(pipelines.companyId, input.companyId),
       isNull(pipelineCases.terminalKind),
       isNotNull(pipelineCases.pendingSuggestion),
     ))
@@ -163,8 +161,6 @@ export async function listPipelineAttention(
     .innerJoin(pipelines, eq(pipelineCases.pipelineId, pipelines.id))
     .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
     .where(and(
-      eq(pipelineCases.companyId, input.companyId),
-      eq(pipelines.companyId, input.companyId),
       eq(pipelineStages.kind, "review"),
       isNull(pipelineCases.terminalKind),
       reviewStageAwaitsCallerSql(input.caller),
@@ -206,15 +202,12 @@ export async function listPipelineAttention(
     .innerJoin(pipelines, eq(pipelineCases.pipelineId, pipelines.id))
     .innerJoin(pipelineStages, eq(pipelineCases.stageId, pipelineStages.id))
     .where(and(
-      eq(pipelineCaseEvents.companyId, input.companyId),
       eq(pipelineCaseEvents.type, "upstream_drift"),
-      eq(pipelineCases.companyId, input.companyId),
       isNull(pipelineCases.terminalKind),
       sql`not exists (
         select 1
         from pipeline_case_events ack
-        where ack.company_id = ${pipelineCaseEvents.companyId}
-          and ack.case_id = ${pipelineCaseEvents.caseId}
+        where ack.case_id = ${pipelineCaseEvents.caseId}
           and ack.type = 'drift_acknowledged'
           and ack.created_at > ${pipelineCaseEvents.createdAt}
       )`,
@@ -228,15 +221,15 @@ export async function listPipelineAttention(
     .filter((value): value is string => typeof value === "string"))];
 
   const [activeWorkByCase, workIssuesByCase, upstreamCases] = await Promise.all([
-    loadActiveWorkForCases(db, input.companyId, driftCaseIds),
-    loadOpenWorkIssuesForCases(db, input.companyId, driftCaseIds),
+    loadActiveWorkForCases(db, driftCaseIds),
+    loadOpenWorkIssuesForCases(db, driftCaseIds),
     upstreamCaseIds.length === 0
       ? Promise.resolve([] as Array<{ case: CaseRow; pipeline: PipelineRow }>)
       : db
         .select({ case: pipelineCases, pipeline: pipelines })
         .from(pipelineCases)
         .innerJoin(pipelines, eq(pipelineCases.pipelineId, pipelines.id))
-        .where(and(eq(pipelineCases.companyId, input.companyId), inArray(pipelineCases.id, upstreamCaseIds))),
+        .where(inArray(pipelineCases.id, upstreamCaseIds)),
   ]);
   const upstreamById = new Map(upstreamCases.map((row) => [row.case.id, row]));
 
@@ -281,7 +274,7 @@ export async function listPipelineAttention(
 
 export async function listCompanyCaseEvents(
   db: Db,
-  input: { companyId: string; types?: string[]; limit?: number; offset?: number },
+  input: { types?: string[]; limit?: number; offset?: number },
 ) {
   const limit = boundedLimit(input.limit, COMPANY_CASE_EVENTS_DEFAULT_LIMIT, COMPANY_CASE_EVENTS_MAX_LIMIT);
   const offset = Math.max(0, Math.floor(input.offset ?? 0));
@@ -309,11 +302,7 @@ export async function listCompanyCaseEvents(
     .leftJoin(fromStage, eq(pipelineCaseEvents.fromStageId, fromStage.id))
     .leftJoin(toStage, eq(pipelineCaseEvents.toStageId, toStage.id))
     .leftJoin(actorAgent, eq(pipelineCaseEvents.actorAgentId, actorAgent.id))
-    .where(and(
-      eq(pipelineCaseEvents.companyId, input.companyId),
-      eq(pipelineCases.companyId, input.companyId),
-      input.types && input.types.length > 0 ? inArray(pipelineCaseEvents.type, input.types) : undefined,
-    ))
+    .where(input.types && input.types.length > 0 ? inArray(pipelineCaseEvents.type, input.types) : undefined)
     .orderBy(desc(pipelineCaseEvents.createdAt), desc(pipelineCaseEvents.id))
     .limit(limit + 1)
     .offset(offset);
@@ -335,13 +324,13 @@ export async function listCompanyCaseEvents(
       ? db
           .select({ id: routines.id, title: routines.title })
           .from(routines)
-          .where(and(eq(routines.companyId, input.companyId), inArray(routines.id, routineIds)))
+          .where(inArray(routines.id, routineIds))
       : Promise.resolve([]),
     issueIds.length > 0
       ? db
           .select({ id: issues.id, identifier: issues.identifier, title: issues.title, status: issues.status })
           .from(issues)
-          .where(and(eq(issues.companyId, input.companyId), inArray(issues.id, issueIds)))
+          .where(inArray(issues.id, issueIds))
       : Promise.resolve([]),
     automationPipelineIds.length > 0
       ? db
@@ -424,19 +413,18 @@ export type CaseChildNode = {
   childGroups: Array<{ pipeline: { id: string; key: string; name: string }; cases: CaseChildNode[] }>;
 };
 
-export async function getCaseChildrenTree(db: Db, companyId: string, caseId: string) {
+export async function getCaseChildrenTree(db: Db, caseId: string) {
   const result = await db.execute(sql`
     with recursive subtree as (
       select id, parent_case_id, pipeline_id, stage_id, case_key, title, terminal_kind, created_at, updated_at, 0 as depth
       from pipeline_cases
-      where company_id = ${companyId} and id = ${caseId}
+      where id = ${caseId}
       union all
       select child.id, child.parent_case_id, child.pipeline_id, child.stage_id, child.case_key, child.title,
              child.terminal_kind, child.created_at, child.updated_at, parent.depth + 1
       from pipeline_cases child
       join subtree parent on child.parent_case_id = parent.id
-      where child.company_id = ${companyId}
-        and child.hidden_from_board_at is null
+      where child.hidden_from_board_at is null
         and parent.depth < ${CASE_CHILDREN_TREE_MAX_DEPTH}
     )
     select * from subtree limit ${CASE_CHILDREN_TREE_MAX_NODES + 1}
@@ -451,7 +439,7 @@ export async function getCaseChildrenTree(db: Db, companyId: string, caseId: str
   const [pipelineRows, stageRows] = await Promise.all([
     db.select({ id: pipelines.id, key: pipelines.key, name: pipelines.name })
       .from(pipelines)
-      .where(and(eq(pipelines.companyId, companyId), inArray(pipelines.id, pipelineIds))),
+      .where(inArray(pipelines.id, pipelineIds)),
     db.select({ id: pipelineStages.id, key: pipelineStages.key, name: pipelineStages.name, kind: pipelineStages.kind })
       .from(pipelineStages)
       .where(inArray(pipelineStages.id, stageIds)),
@@ -523,7 +511,6 @@ export async function getCaseChildrenTree(db: Db, companyId: string, caseId: str
 
 export async function getDirectChildrenSummary(
   db: Db,
-  companyId: string,
   caseId: string,
 ): Promise<CaseChildrenRollup> {
   const [counts] = await db
@@ -535,7 +522,6 @@ export async function getDirectChildrenSummary(
     })
     .from(pipelineCases)
     .where(and(
-      eq(pipelineCases.companyId, companyId),
       eq(pipelineCases.parentCaseId, caseId),
       isNull(pipelineCases.hiddenFromBoardAt),
     ));
@@ -544,7 +530,6 @@ export async function getDirectChildrenSummary(
 
 export async function loadActiveWorkForCases(
   db: Db,
-  companyId: string,
   caseIds: string[],
 ): Promise<Map<string, ActiveWork | null>> {
   const map = new Map<string, ActiveWork | null>(caseIds.map((id) => [id, null]));
@@ -565,10 +550,8 @@ export async function loadActiveWorkForCases(
     .innerJoin(issues, eq(pipelineCaseIssueLinks.issueId, issues.id))
     .innerJoin(agents, eq(issues.assigneeAgentId, agents.id))
     .where(and(
-      eq(pipelineCaseIssueLinks.companyId, companyId),
       inArray(pipelineCaseIssueLinks.caseId, caseIds),
       inArray(pipelineCaseIssueLinks.role, ["work", "automation"]),
-      eq(issues.companyId, companyId),
       eq(issues.status, "in_progress"),
       visibleIssueCondition(),
     ))
@@ -595,7 +578,6 @@ type DescendantActiveWorkCountRow = {
 
 export async function loadDescendantActiveWorkCountsForCases(
   db: Db,
-  companyId: string,
   caseIds: string[],
 ): Promise<Map<string, number>> {
   const uniqueCaseIds = [...new Set(caseIds)];
@@ -612,24 +594,20 @@ export async function loadDescendantActiveWorkCountsForCases(
       from roots
       join pipeline_cases root_case
         on root_case.id = roots.root_id
-       and root_case.company_id = ${companyId}
       union all
       select subtree.root_id, child.id, subtree.depth + 1
       from pipeline_cases child
       join subtree on child.parent_case_id = subtree.id
-      where child.company_id = ${companyId}
-        and child.hidden_from_board_at is null
+      where child.hidden_from_board_at is null
         and subtree.depth < ${CASE_CHILDREN_TREE_MAX_DEPTH}
     )
     select subtree.root_id, count(distinct subtree.id)::int as count
     from subtree
     join pipeline_case_issue_links link
-      on link.company_id = ${companyId}
-     and link.case_id = subtree.id
+      on link.case_id = subtree.id
      and link.role in ('work', 'automation')
     join issues issue
       on issue.id = link.issue_id
-     and issue.company_id = ${companyId}
      and issue.status = 'in_progress'
      and issue.hidden_at is null
     join agents agent on agent.id = issue.assignee_agent_id
@@ -650,7 +628,6 @@ type PipelineDescendantActiveWorkCountRow = {
 
 export async function loadPipelineDescendantActiveWorkCounts(
   db: Db,
-  companyId: string,
   pipelineIds: string[],
 ): Promise<Map<string, number>> {
   const uniquePipelineIds = [...new Set(pipelineIds)];
@@ -667,7 +644,6 @@ export async function loadPipelineDescendantActiveWorkCounts(
       from target_pipelines
       join pipeline_cases root_case
         on root_case.pipeline_id = target_pipelines.pipeline_id
-       and root_case.company_id = ${companyId}
     ),
     subtree(root_pipeline_id, root_case_id, id, depth) as (
       select roots.root_pipeline_id, roots.root_case_id, roots.root_case_id, 0
@@ -676,19 +652,16 @@ export async function loadPipelineDescendantActiveWorkCounts(
       select subtree.root_pipeline_id, subtree.root_case_id, child.id, subtree.depth + 1
       from pipeline_cases child
       join subtree on child.parent_case_id = subtree.id
-      where child.company_id = ${companyId}
-        and child.hidden_from_board_at is null
+      where child.hidden_from_board_at is null
         and subtree.depth < ${CASE_CHILDREN_TREE_MAX_DEPTH}
     )
     select subtree.root_pipeline_id as pipeline_id, count(distinct subtree.id)::int as count
     from subtree
     join pipeline_case_issue_links link
-      on link.company_id = ${companyId}
-     and link.case_id = subtree.id
+      on link.case_id = subtree.id
      and link.role in ('work', 'automation')
     join issues issue
       on issue.id = link.issue_id
-     and issue.company_id = ${companyId}
      and issue.status = 'in_progress'
      and issue.hidden_at is null
     join agents agent on agent.id = issue.assignee_agent_id
@@ -702,7 +675,7 @@ export async function loadPipelineDescendantActiveWorkCounts(
   return map;
 }
 
-async function loadOpenWorkIssuesForCases(db: Db, companyId: string, caseIds: string[]) {
+async function loadOpenWorkIssuesForCases(db: Db, caseIds: string[]) {
   const map = new Map<string, { issueId: string; issueIdentifier: string | null; title: string; status: string }>();
   if (caseIds.length === 0) return map;
   const rows = await db
@@ -716,10 +689,8 @@ async function loadOpenWorkIssuesForCases(db: Db, companyId: string, caseIds: st
     .from(pipelineCaseIssueLinks)
     .innerJoin(issues, eq(pipelineCaseIssueLinks.issueId, issues.id))
     .where(and(
-      eq(pipelineCaseIssueLinks.companyId, companyId),
       inArray(pipelineCaseIssueLinks.caseId, caseIds),
       eq(pipelineCaseIssueLinks.role, "work"),
-      eq(issues.companyId, companyId),
       ne(issues.status, "done"),
       ne(issues.status, "cancelled"),
       visibleIssueCondition(),
@@ -741,7 +712,6 @@ export type PipelineConnections = { upstreamPipelineIds: string[]; downstreamPip
 
 export async function loadPipelineConnections(
   db: Db,
-  companyId: string,
 ): Promise<Map<string, PipelineConnections>> {
   const parentCase = alias(pipelineCases, "parent_case");
   const rows = await db
@@ -752,8 +722,6 @@ export async function loadPipelineConnections(
     .from(pipelineCases)
     .innerJoin(parentCase, eq(pipelineCases.parentCaseId, parentCase.id))
     .where(and(
-      eq(pipelineCases.companyId, companyId),
-      eq(parentCase.companyId, companyId),
       ne(pipelineCases.pipelineId, parentCase.pipelineId),
     ));
   const map = new Map<string, PipelineConnections>();

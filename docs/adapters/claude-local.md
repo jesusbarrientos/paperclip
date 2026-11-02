@@ -61,10 +61,8 @@ Templates support `{{variable}}` substitution:
 | Variable | Value |
 |----------|-------|
 | `{{agentId}}` | Agent's ID |
-| `{{companyId}}` | Company ID |
 | `{{runId}}` | Current run ID |
 | `{{agent.name}}` | Agent's name |
-| `{{company.name}}` | Company name |
 
 ## Session Persistence
 
@@ -131,7 +129,7 @@ therefore shadows any Codex login already present inside the sandbox image.
 For manual local CLI usage outside heartbeat runs (for example running as `claudecoder` directly), use:
 
 ```sh
-npx paperclipai agent local-cli claudecoder --company-id <company-id>
+npx paperclipai agent local-cli claudecoder
 ```
 
 This installs Paperclip skills in `~/.claude/skills`, creates an agent API key, and prints shell exports to run as that agent.

@@ -40,7 +40,6 @@ function fakeWorkerSession() {
 // acquires the lease. The tests set the server-controlled session home.
 function makeBinding(overrides: Partial<LoginPtySessionBinding> = {}): LoginPtySessionBinding {
   return {
-    companyId: "company-1",
     environmentId: "env-1",
     adapterType: "codex_local" as AgentAdapterType,
     providerLeaseId: "provider-lease-9",
@@ -75,7 +74,6 @@ describe("createWorkerBoundLoginPtyOpener", () => {
     expect(pluginId).toBe("paperclip.daytona");
     expect(input).toMatchObject({
       driverKey: "daytona",
-      companyId: "company-1",
       environmentId: "env-1",
       providerLeaseId: "provider-lease-9",
       loginCommandKey: "codex",
@@ -115,7 +113,6 @@ describe("createWorkerBoundLoginPtyOpener", () => {
 
 describe("createProductionLoginSessionRuntime lease-acquisition gate", () => {
   const acquireInput = {
-    companyId: "company-1",
     environmentId: "env-1",
     adapterType: "codex_local" as AgentAdapterType,
     startedByUserId: "user-a",

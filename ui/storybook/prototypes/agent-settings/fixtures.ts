@@ -129,7 +129,6 @@ export function createSettingsFixtures(
   let entryFile = "AGENTS.md";
   const bundle = (): AgentInstructionsBundle => ({
     agentId: ID,
-    companyId: COMPANY,
     mode: bundleMode,
     rootPath: `/managed/agents/${ID}`,
     managedRootPath: `/managed/agents/${ID}`,
@@ -285,11 +284,11 @@ export function createSettingsFixtures(
           });
         if (url.pathname === "/api/instance/settings/general")
           return json({ executionMode: "any" });
-        if (url.pathname === `/api/companies/${COMPANY}/environments`)
+        if (url.pathname === `/api/environments`)
           return json(storybookEnvironments());
-        if (url.pathname === `/api/companies/${COMPANY}/agents`)
+        if (url.pathname === `/api/agents`)
           return json([...storybookAgents, agent]);
-        if (url.pathname === `/api/companies/${COMPANY}/secrets`) {
+        if (url.pathname === `/api/secrets`) {
           if (method === "POST") {
             const data = await payload();
             const secret = {
@@ -304,7 +303,7 @@ export function createSettingsFixtures(
           }
           return json(secrets);
         }
-        if (url.pathname === `/api/companies/${COMPANY}/skills`)
+        if (url.pathname === `/api/skills`)
           return json(library);
         if (url.pathname.match(/\/adapters\/[^/]+\/models$/))
           return json(
@@ -329,9 +328,9 @@ export function createSettingsFixtures(
             ),
           );
         }
-        if (url.pathname === `/api/companies/${COMPANY}/tools/connections`)
+        if (url.pathname === `/api/tools/connections`)
           return json({ connections: [connection()] });
-        if (url.pathname === `/api/companies/${COMPANY}/tools/policies`)
+        if (url.pathname === `/api/tools/policies`)
           return json({ policies: [] });
         if (url.pathname.includes("/tools/profiles/effective/agents/"))
           return json({
@@ -354,7 +353,7 @@ export function createSettingsFixtures(
           return json({ connectionId: "settings-github", installs });
         }
         if (
-          url.pathname === `/api/companies/${COMPANY}/issues` &&
+          url.pathname === `/api/issues` &&
           method === "POST"
         ) {
           const data = await payload();

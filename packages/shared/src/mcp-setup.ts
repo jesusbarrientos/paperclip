@@ -4,13 +4,12 @@ export type AssistantClient = "codex" | "claude" | "opencode" | "browser" | "hea
 export const assistantClientNames: Record<AssistantClient, string> = {
   codex: "Codex", claude: "Claude Code", opencode: "OpenCode", browser: "ChatGPT / Claude web", headless: "Headless", other: "Other",
 };
-export function mcpSetupUrl(serverUrl: string, companyId?: string) {
+export function mcpSetupUrl(serverUrl: string) {
   const url = new URL("/mcp/setup", serverUrl);
-  if (companyId) url.searchParams.set("company", companyId);
   return url.toString();
 }
 export function mcpInvitation(serverUrl: string, company?: { id: string; name: string }) {
-  return `Connect to my ${company ? `${company.name} ` : ""}Paperclip organization using the instructions at ${mcpSetupUrl(serverUrl, company?.id)}. Start authorization, give me the approval link, and verify the connection after I approve. This connects as me, not as a Paperclip agent.`;
+  return `Connect to my ${company ? `${company.name} ` : ""}Paperclip organization using the instructions at ${mcpSetupUrl(serverUrl)}. Start authorization, give me the approval link, and verify the connection after I approve. This connects as me, not as a Paperclip agent.`;
 }
 export function mcpSetupSteps(serverUrl: string, assistant: AssistantClient) {
   const quoted = `'${serverUrl.replaceAll("'", "'\"'\"'")}'`;
@@ -49,14 +48,14 @@ export function mcpSetupSteps(serverUrl: string, assistant: AssistantClient) {
 
 export const mcpAuthorizationHandoffInstructions = "Authorization commands wait for human approval. When using an assistant shell tool, keep the command running in a persistent terminal or background process, capture its output privately, and share the approval URL immediately while it is still running. Client callback deadlines still apply. If the command timed out or stopped, start a fresh authorization request before sharing a link. If the host cannot keep the command alive across turns, ask the user to run it in their own terminal.";
 
-export function mcpSetupMarkdown(serverUrl: string, companyId?: string) {
+export function mcpSetupMarkdown(serverUrl: string) {
   return ["# Connect your assistant to Paperclip", "",
     "These are setup instructions, not an access credential. Ask the human to approve the identified client in Paperclip. Never approve on their behalf or reuse browser cookies as MCP credentials.", "",
-    `MCP server: ${serverUrl}`, ...(companyId ? [`Requested organization ID: ${companyId} (a hint, not authority).`] : []), "",
+    `MCP server: ${serverUrl}`, "",
     "Keep existing client settings. If the name paperclip already points elsewhere, use a distinct server name and the same name in the login command. Stop and explain if the host cannot configure MCP. A restart or new conversation may be required; do not claim tools are available until a real call succeeds.", "",
     mcpAuthorizationHandoffInstructions, "",
     ...Object.entries(assistantClientNames).flatMap(([client, name]) => [`## ${name}`, "", ...mcpSetupSteps(serverUrl, client as AssistantClient).flatMap((step) => [step.text, ...(step.code ? ["", "```", step.code, "```"] : []), ""])]),
     "## After approval", "",
-    "Call paperclip_connection, verify the human and organization, then summarize agents and open tasks. If the approved organization differs from the requested one, stop and reconnect. Do not create tasks or comments merely to test a connection. Creating tasks or comments can start paid agent work; do that only when requested. Access is governed by the consenting human's permissions, not a selected agent's identity.", "",
+    "Call paperclip_connection, verify the human and organization, then summarize agents and open tasks. Do not create tasks or comments merely to test a connection. Creating tasks or comments can start paid agent work; do that only when requested. Access is governed by the consenting human's permissions, not a selected agent's identity.", "",
   ].join("\n");
 }

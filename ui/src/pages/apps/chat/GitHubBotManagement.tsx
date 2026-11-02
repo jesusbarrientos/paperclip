@@ -97,7 +97,6 @@ export function GitHubBotManagement({
       {view === "access" ? (
         <GitHubAccessEditor
           endpointId={endpoint.id}
-          companyId={endpoint.companyId}
           configuration={config}
           onChange={edit}
         />

@@ -55,7 +55,6 @@ function runtime(callbacks: ChatSdkRuntimeCallbacks) {
     }),
   );
   return createChatSdkEndpointRuntime({
-    companyId: "company-ephemeral",
     endpointId: "endpoint-ephemeral",
     logger: "silent",
     persistence,
@@ -167,7 +166,6 @@ describe("Telegram native ephemeral authenticated boundary", () => {
       onMessage() {},
       onAction(event) {
         receipt = readTelegramCallbackProvenance(event.telegramCallback, {
-          companyId: "company-ephemeral",
           endpointId: "endpoint-ephemeral",
           botUserId: "123",
           threadId: event.event.threadId,

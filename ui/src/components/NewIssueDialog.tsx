@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AgentEnvConfig, EnvBinding, IssueWorkMode } from "@paperclipai/shared";
 import { useDialog } from "../context/DialogContext";
-import { useCompany } from "../context/CompanyContext";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { issuesApi } from "../api/issues";
 import { MissingUserSecretsBanner } from "../pages/secrets/MissingUserSecretsBanner";
@@ -279,7 +278,6 @@ export function NewIssueDialog() {
   const { newIssueOpen, newIssueDefaults, closeNewIssue } = useDialog();
   const visualViewportLayout = useVisualViewportLayout(newIssueOpen);
   const dialogBodyRef = useRef<HTMLDivElement>(null);
-  const { companies, selectedCompanyId: effectiveCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { pushToast } = useToastActions();
@@ -323,24 +321,24 @@ export function NewIssueDialog() {
   const parentExecutionWorkspaceLabel = newIssueDefaults.parentExecutionWorkspaceLabel ?? parentExecutionWorkspaceId;
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(effectiveCompanyId!),
-    queryFn: () => agentsApi.list(effectiveCompanyId!),
-    enabled: !!effectiveCompanyId && newIssueOpen,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
+    enabled: newIssueOpen,
   });
 
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(effectiveCompanyId!),
-    queryFn: () => projectsApi.list(effectiveCompanyId!),
-    enabled: !!effectiveCompanyId && newIssueOpen,
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
+    enabled: newIssueOpen,
   });
   const { data: mentionIssues } = useQuery({
-    queryKey: queryKeys.issues.mentionPool(effectiveCompanyId!),
-    queryFn: () => issuesApi.list(effectiveCompanyId!, {
+    queryKey: queryKeys.issues.mentionPool(),
+    queryFn: () => issuesApi.list({
       limit: 100,
       sortField: "updated",
       sortDir: "desc",
     }),
-    enabled: Boolean(effectiveCompanyId) && newIssueOpen,
+    enabled: newIssueOpen,
     staleTime: 60_000,
   });
   const { data: session, isFetched: sessionFetched } = useQuery({
@@ -348,9 +346,9 @@ export function NewIssueDialog() {
     queryFn: () => authApi.getSession(),
   });
   const { data: companyMembers, isFetched: membersFetched } = useQuery({
-    queryKey: queryKeys.access.companyUserDirectory(effectiveCompanyId!),
-    queryFn: () => accessApi.listUserDirectory(effectiveCompanyId!),
-    enabled: Boolean(effectiveCompanyId) && newIssueOpen,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
+    enabled: newIssueOpen,
   });
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
@@ -362,7 +360,6 @@ export function NewIssueDialog() {
   const activeProjects = useMemo(() => projects ?? [], [projects]);
   const { orderedProjects } = useProjectOrder({
     projects: activeProjects,
-    companyId: effectiveCompanyId,
     userId: currentUserId,
   });
   const currentProject = orderedProjects.find((project) => project.id === projectId);
@@ -376,15 +373,15 @@ export function NewIssueDialog() {
     isError: worktreesError,
     refetch: refetchWorktrees,
   } = useQuery({
-    queryKey: queryKeys.executionWorkspaces.summaryList(effectiveCompanyId!, {
+    queryKey: queryKeys.executionWorkspaces.summaryList({
       projectId,
       reuseEligible: true,
     }),
-    queryFn: () => executionWorkspacesApi.listSummaries(effectiveCompanyId!, {
+    queryFn: () => executionWorkspacesApi.listSummaries({
       projectId,
       reuseEligible: true,
     }),
-    enabled: Boolean(effectiveCompanyId) && newIssueOpen && canChooseWorktrees,
+    enabled: newIssueOpen && canChooseWorktrees,
     retry: false,
   });
 
@@ -408,12 +405,11 @@ export function NewIssueDialog() {
 
   const createIssue = useMutation({
     mutationFn: async ({
-      companyId,
       stagedFiles: pendingStagedFiles,
       navigateOnCreate,
       ...data
-    }: { companyId: string; stagedFiles: StagedIssueFile[]; navigateOnCreate?: boolean } & Record<string, unknown>) => {
-      const issue = await issuesApi.create(companyId, data);
+    }: { stagedFiles: StagedIssueFile[]; navigateOnCreate?: boolean } & Record<string, unknown>) => {
+      const issue = await issuesApi.create(data);
       const failures: string[] = [];
 
       for (const stagedFile of pendingStagedFiles) {
@@ -427,31 +423,28 @@ export function NewIssueDialog() {
               baseRevisionId: null,
             });
           } else {
-            await issuesApi.uploadAttachment(companyId, issue.id, stagedFile.file);
+            await issuesApi.uploadAttachment(issue.id, stagedFile.file);
           }
         } catch {
           failures.push(stagedFile.file.name);
         }
       }
 
-      return { issue, companyId, failures, navigateOnCreate };
+      return { issue, failures, navigateOnCreate };
     },
-    onSuccess: ({ issue, companyId, failures, navigateOnCreate }) => {
-      trackRecentProject(issue.projectId ?? "", companyId);
-      if (issue.assigneeAgentId) trackRecentAssignee(issue.assigneeAgentId, companyId);
-      if (issue.assigneeUserId) trackRecentAssigneeUser(issue.assigneeUserId, companyId);
+    onSuccess: ({ issue, failures, navigateOnCreate }) => {
+      trackRecentProject(issue.projectId ?? "");
+      if (issue.assigneeAgentId) trackRecentAssignee(issue.assigneeAgentId);
+      if (issue.assigneeUserId) trackRecentAssigneeUser(issue.assigneeUserId);
       if (streamlinedUiEnabled) recordRecentTask(issue, currentUserId);
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listMineByMe(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(companyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listMineByMe() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges() });
       if (draftTimer.current) clearTimeout(draftTimer.current);
-      const prefix = (companies.find((company) => company.id === companyId)?.issuePrefix ?? "").trim();
       const issueRef = issue.identifier ?? issue.id;
-      const openIssueAction = prefix
-        ? { label: `Open ${issueRef}`, href: `/${prefix}/issues/${issueRef}` }
-        : undefined;
+      const openIssueAction = { label: `Open ${issueRef}`, href: `/issues/${issueRef}` };
       if (failures.length > 0) {
         pushToast({
           title: `Created ${issueRef} with upload warnings`,
@@ -581,7 +574,7 @@ export function NewIssueDialog() {
       defaultProjectPendingRef.current = false;
       return;
     }
-    const initializationKey = `${effectiveCompanyId ?? ""}:${JSON.stringify(newIssueDefaults)}`;
+    const initializationKey = JSON.stringify(newIssueDefaults);
     if (initializationKeyRef.current === initializationKey) return;
     initializationKeyRef.current = initializationKey;
 
@@ -724,7 +717,7 @@ export function NewIssueDialog() {
           ? defaultProjectId || null
           : null;
     }
-  }, [newIssueOpen, newIssueDefaults, orderedProjects, effectiveCompanyId, setIssueText]);
+  }, [newIssueOpen, newIssueDefaults, orderedProjects, setIssueText]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -767,7 +760,7 @@ export function NewIssueDialog() {
   async function handleSubmit(body: string, mode: IssueWorkMode, settings: ComposerRunSettings | null) {
     const currentTitle = titleRef.current.trim();
     const currentDescription = body.trim();
-    if (!effectiveCompanyId || (!currentTitle && !currentDescription) || createIssue.isPending || worktreeSelectionIncomplete) return;
+    if ((!currentTitle && !currentDescription) || createIssue.isPending || worktreeSelectionIncomplete) return;
     const inheritedOverrides = buildAssigneeAdapterOverrides({
       adapterType: assigneeAdapterType,
       lane: assigneeChrome ? "custom" : assigneeModelLane,
@@ -808,7 +801,6 @@ export function NewIssueDialog() {
       ? mergeComposerRunSettings(inheritedOverrides, assigneeAdapterType ?? undefined, settings)
       : inheritedOverrides;
     const createData = {
-      companyId: effectiveCompanyId,
       stagedFiles,
       ...(currentTitle ? { title: currentTitle } : {}),
       description: currentDescription || undefined,
@@ -954,30 +946,25 @@ export function NewIssueDialog() {
   // Resolve once after the directory loads, without resetting text typed while
   // the queries were in flight or replacing an explicit/restored assignee.
   useEffect(() => {
-    if (!newIssueOpen || !effectiveCompanyId || !defaultAssigneePendingRef.current
+    if (!newIssueOpen || !defaultAssigneePendingRef.current
       || !agents || !sessionFetched || !membersFetched) return;
     defaultAssigneePendingRef.current = false;
     const available = new Set(assigneeOptions.map((option) => option.id));
-    const scopedRecents = getRecentAssigneeSelectionIds(effectiveCompanyId);
-    // Older history has no company key. Agent IDs identify their company;
-    // human IDs can belong to several companies and cannot be migrated safely.
-    const recents = scopedRecents.length ? scopedRecents
-      : getRecentAssigneeSelectionIds().filter((value) => value.startsWith("agent:"));
-    const recent = recents.find((value) => available.has(value));
+    const recent = getRecentAssigneeSelectionIds().find((value) => available.has(value));
     const targets = agents.filter(isAgentTaskTarget);
     const fallback = targets.find((agent) => agent.role === "ceo") ?? targets[0];
     setAssigneeValue(recent ?? (fallback ? assigneeValueFromSelection({ assigneeAgentId: fallback.id }) : ""));
-  }, [newIssueOpen, effectiveCompanyId, agents, assigneeOptions, sessionFetched, membersFetched]);
+  }, [newIssueOpen, agents, assigneeOptions, sessionFetched, membersFetched]);
   useEffect(() => {
-    if (!newIssueOpen || !effectiveCompanyId || !defaultProjectPendingRef.current || !projects) return;
+    if (!newIssueOpen || !defaultProjectPendingRef.current || !projects) return;
     defaultProjectPendingRef.current = false;
     const available = new Set(orderedProjects.filter((project) => !project.archivedAt).map((project) => project.id));
-    const last = getLastProjectId(effectiveCompanyId);
+    const last = getLastProjectId();
     const remembered = last !== undefined
       ? (available.has(last) ? last : "")
       : (getRecentProjectIds().find((id) => available.has(id)) ?? "");
     setProjectId(remembered);
-  }, [newIssueOpen, effectiveCompanyId, projects, orderedProjects]);
+  }, [newIssueOpen, projects, orderedProjects]);
   const projectOptions = useMemo<InlineEntityOption[]>(
     () =>
       orderedProjects.map((project) => ({
@@ -993,7 +980,7 @@ export function NewIssueDialog() {
   const handleProjectChange = useCallback(
     (nextProjectId: string) => {
       defaultProjectPendingRef.current = false;
-      trackRecentProject(nextProjectId, effectiveCompanyId ?? undefined);
+      trackRecentProject(nextProjectId);
       setProjectId(nextProjectId);
       const nextProject = orderedProjects.find((project) => project.id === nextProjectId);
       executionWorkspaceDefaultProjectId.current = nextProjectId || null;
@@ -1001,7 +988,7 @@ export function NewIssueDialog() {
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
       setSelectedExecutionWorkspaceId("");
     },
-    [orderedProjects, effectiveCompanyId],
+    [orderedProjects],
   );
 
   useEffect(() => {
@@ -1122,16 +1109,14 @@ export function NewIssueDialog() {
             <TaskChatComposer
               workMode={workMode}
               onWorkModeChange={setWorkMode}
-              disabled={createIssue.isPending || !effectiveCompanyId}
+              disabled={createIssue.isPending}
               placeholder="Describe a task…"
               mobile={isMobile}
               mentions={mentionOptions}
               onImageUpload={async (file) => {
-                if (!effectiveCompanyId) throw new Error("No organization selected");
-                const asset = await assetsApi.uploadImage(effectiveCompanyId, file, "issues/drafts");
+                const asset = await assetsApi.uploadImage(file, "issues/drafts");
                 return asset.contentPath;
               }}
-              companyId={effectiveCompanyId}
               enableReassign
               reassignOptions={assigneeOptions}
               modelAgents={modelAgents}
@@ -1142,8 +1127,8 @@ export function NewIssueDialog() {
                 if (value === null) return;
                 defaultAssigneePendingRef.current = false;
                 const next = parseAssigneeValue(value);
-                if (next.assigneeAgentId) trackRecentAssignee(next.assigneeAgentId, effectiveCompanyId ?? undefined);
-                if (next.assigneeUserId) trackRecentAssigneeUser(next.assigneeUserId, effectiveCompanyId ?? undefined);
+                if (next.assigneeAgentId) trackRecentAssignee(next.assigneeAgentId);
+                if (next.assigneeUserId) trackRecentAssigneeUser(next.assigneeUserId);
                 setAssigneeValue(value);
                 setComposerSettings(null);
                 setAssigneeModelLane("primary");
@@ -1329,8 +1314,8 @@ export function NewIssueDialog() {
                         </InlineBanner>
                       </div>
                     ) : null}
-                    {effectiveCompanyId && neededUserSecretKeys.length > 0 ? (
-                      <MissingUserSecretsBanner companyId={effectiveCompanyId} definitionKeys={neededUserSecretKeys} />
+                    {neededUserSecretKeys.length > 0 ? (
+                      <MissingUserSecretsBanner definitionKeys={neededUserSecretKeys} />
                     ) : null}
                   </>
                 ),

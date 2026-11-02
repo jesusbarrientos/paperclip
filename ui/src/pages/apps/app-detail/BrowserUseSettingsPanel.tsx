@@ -11,20 +11,18 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
 function CredentialSettings({
-  companyId,
   grantId,
 }: {
-  companyId: string;
   grantId: string;
 }) {
   const id = useId();
   const saved = useQuery({
     queryKey: ["browser-use-cloud-settings", grantId],
-    queryFn: () => browserUseApi.settings(companyId, grantId),
+    queryFn: () => browserUseApi.settings(grantId),
   });
   const profiles = useQuery({
     queryKey: ["browser-use-cloud-profiles", grantId],
-    queryFn: () => browserUseApi.profiles(companyId, grantId),
+    queryFn: () => browserUseApi.profiles(grantId),
     retry: false,
   });
   const [allowed, setAllowed] = useState<string[]>([]);
@@ -37,7 +35,7 @@ function CredentialSettings({
   }, [saved.data]);
   const save = useMutation({
     mutationFn: () =>
-      browserUseApi.saveSettings(companyId, grantId, {
+      browserUseApi.saveSettings(grantId, {
         allowedProfileIds: allowed,
         maxCostUsd: limit ? Number(limit) : null,
       }),
@@ -182,7 +180,6 @@ export function BrowserUseSettingsPanel({
       {grantId ? (
         <CredentialSettings
           key={grantId}
-          companyId={connection.companyId}
           grantId={grantId}
         />
       ) : (

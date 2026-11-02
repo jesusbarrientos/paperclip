@@ -31,7 +31,6 @@ import {
   resolveSandboxProviderSecretRefPaths,
   stripSandboxProviderEnvelope,
 } from "./environment-config.js";
-import { secretService } from "./secrets.js";
 import {
   INTERACTIVE_SETUP_WORKER_METHODS,
   TEMPLATE_CAPTURE_WORKER_METHODS,
@@ -63,7 +62,6 @@ import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 const ACTIVE_SETUP_STATUSES = ["starting", "waiting_for_user", "capturing"] as const;
 const DEFAULT_SETUP_TTL_SECONDS = 60 * 60;
 const DEFAULT_CONNECTION_EXPIRES_IN_MINUTES = 15;
-const SETUP_RPC_COMPANY_ID_METADATA_KEY = "setupRpcCompanyId";
 const SOURCE_ENVIRONMENT_CONFIG_FINGERPRINT_METADATA_KEY = "sourceEnvironmentConfigFingerprint";
 
 type SetupSessionRow = typeof environmentCustomImageSetupSessions.$inferSelect;
@@ -174,21 +172,9 @@ function metadataRecord(metadata: Record<string, unknown> | null | undefined): R
   return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
 }
 
-function normalizeSetupRpcCompanyId(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function readSetupRpcCompanyId(metadata: Record<string, unknown> | null | undefined): string | null {
-  return normalizeSetupRpcCompanyId(metadataRecord(metadata)[SETUP_RPC_COMPANY_ID_METADATA_KEY]);
-}
-
 function persistedSetupMetadata(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
   const record = metadataRecord(metadata);
   const result: Record<string, unknown> = {};
-  const setupRpcCompanyId = normalizeSetupRpcCompanyId(record[SETUP_RPC_COMPANY_ID_METADATA_KEY]);
-  if (setupRpcCompanyId) {
-    result[SETUP_RPC_COMPANY_ID_METADATA_KEY] = setupRpcCompanyId;
-  }
   const fingerprint = readString(record[SOURCE_ENVIRONMENT_CONFIG_FINGERPRINT_METADATA_KEY]);
   if (fingerprint) {
     result[SOURCE_ENVIRONMENT_CONFIG_FINGERPRINT_METADATA_KEY] = fingerprint;
@@ -285,7 +271,6 @@ export function environmentCustomImageService(
   options: { pluginWorkerManager?: PluginWorkerManager } = {},
 ) {
   const environments = environmentService(db);
-  const secrets = secretService(db);
 
   async function getTemplateById(id: string): Promise<EnvironmentCustomImageTemplate | null> {
     const row = await db
@@ -326,9 +311,7 @@ export function environmentCustomImageService(
     const row = await db
       .select()
       .from(environmentCustomImageSetupSessions)
-      .where(and(
-        eq(environmentCustomImageSetupSessions.environmentId, input.environmentId),
-      ))
+      .where(eq(environmentCustomImageSetupSessions.environmentId, input.environmentId))
       .orderBy(desc(environmentCustomImageSetupSessions.createdAt))
       .then((rows) => rows[0] ?? null);
     return row ? toSession(row) : null;
@@ -340,24 +323,7 @@ export function environmentCustomImageService(
     return environment;
   }
 
-  async function resolveSecretContextCompanyId(
-    environmentId: string,
-    explicitCompanyId?: string | null,
-  ): Promise<string | null> {
-    if (explicitCompanyId) return explicitCompanyId;
-    const bindingCompanyIds = await secrets.listBindingCompanyIdsForTarget({
-      targetType: "environment",
-      targetId: environmentId,
-    });
-    if (bindingCompanyIds.length > 1) {
-      throw conflict("Environment secret bindings span multiple companies and require explicit companyId context.");
-    }
-    return bindingCompanyIds[0] ?? null;
-  }
-
   async function resolveSetupProvider(input: {
-    secretContextCompanyId?: string | null;
-    storedRpcCompanyId?: string | null;
     storedProvider?: string | null;
     environment: Environment;
     requireCapture?: boolean;
@@ -366,16 +332,8 @@ export function environmentCustomImageService(
     if (!options.pluginWorkerManager) {
       throw unprocessable("Environment customImage setup requires a running plugin worker manager.");
     }
-    const storedRpcCompanyId = normalizeSetupRpcCompanyId(input.storedRpcCompanyId);
-    const secretContextCompanyId = storedRpcCompanyId
-      ? (storedRpcCompanyId === "instance" ? null : storedRpcCompanyId)
-      : await resolveSecretContextCompanyId(
-          input.environment.id,
-          input.secretContextCompanyId,
-        );
     const parsed = await resolveEnvironmentDriverConfigForRuntime(
       db,
-      secretContextCompanyId,
       input.environment,
       { issueId: null, heartbeatRunId: null },
     );
@@ -428,7 +386,6 @@ export function environmentCustomImageService(
     }
     return {
       provider,
-      rpcCompanyId: storedRpcCompanyId ?? secretContextCompanyId ?? "instance",
       pluginId: resolved.plugin.id,
       driver: resolved.driver,
       runtimeConfig: parsed.config,
@@ -442,15 +399,12 @@ export function environmentCustomImageService(
     expiresAt: Date;
     sourceTemplateRef: string | null;
     sourceTemplateKind: EnvironmentCustomImageTemplateKind | null;
-    secretContextCompanyId?: string | null;
   }): Promise<PluginEnvironmentInteractiveSetupSession> {
     const provider = await resolveSetupProvider({
-      secretContextCompanyId: input.secretContextCompanyId,
       environment: input.environment,
     });
     return await options.pluginWorkerManager!.call(provider.pluginId, "environmentStartInteractiveSetup", {
       driverKey: provider.provider,
-      companyId: provider.rpcCompanyId,
       environmentId: input.environment.id,
       issueId: null,
       config: provider.driverConfig,
@@ -473,11 +427,9 @@ export function environmentCustomImageService(
     const provider = await resolveSetupProvider({
       environment,
       storedProvider: input.session.provider,
-      storedRpcCompanyId: readSetupRpcCompanyId(input.session.metadata),
     });
     return await options.pluginWorkerManager!.call(provider.pluginId, "environmentGetInteractiveSetup", {
       driverKey: provider.provider,
-      companyId: provider.rpcCompanyId,
       environmentId: environment.id,
       issueId: null,
       config: provider.driverConfig,
@@ -499,12 +451,10 @@ export function environmentCustomImageService(
     const provider = await resolveSetupProvider({
       environment,
       storedProvider: input.session.provider,
-      storedRpcCompanyId: readSetupRpcCompanyId(input.session.metadata),
       requireCapture: true,
     });
     return await options.pluginWorkerManager!.call(provider.pluginId, "environmentCaptureTemplate", {
       driverKey: provider.provider,
-      companyId: provider.rpcCompanyId,
       environmentId: environment.id,
       issueId: null,
       config: provider.driverConfig,
@@ -528,11 +478,9 @@ export function environmentCustomImageService(
     const provider = await resolveSetupProvider({
       environment,
       storedProvider: input.session.provider,
-      storedRpcCompanyId: readSetupRpcCompanyId(input.session.metadata),
     });
     return await options.pluginWorkerManager!.call(provider.pluginId, "environmentCancelInteractiveSetup", {
       driverKey: provider.provider,
-      companyId: provider.rpcCompanyId,
       environmentId: environment.id,
       issueId: null,
       config: provider.driverConfig,
@@ -553,7 +501,6 @@ export function environmentCustomImageService(
     return await resolveSetupProvider({
       environment,
       storedProvider: template.provider,
-      storedRpcCompanyId: readSetupRpcCompanyId(template.metadata),
       requireDelete: true,
     });
   }
@@ -571,7 +518,6 @@ export function environmentCustomImageService(
     const provider = input.provider;
     return await options.pluginWorkerManager!.call(provider.pluginId, "environmentDeleteTemplate", {
       driverKey: provider.provider,
-      companyId: provider.rpcCompanyId,
       environmentId: environment.id,
       issueId: null,
       config: provider.driverConfig,
@@ -765,12 +711,10 @@ export function environmentCustomImageService(
       templateId?: string | null;
       ttlSeconds?: number | null;
       actor: { userId?: string | null; agentId?: string | null };
-      secretContextCompanyId?: string | null;
       now?: Date;
     }): Promise<EnvironmentCustomImageSetupSessionResult> => {
       const environment = await requireEnvironment(input.environmentId);
       const provider = await resolveSetupProvider({
-        secretContextCompanyId: input.secretContextCompanyId,
         environment,
       });
       const activeSession = await getActiveSetupSession(input);
@@ -813,7 +757,6 @@ export function environmentCustomImageService(
       const fingerprint = fingerprintEnvironmentSandboxProviderConfig(provider.runtimeConfig);
       const setupMetadata = {
         [SOURCE_ENVIRONMENT_CONFIG_FINGERPRINT_METADATA_KEY]: fingerprint,
-        [SETUP_RPC_COMPANY_ID_METADATA_KEY]: provider.rpcCompanyId,
       };
       await db.insert(environmentCustomImageSetupSessions).values({
         id: sessionId,
@@ -837,7 +780,6 @@ export function environmentCustomImageService(
           expiresAt,
           sourceTemplateRef: source.sourceTemplateRef,
           sourceTemplateKind: source.sourceTemplateKind,
-          secretContextCompanyId: input.secretContextCompanyId,
         });
         const session = await updateSessionFromProvider({ id: sessionId, metadata: setupMetadata }, providerSession);
         return {
@@ -920,7 +862,6 @@ export function environmentCustomImageService(
         const provider = await resolveSetupProvider({
           environment,
           storedProvider: session.provider,
-          storedRpcCompanyId: readSetupRpcCompanyId(session.metadata),
           requireCapture: true,
         });
         const runtimeConfigBinding = templateConfigBindingFromDriver({
@@ -1146,7 +1087,6 @@ export function environmentCustomImageService(
         runId?: string | null;
         agentApiKeyId?: string | null;
       };
-      companyId: string;
       now?: Date;
     }): Promise<{
       template: EnvironmentCustomImageTemplate;
@@ -1238,7 +1178,6 @@ export function environmentCustomImageService(
           throw conflict("Active environment customImage template changed before relink; retry.");
         }
         await logActivity(tx as unknown as Db, {
-          companyId: input.companyId,
           actorType: input.actor.actorType,
           actorId: input.actor.actorId,
           agentId: input.actor.agentId ?? null,

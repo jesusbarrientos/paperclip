@@ -258,7 +258,6 @@ function baseOptions(
 ): CreateChatSdkEndpointRuntimeOptions {
   return {
     callbacks: { onMessage: vi.fn() },
-    companyId: "company-1",
     endpointId: "endpoint-1",
     logger: "silent",
     persistence,

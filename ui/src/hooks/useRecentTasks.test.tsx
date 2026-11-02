@@ -20,10 +20,10 @@ vi.mock("@/api/issues", () => ({ issuesApi: { get: getIssue } }));
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const task = (updatedAt: number, title: string, status: "todo" | "done" = "todo") => ({
-  id: "issue-1", companyId: "company-1", identifier: "TASK-1", title, status,
+  id: "issue-1", identifier: "TASK-1", title, status,
   updatedAt: new Date(updatedAt), hiddenAt: null,
 });
-const storageKey = getRecentTasksStorageKey("company-1", "user-1");
+const storageKey = getRecentTasksStorageKey("user-1");
 // Node 24 uses jsdom Storage; newer Node versions use the setup's storage shim.
 // jsdom's Storage proxy does not support spying on instance methods.
 const storageMethods = window.localStorage instanceof window.Storage ? window.Storage.prototype : window.localStorage;
@@ -35,7 +35,7 @@ describe("recent task synchronization", () => {
   let renders: number;
 
   function RecentTasks({ name }: { name: string }) {
-    const { entries } = useRecentTasks({ companyId: "company-1", userId: "user-1" });
+    const { entries } = useRecentTasks({ userId: "user-1" });
     renders += 1;
     // Fail promptly if a regression restores the cross-cache render loop.
     if (renders > 100) throw new Error("Recent Tasks did not settle");
@@ -98,7 +98,7 @@ describe("recent task synchronization", () => {
     });
     await flush();
     expect(container.querySelector('[data-tab="stale"]')?.textContent).toBe("Renamed:done");
-    expect(readRecentTasks(storageKey, "company-1")[0]?.snapshotUpdatedAt).toBe(30);
+    expect(readRecentTasks(storageKey)[0]?.snapshotUpdatedAt).toBe(30);
     expect(setItem).toHaveBeenCalledTimes(2);
   });
 
@@ -110,7 +110,7 @@ describe("recent task synchronization", () => {
     ));
     await flush();
     // Simulate a concurrent write from another tab with an older snapshot.
-    const incoming = { ...readRecentTasks(storageKey, "company-1")[0], title: "Older", snapshotUpdatedAt: 10 };
+    const incoming = { ...readRecentTasks(storageKey)[0], title: "Older", snapshotUpdatedAt: 10 };
     localStorage.setItem(storageKey, JSON.stringify([incoming]));
     const setItem = vi.spyOn(storageMethods, "setItem");
     const publish = vi.fn();
@@ -127,7 +127,7 @@ describe("recent task synchronization", () => {
   });
 
   it("ignores writes from the old application after migration", async () => {
-    const legacyKey = "paperclip.recentTasks:company-1:user-1";
+    const legacyKey = "paperclip.recentTasks:user-1";
     localStorage.setItem(legacyKey, JSON.stringify([{ ...task(10, "Legacy"), recordedAt: 100 }]));
     await act(async () => root.render(
       <QueryClientProvider client={client(task(20, "Current", "done"))}><RecentTasks name="current" /></QueryClientProvider>,
@@ -143,7 +143,7 @@ describe("recent task synchronization", () => {
     await flush();
     expect(renders).toBe(settledRenders);
     expect(container.textContent).toBe("Current:done");
-    expect(readRecentTasks(storageKey, "company-1")[0]?.recordedAt).toBe(100);
+    expect(readRecentTasks(storageKey)[0]?.recordedAt).toBe(100);
   });
 
   it.each([403, 404])("still removes tasks whose query returns %s", async (status) => {
@@ -153,7 +153,7 @@ describe("recent task synchronization", () => {
       <QueryClientProvider client={client()}><RecentTasks name="unavailable" /></QueryClientProvider>,
     ));
     await flush();
-    expect(readRecentTasks(storageKey, "company-1")).toEqual([]);
+    expect(readRecentTasks(storageKey)).toEqual([]);
     expect(container.textContent).toBe("");
     expect(getIssue).toHaveBeenCalledTimes(1);
   });

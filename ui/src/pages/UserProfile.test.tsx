@@ -33,10 +33,9 @@ vi.mock("../context/BreadcrumbContext", () => ({
   }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 
@@ -96,7 +95,7 @@ function profileFor(userId: string): UserProfileResponse {
   };
 }
 
-const EDIT_PROFILE_HREF = "/company/settings/instance/profile";
+const EDIT_PROFILE_HREF = "/organization/settings/instance/profile";
 
 describe("UserProfile", () => {
   let container: HTMLDivElement;

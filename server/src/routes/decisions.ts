@@ -12,7 +12,7 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { decisionService, type DecisionServiceOptions } from "../services/decisions.js";
-import { assertBoard, assertBoardOrAgent, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { assertBoard, assertBoardOrAgent, assertOrgAccess, getAccessibleResource, getActorInfo } from "./authz.js";
 import { attentionService } from "../services/attention.js";
 import { authorizationDeniedDetails, authorizationService } from "../services/authorization.js";
 import { canReadDecisionSource } from "../services/decision-queues.js";
@@ -53,11 +53,10 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
   const router = Router();
   const svc = decisionService(db, options);
   router.post(
-    "/companies/:companyId/decision-archive-proposals",
+    "/decision-archive-proposals",
     validate(createDecisionArchiveProposalSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      assertOrgAccess(req);
       const agent = agentContext(req);
       if (!agent) {
         res.status(403).json({ error: "Agent run context required" });
@@ -66,7 +65,7 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       const access = await authorizationService(db).decide({
         actor: req.actor,
         action: "decision_triage:manage",
-        resource: { type: "company", companyId },
+        resource: { type: "company" },
       });
       if (!access.allowed) throw forbidden(access.explanation, authorizationDeniedDetails(access));
 
@@ -76,7 +75,7 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
         item,
       ]));
       const found = new Map<string, AttentionItem>();
-      const snapshot = await db.transaction(async (tx) => attentionService(tx as unknown as Db).list(companyId, {
+      const snapshot = await db.transaction(async (tx) => attentionService(tx as unknown as Db).list({
         includeDismissed: true,
         all: true,
         allowUnscopedAll: true,
@@ -92,11 +91,10 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
         if (!attentionItem || !attentionItem.shelf || attentionItem.archivedAt) {
           throw unprocessable("Every archive proposal item must be on the current aging shelf");
         }
-        if (!(await canReadDecisionSource(db, req.actor, companyId, attentionItem.sourceKind, attentionItem.subject.id))) {
+        if (!(await canReadDecisionSource(db, req.actor, attentionItem.sourceKind, attentionItem.subject.id))) {
           throw unprocessable("Every archive proposal item must be on the current aging shelf");
         }
         manifest.push({
-          companyId,
           sourceKind: attentionItem.sourceKind,
           sourceId: attentionItem.subject.id,
           expectedVersion: attentionItem.retentionVersion,
@@ -117,7 +115,6 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       ]));
       const body = manifest.map((entry) => `- **${entry.sourceKind}:${entry.sourceId}** — ${entry.reason}`).join("\n");
       const created = await svc.create({
-        companyId,
         actor: req.actor,
         ...agent,
         title: `Archive ${manifest.length} aging decision${manifest.length === 1 ? "" : "s"}?`,
@@ -135,21 +132,18 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       res.status(201).json(created);
     },
   );
-  router.post("/companies/:companyId/decisions", validate(createSchema), async (req, res) => {
-    const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
+  router.post("/decisions", validate(createSchema), async (req, res) => {assertOrgAccess(req);
     const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
-    res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...req.body }));
+    res.status(201).json(await svc.create({ actor: req.actor, ...agent, ...req.body }));
   });
-  router.post("/companies/:companyId/decision-bundles", validate(bundleSchema), async (req, res) => {
-    const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
+  router.post("/decision-bundles", validate(bundleSchema), async (req, res) => {assertOrgAccess(req);
     const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
-    res.status(201).json(await svc.createBundle({ companyId, actor: req.actor, ...agent, ...req.body }));
+    res.status(201).json(await svc.createBundle({ actor: req.actor, ...agent, ...req.body }));
   });
-  router.get("/companies/:companyId/decisions", async (req, res) => {
-    const companyId = req.params.companyId as string; assertBoard(req); assertCompanyAccess(req, companyId);
+  router.get("/decisions", async (req, res) => {assertBoard(req); assertOrgAccess(req);
     const query = z.object({ status: z.enum(["open", "decided", "expired", "cancelled"]).optional(), bundleId: z.string().guid().optional(), targetIssueId: z.string().guid().optional(), originAgentId: z.string().guid().optional(), limit: z.coerce.number().int().positive().max(100).optional() }).safeParse(req.query);
     if (!query.success) { res.status(400).json({ error: "Invalid decision filters", details: query.error.flatten() }); return; }
-    res.json(await svc.list(companyId, query.data));
+    res.json(await svc.list(query.data));
   });
   /**
    * Gardener telemetry contract:
@@ -161,15 +155,14 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
    * chosenOptions counts accepted outcomes only; expired is separate, and cancelled
    * decisions contribute only to proposed.
    */
-  router.get("/companies/:companyId/decisions/stats", async (req, res) => {
-    const companyId = req.params.companyId as string; assertBoardOrAgent(req); assertCompanyAccess(req, companyId);
+  router.get("/decisions/stats", async (req, res) => {assertBoardOrAgent(req); assertOrgAccess(req);
     const query = statsQuerySchema.safeParse(req.query);
     if (!query.success) { res.status(400).json({ error: "Invalid decision stats filters", details: query.error.flatten() }); return; }
     if (req.actor.type === "agent" && query.data.originAgentId && query.data.originAgentId !== req.actor.agentId) {
       res.status(403).json({ error: "Agents may only read their own decision stats" }); return;
     }
     const originAgentId = req.actor.type === "agent" ? req.actor.agentId : query.data.originAgentId;
-    res.json(await svc.stats(companyId, { originAgentId, since: query.data.since }));
+    res.json(await svc.stats({ originAgentId, since: query.data.since }));
   });
   router.get("/decisions/:id", async (req, res) => {
     assertBoardOrAgent(req);

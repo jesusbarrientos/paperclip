@@ -33,7 +33,6 @@ import {
 import { stageNativeRunnerWakeAttachments } from "../services/native-runtime/native-runner-file-handoff.js";
 import { issueRoutes } from "../routes/issues.js";
 import { errorHandler } from "../middleware/index.js";
-import { issueService } from "../services/issues.js";
 
 const wakeup = vi.hoisted(() =>
   vi.fn(
@@ -61,7 +60,6 @@ describe("Board upload receipt to native wake staging", () => {
   let root: string;
   let storage: ReturnType<typeof createStorageService>;
   let app: express.Express;
-  let companyId: string;
   let agentId: string;
   let otherAgentId: string;
   let issueId: string;
@@ -72,6 +70,7 @@ describe("Board upload receipt to native wake staging", () => {
       "board-native-attachments-",
     );
     db = createDb(temporary.connectionString);
+    await db.insert(companies).values({ name: "Board upload fixture", issuePrefix: "UPL", issueCounter: 1 });
     root = await mkdtemp(path.join(tmpdir(), "board-native-attachments-"));
     storage = createStorageService(
       createLocalDiskStorageProvider(path.join(root, "storage")),
@@ -83,20 +82,13 @@ describe("Board upload receipt to native wake staging", () => {
   });
   beforeEach(async () => {
     wakeup.mockClear();
-    companyId = randomUUID();
     agentId = randomUUID();
     otherAgentId = randomUUID();
     issueId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Board upload fixture",
-      issuePrefix: `UPL${++fixtureNumber}`,
-      issueCounter: 1,
-    });
+    fixtureNumber += 1;
     await db.insert(agents).values(
       [agentId, otherAgentId].map((id) => ({
         id,
-        companyId,
         name: id,
         adapterType: "paperclip_runner",
         adapterConfig: { provider: "codex" },
@@ -106,7 +98,6 @@ describe("Board upload receipt to native wake staging", () => {
     );
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Inspect the exact new file and keep this task open",
       issueNumber: 1,
       identifier: `UPL${fixtureNumber}-1`,
@@ -120,7 +111,6 @@ describe("Board upload receipt to native wake staging", () => {
         type: "board",
         userId: "local-board",
         source: "local_implicit",
-        companyIds: [companyId],
         isInstanceAdmin: false,
       };
       next();
@@ -134,7 +124,7 @@ describe("Board upload receipt to native wake staging", () => {
       `Exact new file: ${filename}\nObject: kite\nAccent: teal\nCount: 7\n`,
     );
     const response = await request(app)
-      .post(`/api/companies/${companyId}/issues/${targetIssueId}/attachments`)
+      .post(`/api/issues/${targetIssueId}/attachments`)
       .attach("file", bytes, { filename, contentType: "text/plain" });
     expect(response.status).toBe(201);
     expect(response.body.issueCommentId).toBeNull();
@@ -201,7 +191,6 @@ describe("Board upload receipt to native wake staging", () => {
       );
       const paperclipWake = await buildPaperclipWakePayload({
         db,
-        companyId,
         agentId: issue!.assigneeAgentId,
         runId,
         contextSnapshot,
@@ -211,7 +200,6 @@ describe("Board upload receipt to native wake staging", () => {
       ]);
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
         agentId: issue!.assigneeAgentId!,
         status: "running",
         runtimeMode: "native",
@@ -230,7 +218,6 @@ describe("Board upload receipt to native wake staging", () => {
         db,
         storage,
         binding: {
-          companyId,
           issueId,
           agentId: issue!.assigneeAgentId!,
           runId,
@@ -273,7 +260,6 @@ describe("Board upload receipt to native wake staging", () => {
     await vi.waitFor(() => expect(wakeup).toHaveBeenCalled());
     const wake = await buildPaperclipWakePayload({
       db,
-      companyId,
       agentId,
       contextSnapshot: mergeCoalescedContextSnapshot(
         {},
@@ -285,7 +271,6 @@ describe("Board upload receipt to native wake staging", () => {
 
   it.each([
     "foreign_task",
-    "foreign_company",
     "already_bound",
     "failed_reassignment",
   ] as const)(
@@ -298,7 +283,6 @@ describe("Board upload receipt to native wake staging", () => {
         const foreignIssueId = randomUUID();
         await db.insert(issues).values({
           id: foreignIssueId,
-          companyId,
           title: "Other task",
           issueNumber: 2,
           identifier: `UPL${fixtureNumber}-2`,
@@ -306,37 +290,6 @@ describe("Board upload receipt to native wake staging", () => {
           assigneeAgentId: agentId,
         });
         selected = (await upload("other.txt", foreignIssueId)).attachment.id;
-      } else if (mode === "foreign_company") {
-        const foreignCompanyId = randomUUID();
-        const foreignIssueId = randomUUID();
-        await db.insert(companies).values({
-          id: foreignCompanyId,
-          name: "Other company",
-          issuePrefix: `FR${fixtureNumber}`,
-        });
-        await db.insert(issues).values({
-          id: foreignIssueId,
-          companyId: foreignCompanyId,
-          title: "Private other task",
-          issueNumber: 1,
-          identifier: `FR${fixtureNumber}-1`,
-          status: "todo",
-        });
-        const stored = await storage.putFile({
-          companyId: foreignCompanyId,
-          namespace: `issues/${foreignIssueId}`,
-          originalFilename: "foreign.txt",
-          contentType: "text/plain",
-          body: Buffer.from("Foreign bytes"),
-        });
-        selected = (
-          await issueService(db).createAttachment({
-            issueId: foreignIssueId,
-            issueCommentId: null,
-            ...stored,
-            createdByUserId: "local-board",
-          })
-        ).id;
       } else if (mode === "already_bound") {
         const first = await request(app)
           .post(`/api/issues/${issueId}/comments`)

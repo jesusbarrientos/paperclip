@@ -85,7 +85,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useCompany } from "../context/CompanyContext";
 import { useToastActions } from "../context/ToastContext";
 import { buildCompanyUserInlineOptions, isAgentTaskTarget } from "../lib/company-members";
 import { useStandardMarkdownMentionOptions } from "../hooks/useStandardMarkdownMentionOptions";
@@ -1275,7 +1274,6 @@ function StageEventsList({
 
 export function PipelineSettings() {
   const { pipelineId } = useParams<{ pipelineId: string }>();
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const navigate = useNavigate();
@@ -1334,13 +1332,12 @@ export function PipelineSettings() {
   const pipelineQuery = useQuery({
     queryKey: pipelineId ? queryKeys.pipelines.detail(pipelineId) : ["pipelines", "detail", "none"],
     queryFn: () => pipelinesApi.get(pipelineId!),
-    enabled: !!pipelineId && !!selectedCompanyId,
+    enabled: !!pipelineId,
   });
 
   const agentsQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   const sessionQuery = useQuery({
@@ -1357,19 +1354,17 @@ export function PipelineSettings() {
   const healthQuery = useQuery({
     queryKey: pipelineId ? queryKeys.pipelines.health(pipelineId) : ["pipelines", "health", "none"],
     queryFn: () => pipelinesApi.getHealth(pipelineId!),
-    enabled: !!pipelineId && !!selectedCompanyId,
+    enabled: !!pipelineId,
   });
 
   const usersQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.access.companyUserDirectory(selectedCompanyId) : ["access", "users", "none"],
-    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.access.companyUserDirectory(),
+    queryFn: () => accessApi.listUserDirectory(),
   });
 
   const projectsQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.projects.list(selectedCompanyId) : ["projects", "none"],
-    queryFn: () => projectsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
   });
   const currentUserId = sessionQuery.data?.user?.id ?? sessionQuery.data?.session?.userId ?? null;
   const activeProjects = useMemo(
@@ -1378,26 +1373,22 @@ export function PipelineSettings() {
   );
   const { orderedProjects } = useProjectOrder({
     projects: activeProjects,
-    companyId: selectedCompanyId,
     userId: currentUserId,
   });
 
   // Company secrets back the Secrets tab — the same inventory used by routines,
   // agents, and projects. We never create a stage-only secret namespace.
   const secretsQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
-    queryFn: () => secretsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.secrets.list(),
+    queryFn: () => secretsApi.list(),
   });
 
   const createSecret = useMutation({
     mutationFn: (input: { name: string; value: string }) => {
-      if (!selectedCompanyId) throw new Error("Select an organization to create secrets");
-      return secretsApi.create(selectedCompanyId, input);
+      return secretsApi.create(input);
     },
     onSuccess: () => {
-      if (!selectedCompanyId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
     },
   });
 
@@ -1405,15 +1396,14 @@ export function PipelineSettings() {
   // picker; their stages come back on the list payload so we can offer the
   // entry-stage choices without a second fetch per pipeline.
   const pipelinesListQuery = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.pipelines.list(selectedCompanyId) : ["pipelines", "none"],
-    queryFn: () => pipelinesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.pipelines.list(),
+    queryFn: () => pipelinesApi.list(),
   });
 
   const pipelineCasesQuery = useQuery({
     queryKey: pipelineId ? queryKeys.pipelines.cases(pipelineId) : ["pipelines", "cases", "none-settings"],
     queryFn: () => pipelinesApi.listCases(pipelineId!),
-    enabled: !!selectedCompanyId && !!pipelineId,
+    enabled: !!pipelineId,
   });
 
   // The chosen target pipeline's intake form drives the "Carry over" field
@@ -1423,7 +1413,7 @@ export function PipelineSettings() {
       ? queryKeys.pipelines.intakeForm(breakdownTargetPipelineId)
       : ["pipelines", "intake-form", "none-breakdown"],
     queryFn: () => pipelinesApi.getIntakeForm(breakdownTargetPipelineId),
-    enabled: !!selectedCompanyId && !!breakdownTargetPipelineId,
+    enabled: !!breakdownTargetPipelineId,
   });
 
   const pipeline = pipelineQuery.data ?? null;
@@ -1499,7 +1489,7 @@ export function PipelineSettings() {
         throw error;
       }
     },
-    enabled: !!pipelineId && !!instructionsKey && !!selectedCompanyId,
+    enabled: !!pipelineId && !!instructionsKey,
   });
   const instructionsDocument = instructionsQuery.data ?? null;
   // Routine-backed automation is the source of truth. Per-stage documents and
@@ -1518,7 +1508,6 @@ export function PipelineSettings() {
   );
 
   const mentionOptions = useStandardMarkdownMentionOptions({
-    companyId: selectedCompanyId,
     agents: agentsQuery.data,
     projects: projectsQuery.data,
     members: usersQuery.data?.users,
@@ -1566,21 +1555,20 @@ export function PipelineSettings() {
     experimentalSettingsQuery.data?.enableIsolatedWorkspaces === true
     && Boolean(selectedAutomationProject?.executionWorkspacePolicy?.enabled);
   const reusableExecutionWorkspacesQuery = useQuery({
-    queryKey: selectedCompanyId && stageProjectId
-      ? queryKeys.executionWorkspaces.summaryList(selectedCompanyId, {
+    queryKey: stageProjectId
+      ? queryKeys.executionWorkspaces.summaryList({
           projectId: stageProjectId,
           projectWorkspaceId: stageProjectWorkspaceId || undefined,
           reuseEligible: true,
         })
       : ["execution-workspaces", "summary", "none-pipeline-stage"],
     queryFn: () =>
-      executionWorkspacesApi.listSummaries(selectedCompanyId!, {
+      executionWorkspacesApi.listSummaries({
         projectId: stageProjectId,
         projectWorkspaceId: stageProjectWorkspaceId || undefined,
         reuseEligible: true,
       }),
     enabled:
-      Boolean(selectedCompanyId) &&
       Boolean(stageProjectId) &&
       selectedProjectSupportsExecutionWorkspace &&
       stageExecutionWorkspacePreference === "reuse_existing",
@@ -1619,12 +1607,11 @@ export function PipelineSettings() {
   );
 
   const stageEventsQuery = useQuery({
-    queryKey: selectedCompanyId && pipelineId && selectedStage
-      ? ["pipelines", "stage-events", selectedCompanyId, pipelineId, selectedStage.id]
+    queryKey: pipelineId && selectedStage
+      ? ["pipelines", "stage-events", pipelineId, selectedStage.id]
       : ["pipelines", "stage-events", "none"],
-    queryFn: () => pipelinesApi.listCompanyCaseEvents(selectedCompanyId!, { limit: 75 }),
+    queryFn: () => pipelinesApi.listCompanyCaseEvents({ limit: 75 }),
     enabled:
-      !!selectedCompanyId &&
       !!pipelineId &&
       !!selectedStage &&
       activeStageSection === "activity",
@@ -1929,9 +1916,7 @@ export function PipelineSettings() {
     },
     onSuccess: async () => {
       await refreshPipeline();
-      if (selectedCompanyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
-      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list() });
       pushToast({ title: "Stage secrets saved", tone: "success" });
     },
     onError: async (error) => {
@@ -2010,9 +1995,7 @@ export function PipelineSettings() {
       setDeleteStageDialogOpen(false);
       setSelectedStageId(nextStageId);
       await refreshPipeline();
-      if (selectedCompanyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list(selectedCompanyId) });
-      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list() });
       pushToast({ title: "Stage deleted", tone: "success" });
     },
     onError: (error) => {
@@ -2032,9 +2015,7 @@ export function PipelineSettings() {
       }),
     onSuccess: async () => {
       await refreshPipeline();
-      if (selectedCompanyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list(selectedCompanyId) });
-      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list() });
       pushToast({ title: "Pipeline updated", tone: "success" });
     },
   });
@@ -2061,9 +2042,7 @@ export function PipelineSettings() {
     onSuccess: async (_result, archived) => {
       setArchiveDialogOpen(false);
       setArchiveConfirmation("");
-      if (selectedCompanyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list(selectedCompanyId) });
-      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.list() });
       if (archived) {
         navigate("/pipelines");
       } else {
@@ -2122,9 +2101,6 @@ export function PipelineSettings() {
     navigate(`/pipelines/${pipelineId}/settings?${nextSearchParams.toString()}`, { replace: true });
   };
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Hexagon} message="Select an organization to edit pipeline settings." />;
-  }
 
   if (!pipelineId) {
     return <EmptyState icon={Hexagon} message="No pipeline selected." />;

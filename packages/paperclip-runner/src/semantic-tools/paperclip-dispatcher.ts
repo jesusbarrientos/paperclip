@@ -247,7 +247,6 @@ export class PaperclipSemanticDispatcher {
         );
       }
       const scope = digestPaperclipSemanticContent([
-        context.companyId,
         call.runId,
         descriptor.operationId,
         idempotencyKey,
@@ -369,7 +368,6 @@ export class PaperclipSemanticDispatcher {
     try {
       executed = await binding.execute({
         runId: call.runId,
-        companyId: currentContext.companyId,
         actorId: currentContext.actor.id,
         taskId: currentContext.activeTask.id,
         callId: call.callId,
@@ -743,7 +741,6 @@ export class PaperclipSemanticDispatcher {
         schema: "paperclip.semantic-authorization-record.v1",
         id: `semantic_auth:${String(this.#recordSequence).padStart(8, "0")}`,
         runId: context.runId,
-        companyId: context.companyId,
         actorId: context.actor.id,
         taskId: context.activeTask.id,
         callId,

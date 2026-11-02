@@ -15,7 +15,6 @@ import { chatProviderConversationUrl } from "./chat-provider-links.js";
  */
 export async function getExternalChannelBindingSummary(
   db: Db,
-  companyId: string,
   issueId: string,
 ): Promise<ExternalChannelBindingSummary | null> {
   const row = await db
@@ -27,23 +26,14 @@ export async function getExternalChannelBindingSummary(
     .from(chatConversations)
     .innerJoin(
       chatEndpoints,
-      and(
-        eq(chatEndpoints.companyId, chatConversations.companyId),
-        eq(chatEndpoints.id, chatConversations.endpointId),
-      ),
+      eq(chatEndpoints.id, chatConversations.endpointId),
     )
     .leftJoin(
       chatPublications,
-      and(
-        eq(chatPublications.companyId, chatConversations.companyId),
-        eq(chatPublications.conversationId, chatConversations.id),
-      ),
+      eq(chatPublications.conversationId, chatConversations.id),
     )
     .where(
-      and(
-        eq(chatConversations.companyId, companyId),
-        eq(chatConversations.issueId, issueId),
-      ),
+      eq(chatConversations.issueId, issueId),
     )
     .orderBy(desc(chatPublications.createdAt), desc(chatConversations.createdAt))
     .limit(1)

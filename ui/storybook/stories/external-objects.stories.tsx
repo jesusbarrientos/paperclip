@@ -50,7 +50,6 @@ function makeObject(args: {
 }): ExternalObject {
   return {
     id: args.id,
-    companyId: "company-1",
     providerKey: args.providerKey,
     pluginId: null,
     objectType: args.objectType,
@@ -87,7 +86,6 @@ function makeMention(args: {
 }): ExternalObjectMention {
   return {
     id: args.id,
-    companyId: "company-1",
     sourceIssueId: "issue-1",
     sourceKind: args.sourceKind,
     sourceRecordId: null,

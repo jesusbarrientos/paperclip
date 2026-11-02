@@ -2,7 +2,6 @@ export type RunStatus = string;
 
 export type RunSnapshot = {
   id: string;
-  companyId: string;
   agentId: string;
   status: RunStatus;
   lastOutputAt: Date | null;
@@ -31,7 +30,6 @@ export type EvaluationIssueSnapshot = {
   identifier: string | null;
   status: string;
   assigneeAgentId: string | null;
-  companyId: string;
   originKind: string;
   originId: string | null;
   hiddenAt: Date | null;
@@ -135,7 +133,6 @@ export type RecordDecisionInput = {
 
 export type WatchdogDecisionRecord = {
   id: string;
-  companyId: string;
   runId: string;
   evaluationIssueId: string | null;
   decision: "snooze" | "continue" | "dismissed_false_positive";

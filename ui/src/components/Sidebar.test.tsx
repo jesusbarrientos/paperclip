@@ -45,10 +45,9 @@ vi.mock("../context/DialogContext", () => ({
   }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    selectedCompanyId: "company-1",
-    selectedCompany: { id: "company-1", issuePrefix: "PAP", name: "Paperclip" },
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", issuePrefix: "PAP", name: "Paperclip" },
   }),
 }));
 
@@ -96,8 +95,8 @@ vi.mock("@/plugins/launchers", () => ({
   ),
 }));
 
-vi.mock("./SidebarCompanyMenu", () => ({
-  SidebarCompanyMenu: () => <div>Company menu</div>,
+vi.mock("./SidebarOrganizationHeader", () => ({
+  SidebarOrganizationHeader: () => <div>Company menu</div>,
 }));
 
 vi.mock("./SidebarAgents", () => ({

@@ -11,7 +11,7 @@ import { ComposerRunSettingsPicker } from "./ComposerRunSettingsPicker";
 import { getLastComposerEffort, rememberComposerEffort } from "@/lib/recent-composer-effort";
 
 const agent = {
-  id: "a1", companyId: "company-1", name: "Clippy",
+  id: "a1", name: "Clippy",
   role: "Engineering Lead",
   adapterType: "codex_local", adapterConfig: { model: "gpt-6-sol" },
 } as unknown as Agent;
@@ -40,7 +40,7 @@ function render(onAssigneeChange: (value: string) => void, onSettingsChange: () 
   root = createRoot(container);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   flushSync(() => root!.render(<QueryClientProvider client={queryClient}>
-    <ComposerRunSettingsPicker companyId="company-1" assigneeValue="agent:a1" currentAssigneeValue="agent:a1"
+    <ComposerRunSettingsPicker assigneeValue="agent:a1" currentAssigneeValue="agent:a1"
       options={options} agents={agents} settings={{ model: "gpt-6-sol", effort: "high", fast: true }}
       onAssigneeChange={onAssigneeChange} onSettingsChange={onSettingsChange}
       modelOptionsOverride={useCatalog ? undefined : []} {...props} />
@@ -83,7 +83,7 @@ describe("composer assignee picker", () => {
     { remembered: "high", settings: { model: null, effort: "low", fast: false }, overrides: null, restored: null },
     { remembered: "high", settings: null, overrides: { adapterConfig: { modelReasoningEffort: "low" } }, restored: null },
   ])("restores compatible history ($remembered) without replacing explicit settings", ({ remembered, settings, overrides, restored }) => {
-    rememberComposerEffort("company-1", remembered);
+    rememberComposerEffort(remembered);
     const onSettingsChange = vi.fn();
     render(vi.fn(), onSettingsChange, false, { settings, overrides });
     if (restored) expect(onSettingsChange).toHaveBeenCalledWith({ model: null, effort: restored, fast: false });
@@ -100,12 +100,12 @@ describe("composer assignee picker", () => {
       range.dispatchEvent(new Event("change", { bubbles: true }));
       range.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    expect(getLastComposerEffort("company-1")).toBe("low");
+    expect(getLastComposerEffort()).toBe("low");
     await click("Choose exact model");
     await click("GPT-6 Astra");
     expect(onSettingsChange).toHaveBeenLastCalledWith({ model: "gpt-6-astra", effort: "high", fast: false });
     await click("Reset to agent default");
-    expect(getLastComposerEffort("company-1")).toBeNull();
+    expect(getLastComposerEffort()).toBeNull();
   });
   it("lets the assignee and model use the available composer width", () => {
     render(vi.fn(), vi.fn());
@@ -162,7 +162,7 @@ describe("composer assignee picker", () => {
     ]);
     render(vi.fn(), vi.fn(), true);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(loadModels).toHaveBeenCalledWith("company-1", "codex_local", {
+    expect(loadModels).toHaveBeenCalledWith("codex_local", {
       environmentId: null,
       provider: undefined,
     });

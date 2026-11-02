@@ -83,7 +83,6 @@ export interface ChatIdentityLinkPreview {
   selfService?: boolean;
   canConfirm?: boolean;
   endpointId: string;
-  companyId: string;
   companyName: string;
   companyPrefix: string;
   provider: ChatProvider;
@@ -99,7 +98,6 @@ export interface ChatEndpoint {
   publicationMode?: "automatic" | "explicit";
   externalExecutionPolicy?: "restricted" | "agent";
   id: string;
-  companyId: string;
   provider: ChatProvider;
   status: ChatEndpointStatus;
   assignedAgentId: string;
@@ -180,18 +178,17 @@ function rows<T>(response: ListResponse<T>): T[] {
 }
 
 export const chatEndpointsApi = {
-  list: async (companyId: string) =>
+  list: async () =>
     rows(
       await api.get<ListResponse<ChatEndpoint>>(
-        `/companies/${companyId}/chat-endpoints`,
+        `/chat-endpoints`,
       ),
     ),
   get: (endpointId: string) =>
     api.get<ChatEndpoint>(`/chat-endpoints/${endpointId}`),
   create: (
-    companyId: string,
     input: { provider: ChatProvider; assignedAgentId: string },
-  ) => api.post<ChatEndpoint>(`/companies/${companyId}/chat-endpoints`, input),
+  ) => api.post<ChatEndpoint>(`/chat-endpoints`, input),
   update: (
     endpointId: string,
     input: UpdateChatEndpointInput,

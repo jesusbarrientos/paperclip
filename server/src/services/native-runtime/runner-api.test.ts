@@ -14,14 +14,13 @@ import {
 import { RUNNER_API_RESPONSE_MAX_BYTES } from "./runner-api-response-limits.js";
 
 const context = {
-  companyId: "company-a",
   issueId: "issue-a",
   issueIdentifier: "API-1",
   runId: "run-a",
   workMode: "standard",
 };
-const projects = "GET /api/companies/{companyId}/projects";
-const createProject = "POST /api/companies/{companyId}/projects";
+const projects = "GET /api/projects";
+const createProject = "POST /api/projects";
 const io = (fetcher: typeof fetch): RunnerApiIo => ({
   apiUrl: "http://127.0.0.1:3100",
   token: "private-agent-token",
@@ -85,22 +84,22 @@ describe("runner API catalog", () => {
       catalog.length,
     );
     expect(JSON.stringify(catalog)).not.toContain('"$ref"');
-    expect(runnerApiOperation("GET /api/companies/{companyId}/decisions").authorization.actor).toBe("board");
+    expect(runnerApiOperation("GET /api/decisions").authorization.actor).toBe("board");
     expect(runnerApiOperation("DELETE /api/issues/{id}/documents/{key}").authorization.actor).toBe("board");
     expect(runnerApiOperation("DELETE /api/issues/{id}/documents/{key}").dedicatedTools).toEqual([]);
     expect(runnerApiOperation(createProject).requestBody?.content["application/json"].schema.required).toContain("name");
     expect(runnerApiOperation(createProject).dedicatedTools).toEqual(["create_project"]);
     expect(runnerApiOperation(projects).dedicatedTools).toEqual(["list_projects"]);
-    expect(runnerApiOperation("GET /api/companies/{companyId}/project-repositories").dedicatedTools).toEqual(["list_project_repositories"]);
+    expect(runnerApiOperation("GET /api/project-repositories").dedicatedTools).toEqual(["list_project_repositories"]);
     expect(runnerApiOperation("GET /api/agents/{id}/instructions-bundle/file").dedicatedTools).toEqual(["read_agent_instructions"]);
     expect(runnerApiOperation("PUT /api/agents/{id}/instructions-bundle/file").dedicatedTools).toEqual(["update_agent_instructions"]);
     expect(runnerApiOperation("GET /api/agents/{id}/instructions-bundle/history").dedicatedTools).toEqual(["get_agent_instruction_history"]);
     expect(runnerApiOperation("POST /api/agents/{id}/instructions-bundle/restore").dedicatedTools).toEqual(["restore_agent_instructions"]);
-    expect(runnerApiOperation("POST /api/companies/{companyId}/agent-hires").dedicatedTools).toEqual(["hire_agent"]);
-    expect(runnerApiOperation("POST /api/companies/{companyId}/agent-hires").dedicatedToolGuidance).toContain("inherits the caller's native runtime");
+    expect(runnerApiOperation("POST /api/agent-hires").dedicatedTools).toEqual(["hire_agent"]);
+    expect(runnerApiOperation("POST /api/agent-hires").dedicatedToolGuidance).toContain("inherits the caller's native runtime");
   });
   it.each(runnerApiCatalog().filter(operation => operation.transport === "rest"))("resolves the catalog route $operationId inside the bound origin", operation => {
-    const pathParams = Object.fromEntries(operation.parameters.filter(parameter => parameter.in === "path").map(parameter => [parameter.name, parameter.name === "companyId" ? context.companyId : "fixture-id"]));
+    const pathParams = Object.fromEntries(operation.parameters.filter(parameter => parameter.in === "path").map(parameter => [parameter.name, "fixture-id"]));
     const url = runnerApiUrl(operation, { operationId: operation.operationId, pathParams }, context, "https://paperclip.test");
     expect(url.origin).toBe("https://paperclip.test");
     expect(url.pathname).not.toContain("{");
@@ -117,7 +116,7 @@ describe("runner API catalog", () => {
           .filter((parameter) => parameter.in === "path")
           .map((parameter) => [
             parameter.name,
-            parameter.name === "companyId" ? context.companyId : "fixture-id",
+            "fixture-id",
           ]),
       );
       const url = runnerApiUrl(
@@ -139,7 +138,7 @@ describe("runner API catalog", () => {
       ),
     ).toContain(createProject);
     expect(
-      searchRunnerApi({ query: "GET /api/companies/{companyId}/issues" })
+      searchRunnerApi({ query: "GET /api/issues" })
         .results[0].dedicatedTools,
     ).toContain("search_tasks");
     expect(searchRunnerApi({ query: "nothing-zzzzzzzzzz" }).total).toBe(0);
@@ -167,7 +166,7 @@ describe("runner API request boundary", () => {
     "POST /api/projects/{id}/workspaces/{workspaceId}/runtime-services/{action}",
     "POST /api/tool-gateway/runtime-slots/{slotId}/restart",
     "POST /api/cases/{caseId}/automation/current-stage/rerun",
-    "POST /api/companies/{companyId}/skills/{skillId}/test-runs",
+    "POST /api/skills/{skillId}/test-runs",
     "POST /api/tool-gateway/sessions",
   ])(
     "keeps execution and gateway control %s out of generic dispatch",
@@ -182,7 +181,7 @@ describe("runner API request boundary", () => {
   it.each([
     "POST /api/mcp/project-tools",
     "POST /api/agents/{id}/claude-login",
-    "POST /api/companies/{companyId}/adapters/{type}/login-sessions",
+    "POST /api/adapters/{type}/login-sessions",
     "POST /api/agents/me/connections/{connectionId}/start-authorization",
   ])(
     "directs authentication handshake %s to its existing client",
@@ -245,7 +244,7 @@ describe("runner API request boundary", () => {
   it("keeps routine metadata readable", () => {
     expect(
       validateRunnerApiCall(
-        { operationId: "GET /api/companies/{companyId}/routines" },
+        { operationId: "GET /api/routines" },
         context,
       ).operation.callPolicy,
     ).toBe("rest");
@@ -272,10 +271,10 @@ describe("runner API request boundary", () => {
     "POST /api/agents/me/secrets/{key}/value",
     "POST /api/agents/{id}/keys",
     "DELETE /api/agents/{id}/keys/{keyId}",
-    "POST /api/companies/{companyId}/secret-proposals/{id}/approve",
+    "POST /api/secret-proposals/{id}/approve",
     "POST /api/agents/me/secret-proposals",
     "PATCH /api/secrets/{id}",
-    "POST /api/companies/{companyId}/exports",
+    "POST /api/organization/exports",
     "GET /api/secret-provider-configs/{id}",
     "POST /api/chat-endpoints/{endpointId}/setup-secret",
     "POST /api/chat-endpoints/{endpointId}/principals/{principalId}/link-intent",
@@ -298,7 +297,7 @@ describe("runner API request boundary", () => {
   it("retains safe secret metadata discovery", () => {
     for (const operationId of [
       "GET /api/agents/me/secrets",
-      "GET /api/companies/{companyId}/secrets/catalog",
+      "GET /api/secrets/catalog",
     ]) {
       expect(
         validateRunnerApiCall({ operationId }, context).operation.callPolicy,
@@ -317,7 +316,7 @@ describe("runner API request boundary", () => {
       "https://paperclip.test/api",
     );
     expect(url.origin).toBe("https://paperclip.test");
-    expect(url.pathname).toBe("/api/companies/company-a/projects");
+    expect(url.pathname).toBe("/api/projects");
     expect(url.searchParams.get("q")).toBe("hello & goodbye");
   });
   it.each(["../secrets", ".", "..", "%2e%2e", "abc/def", "abc\\def"])(
@@ -337,19 +336,13 @@ describe("runner API request boundary", () => {
       ).toThrow();
     },
   );
-  it("rejects unknown inputs, foreign companies, and mode bypasses", () => {
+  it("rejects unknown inputs and mode bypasses", () => {
     expect(() =>
       validateRunnerApiCall(
         { operationId: projects, headers: { Authorization: "board" } },
         context,
       ),
     ).toThrow();
-    expect(() =>
-      validateRunnerApiCall(
-        { operationId: projects, pathParams: { companyId: "foreign" } },
-        context,
-      ),
-    ).toThrow("another company");
     for (const workMode of ["planning", "ask"]) {
       expect(() =>
         validateRunnerApiCall(

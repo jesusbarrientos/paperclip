@@ -9,7 +9,6 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { workAssessments } from "./work_assessments.js";
 
@@ -17,7 +16,6 @@ export const statusDecisions = pgTable(
   "status_decisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     issueId: uuid("issue_id").notNull(),
     runId: uuid("run_id").notNull(),
     assessmentId: uuid("assessment_id").notNull(),
@@ -35,28 +33,25 @@ export const statusDecisions = pgTable(
   },
   (table) => ({
     companyIssueIdUq: unique("status_decisions_company_issue_id_uq").on(
-      table.companyId,
       table.issueId,
       table.id,
     ),
     companyIssueRunAssessmentIdUq: unique(
       "status_decisions_company_issue_run_assessment_id_uq",
     ).on(
-      table.companyId,
       table.issueId,
       table.runId,
       table.assessmentId,
       table.id,
     ),
     issueCompanyFk: foreignKey({
-      columns: [table.companyId, table.issueId],
-      foreignColumns: [issues.companyId, issues.id],
+      columns: [table.issueId],
+      foreignColumns: [issues.id],
       name: "status_decisions_issue_company_fk",
     }),
     assessmentOwnerFk: foreignKey({
-      columns: [table.companyId, table.issueId, table.runId, table.assessmentId],
+      columns: [table.issueId, table.runId, table.assessmentId],
       foreignColumns: [
-        workAssessments.companyId,
         workAssessments.issueId,
         workAssessments.runId,
         workAssessments.id,
@@ -64,21 +59,18 @@ export const statusDecisions = pgTable(
       name: "status_decisions_assessment_owner_fk",
     }),
     supersedesOwnerFk: foreignKey({
-      columns: [table.companyId, table.issueId, table.supersedesDecisionId],
-      foreignColumns: [table.companyId, table.issueId, table.id],
+      columns: [table.issueId, table.supersedesDecisionId],
+      foreignColumns: [table.issueId, table.id],
       name: "status_decisions_supersedes_owner_fk",
     }),
     issueVersionUq: uniqueIndex("status_decisions_company_issue_version_uq").on(
-      table.companyId,
       table.issueId,
       table.decisionVersion,
     ),
     assessmentUq: uniqueIndex("status_decisions_company_assessment_uq").on(
-      table.companyId,
       table.assessmentId,
     ),
     issueDigestUq: uniqueIndex("status_decisions_company_issue_digest_uq").on(
-      table.companyId,
       table.issueId,
       table.decisionDigest,
     ),

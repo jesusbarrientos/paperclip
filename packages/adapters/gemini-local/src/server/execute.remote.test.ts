@@ -113,7 +113,6 @@ describe("gemini remote execution", () => {
       runId: "run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Gemini Builder",
         adapterType: "gemini_local",
         adapterConfig: {},
@@ -266,7 +265,6 @@ describe("gemini remote execution", () => {
       runId: "run-sandbox-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Gemini Builder",
         adapterType: "gemini_local",
         adapterConfig: {},
@@ -321,7 +319,6 @@ describe("gemini remote execution", () => {
       runId: "run-ssh-resume",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Gemini Builder",
         adapterType: "gemini_local",
         adapterConfig: {},
@@ -383,7 +380,6 @@ describe("gemini remote execution", () => {
       runId: "run-sync-fail",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Gemini Builder",
         adapterType: "gemini_local",
         adapterConfig: {},

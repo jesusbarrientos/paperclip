@@ -67,10 +67,9 @@ describe("P6-32 legacy finalization regression", () => {
       status: "active",
       defaultResponsibleUserId: "responsible-user",
     });
-    await db.insert(projects).values({ id: projectId, companyId, name: "Legacy project", status: "active" });
+    await db.insert(projects).values({ id: projectId, name: "Legacy project", status: "active" });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
       projectId,
       name: "Primary",
       cwd: fileURLToPath(new URL("../../../", import.meta.url)),
@@ -78,7 +77,6 @@ describe("P6-32 legacy finalization regression", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Legacy agent",
       adapterType: "codex_local",
       status: "idle",
@@ -86,7 +84,6 @@ describe("P6-32 legacy finalization regression", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       projectId,
       projectWorkspaceId,
       title: "Complete through the legacy adapter",
@@ -133,11 +130,11 @@ describe("P6-32 legacy finalization regression", () => {
     await expect(reconcileNativeFinalizations(db, [runId])).resolves.toEqual([]);
     expect(JSON.stringify(await heartbeat.getRun(runId))).toBe(JSON.stringify(publicBefore));
 
-    await expect(db.select().from(completionContracts).where(eq(completionContracts.companyId, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(completionContracts)).resolves.toHaveLength(0);
     await expect(db.select().from(nativeRunResults).where(eq(nativeRunResults.runId, runId))).resolves.toHaveLength(0);
     await expect(db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, runId))).resolves.toHaveLength(0);
     await expect(db.select().from(workAssessments).where(eq(workAssessments.runId, runId))).resolves.toHaveLength(0);
-    await expect(db.select().from(statusDecisions).where(eq(statusDecisions.companyId, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(statusDecisions)).resolves.toHaveLength(0);
     await expect(db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId))).resolves.toHaveLength(1);
   }, 30_000);
 });

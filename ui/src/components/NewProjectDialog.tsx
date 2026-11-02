@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PROJECT_COLORS, type ProjectRepository } from "@paperclipai/shared";
 import { X } from "lucide-react";
 import { useDialog } from "../context/DialogContext";
-import { useCompany } from "../context/CompanyContext";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
 import { trackRecentProject } from "../lib/recent-projects";
@@ -15,12 +14,10 @@ import { ConnectionSetupFlow } from "@/features/connections/ConnectionSetupFlow"
 
 export function NewProjectDialog() {
   const { newProjectOpen, closeNewProject } = useDialog();
-  const { selectedCompanyId } = useCompany();
-  return selectedCompanyId && newProjectOpen
-    ? <NewProjectForm key={selectedCompanyId} companyId={selectedCompanyId} onClose={closeNewProject} /> : null;
+  return newProjectOpen ? <NewProjectForm onClose={closeNewProject} /> : null;
 }
 
-export function NewProjectForm({ companyId, onClose }: { companyId: string; onClose: () => void }) {
+export function NewProjectForm({ onClose }: { onClose: () => void }) {
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [color] = useState(() => PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)]!);
@@ -28,10 +25,10 @@ export function NewProjectForm({ companyId, onClose }: { companyId: string; onCl
   const [connecting, setConnecting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const create = useMutation({
-    mutationFn: () => projectsApi.create(companyId, { name: name.trim(), color, status: "planned", repositoryIds: repos.map((repo) => repo.id) }),
+    mutationFn: () => projectsApi.create({ name: name.trim(), color, status: "planned", repositoryIds: repos.map((repo) => repo.id) }),
     onSuccess: (project) => {
-      trackRecentProject(project.id, companyId);
-      void client.invalidateQueries({ queryKey: queryKeys.projects.all(companyId) });
+      trackRecentProject(project.id);
+      void client.invalidateQueries({ queryKey: queryKeys.projects.all() });
       onClose();
     },
   });
@@ -42,7 +39,7 @@ export function NewProjectForm({ companyId, onClose }: { companyId: string; onCl
       {connecting ? <div className="min-h-0 overflow-y-auto p-5">
         <DialogTitle className="sr-only">Connect GitHub</DialogTitle>
         <ConnectionSetupFlow host="dialog" serviceSlug="github" forceNewConnection onCancel={() => setConnecting(false)} onComplete={() => {
-          void client.invalidateQueries({ queryKey: repositoryOptionsKey(companyId) });
+          void client.invalidateQueries({ queryKey: repositoryOptionsKey() });
           setConnecting(false);
         }} />
       </div> : <form className="flex min-h-0 flex-col overflow-hidden" onSubmit={(event) => { event.preventDefault(); if (name.trim() && !create.isPending) create.mutate(); }}>
@@ -58,7 +55,7 @@ export function NewProjectForm({ companyId, onClose }: { companyId: string; onCl
           </div>
         </div>
         <div role="region" aria-label="Source repositories" tabIndex={0} className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-1 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring">
-          <ProjectRepositoryInput companyId={companyId} selected={repos} onChange={setRepos} onConnect={() => setConnecting(true)} disabled={create.isPending} />
+          <ProjectRepositoryInput selected={repos} onChange={setRepos} onConnect={() => setConnecting(true)} disabled={create.isPending} />
         </div>
         {create.isError && <p role="alert" className="px-5 pt-3 text-sm text-destructive">{create.error.message}</p>}
         <div className="flex shrink-0 justify-end gap-2 px-5 py-5">

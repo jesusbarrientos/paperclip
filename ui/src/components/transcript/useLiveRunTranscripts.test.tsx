@@ -99,7 +99,7 @@ describe("useLiveRunTranscripts", () => {
     logMock.mockResolvedValue({ runId: "run-1", store: "memory", logRef: "log-1", content: "", nextOffset: 42 });
     const runs = [{ id: "run-1", status: "running", adapterType: "codex_local" }];
     function Harness() {
-      useLiveRunTranscripts({ companyId: "company-1", runs, enableRealtimeUpdates: false });
+      useLiveRunTranscripts({ runs, enableRealtimeUpdates: false });
       return null;
     }
     const container = document.createElement("div");
@@ -133,7 +133,6 @@ describe("useLiveRunTranscripts", () => {
   it("waits for a connecting socket to open before closing it during cleanup", async () => {
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "running", adapterType: "codex_local" }],
       });
       return null;
@@ -171,7 +170,6 @@ describe("useLiveRunTranscripts", () => {
 
     function Harness() {
       const { hasOutputForRun } = useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "succeeded", adapterType: "codex_local", hasStoredOutput: true }],
       });
       latestHasOutput = hasOutputForRun("run-1");
@@ -208,7 +206,6 @@ describe("useLiveRunTranscripts", () => {
 
     function Harness() {
       const { isInitialHydrating } = useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "succeeded", adapterType: "codex_local" }],
       });
       latestIsInitialHydrating = isInitialHydrating;
@@ -248,7 +245,7 @@ describe("useLiveRunTranscripts", () => {
     const empty = { runId: "run-1", store: "memory", logRef: "log-1", content: "", nextOffset: 0 };
     logMock.mockImplementationOnce(() => new Promise((resolve) => { resolveLate = resolve; }));
     function Harness() {
-      latest = useLiveRunTranscripts({ companyId: "company-1", runs: [{ id: "run-1", status: "succeeded", adapterType: "codex_local" }] });
+      latest = useLiveRunTranscripts({ runs: [{ id: "run-1", status: "succeeded", adapterType: "codex_local" }] });
       return null;
     }
     try {
@@ -275,7 +272,6 @@ describe("useLiveRunTranscripts", () => {
 
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-404", status: "failed", adapterType: "codex_local" }],
       });
       return null;
@@ -308,7 +304,6 @@ describe("useLiveRunTranscripts", () => {
   it("does not request persisted logs until a queued run starts", async () => {
     function Harness({ status }: { status: "queued" | "running" }) {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-queued", status, adapterType: "codex_local" }],
       });
       return null;
@@ -344,7 +339,6 @@ describe("useLiveRunTranscripts", () => {
   it("can hydrate active runs without opening the live event socket", async () => {
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "running", adapterType: "codex_local" }],
         enableRealtimeUpdates: false,
         logReadLimitBytes: 64_000,
@@ -373,7 +367,6 @@ describe("useLiveRunTranscripts", () => {
   it("starts persisted-log hydration from the newest bytes when the visible window is truncated", async () => {
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "running", adapterType: "codex_local", lastOutputBytes: 100_000 }],
         enableRealtimeUpdates: false,
         logReadLimitBytes: 64_000,
@@ -412,7 +405,6 @@ describe("useLiveRunTranscripts", () => {
 
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "running", adapterType: "gemini_local" }],
         enableRealtimeUpdates: false,
       });
@@ -458,7 +450,6 @@ describe("useLiveRunTranscripts", () => {
 
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "running", adapterType: "gemini_local" }],
         enableRealtimeUpdates: false,
       });
@@ -499,7 +490,6 @@ describe("useLiveRunTranscripts", () => {
 
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [{ id: "run-1", status: "running", adapterType: "gemini_local" }],
       });
       return null;
@@ -521,7 +511,6 @@ describe("useLiveRunTranscripts", () => {
       socket.onmessage?.(
         new MessageEvent("message", {
           data: JSON.stringify({
-            companyId: "company-1",
             type: "heartbeat.run.log",
             createdAt: "2026-04-20T00:00:01.000Z",
             payload: {
@@ -573,7 +562,6 @@ describe("useLiveRunTranscripts", () => {
   it("rebuilds only the transcript for the run that receives live output", async () => {
     function Harness() {
       useLiveRunTranscripts({
-        companyId: "company-1",
         runs: [
           { id: "run-1", status: "running", adapterType: "codex_local" },
           { id: "run-2", status: "running", adapterType: "codex_local" },
@@ -600,7 +588,6 @@ describe("useLiveRunTranscripts", () => {
       FakeWebSocket.instances[0]!.onmessage?.(
         new MessageEvent("message", {
           data: JSON.stringify({
-            companyId: "company-1",
             type: "heartbeat.run.log",
             createdAt: "2026-04-20T00:00:00.000Z",
             payload: {
@@ -644,7 +631,7 @@ describe("useLiveRunTranscripts", () => {
 
     const captured: { value: ReturnType<typeof useLiveRunTranscripts> | null } = { value: null };
     function Harness({ runs }: { runs: Array<{ id: string; status: string; adapterType: string }> }) {
-      captured.value = useLiveRunTranscripts({ companyId: "company-1", runs, enableRealtimeUpdates: false });
+      captured.value = useLiveRunTranscripts({ runs, enableRealtimeUpdates: false });
       return null;
     }
 
@@ -694,7 +681,7 @@ describe("useLiveRunTranscripts", () => {
 
       const captured: { value: ReturnType<typeof useLiveRunTranscripts> | null } = { value: null };
       function Harness({ runs }: { runs: Array<{ id: string; status: string; adapterType: string }> }) {
-        captured.value = useLiveRunTranscripts({ companyId: "company-1", runs, enableRealtimeUpdates: false });
+        captured.value = useLiveRunTranscripts({ runs, enableRealtimeUpdates: false });
         return null;
       }
 
@@ -743,7 +730,7 @@ describe("useLiveRunTranscripts", () => {
     } as unknown as typeof WebSocket;
     const runs = [{ id: "run-1", status: "running", adapterType: "codex_local" }];
     function Harness() {
-      useLiveRunTranscripts({ companyId: "company-1", runs });
+      useLiveRunTranscripts({ runs });
       return null;
     }
     const root = createRoot(document.createElement("div"));
@@ -772,7 +759,6 @@ describe("useLiveRunTranscripts", () => {
     try {
       function Harness({ lastOutputBytes }: { lastOutputBytes?: number }) {
         useLiveRunTranscripts({
-          companyId: "company-1",
           runs: [{ id: "run-1", status: "running", adapterType: "codex_local", lastOutputBytes }],
         });
         return null;

@@ -16,7 +16,6 @@ export interface IssueLivenessIssueInput {
   conversationUserId?: string | null;
   conversationState?: string | null;
   id: string;
-  companyId: string;
   identifier: string | null;
   title: string;
   status: string;
@@ -34,14 +33,12 @@ export interface IssueLivenessIssueInput {
 }
 
 export interface IssueLivenessRelationInput {
-  companyId: string;
   blockerIssueId: string;
   blockedIssueId: string;
 }
 
 export interface IssueLivenessAgentInput {
   id: string;
-  companyId: string;
   name: string;
   role: string;
   title?: string | null;
@@ -51,7 +48,6 @@ export interface IssueLivenessAgentInput {
 
 export interface IssueLivenessExecutionPathInput {
   id?: string | null;
-  companyId: string;
   issueId: string | null;
   agentId?: string | null;
   status: string;
@@ -60,7 +56,6 @@ export interface IssueLivenessExecutionPathInput {
 
 export interface IssueLivenessWaitingPathInput {
   id?: string | null;
-  companyId: string;
   issueId: string;
   status: string;
   createdAt?: Date | string | null;
@@ -106,7 +101,6 @@ export interface IssueLivenessOwnerCandidate {
 
 export interface IssueLivenessFinding {
   issueId: string;
-  companyId: string;
   identifier: string | null;
   state: IssueLivenessState;
   severity: IssueLivenessSeverity;
@@ -153,22 +147,20 @@ function isInvokableAgent(
 }
 
 function hasActiveExecutionPath(
-  companyId: string,
   issueId: string,
   activeRuns: IssueLivenessExecutionPathInput[],
   queuedWakeRequests: IssueLivenessExecutionPathInput[],
 ) {
   return [...activeRuns, ...queuedWakeRequests].some(
-    (entry) => entry.companyId === companyId && entry.issueId === issueId,
+    (entry) => entry.issueId === issueId,
   );
 }
 
 function hasWaitingPath(
-  companyId: string,
   issueId: string,
   waitingPaths: IssueLivenessWaitingPathInput[],
 ) {
-  return waitingPaths.some((entry) => entry.companyId === companyId && entry.issueId === issueId);
+  return waitingPaths.some((entry) => entry.issueId === issueId);
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {
@@ -239,7 +231,7 @@ export function classifyIssueReviewPaths(
   const participantAgentId = readPrincipalAgentId(participant);
   if (participantAgentId) {
     const participantAgent = agentsById.get(participantAgentId);
-    if (participantAgent?.companyId === issue.companyId && isInvokableAgent(participantAgent, agentsById)) {
+    if (participantAgent && isInvokableAgent(participantAgent, agentsById)) {
       paths.push({
         kind: "execution_participant",
         ref: participantAgentId,
@@ -268,7 +260,7 @@ export function classifyIssueReviewPaths(
     kind: "active_run" | "queued_wake",
   ) => {
     for (const entry of entries) {
-      if (entry.companyId !== issue.companyId || entry.issueId !== issue.id) continue;
+      if (entry.issueId !== issue.id) continue;
       paths.push({
         kind,
         ref: entry.id ?? null,
@@ -286,7 +278,7 @@ export function classifyIssueReviewPaths(
     kind: "interaction" | "approval" | "recovery",
   ) => {
     for (const entry of entries) {
-      if (entry.companyId !== issue.companyId || entry.issueId !== issue.id) continue;
+      if (entry.issueId !== issue.id) continue;
       paths.push({
         kind,
         ref: entry.id ?? null,
@@ -321,14 +313,13 @@ function addOwnerCandidate(
   candidates: IssueLivenessOwnerCandidate[],
   seen: Set<string>,
   agentsById: Map<string, IssueLivenessAgentInput>,
-  companyId: string,
   agentId: string | null | undefined,
   reason: IssueLivenessOwnerCandidateReason,
   sourceIssueId: string,
 ) {
   if (!agentId || seen.has(agentId)) return;
   const agent = agentsById.get(agentId);
-  if (!agent || agent.companyId !== companyId || !isInvokableAgent(agent, agentsById)) return;
+  if (!agent || !isInvokableAgent(agent, agentsById)) return;
   seen.add(agentId);
   candidates.push({ agentId, reason, sourceIssueId });
 }
@@ -338,7 +329,6 @@ function addAgentChainCandidates(
   seen: Set<string>,
   startAgentId: string | null | undefined,
   agentsById: Map<string, IssueLivenessAgentInput>,
-  companyId: string,
   reason: IssueLivenessOwnerCandidateReason,
   sourceIssueId: string,
 ) {
@@ -349,8 +339,8 @@ function addAgentChainCandidates(
     if (chainSeen.has(current.reportsTo)) break;
     chainSeen.add(current.reportsTo);
     const manager = agentsById.get(current.reportsTo);
-    if (!manager || manager.companyId !== companyId) break;
-    addOwnerCandidate(candidates, seen, agentsById, companyId, manager.id, reason, sourceIssueId);
+    if (!manager) break;
+    addOwnerCandidate(candidates, seen, agentsById, manager.id, reason, sourceIssueId);
     current = manager;
   }
 }
@@ -358,10 +348,9 @@ function addAgentChainCandidates(
 function orderedInvokableAgents(
   agents: IssueLivenessAgentInput[],
   agentsById: Map<string, IssueLivenessAgentInput>,
-  companyId: string,
 ) {
   return agents
-    .filter((agent) => agent.companyId === companyId && isInvokableAgent(agent, agentsById))
+    .filter((agent) => isInvokableAgent(agent, agentsById))
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -381,7 +370,6 @@ function ownerCandidatesForRecoveryIssue(
       candidates,
       seen,
       agentsById,
-      issue.companyId,
       issue.assigneeAgentId,
       "stalled_blocker_assignee",
       issue.id,
@@ -393,7 +381,6 @@ function ownerCandidatesForRecoveryIssue(
     seen,
     issue.assigneeAgentId,
     agentsById,
-    issue.companyId,
     "assignee_reporting_chain",
     issue.id,
   );
@@ -402,15 +389,14 @@ function ownerCandidatesForRecoveryIssue(
     seen,
     issue.createdByAgentId,
     agentsById,
-    issue.companyId,
     "creator_reporting_chain",
     issue.id,
   );
 
-  const invokableAgents = orderedInvokableAgents(agents, agentsById, issue.companyId);
+  const invokableAgents = orderedInvokableAgents(agents, agentsById);
   for (const agent of invokableAgents) {
     if (!agent.reportsTo) {
-      addOwnerCandidate(candidates, seen, agentsById, issue.companyId, agent.id, "root_agent", issue.id);
+      addOwnerCandidate(candidates, seen, agentsById, agent.id, "root_agent", issue.id);
     }
   }
   for (const agent of invokableAgents) {
@@ -418,7 +404,6 @@ function ownerCandidatesForRecoveryIssue(
       candidates,
       seen,
       agentsById,
-      issue.companyId,
       agent.id,
       "ordered_invokable_fallback",
       issue.id,
@@ -429,7 +414,6 @@ function ownerCandidatesForRecoveryIssue(
 }
 
 function incidentKey(input: {
-  companyId: string;
   issueId: string;
   state: IssueLivenessState;
   blockerIssueId?: string | null;
@@ -453,7 +437,6 @@ function finding(input: {
 }): IssueLivenessFinding {
   return {
     issueId: input.issue.id,
-    companyId: input.issue.companyId,
     identifier: input.issue.identifier,
     state: input.state,
     severity: input.severity ?? "critical",
@@ -465,7 +448,6 @@ function finding(input: {
     recommendedOwnerCandidates: input.recommendedOwnerCandidates,
     recommendedAction: input.recommendedAction,
     incidentKey: incidentKey({
-      companyId: input.issue.companyId,
       issueId: input.issue.id,
       state: input.state,
       blockerIssueId: input.blockerIssueId,
@@ -495,10 +477,8 @@ export function classifyIssueGraphLiveness(input: IssueGraphLivenessInput): Issu
     const blocker = issuesById.get(relation.blockerIssueId);
     const blocked = issuesById.get(relation.blockedIssueId);
     if (
-      blocker &&
-      blocked &&
-      blocker.companyId === relation.companyId &&
-      blocked.companyId === relation.companyId &&
+      (blocker &&
+                      blocked) &&
       blocker.status !== "done" &&
       blocker.status !== "cancelled" &&
       blocked.status === "blocked"
@@ -520,10 +500,10 @@ export function classifyIssueGraphLiveness(input: IssueGraphLivenessInput): Issu
   function hasExplicitWaitingPath(issue: IssueLivenessIssueInput) {
     return Boolean(issue.assigneeUserId) ||
       hasScheduledIssueMonitorPath(issue, nowMs) ||
-      hasActiveExecutionPath(issue.companyId, issue.id, activeRuns, queuedWakeRequests) ||
-      hasWaitingPath(issue.companyId, issue.id, pendingInteractions) ||
-      hasWaitingPath(issue.companyId, issue.id, pendingApprovals) ||
-      hasWaitingPath(issue.companyId, issue.id, openRecoveryIssues);
+      hasActiveExecutionPath(issue.id, activeRuns, queuedWakeRequests) ||
+      hasWaitingPath(issue.id, pendingInteractions) ||
+      hasWaitingPath(issue.id, pendingApprovals) ||
+      hasWaitingPath(issue.id, openRecoveryIssues);
   }
 
   function reviewFinding(
@@ -545,7 +525,7 @@ export function classifyIssueGraphLiveness(input: IssueGraphLivenessInput): Issu
     const participantAgentId = readPrincipalAgentId(participant);
     if (participantAgentId) {
       const participantAgent = agentsById.get(participantAgentId);
-      if (isInvokableAgent(participantAgent, agentsById) && participantAgent?.companyId === reviewIssue.companyId) return null;
+      if (isInvokableAgent(participantAgent, agentsById)) return null;
 
       return finding({
         issue: source,
@@ -661,7 +641,7 @@ export function classifyIssueGraphLiveness(input: IssueGraphLivenessInput): Issu
     const blockerEligibility = blockerAgent
       ? getAgentWorkEligibility({ agent: blockerAgent, agents: input.agents })
       : null;
-    if (!blockerAgent || blockerAgent.companyId !== source.companyId || !blockerEligibility?.invokable) {
+    if (!blockerAgent || !blockerEligibility?.invokable) {
       return finding({
         issue: source,
         state: "blocked_by_uninvokable_assignee",
@@ -692,9 +672,8 @@ export function classifyIssueGraphLiveness(input: IssueGraphLivenessInput): Issu
 
     const relations = blockersByBlockedIssueId.get(current.id) ?? [];
     for (const relation of relations) {
-      if (relation.companyId !== current.companyId || relation.companyId !== source.companyId) continue;
       const blocker = issuesById.get(relation.blockerIssueId);
-      if (!blocker || blocker.companyId !== source.companyId || blocker.status === "done") continue;
+      if (!blocker || blocker.status === "done") continue;
       const path = [...dependencyPath, blocker];
 
       if (blocker.status === "blocked") {
@@ -712,9 +691,8 @@ export function classifyIssueGraphLiveness(input: IssueGraphLivenessInput): Issu
 
   for (const issue of input.issues) {
     const hasUnresolvedBlockerEdge = (blockersByBlockedIssueId.get(issue.id) ?? []).some((relation) => {
-      if (relation.companyId !== issue.companyId) return false;
       const blocker = issuesById.get(relation.blockerIssueId);
-      return Boolean(blocker && blocker.companyId === issue.companyId && blocker.status !== "done");
+      return Boolean(blocker && blocker.status !== "done");
     });
     const shouldInspectBlockedChain = issue.status === "blocked" || (
       issue.status !== "done" &&

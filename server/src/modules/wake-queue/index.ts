@@ -100,8 +100,8 @@ export function createWakeQueue(db: Db, deps: WakeQueueDeps) {
       writer: createWakeAdmissionWriter(),
       helpers: deps.wakeAdmissionHelpers,
     }),
-    createAdmissionTransactionScope(companyId: string, tx: Db): TransactionScope {
-      return buildAdmissionTransactionScope(companyId, tx);
+    createAdmissionTransactionScope(tx: Db): TransactionScope {
+      return buildAdmissionTransactionScope(tx);
     },
   };
 }

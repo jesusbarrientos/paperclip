@@ -72,7 +72,8 @@ import {
 import { requireOpenCodeModelId } from "@paperclipai/adapter-opencode-local/server";
 import { findServerAdapter } from "../adapters/index.js";
 import { formatAttachmentSize, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
-import { forbidden, notFound, unprocessable } from "../errors.js";
+import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
+import { organizationService } from "./organization.js";
 import { ghFetch, gitHubApiBase, resolveRawGitHubUrl } from "./github-fetch.js";
 import type { StorageService } from "../storage/types.js";
 import { accessService } from "./access.js";
@@ -235,25 +236,6 @@ function assertInlineSourceComplete(source: CompanyPortabilityImport["source"]) 
       { code: "import_payload_incomplete", expectedFileCount: expected, receivedFileCount: received },
     );
   }
-}
-
-/**
- * Suffix a manifest-derived company name with " (2)", " (3)", … when it
- * collides case-insensitively with an existing company, so repeat imports of
- * the same package do not produce several identically named companies that
- * only differ by issue prefix. Explicit user-typed names bypass this — they
- * are the caller's deliberate choice.
- */
-export function dedupeImportedCompanyName(baseName: string, existingNames: string[]): string {
-  const normalized = new Set(existingNames.map((name) => name.trim().toLowerCase()));
-  if (!normalized.has(baseName.trim().toLowerCase())) return baseName;
-  for (let suffix = 2; suffix < 10_000; suffix += 1) {
-    const candidate = `${baseName} (${suffix})`;
-    if (!normalized.has(candidate.toLowerCase())) return candidate;
-  }
-  // Pathological: thousands of identically named companies. Give up on the
-  // suffix rather than fail the import — names carry no uniqueness invariant.
-  return baseName;
 }
 
 function resolveSkillConflictStrategy(mode: ImportMode, collisionStrategy: CompanyPortabilityCollisionStrategy) {
@@ -754,7 +736,6 @@ type ImportMode = "board_full" | "agent_safe";
 
 type ImportBehaviorOptions = {
   mode?: ImportMode;
-  sourceCompanyId?: string | null;
   pauseAutomations?: boolean;
 };
 
@@ -3084,7 +3065,7 @@ function readAgentSkillRefs(frontmatter: Record<string, unknown>) {
 
 function buildManifestFromPackageFiles(
   files: Record<string, CompanyPortabilityFileEntry>,
-  opts?: { sourceLabel?: { companyId: string; companyName: string } | null },
+  opts?: { sourceLabel?: { companyName: string } | null },
 ): ResolvedSource {
   const normalizedFiles = normalizeFileMap(files);
   const companyPath = typeof normalizedFiles["COMPANY.md"] === "string"
@@ -3547,6 +3528,13 @@ export function parseGitHubSourceUrl(rawUrl: string) {
 
 export function companyPortabilityService(db: Db, storage?: StorageService) {
   const companies = companyService(db);
+
+  async function loadOrganization() {
+    const organizationId = await organizationService(db).findId();
+    const organization = organizationId ? await companies.getById(organizationId) : null;
+    if (!organization) throw notFound("Organization not found");
+    return organization;
+  }
   const agents = agentService(db);
   const assetRecords = assetService(db);
   const instructions = agentInstructionsService(db);
@@ -3561,16 +3549,14 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   const defaultSecretProvider = getConfiguredSecretProvider();
 
   async function applyImportedAgentPermissionGrants(
-    companyId: string,
     agentId: string,
     permissionGrants: PortableAgentPermissionGrant[],
     grantedByUserId: string | null,
   ) {
     if (permissionGrants.length === 0) return;
-    await access.ensureMembership(companyId, "agent", agentId, "member", "active");
+    await access.ensureMembership("agent", agentId, "member", "active");
     for (const grant of permissionGrants) {
       await access.setPrincipalPermission(
-        companyId,
         "agent",
         agentId,
         grant.permissionKey,
@@ -3593,7 +3579,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function assertImportAdapterConfigConstraints(
-    companyId: string,
     adapterType: string,
     adapterConfig: Record<string, unknown>,
   ) {
@@ -3609,12 +3594,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
       if (profile.provider === "claude_managed") {
         await managedAgentProfileService(db).requireQualified(
-          companyId,
           profile.managedProfileId,
         );
       } else if (profile.provider === "aws_agentcore") {
         await remoteAgentProfileService(db).requireQualified(
-          companyId,
           profile.agentCoreProfileId,
           "aws_bedrock_agentcore_harness",
         );
@@ -3631,7 +3614,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function prepareImportedAgentAdapter(
-    companyId: string,
     adapterType: string | null | undefined,
     adapterConfig: Record<string, unknown>,
     desiredSkills: string[],
@@ -3652,12 +3634,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     delete nextAdapterConfig.instructionsRootPath;
     delete nextAdapterConfig.instructionsEntryFile;
     const normalizedAdapterConfig = await secrets.normalizeAdapterConfigForPersistence(
-      companyId,
       nextAdapterConfig,
       { strictMode: strictSecretsMode, adapterType: effectiveAdapterType },
     );
     await assertImportAdapterConfigConstraints(
-      companyId,
       effectiveAdapterType,
       normalizedAdapterConfig,
     );
@@ -3668,7 +3648,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function materializeImportEnvInputValues(
-    companyId: string,
     manifest: CompanyPortabilityManifest,
     envInputs: CompanyPortabilityEnvInput[],
     secretValues: Record<string, string> | null | undefined,
@@ -3700,7 +3679,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       const suffix = randomUUID().slice(0, 8);
       const label = importSecretLabel(input);
       const secret = await secrets.create(
-        companyId,
         {
           name: `Imported ${label} ${suffix}`,
           key: importSecretKey(input, suffix),
@@ -3838,7 +3816,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function exportBundle(
-    companyId: string,
     input: CompanyPortabilityExport,
     options: { preview?: boolean; allowExternalInstructions?: boolean } = {},
   ): Promise<CompanyPortabilityExportResult> {
@@ -3852,8 +3829,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           : input.include?.issues,
       skills: input.skills && input.skills.length > 0 ? true : input.include?.skills,
     });
-    const company = await companies.getById(companyId);
-    if (!company) throw notFound("Company not found");
+    const company = await loadOrganization();
 
     const files: Record<string, CompanyPortabilityFileEntry> = {};
     const warnings: string[] = [];
@@ -3869,7 +3845,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           resourceId: builtInManagedResources.resourceId,
         })
         .from(builtInManagedResources)
-        .where(eq(builtInManagedResources.companyId, companyId))
       : [];
     const managedSkillIds = new Set(
       managedResourceRows
@@ -3882,9 +3857,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         .map((row) => row.resourceId),
     );
 
-    const allAgentRows = include.agents ? await agents.list(companyId, { includeTerminated: true }) : [];
+    const allAgentRows = include.agents ? await agents.list({ includeTerminated: true }) : [];
     const agentSelection = resolvePortableExportAgentSelection(allAgentRows, input.agents, include.agents);
-    const companySkillRowsRaw = include.skills ? await companySkills.listFull(companyId) : [];
+    const companySkillRowsRaw = include.skills ? await companySkills.listFull() : [];
     const managedSkillRows = companySkillRowsRaw.filter((skill) => managedSkillIds.has(skill.id));
     const companySkillRows = companySkillRowsRaw.filter((skill) => !managedSkillIds.has(skill.id));
     warnings.push(...agentSelection.warnings);
@@ -3932,9 +3907,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const projectsSvc = projectService(db);
     const issuesSvc = issueService(db);
     const routinesSvc = routineService(db);
-    const allProjectsRaw = include.projects || include.issues ? await projectsSvc.list(companyId) : [];
+    const allProjectsRaw = include.projects || include.issues ? await projectsSvc.list() : [];
     const allProjects = allProjectsRaw.filter((project) => !project.archivedAt);
-    const allRoutinesRaw = include.issues ? await routinesSvc.list(companyId) : [];
+    const allRoutinesRaw = include.issues ? await routinesSvc.list() : [];
     const builtInRoutineRows = allRoutinesRaw.filter((routine) =>
       managedRoutineIds.has(routine.id) || routine.originKind === "built_in_agent_bundle"
     );
@@ -3975,7 +3950,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     };
     for (const selector of input.issues ?? []) {
       const issue = await resolveIssueBySelector(selector);
-      if (!issue || issue.companyId !== companyId) {
+      if (!issue) {
         if (builtInRoutineById.has(selector.trim())) {
           warnings.push(`Routine selector "${selector}" is a built-in managed routine and was skipped.`);
           continue;
@@ -4006,7 +3981,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         continue;
       }
       selectedProjects.set(match.id, match);
-      const projectIssues = await issuesSvc.list(companyId, { projectId: match.id });
+      const projectIssues = await issuesSvc.list({ projectId: match.id });
       for (const issue of projectIssues) {
         selectedIssues.set(issue.id, issue);
       }
@@ -4022,7 +3997,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     }
 
     if (include.issues && selectedIssues.size === 0) {
-      const allIssues = await issuesSvc.list(companyId);
+      const allIssues = await issuesSvc.list();
       for (const issue of allIssues) {
         selectedIssues.set(issue.id, issue);
         if (issue.projectId) {
@@ -4100,7 +4075,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           warnings.push(`Skipped company logo ${company.logoAssetId} because the asset record was not found.`);
         } else {
           try {
-            const object = await storage.getObject(company.id, logoAsset.objectKey);
+            const object = await storage.getObject(logoAsset.objectKey);
             const body = await streamToBuffer(object.stream);
             companyLogoPath = `images/${COMPANY_LOGO_FILE_NAME}${resolveCompanyLogoExtension(logoAsset.contentType, logoAsset.originalFilename)}`;
             files[companyLogoPath] = bufferToPortableBinaryFile(body, logoAsset.contentType);
@@ -4161,7 +4136,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           filePath: `${packageDir}/${inventoryEntry.path}`,
           load: async () => {
             const fileDetail = await companySkills
-              .readFile(companyId, skill.id, inventoryEntry.path)
+              .readFile(skill.id, inventoryEntry.path)
               .catch(() => null);
             if (!fileDetail) return null;
             return inventoryEntry.path === "SKILL.md"
@@ -4327,7 +4302,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const labelNameById = new Map<string, string>();
     const exportedLabels: Array<{ name: string; color: string }> = [];
     if (referencedLabelIds.size > 0) {
-      for (const label of await issuesSvc.listLabels(companyId)) {
+      for (const label of await issuesSvc.listLabels()) {
         if (!referencedLabelIds.has(label.id)) continue;
         labelNameById.set(label.id, label.name);
         exportedLabels.push({ name: label.name, color: label.color });
@@ -4459,7 +4434,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         for (const attachment of attachmentRows) {
           let body: Buffer;
           try {
-            const object = await storage.getObject(companyId, attachment.objectKey);
+            const object = await storage.getObject(attachment.objectKey);
             body = await streamToBuffer(object.stream);
           } catch (err) {
             warnings.push(`Skipped attachment ${attachment.originalFilename ?? attachment.sha256} on task ${taskSlug} because its stored object could not be read: ${err instanceof Error ? err.message : String(err)}`);
@@ -4638,16 +4613,13 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     } else if (storage) {
       for (const assetId of referencedEmbeddedAssetIds) {
         const asset = await assetRecords.getById(assetId);
-        // Embedded references only pull bytes for assets owned by the
-        // exporting company: a crafted URL naming another company's asset id
-        // must not leak that asset's bytes into the bundle.
-        if (!asset || asset.companyId !== companyId) {
+        if (!asset) {
           unownedEmbeddedAssetRefCount += 1;
           continue;
         }
         let body: Buffer;
         try {
-          const object = await storage.getObject(companyId, asset.objectKey);
+          const object = await storage.getObject(asset.objectKey);
           body = await streamToBuffer(object.stream);
         } catch (err) {
           warnings.push(`Skipped embedded image asset ${asset.originalFilename ?? assetId} because its stored object could not be read: ${err instanceof Error ? err.message : String(err)}`);
@@ -4718,7 +4690,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     let finalFiles = filterExportFiles(files, input.selectedFiles, paperclipExtensionPath);
     let resolved = buildManifestFromPackageFiles(finalFiles, {
       sourceLabel: {
-        companyId: company.id,
         companyName: company.name,
       },
     });
@@ -4752,7 +4723,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
 
     resolved = buildManifestFromPackageFiles(finalFiles, {
       sourceLabel: {
-        companyId: company.id,
         companyName: company.name,
       },
     });
@@ -4776,7 +4746,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function previewExport(
-    companyId: string,
     input: CompanyPortabilityExport,
     options: { allowExternalInstructions?: boolean } = {},
   ): Promise<CompanyPortabilityExportPreviewResult> {
@@ -4793,7 +4762,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     if (previewInput.include && previewInput.include.issues === undefined) {
       previewInput.include.issues = false;
     }
-    const exported = await exportBundle(companyId, previewInput, {
+    const exported = await exportBundle(previewInput, {
       preview: true,
       allowExternalInstructions: options.allowExternalInstructions,
     });
@@ -4819,6 +4788,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     input: CompanyPortabilityPreview,
     options?: ImportBehaviorOptions,
   ): Promise<ImportPlanInternal> {
+    if (input.target.mode === "new_company") {
+      throw conflict(
+        "This instance already has an organization; import into the existing organization instead.",
+        { code: "organization_exists" },
+      );
+    }
     const mode = resolveImportMode(options);
     const requestedInclude = normalizeInclude(input.include);
     const source = applySelectedFilesToSource(await resolveSource(input.source), input.selectedFiles);
@@ -4951,8 +4926,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     let targetCompanyName: string | null = null;
 
     if (input.target.mode === "existing_company") {
-      const targetCompany = await companies.getById(input.target.companyId);
-      if (!targetCompany) throw notFound("Target company not found");
+      const targetCompany = await loadOrganization();
       targetCompanyId = targetCompany.id;
       targetCompanyName = targetCompany.name;
     }
@@ -4961,7 +4935,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         if (!project.env) continue;
         try {
           await secrets.normalizeEnvBindingsForPersistence(
-            targetCompanyId,
             project.env,
             {
               strictMode: strictSecretsMode,
@@ -4984,14 +4957,14 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const existingProjectSlugs = new Set<string>();
 
     if (input.target.mode === "existing_company") {
-      const existingAgents = await agents.list(input.target.companyId);
+      const existingAgents = await agents.list();
       for (const existing of existingAgents) {
         const slug = normalizeAgentUrlKey(existing.name) ?? existing.id;
         if (!existingSlugToAgent.has(slug)) existingSlugToAgent.set(slug, existing);
         existingAgentIds.add(existing.id);
         existingSlugs.add(slug);
       }
-      const existingProjects = await projects.list(input.target.companyId);
+      const existingProjects = await projects.list();
       for (const existing of existingProjects) {
         if (!existingProjectSlugToProject.has(existing.urlKey)) {
           existingProjectSlugToProject.set(existing.urlKey, { id: existing.id, name: existing.name });
@@ -4999,7 +4972,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         existingProjectSlugs.add(existing.urlKey);
       }
 
-      const existingSkills = await companySkills.listFull(input.target.companyId);
+      const existingSkills = await companySkills.listFull();
       const existingSkillKeys = new Set(existingSkills.map((skill) => skill.key));
       const existingSkillSlugs = new Set(existingSkills.map((skill) => normalizeSkillSlug(skill.slug) ?? skill.slug));
       for (const skill of manifest.skills) {
@@ -5175,11 +5148,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       collisionStrategy,
       selectedAgentSlugs: selectedAgents.map((agent) => agent.slug),
       plan: {
-        companyAction: input.target.mode === "new_company"
-          ? "create"
-          : include.company && mode === "board_full"
-            ? "update"
-            : "none",
+        companyAction: include.company && mode === "board_full" ? "update" : "none",
         agentPlans,
         projectPlans,
         issuePlans,
@@ -5279,84 +5248,23 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       id: string;
       name: string;
       requireBoardApprovalForNewAgents?: boolean | null;
-    } | null = null;
-    let companyAction: "created" | "updated" | "unchanged" = "unchanged";
-
-    if (input.target.mode === "new_company") {
-      if (mode === "agent_safe" && !options?.sourceCompanyId) {
-        throw unprocessable("Safe new-company imports require a source company context.");
-      }
-      if (mode === "agent_safe" && options?.sourceCompanyId) {
-        const sourceMemberships = await access.listActiveUserMemberships(options.sourceCompanyId);
-        if (sourceMemberships.length === 0) {
-          throw unprocessable("Safe new-company import requires at least one active user membership on the source company.");
-        }
-      }
-      const requestedCompanyName = asString(input.target.newCompanyName);
-      const manifestCompanyName =
-        sourceManifest.company?.name ?? sourceManifest.source?.companyName ?? "Imported Company";
-      // De-duplicate only for board-driven imports. The lookup reads every
-      // company name in the instance, and reflecting a collision back through
-      // the numeric suffix would let a company-scoped agent (agent_safe mode)
-      // probe for the existence of company names outside its own company.
-      const companyName =
-        requestedCompanyName ??
-        (mode === "agent_safe"
-          ? manifestCompanyName
-          : dedupeImportedCompanyName(
-              manifestCompanyName,
-              (await companies.list()).map((company) => company.name),
-            ));
-      const created = await companies.create({
-        name: companyName,
-        description: include.company ? (sourceManifest.company?.description ?? null) : null,
-        requireBoardApprovalForNewAgents: include.company
-          ? (sourceManifest.company?.requireBoardApprovalForNewAgents ?? false)
-          : false,
-        feedbackDataSharingEnabled: include.company
-          ? (sourceManifest.company?.feedbackDataSharingEnabled ?? false)
-          : false,
-        feedbackDataSharingConsentAt: include.company && sourceManifest.company?.feedbackDataSharingConsentAt
+    } = await loadOrganization();
+    let companyAction: "updated" | "unchanged" = "unchanged";
+    if (include.company && sourceManifest.company && mode === "board_full") {
+      const updated = await companies.update(targetCompany.id, {
+        name: sourceManifest.company.name,
+        description: sourceManifest.company.description,
+        requireBoardApprovalForNewAgents: sourceManifest.company.requireBoardApprovalForNewAgents,
+        feedbackDataSharingEnabled: sourceManifest.company.feedbackDataSharingEnabled,
+        feedbackDataSharingConsentAt: sourceManifest.company.feedbackDataSharingConsentAt
           ? new Date(sourceManifest.company.feedbackDataSharingConsentAt)
           : null,
-        feedbackDataSharingConsentByUserId: include.company
-          ? (sourceManifest.company?.feedbackDataSharingConsentByUserId ?? null)
-          : null,
-        feedbackDataSharingTermsVersion: include.company
-          ? (sourceManifest.company?.feedbackDataSharingTermsVersion ?? null)
-          : null,
+        feedbackDataSharingConsentByUserId: sourceManifest.company.feedbackDataSharingConsentByUserId,
+        feedbackDataSharingTermsVersion: sourceManifest.company.feedbackDataSharingTermsVersion,
       });
-      const ownerPrincipalId = actorUserId ?? "board";
-      await access.ensureMembership(created.id, "user", ownerPrincipalId, "owner", "active");
-      await access.ensureRoleDefaultGrants(
-        created.id,
-        ownerPrincipalId,
-        "owner",
-        actorUserId ?? null,
-      );
-      targetCompany = created;
-      companyAction = "created";
-    } else {
-      targetCompany = await companies.getById(input.target.companyId);
-      if (!targetCompany) throw notFound("Target company not found");
-      if (include.company && sourceManifest.company && mode === "board_full") {
-        const updated = await companies.update(targetCompany.id, {
-          name: sourceManifest.company.name,
-          description: sourceManifest.company.description,
-          requireBoardApprovalForNewAgents: sourceManifest.company.requireBoardApprovalForNewAgents,
-          feedbackDataSharingEnabled: sourceManifest.company.feedbackDataSharingEnabled,
-          feedbackDataSharingConsentAt: sourceManifest.company.feedbackDataSharingConsentAt
-            ? new Date(sourceManifest.company.feedbackDataSharingConsentAt)
-            : null,
-          feedbackDataSharingConsentByUserId: sourceManifest.company.feedbackDataSharingConsentByUserId,
-          feedbackDataSharingTermsVersion: sourceManifest.company.feedbackDataSharingTermsVersion,
-        });
-        targetCompany = updated ?? targetCompany;
-        companyAction = "updated";
-      }
+      targetCompany = updated ?? targetCompany;
+      companyAction = "updated";
     }
-
-    if (!targetCompany) throw notFound("Target company not found");
 
     const importedAgentEnvSlugs = new Set(
       plan.preview.plan.agentPlans
@@ -5380,7 +5288,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const createdImportSecretIds: string[] = [];
     try {
       await materializeImportEnvInputValues(
-        targetCompany.id,
         sourceManifest,
         importEnvInputs,
         input.secretValues,
@@ -5409,13 +5316,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
               try {
                 const body = portableFileToBuffer(logoFile, logoPath);
                 const stored = await storage.putFile({
-                  companyId: targetCompany.id,
                   namespace: "assets/companies",
                   originalFilename: path.posix.basename(logoPath),
                   contentType,
                   body,
                 });
-                const createdAsset = await assetRecords.create(targetCompany.id, {
+                const createdAsset = await assetRecords.create({
                   provider: stored.provider,
                   objectKey: stored.objectKey,
                   contentType: stored.contentType,
@@ -5461,13 +5367,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             const body = portableFileToBuffer(blobFile, blobPath);
             try {
               const stored = await storage.putFile({
-                companyId: targetCompany.id,
                 namespace: "assets/general",
                 originalFilename: embeddedAsset.originalFilename,
                 contentType: embeddedAsset.contentType,
                 body,
               });
-              const createdAsset = await assetRecords.create(targetCompany.id, {
+              const createdAsset = await assetRecords.create({
                 provider: stored.provider,
                 objectKey: stored.objectKey,
                 contentType: stored.contentType,
@@ -5493,7 +5398,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       const preImportExistingSlugToAgentId = new Map<string, string>();
       const preImportExistingAgentIds = new Set<string>();
       const agentStatusById = new Map<string, string | null | undefined>();
-      const existingAgents = await agents.list(targetCompany.id);
+      const existingAgents = await agents.list();
       for (const existing of existingAgents) {
         const slug = normalizeAgentUrlKey(existing.name) ?? existing.id;
         existingSlugToAgentId.set(slug, existing.id);
@@ -5504,13 +5409,13 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       const importedSlugToProjectId = new Map<string, string>();
       const importedProjectWorkspaceIdByProjectSlug = new Map<string, Map<string, string>>();
       const existingProjectSlugToId = new Map<string, string>();
-      const existingProjects = await projects.list(targetCompany.id);
+      const existingProjects = await projects.list();
       for (const existing of existingProjects) {
         existingProjectSlugToId.set(existing.urlKey, existing.id);
       }
 
       const importedSkills = include.skills || include.agents
-        ? await companySkills.importPackageFiles(targetCompany.id, pickTextFiles(plan.source.files), {
+        ? await companySkills.importPackageFiles(pickTextFiles(plan.source.files), {
             onConflict: resolveSkillConflictStrategy(mode, plan.collisionStrategy),
           })
         : [];
@@ -5580,7 +5485,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
 
           const desiredSkills = (manifestAgent.skills ?? []).map((skillRef) => desiredSkillRefMap.get(skillRef) ?? skillRef);
           const normalizedAdapter = await prepareImportedAgentAdapter(
-            targetCompany.id,
             adapterOverride?.adapterType ?? manifestAgent.adapterType,
             baseAdapterConfig,
             desiredSkills,
@@ -5639,14 +5543,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
               warnings.push(`Failed to materialize instructions bundle for ${manifestAgent.slug}: ${err instanceof Error ? err.message : String(err)}`);
             }
             await applyImportedAgentPermissionGrants(
-              targetCompany.id,
               updated.id,
               manifestAgent.permissionGrants ?? [],
               actorUserId ?? null,
             );
             agentStatusById.set(updated.id, updated.status ?? agentStatusById.get(updated.id) ?? null);
             await secrets.syncEnvBindingsForTarget?.(
-              targetCompany.id,
               { targetType: "agent", targetId: updated.id },
               isPlainRecord(updated.adapterConfig) ? updated.adapterConfig.env : undefined,
             );
@@ -5662,14 +5564,13 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             continue;
           }
 
-          let created = await agents.create(targetCompany.id, {
+          let created = await agents.create({
             ...patch,
             ...automationPausePatch,
             status: pauseAutomations ? "paused" : "idle",
           });
-          await access.ensureMembership(targetCompany.id, "agent", created.id, "member", "active");
+          await access.ensureMembership("agent", created.id, "member", "active");
           await access.setPrincipalPermission(
-            targetCompany.id,
             "agent",
             created.id,
             "tasks:assign",
@@ -5686,14 +5587,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             warnings.push(`Failed to materialize instructions bundle for ${manifestAgent.slug}: ${err instanceof Error ? err.message : String(err)}`);
           }
           await applyImportedAgentPermissionGrants(
-            targetCompany.id,
             created.id,
             manifestAgent.permissionGrants ?? [],
             actorUserId ?? null,
           );
           agentStatusById.set(created.id, created.status ?? (pauseAutomations ? "paused" : "idle"));
           await secrets.syncEnvBindingsForTarget?.(
-            targetCompany.id,
             { targetType: "agent", targetId: created.id },
             isPlainRecord(created.adapterConfig) ? created.adapterConfig.env : undefined,
           );
@@ -5765,7 +5664,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           const projectWorkspaceIdByKey = new Map<string, string>();
           const normalizedProjectEnv = manifestProject.env
             ? await secrets.normalizeEnvBindingsForPersistence(
-                targetCompany.id,
                 manifestProject.env,
                 {
                   strictMode: strictSecretsMode,
@@ -5812,7 +5710,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
               reason: planProject.reason,
             });
           } else {
-            const created = await projects.create(targetCompany.id, projectPatch);
+            const created = await projects.create(projectPatch);
             projectId = created.id;
             importedSlugToProjectId.set(planProject.slug, created.id);
             existingProjectSlugToId.set(created.urlKey, created.id);
@@ -5828,7 +5726,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           if (!projectId) continue;
 
           await secrets.syncEnvBindingsForTarget?.(
-            targetCompany.id,
             { targetType: "project", targetId: projectId },
             normalizedProjectEnv ?? {},
           );
@@ -5890,7 +5787,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         const labelIdByName = new Map<string, string>();
         const existingTargetLabelIds = new Set<string>();
         if (referencedLabelNames.size > 0 || hasLegacyLabelIds) {
-          const targetLabels = await issues.listLabels(targetCompany.id);
+          const targetLabels = await issues.listLabels();
           const targetLabelByName = new Map(targetLabels.map((label) => [label.name, label]));
           for (const label of targetLabels) existingTargetLabelIds.add(label.id);
           const keptColorNames: string[] = [];
@@ -5904,7 +5801,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
               }
               continue;
             }
-            const created = await issues.createLabel(targetCompany.id, {
+            const created = await issues.createLabel({
               name,
               color: labelColorByName.get(name) ?? DEFAULT_IMPORTED_LABEL_COLOR,
             });
@@ -5976,7 +5873,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
               variables: null,
               triggers: [],
             };
-            const createdRoutine = await routines.create(targetCompany.id, {
+            const createdRoutine = await routines.create({
               projectId,
               goalId: null,
               parentIssueId: null,
@@ -6104,7 +6001,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             const commentId = randomUUID();
             commentRows.push({
               id: commentId,
-              companyId: targetCompany.id,
               issueId,
               body: rewriteEmbeddedAssetUrls(comment.body, embeddedAssetIdMap),
               authorType,
@@ -6130,7 +6026,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
               continue;
             }
             documentRows.push({
-              companyId: targetCompany.id,
               issueId,
               key: documentEntry.key,
               title: documentEntry.title,
@@ -6144,7 +6039,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           }
           for (const workProductEntry of manifestIssue.workProducts ?? []) {
             workProductRows.push({
-              companyId: targetCompany.id,
               issueId,
               projectId: projectId ?? null,
               type: workProductEntry.type,
@@ -6208,14 +6102,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             }
             try {
               const stored = await storage.putFile({
-                companyId: targetCompany.id,
                 namespace: `issues/${issueId}`,
                 originalFilename: attachmentEntry.originalFilename,
                 contentType: attachmentEntry.contentType,
                 body,
               });
               attachmentRows.push({
-                companyId: targetCompany.id,
                 issueId,
                 issueCommentId,
                 provider: stored.provider,
@@ -6321,7 +6213,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         // statements, turning what used to be one round-trip per row into a
         // handful per table. Empty buffers are skipped so an issues-free import
         // (e.g. routines only) issues no writes at all.
-        if (issueRows.length > 0) await issues.importIssues(targetCompany.id, issueRows);
+        if (issueRows.length > 0) await issues.importIssues(issueRows);
         // Imported issues are historical work, not new inbox items. Seed a
         // per-user inbox archive for the importing board user so a large import
         // (a real 1,418-task company shipped every task to the inbox) does not
@@ -6330,7 +6222,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         // user) have no inbox to protect, so the seeding is skipped.
         if (actorUserId && issueRows.length > 0) {
           await issues.archiveImportedInbox(
-            targetCompany.id,
             issueRows.map((row) => row.id),
             actorUserId,
           );
@@ -6383,7 +6274,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             await db
               .insert(issueRelations)
               .values(relationRows.map((row) => ({
-                companyId: relationCompanyId,
                 issueId: row.issueId,
                 relatedIssueId: row.relatedIssueId,
                 type: "blocks" as const,

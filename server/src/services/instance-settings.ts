@@ -582,6 +582,7 @@ export function instanceSettingsService(db: Db, options: InstanceSettingsService
       db
         .select({ id: companies.id })
         .from(companies)
+        .limit(1)
         .then((rows) => rows.map((row) => row.id)),
   };
 }

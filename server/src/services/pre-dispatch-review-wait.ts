@@ -30,18 +30,14 @@ export function isPreDispatchReviewWait(
  * checked against the same evidence that gates explicit user admission. */
 export async function isPreDispatchReviewWaitVerified(db: Db, run: Run): Promise<boolean> {
   if (!isPreDispatchReviewWait(run)) return false;
-  const [coordinator] = await db.select({ id: nativeRunFinalizations.runId }).from(nativeRunFinalizations).where(and(
-    eq(nativeRunFinalizations.companyId, run.companyId), eq(nativeRunFinalizations.runId, run.id),
-  )).limit(1);
+  const [coordinator] = await db.select({ id: nativeRunFinalizations.runId }).from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, run.id)).limit(1);
   if (coordinator) return false;
-  const leases = await db.select().from(environmentLeases).where(and(
-    eq(environmentLeases.companyId, run.companyId), eq(environmentLeases.heartbeatRunId, run.id),
-  ));
+  const leases = await db.select().from(environmentLeases).where(eq(environmentLeases.heartbeatRunId, run.id));
   if (leases.some(lease => lease.provider === "local"
     ? !lease.releasedAt || lease.status === "pending_cleanup" || lease.cleanupStatus === "failed"
     : !hasRemoteTerminationReceipt(lease))) return false;
   const [execution] = await db.select({ id: heartbeatRunEvents.id }).from(heartbeatRunEvents).where(and(
-    eq(heartbeatRunEvents.companyId, run.companyId), eq(heartbeatRunEvents.runId, run.id),
+    eq(heartbeatRunEvents.runId, run.id),
     or(isNotNull(heartbeatRunEvents.sourceEventId),
       inArray(heartbeatRunEvents.eventType, ["adapter.invoke", PROCESS_START_REQUESTED, PROCESS_IDENTITY_RECORDED,
         "harness.ready", "session.started", "session.resumed", "session.updated", "turn.started",

@@ -6,13 +6,11 @@ import {
   activityLog,
   agents,
   authUsers,
-  approvals,
   companies,
   companyMemberships,
   createDb,
   documents,
   heartbeatRuns,
-  issueApprovals,
   issueComments,
   issueThreadInteractions,
   issues,
@@ -34,14 +32,12 @@ describe("PaperclipRunnerToolAuthority", () => {
     ReturnType<typeof startEmbeddedPostgresTestDatabase>
   > | null = null;
   let db: ReturnType<typeof createDb>;
-  const companyId = "00000000-0000-4000-8000-000000000101";
   const agentId = "00000000-0000-4000-8000-000000000102";
   const issueId = "00000000-0000-4000-8000-000000000103";
   const runId = "00000000-0000-4000-8000-000000000104";
 
   beforeEach(() => {
     vi.stubEnv("PAPERCLIP_RUNNER_API_TOOLS_ENABLED", undefined);
-    vi.stubEnv("PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS", undefined);
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -51,14 +47,12 @@ describe("PaperclipRunnerToolAuthority", () => {
     );
     db = createDb(temporary.connectionString);
     await db.insert(companies).values({
-      id: companyId,
       name: "Runner tools",
       issuePrefix: "RNT",
       issueCounter: 1,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Runner agent",
       adapterType: "paperclip_runner",
       adapterConfig: { provider: "codex", apiKey: "must-not-leak" },
@@ -67,7 +61,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       issueNumber: 1,
       identifier: "RNT-1",
       title: "Exercise real runner tools",
@@ -77,7 +70,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -98,7 +90,6 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it("advertises only real bindings and reads the bound task", async () => {
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -179,7 +170,7 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it("returns public task URLs from the current claimed origin in context and search results", async () => {
     const origin = vi.spyOn(cloudIdentity, "runtimeCanonicalOrigin").mockReturnValue("https://board.example");
-    const authority = new PaperclipRunnerToolAuthority(db, { companyId, agentId, issueId, runId });
+    const authority = new PaperclipRunnerToolAuthority(db, { agentId, issueId, runId });
     try {
       expect(await authority.execute({ tool: "get_task_context", callId: "public-task-url", arguments: {} }))
         .toMatchObject({ activeTask: { id: issueId, url: `https://board.example/issues/${issueId}` } });
@@ -196,26 +187,21 @@ describe("PaperclipRunnerToolAuthority", () => {
     }
   });
 
-  it("exposes existing child tasks on continuation without crossing company boundaries", async () => {
+  it("exposes existing child tasks on continuation", async () => {
     const completedChildId = randomUUID();
     const activeChildId = randomUUID();
     const unrelatedId = randomUUID();
-    const otherCompanyId = randomUUID();
-    const foreignChildId = randomUUID();
     const hiddenChildIds = Array.from({ length: 101 }, () => randomUUID());
-    await db.insert(companies).values({ id: otherCompanyId, name: "Other company", issuePrefix: "OTHER" });
     await db.insert(issues).values([
-      { id: completedChildId, companyId, parentId: issueId, title: "Existing completed draft", status: "done", assigneeAgentId: agentId },
-      { id: activeChildId, companyId, parentId: issueId, title: "Existing active review", status: "in_progress", assigneeAgentId: agentId },
-      { id: unrelatedId, companyId, title: "Unrelated task", status: "todo" },
-      // Even inconsistent imported data cannot expose another company's task.
-      { id: foreignChildId, companyId: otherCompanyId, parentId: issueId, title: "Foreign child", status: "todo" },
+      { id: completedChildId, parentId: issueId, title: "Existing completed draft", status: "done", assigneeAgentId: agentId },
+      { id: activeChildId, parentId: issueId, title: "Existing active review", status: "in_progress", assigneeAgentId: agentId },
+      { id: unrelatedId, title: "Unrelated task", status: "todo" },
       // Hidden rows must neither enter context nor consume the visible child limit.
-      ...hiddenChildIds.map((id) => ({ id, companyId, parentId: issueId, title: "Hidden child",
+      ...hiddenChildIds.map((id) => ({ id, parentId: issueId, title: "Hidden child",
         hiddenAt: new Date(), createdAt: new Date(Date.now() + 1000) })),
     ]);
     try {
-      const authority = new PaperclipRunnerToolAuthority(db, { companyId, agentId, issueId, runId });
+      const authority = new PaperclipRunnerToolAuthority(db, { agentId, issueId, runId });
       const context = await authority.execute({ tool: "get_task_context", callId: "context-existing-children", arguments: {} });
       expect(context).toMatchObject({
         childTasks: expect.arrayContaining([
@@ -225,22 +211,17 @@ describe("PaperclipRunnerToolAuthority", () => {
         childTasksTruncated: false,
         delegationGuidance: expect.stringContaining("Reuse existing child tasks"),
       });
-      expect(JSON.stringify(context)).not.toContain(foreignChildId);
       expect(JSON.stringify(context)).not.toContain(unrelatedId);
       for (const id of hiddenChildIds) expect(JSON.stringify(context)).not.toContain(id);
     } finally {
-      await db.delete(issues).where(inArray(issues.id, [completedChildId, activeChildId, unrelatedId, foreignChildId, ...hiddenChildIds]));
-      await db.delete(companies).where(eq(companies.id, otherCompanyId));
+      await db.delete(issues).where(inArray(issues.id, [completedChildId, activeChildId, unrelatedId, ...hiddenChildIds]));
     }
   });
 
   it("advertises API tools by default and preserves direct-chat file tools when disabled", () => {
     const previousEnabled = process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED;
-    const previousCompanies =
-      process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS;
     const createAuthority = () =>
       new PaperclipRunnerToolAuthority(db, {
-        companyId,
         agentId,
         issueId,
         runId,
@@ -257,7 +238,6 @@ describe("PaperclipRunnerToolAuthority", () => {
 
     try {
       delete process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED;
-      delete process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS;
       const defaultNames = createAuthority()
         .definitions()
         .map((tool) => tool.name);
@@ -269,7 +249,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       expect(defaultNames).toContain("hire_agent");
 
       process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED = "true";
-      process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS = companyId;
       const enabledNames = createAuthority()
         .definitions()
         .map((tool) => tool.name);
@@ -299,21 +278,14 @@ describe("PaperclipRunnerToolAuthority", () => {
       } else {
         process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED = previousEnabled;
       }
-      if (previousCompanies === undefined) {
-        delete process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS;
-      } else {
-        process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS = previousCompanies;
-      }
     }
   });
 
   it("dispatches hire_agent with fixed caller context and replays its API receipt", async () => {
     const previousEnabled = process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED;
-    const previousCompanies = process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS;
     const previousSecret = process.env.PAPERCLIP_AGENT_JWT_SECRET;
     process.env.PAPERCLIP_AGENT_JWT_SECRET = "hire-agent-test-secret";
     process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED = "true";
-    process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS = companyId;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ id: randomUUID(), status: "active" }), {
         status: 201,
@@ -322,7 +294,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     );
     try {
       const authority = new PaperclipRunnerToolAuthority(db, {
-        companyId,
         agentId,
         issueId,
         runId,
@@ -340,10 +311,10 @@ describe("PaperclipRunnerToolAuthority", () => {
         },
       } as const;
       const first = await authority.execute(call);
-      expect(first).toMatchObject({ ok: true, status: 201, apiOperationId: "POST /api/companies/{companyId}/agent-hires" });
+      expect(first).toMatchObject({ ok: true, status: 201, apiOperationId: "POST /api/agent-hires" });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(String(url)).toBe(`http://runner-test.invalid/api/companies/${companyId}/agent-hires`);
+      expect(String(url)).toBe("http://runner-test.invalid/api/agent-hires");
       const body = JSON.parse(String(request.body));
       expect(body).toMatchObject({
         name: "QA teammate",
@@ -365,8 +336,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       fetchMock.mockRestore();
       if (previousEnabled === undefined) delete process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED;
       else process.env.PAPERCLIP_RUNNER_API_TOOLS_ENABLED = previousEnabled;
-      if (previousCompanies === undefined) delete process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS;
-      else process.env.PAPERCLIP_RUNNER_API_TOOLS_COMPANY_IDS = previousCompanies;
       if (previousSecret === undefined) delete process.env.PAPERCLIP_AGENT_JWT_SECRET;
       else process.env.PAPERCLIP_AGENT_JWT_SECRET = previousSecret;
     }
@@ -374,7 +343,6 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it("advertises structured human input in ask mode", () => {
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -399,7 +367,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       )!;
       const originalSnapshot = structuredClone(original);
       const authority = new PaperclipRunnerToolAuthority(db, {
-        companyId,
         agentId,
         issueId,
         runId,
@@ -433,26 +400,18 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it.each(["choice", "text", "mixed"] as const)("executes the advertised %s question once on the bound reviewed task", async (answerMode) => {
     const binding = {
-      companyId: randomUUID(),
       agentId: randomUUID(),
       issueId: randomUUID(),
       runId: randomUUID(),
     };
-    await db.insert(companies).values({
-      id: binding.companyId,
-      name: "Question invocation",
-      issuePrefix: answerMode === "choice" ? "RQA" : answerMode === "text" ? "RQT" : "RQM",
-    });
     await db.insert(agents).values({
       id: binding.agentId,
-      companyId: binding.companyId,
       name: "Question agent",
       adapterType: "paperclip_runner",
       status: "active",
     });
     await db.insert(issues).values({
       id: binding.issueId,
-      companyId: binding.companyId,
       title: "Question on reviewed task",
       status: "in_review",
       workMode: "standard",
@@ -461,7 +420,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: binding.runId,
-      companyId: binding.companyId,
       agentId: binding.agentId,
       status: "running",
       runtimeMode: "native",
@@ -525,7 +483,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     expect(first).toMatchObject({
       disposition: "applied",
       interaction: {
-        companyId: binding.companyId,
         issueId: binding.issueId,
         sourceRunId: binding.runId,
         kind: "ask_user_questions",
@@ -565,55 +522,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     ).toHaveLength(1);
   });
 
-  it("does not project a foreign-company task through approval context", async () => {
-    const foreignCompanyId = "00000000-0000-4000-8000-000000000211";
-    const foreignIssueId = "00000000-0000-4000-8000-000000000212";
-    const approvalId = "00000000-0000-4000-8000-000000000213";
-    await db.insert(companies).values({
-      id: foreignCompanyId,
-      name: "Foreign approval company",
-      issuePrefix: "FAC",
-      issueCounter: 1,
-    });
-    await db.insert(issues).values({
-      id: foreignIssueId,
-      companyId: foreignCompanyId,
-      issueNumber: 1,
-      identifier: "FAC-1",
-      title: "Must not cross the approval boundary",
-      status: "todo",
-    });
-    await db.insert(approvals).values({
-      id: approvalId,
-      companyId,
-      type: "runner_review",
-      status: "pending",
-      payload: {},
-    });
-    // The schema deliberately stores companyId independently on the link. A
-    // corrupt or historical cross-tenant link must still fail closed at read.
-    await db.insert(issueApprovals).values({
-      companyId,
-      approvalId,
-      issueId: foreignIssueId,
-      linkedByAgentId: agentId,
-    });
-
-    const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
-      agentId,
-      issueId,
-      runId,
-    });
-    await expect(
-      authority.execute({
-        tool: "get_approval_context",
-        callId: "foreign-approval-context",
-        arguments: { approvalId },
-      }),
-    ).resolves.toMatchObject({ approval: { id: approvalId }, tasks: [] });
-  });
-
   it("fits large assigned catalogs alongside workspace and completion tools without dropping task tools", async () => {
     const listToolsForNamedGateway = vi.fn().mockResolvedValue(Array.from({ length: 224 }, (_, i) => ({
       name: `app.action_${i}`, displayName: `Action ${i}`, description: "Read a fixture",
@@ -623,7 +531,7 @@ describe("PaperclipRunnerToolAuthority", () => {
       gateway: { listToolsForNamedGateway } as unknown as ToolGatewayService,
       gatewayPublicId: "fixture", bearerToken: "fixture-token",
     });
-    const binding = { companyId, agentId, issueId, runId, workspaceRoot: "/tmp/fixture-workspace" };
+    const binding = { agentId, issueId, runId, workspaceRoot: "/tmp/fixture-workspace" };
     const baseline = new PaperclipRunnerToolAuthority(db, binding).definitions();
     expect(runnerCodexDynamicToolsFit([...baseline, ...assignedMcpTools.definitions()])).toBe(false);
     const authority = new PaperclipRunnerToolAuthority(db, { ...binding, assignedMcpTools });
@@ -650,7 +558,7 @@ describe("PaperclipRunnerToolAuthority", () => {
     const tool = { name: "app_mem0_recall", description: "Recall memory", inputSchema: { type: "object" } };
     const execute = vi.fn().mockResolvedValue({ content: "synthetic memory" });
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId, agentId, issueId, runId,
+      agentId, issueId, runId,
       assignedMcpTools: { definitions: () => [tool], has: (name) => name === tool.name, execute },
     });
     expect(authority.definitions()).toContainEqual(tool);
@@ -676,7 +584,6 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it("does not advertise delegation tools during pre-acceptance planning", () => {
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -692,7 +599,6 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it("writes progress through the real issue service and replays idempotently", async () => {
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -744,7 +650,6 @@ describe("PaperclipRunnerToolAuthority", () => {
 
   it("creates checkbox interactions through the real interaction service", async () => {
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -802,7 +707,6 @@ describe("PaperclipRunnerToolAuthority", () => {
   it("writes a real revisioned document and replays the mutation receipt", async () => {
     const body = credentialDocumentBody;
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -836,8 +740,7 @@ describe("PaperclipRunnerToolAuthority", () => {
     expect(
       await db
         .select()
-        .from(documents)
-        .where(eq(documents.companyId, companyId)),
+        .from(documents),
     ).toHaveLength(1);
     expect(await documentService(db).getIssueDocumentByKey(issueId, "plan"))
       .toMatchObject({ body: credentialDocumentBody });
@@ -877,7 +780,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     );
     expect(plan).not.toBeNull();
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -971,7 +873,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     const wakes: Array<{ agentId: string; options: Record<string, unknown> }> =
       [];
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,
@@ -1014,7 +915,7 @@ describe("PaperclipRunnerToolAuthority", () => {
     });
     const prerequisiteId = (prerequisite as { task: { id: string } }).task.id;
     expect(await db.select().from(activityLog).where(eq(activityLog.entityId, prerequisiteId)))
-      .toEqual(expect.arrayContaining([expect.objectContaining({ action: "issue.created", agentId, runId, companyId })]));
+      .toEqual(expect.arrayContaining([expect.objectContaining({ action: "issue.created", agentId, runId })]));
     const dependent = await authority.execute({
       tool: "create_task",
       callId: "create-dependent",
@@ -1078,7 +979,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       .where(eq(heartbeatRuns.id, runId));
     await db.insert(heartbeatRuns).values({
       id: nextRunId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -1093,7 +993,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       .where(eq(issues.id, issueId));
     const retryWakes: Array<unknown> = [];
     const retryAuthority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId: nextRunId,
@@ -1133,54 +1032,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       .filter(event => event.action === "issue.created");
     expect(creationEvents).toHaveLength(1);
 
-    const foreignCompanyId = "00000000-0000-4000-8000-000000000201";
-    const foreignAgentId = "00000000-0000-4000-8000-000000000202";
-    const foreignIssueId = "00000000-0000-4000-8000-000000000203";
-    await db.insert(companies).values({
-      id: foreignCompanyId,
-      name: "Foreign company",
-      issuePrefix: "FGN",
-      issueCounter: 1,
-    });
-    await db.insert(agents).values({
-      id: foreignAgentId,
-      companyId: foreignCompanyId,
-      name: "Foreign agent",
-      adapterType: "paperclip_runner",
-      adapterConfig: { provider: "codex" },
-      runtimeConfig: {},
-      status: "active",
-    });
-    await db.insert(issues).values({
-      id: foreignIssueId,
-      companyId: foreignCompanyId,
-      issueNumber: 1,
-      identifier: "FGN-1",
-      title: "Foreign blocker",
-      status: "todo",
-    });
-    await expect(
-      retryAuthority.execute({
-        tool: "create_task",
-        callId: "foreign-assignee",
-        arguments: {
-          idempotencyKey: "foreign-assignee",
-          title: "Invalid foreign assignment",
-          assigneeActorId: foreignAgentId,
-        },
-      }),
-    ).rejects.toThrow("paperclip_runner_agent_not_found");
-    await expect(
-      retryAuthority.execute({
-        tool: "create_task",
-        callId: "foreign-blocker",
-        arguments: {
-          idempotencyKey: "foreign-blocker",
-          title: "Invalid foreign blocker",
-          blockedByTaskIds: [foreignIssueId],
-        },
-      }),
-    ).rejects.toThrow();
     expect(retryWakes).toHaveLength(0);
     expect(
       await db.select().from(issues).where(eq(issues.parentId, issueId)),
@@ -1193,7 +1044,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     const guardedReplacementRunId = "00000000-0000-4000-8000-000000000109";
     await db.insert(issues).values({
       id: guardedIssueId,
-      companyId,
       issueNumber: 999,
       identifier: "RNT-999",
       title: "Guard mutation authorization",
@@ -1203,7 +1053,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: guardedRunId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -1214,7 +1063,6 @@ describe("PaperclipRunnerToolAuthority", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: guardedReplacementRunId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -1228,7 +1076,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       .set({ executionRunId: guardedRunId })
       .where(eq(issues.id, guardedIssueId));
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId: guardedIssueId,
       runId: guardedRunId,
@@ -1288,25 +1135,25 @@ describe("PaperclipRunnerToolAuthority", () => {
       await db.insert(authUsers).values({ id: userId, name: userId, email: `${userId}@example.test`, createdAt: new Date(), updatedAt: new Date() });
       await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     }
-    await db.insert(issues).values({ id: issueId, companyId, title: "Identity delegation",
+    await db.insert(issues).values({ id: issueId, title: "Identity delegation",
       status: "in_progress", assigneeAgentId: agentId });
-    await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId,
+    await db.insert(heartbeatRuns).values({ id: runId, agentId,
       status: "running", runtimeMode: "native", nativeIssueId: issueId,
       invocationSource: "assignment", triggerDetail: "system", contextSnapshot: { issueId } });
     await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
     const origin = await initializeRunIdentity(db, {
-      companyId, runId, issueId, responsibleUserId: "person-a", cause: "instruction",
+      runId, issueId, responsibleUserId: "person-a", cause: "instruction",
     });
     const [message] = await db.insert(issueComments).values({
-      companyId, issueId, body: "New instruction", authorUserId: "person-b",
+      issueId, body: "New instruction", authorUserId: "person-b",
     }).returning();
-    const authority = new PaperclipRunnerToolAuthority(db, { companyId, agentId, issueId, runId });
+    const authority = new PaperclipRunnerToolAuthority(db, { agentId, issueId, runId });
     const call = { tool: "create_task", callId: "identity-child", arguments: {
       idempotencyKey: "identity-child", title: "Keep the initiating identity",
       responsibleUserId: "forged-user", originIdentityContextId: "forged-context",
     } };
     const first = await authority.execute(call) as { task: { id: string } };
-    const pending = await reserveSteeredIdentity(db, { companyId, runId, issueId, messageId: message.id });
+    const pending = await reserveSteeredIdentity(db, { runId, issueId, messageId: message.id });
     await reconcileSteeredIdentity(db, pending!);
     await expect(authority.execute({ ...call, callId: "identity-child-replay" })).resolves.toEqual(first);
     const [child] = await db.select().from(issues).where(eq(issues.id, first.task.id));
@@ -1331,7 +1178,6 @@ describe("PaperclipRunnerToolAuthority", () => {
       .set({ status: "succeeded" })
       .where(eq(heartbeatRuns.id, runId));
     const authority = new PaperclipRunnerToolAuthority(db, {
-      companyId,
       agentId,
       issueId,
       runId,

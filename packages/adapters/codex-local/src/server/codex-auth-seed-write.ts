@@ -10,7 +10,7 @@ import { USE_SOURCE_EXIT, decideCodexAuthMerge } from "./codex-auth-merge-decisi
 // an atomic same-directory swap that preserves mode 0600. The whole write runs
 // under the directory merge lock, so a concurrent restore, copy-back, or
 // promotion can never interleave. The per-identity cache slot and the
-// device-login company home both use this writer, so the staged-rename and lock
+// device-login managed home both use this writer, so the staged-rename and lock
 // logic lives in one place. It never logs token bytes; the caller passes the
 // fixed status lines.
 

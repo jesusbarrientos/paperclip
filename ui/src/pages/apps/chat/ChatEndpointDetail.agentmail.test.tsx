@@ -16,6 +16,7 @@ vi.mock("@/api/chatEndpoints", () => ({ chatEndpointsApi: {
   get: mocks.get, listConversations: mocks.conversations, listActivityPage: mocks.activity, setup: mocks.setup,
 } }));
 vi.mock("@/api/email", () => ({ emailApi: { control: mocks.control } }));
+vi.mock("@/context/OrganizationContext", () => ({ useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }) }));
 vi.mock("@/api/tools", () => ({ toolsApi: {
   getConnection: mocks.getConnection, listConnectionGrants: mocks.grants, getConnectionInstalls: mocks.installs,
 } }));

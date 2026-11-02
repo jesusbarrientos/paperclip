@@ -17,7 +17,6 @@ const mockProjectsApi = vi.hoisted(() => ({
 }));
 const mockNavigate = vi.hoisted(() => vi.fn());
 const mockSetBreadcrumbs = vi.hoisted(() => vi.fn());
-const mockSetSelectedCompanyId = vi.hoisted(() => vi.fn());
 const mockUsePluginSlots = vi.hoisted(() => vi.fn());
 const mockPluginSlotMount = vi.hoisted(() => vi.fn());
 const mockRouteSearch = vi.hoisted(() => ({ value: "" }));
@@ -40,14 +39,12 @@ vi.mock("@/lib/router", () => ({
     state: null,
   }),
   useNavigate: () => mockNavigate,
-  useParams: () => ({ companyPrefix: "PAP", projectId: "paperclip-app", workspaceId: "workspace-1" }),
+  useParams: () => ({ projectId: "paperclip-app", workspaceId: "workspace-1" }),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: [{ id: "company-1", issuePrefix: "PAP" }],
-    selectedCompanyId: "company-1",
-    setSelectedCompanyId: mockSetSelectedCompanyId,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 vi.mock("../context/BreadcrumbContext", () => ({ useBreadcrumbs: () => ({ setBreadcrumbs: mockSetBreadcrumbs }) }));
@@ -98,7 +95,6 @@ function projectWorkspace(overrides: Partial<ProjectWorkspace> = {}): ProjectWor
   const now = new Date("2026-05-01T00:00:00Z");
   return {
     id: "workspace-1",
-    companyId: "company-1",
     projectId: "project-1",
     name: "Primary checkout",
     sourceType: "local_path",
@@ -127,7 +123,6 @@ function project(overrides: Partial<Project> = {}): Project {
   const workspace = projectWorkspace();
   return {
     id: "project-1",
-    companyId: "company-1",
     urlKey: "paperclip-app",
     goalId: null,
     goalIds: [],
@@ -220,17 +215,16 @@ describe("ProjectWorkspaceDetail plugin tabs", () => {
     });
   }
 
-  it("scopes plugin detail-tab discovery to project_workspace and the project's company", async () => {
+  it("scopes plugin detail-tab discovery to project_workspace", async () => {
     await render();
 
     const enabledDetailTabFilters = mockUsePluginSlots.mock.calls
-      .map(([filters]) => filters as { slotTypes: string[]; entityType: string; companyId: string | null; enabled?: boolean })
+      .map(([filters]) => filters as { slotTypes: string[]; entityType: string; enabled?: boolean })
       .filter((filters) => filters.slotTypes.includes("detailTab") && filters.enabled !== false);
 
     expect(enabledDetailTabFilters.length).toBeGreaterThan(0);
     for (const filters of enabledDetailTabFilters) {
       expect(filters.entityType).toBe("project_workspace");
-      expect(filters.companyId).toBe("company-1");
     }
   });
 

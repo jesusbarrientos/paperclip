@@ -3,7 +3,6 @@
   "fixtureName": "Semantic governance target and continuation chain",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_semantic_governance",
     "issueId": "issue_semantic_governance",
     "runId": "run_semantic_governance",
     "environmentLeaseId": "lease_semantic_governance",

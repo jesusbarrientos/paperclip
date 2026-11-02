@@ -3,7 +3,6 @@
   "fixtureName": "Budget cost stop reason",
   "identity": {
     "schema": "paperclip.prp.identity.v1",
-    "companyId": "company_budget_stop",
     "issueId": "issue_budget_stop",
     "runId": "run_budget_stop",
     "environmentLeaseId": "lease_budget_stop",

@@ -26,7 +26,6 @@ vi.mock("@/components/ui/button", () => ({
 function createHandoffDocument(): IssueDocument {
   return {
     id: "document-handoff",
-    companyId: "company-1",
     issueId: "issue-1",
     key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
     title: "Continuation Summary",

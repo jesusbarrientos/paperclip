@@ -20,7 +20,6 @@ const baseIssue: Issue = {
 function watchdog(overrides: Partial<IssueWatchdogSummary> = {}): IssueWatchdogSummary {
   return {
     id: "watchdog-1",
-    companyId: baseIssue.companyId,
     issueId: baseIssue.id,
     watchdogAgentId: "agent-qa",
     instructions: "Keep this tree moving. Verify stopped leaves against tests and review state before accepting them.",

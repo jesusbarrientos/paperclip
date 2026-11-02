@@ -12,7 +12,7 @@ import {
 } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { githubConnectionEventService } from "../services/github-connection-events.js";
-import { subscribeCompanyLiveEvents } from "../services/live-events.js";
+import { subscribeLiveEvents } from "../services/live-events.js";
 import type { PaperclipCloudConnector } from "../services/paperclip-cloud-connector.js";
 import {
   getEmbeddedPostgresTestSupport,
@@ -54,7 +54,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     await db.insert(companies).values({ id: companyId, name: "Paperclip", issuePrefix: "GHE" });
     await db.insert(toolApplications).values({
       id: applicationId,
-      companyId,
       applicationKey: `github-${randomUUID()}`,
       name: "GitHub",
       type: "mcp_server",
@@ -62,7 +61,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     });
     await db.insert(toolConnections).values({
       id: connectionId,
-      companyId,
       applicationId,
       name: "GitHub",
       uid: `github-${randomUUID()}`,
@@ -76,7 +74,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     });
     await db.insert(connectionGrants).values({
       id: grantId,
-      companyId,
       connectionId,
       kind: "user",
       subjectUserId: userId,
@@ -100,7 +97,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     const externalObjectId = randomUUID();
     await db.insert(externalObjects).values({
       id: externalObjectId,
-      companyId,
       providerKey: "github",
       objectType: "pull_request",
       externalId: "paperclipai/paperclip#pull/123",
@@ -215,7 +211,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     await db.insert(companies).values({ id: companyId, name: "Paperclip", issuePrefix: "GHI" });
     await db.insert(toolApplications).values({
       id: applicationId,
-      companyId,
       applicationKey: `github-${randomUUID()}`,
       name: "GitHub",
       type: "mcp_server",
@@ -223,7 +218,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     });
     await db.insert(toolConnections).values({
       id: connectionId,
-      companyId,
       applicationId,
       name: "GitHub",
       uid: `github-${randomUUID()}`,
@@ -237,7 +231,6 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     });
     await db.insert(connectionGrants).values({
       id: grantId,
-      companyId,
       connectionId,
       kind: "user",
       subjectUserId: `github-owner-${randomUUID()}`,
@@ -297,7 +290,7 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     let currentTime = new Date("2026-09-04T12:00:05.000Z");
     const service = githubConnectionEventService(db, { connector, now: () => currentTime });
 
-    const unsubscribe = subscribeCompanyLiveEvents(companyId, () => {
+    const unsubscribe = subscribeLiveEvents(() => {
       throw new Error("fixture live subscriber failed");
     });
     await expect(service.pollOnce()).resolves.toMatchObject({ processed: 1, duplicate: 0, failed: 0 });

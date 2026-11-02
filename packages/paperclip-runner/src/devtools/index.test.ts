@@ -19,7 +19,6 @@ function snapshot(): CapabilityLiveSessionSnapshot {
   current.lifecycle = "running";
   current.artifacts.push({
     id: "artifact-1",
-    companyId: "company-1",
     taskId: "task-1",
     runId: "run-1",
     kind: "text",
@@ -45,7 +44,6 @@ function snapshot(): CapabilityLiveSessionSnapshot {
       turnTimeoutMs: 1_000,
     },
     authority: {
-      companyId: "company-1",
       actorId: "actor-1",
       taskId: "task-1",
       runId: "run-1",

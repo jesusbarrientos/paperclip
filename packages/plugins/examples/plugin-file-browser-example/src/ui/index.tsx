@@ -267,9 +267,8 @@ export function FilesLink({ context }: PluginProjectSidebarItemProps) {
   const projectRef = (context as PluginProjectSidebarItemProps["context"] & { projectRef?: string | null })
     .projectRef
     ?? projectId;
-  const prefix = context.companyPrefix ? `/${context.companyPrefix}` : "";
   const tabValue = `plugin:${PLUGIN_KEY}:${FILES_TAB_SLOT_ID}`;
-  const href = `${prefix}/projects/${projectRef}?tab=${encodeURIComponent(tabValue)}`;
+  const href = `/projects/${projectRef}?tab=${encodeURIComponent(tabValue)}`;
   const isActive = typeof window !== "undefined" && (() => {
     const pathname = window.location.pathname.replace(/\/+$/, "");
     const segments = pathname.split("/").filter(Boolean);
@@ -318,7 +317,6 @@ export function FilesLink({ context }: PluginProjectSidebarItemProps) {
  * Project detail tab: workspace selector, file tree, and CodeMirror editor.
  */
 export function FilesTab({ context }: PluginDetailTabProps) {
-  const companyId = context.companyId;
   const projectId = context.entityId;
   const isMobile = useIsMobile();
   const isDarkMode = useIsDarkMode();
@@ -328,8 +326,7 @@ export function FilesTab({ context }: PluginDetailTabProps) {
     minHeight: isMobile ? 320 : 420,
   });
   const { data: workspacesData } = usePluginData<Workspace[]>("workspaces", {
-    projectId,
-    companyId,
+    projectId
   });
   const workspaces = workspacesData ?? [];
   const workspaceSelectKey = workspaces.map((w) => `${w.id}:${workspaceLabel(w)}`).join("|");
@@ -341,8 +338,8 @@ export function FilesTab({ context }: PluginDetailTabProps) {
   );
 
   const fileListParams = useMemo(
-    () => (selectedWorkspace ? { projectId, companyId, workspaceId: selectedWorkspace.id } : {}),
-    [companyId, projectId, selectedWorkspace],
+    () => (selectedWorkspace ? { projectId, workspaceId: selectedWorkspace.id } : {}),
+    [projectId, selectedWorkspace],
   );
   const { data: fileListData, loading: fileListLoading, error: fileListError } = usePluginData<{ entries: FileEntry[] }>(
     "fileList",
@@ -378,7 +375,6 @@ export function FilesTab({ context }: PluginDetailTabProps) {
       setLoadingDirs((current) => new Set(current).add(dirPath));
       void loadFileList({
         projectId,
-        companyId,
         workspaceId: selectedWorkspace.id,
         directoryPath: dirPath,
       })
@@ -396,7 +392,7 @@ export function FilesTab({ context }: PluginDetailTabProps) {
           });
         });
     },
-    [companyId, loadFileList, loadedDirs, loadingDirs, projectId, selectedWorkspace],
+    [loadFileList, loadedDirs, loadingDirs, projectId, selectedWorkspace],
   );
 
   // Track the `?file=` query parameter across navigations (popstate).
@@ -435,9 +431,9 @@ export function FilesTab({ context }: PluginDetailTabProps) {
   const fileContentParams = useMemo(
     () =>
       selectedPath && selectedWorkspace
-        ? { projectId, companyId, workspaceId: selectedWorkspace.id, filePath: selectedPath }
+        ? { projectId, workspaceId: selectedWorkspace.id, filePath: selectedPath }
         : null,
-    [companyId, projectId, selectedWorkspace, selectedPath],
+    [projectId, selectedWorkspace, selectedPath],
   );
   const fileContentResult = usePluginData<{ content: string | null; error?: string }>(
     "fileContent",
@@ -516,7 +512,6 @@ export function FilesTab({ context }: PluginDetailTabProps) {
     try {
       await writeFile({
         projectId,
-        companyId,
         workspaceId: selectedWorkspace.id,
         filePath: selectedPath,
         content,
@@ -661,10 +656,10 @@ type PluginConfig = {
  * Respects the `commentAnnotationMode` instance config — hidden when mode
  * is `"contextMenu"` or `"none"`.
  */
-function buildFileBrowserHref(prefix: string, projectId: string | null, filePath: string): string {
+function buildFileBrowserHref(projectId: string | null, filePath: string): string {
   if (!projectId) return "#";
   const tabValue = `plugin:${PLUGIN_KEY}:${FILES_TAB_SLOT_ID}`;
-  return `${prefix}/projects/${projectId}?tab=${encodeURIComponent(tabValue)}&file=${encodeURIComponent(filePath)}`;
+  return `/projects/${projectId}?tab=${encodeURIComponent(tabValue)}&file=${encodeURIComponent(filePath)}`;
 }
 
 function navigateToFileBrowser(href: string, event: MouseEvent<HTMLAnchorElement>) {
@@ -689,21 +684,19 @@ export function CommentFileLinks({ context }: PluginCommentAnnotationProps) {
 
   const { data } = usePluginData<{ links: string[] }>("comment-file-links", {
     commentId: context.entityId,
-    issueId: context.parentEntityId,
-    companyId: context.companyId,
+    issueId: context.parentEntityId
   });
 
   if (mode === "contextMenu" || mode === "none") return null;
   if (!data?.links?.length) return null;
 
-  const prefix = context.companyPrefix ? `/${context.companyPrefix}` : "";
   const projectId = context.projectId;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Files:</span>
       {data.links.map((link) => {
-        const href = buildFileBrowserHref(prefix, projectId, link);
+        const href = buildFileBrowserHref(projectId, link);
         return (
           <a
             key={link}
@@ -738,14 +731,12 @@ export function CommentOpenFiles({ context }: PluginCommentContextMenuItemProps)
 
   const { data } = usePluginData<{ links: string[] }>("comment-file-links", {
     commentId: context.entityId,
-    issueId: context.parentEntityId,
-    companyId: context.companyId,
+    issueId: context.parentEntityId
   });
 
   if (mode === "annotation" || mode === "none") return null;
   if (!data?.links?.length) return null;
 
-  const prefix = context.companyPrefix ? `/${context.companyPrefix}` : "";
   const projectId = context.projectId;
 
   return (
@@ -754,7 +745,7 @@ export function CommentOpenFiles({ context }: PluginCommentContextMenuItemProps)
         Files
       </div>
       {data.links.map((link) => {
-        const href = buildFileBrowserHref(prefix, projectId, link);
+        const href = buildFileBrowserHref(projectId, link);
         const fileName = link.split("/").pop() ?? link;
         return (
           <a

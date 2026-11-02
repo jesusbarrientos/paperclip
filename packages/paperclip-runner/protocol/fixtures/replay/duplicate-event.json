@@ -2,7 +2,7 @@
   "schema": "paperclip.prp.fixture.v1", "fixtureVersion": 1, "protocolVersion": 1,
   "name": "Duplicate event", "description": "At-least-once delivery repeats one source event without repeating its effect.",
   "identity": {
-    "schema": "paperclip.prp.identity.v1", "companyId": "company_replay", "issueId": "issue_replay_duplicate",
+    "schema": "paperclip.prp.identity.v1", "issueId": "issue_replay_duplicate",
     "runId": "run_replay_duplicate", "environmentLeaseId": "lease_replay_duplicate", "runnerInstanceId": "runner_replay",
     "normalizedSessionId": "session_replay_duplicate", "driverSessionId": "driver_replay_duplicate"
   },

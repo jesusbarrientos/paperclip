@@ -101,7 +101,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude", model: "claude-opus-4-8" },
       executionTarget: sandboxTarget,
@@ -137,7 +136,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -168,7 +166,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -200,7 +197,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -237,7 +233,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -267,7 +262,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -294,7 +288,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -321,7 +314,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -359,7 +351,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -399,7 +390,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     // Test-result check from the error, so the raw text cannot reach a check.
     await expect(
       testEnvironment({
-        companyId: "company-1",
         adapterType: "claude_local",
         config: { engine: "cli", command: "claude" },
         executionTarget: sandboxTarget,
@@ -426,7 +416,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -449,7 +438,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -469,7 +457,6 @@ describe("claude sandbox hello probe diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: sandboxTarget,
@@ -492,7 +479,6 @@ describe("claude auth mode hints", () => {
     probeResult.value = { exitCode: 0, stdout: successStdout, stderr: "" };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -514,7 +500,7 @@ describe("claude auth mode hints", () => {
 
   it("reports an intentionally selected managed API account without a subscription warning", async () => {
     probeResult.value = { exitCode: 0, stdout: successStdout, stderr: "" };
-    const result = await testEnvironment({ companyId: "company-1", adapterType: "claude_local",
+    const result = await testEnvironment({ adapterType: "claude_local",
       config: { engine: "cli", command: "claude", managedAiConnection: { provider: "anthropic", method: "api_key" }, env: { ANTHROPIC_API_KEY: "api-test-key" } },
       executionTarget: sandboxTarget, environmentName: "Daytona",
     });
@@ -526,7 +512,6 @@ describe("claude auth mode hints", () => {
     probeResult.value = { exitCode: 0, stdout: successStdout, stderr: "" };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -604,7 +589,6 @@ describe("claude CLI local hello probe hardening", () => {
     process.env.HTTPS_PROXY = "http://trusted-proxy:8443";
 
     await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: {
         engine: "cli",
@@ -653,7 +637,6 @@ describe("claude CLI local hello probe hardening", () => {
       probeResult.value = { exitCode: 0, stdout: `${minimumVersion} (Claude Code)\n`, stderr: "" };
 
       const result = await testEnvironment({
-        companyId: "company-1",
         adapterType: "claude_local",
         config: {
           engine: "cli",
@@ -681,7 +664,6 @@ describe("claude CLI local hello probe hardening", () => {
     probeResult.value = { exitCode: 0, stdout: successStdout, stderr: "" };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "claude_local",
       config: { engine: "cli", command: "claude" },
       executionTarget: null,

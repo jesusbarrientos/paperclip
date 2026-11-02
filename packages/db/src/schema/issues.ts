@@ -17,7 +17,6 @@ import {
 import { agents } from "./agents.js";
 import { projects } from "./projects.js";
 import { goals } from "./goals.js";
-import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
@@ -27,7 +26,6 @@ export const issues = pgTable(
   "issues",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     // Conversation identity and session boundaries are owned by the server.
     conversationAgentId: uuid("conversation_agent_id").references(() => agents.id),
     conversationUserId: text("conversation_user_id"),
@@ -92,7 +90,7 @@ export const issues = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    conversationIdentityIdx: uniqueIndex("issues_conversation_identity_idx").on(table.companyId, table.conversationAgentId, table.conversationUserId),
+    conversationIdentityIdx: uniqueIndex("issues_conversation_identity_idx").on(table.conversationAgentId, table.conversationUserId),
     conversationIdentityCheck: check("issues_conversation_identity_check", sql`(
       ${table.conversationAgentId} is null and ${table.conversationUserId} is null and ${table.conversationState} is null
     ) or (
@@ -102,43 +100,42 @@ export const issues = pgTable(
       and ${table.conversationState} in ('active', 'waiting')
       and ${table.status} not in ('done', 'cancelled')
     )`),
-    companyIdUq: unique("issues_company_id_uq").on(table.companyId, table.id),
-    companyStatusIdx: index("issues_company_status_idx").on(table.companyId, table.status),
-    companyHarnessKindIdx: index("issues_company_harness_kind_idx").on(table.companyId, table.harnessKind),
+    companyStatusIdx: index("issues_company_status_idx").on(table.status),
+    companyHarnessKindIdx: index("issues_company_harness_kind_idx").on(table.harnessKind),
     assigneeStatusIdx: index("issues_company_assignee_status_idx").on(
-      table.companyId,
       table.assigneeAgentId,
       table.status,
     ),
     assigneeUserStatusIdx: index("issues_company_assignee_user_status_idx").on(
-      table.companyId,
       table.assigneeUserId,
       table.status,
     ),
-    responsibleUserIdx: index("issues_company_responsible_user_idx").on(table.companyId, table.responsibleUserId),
-    parentIdx: index("issues_company_parent_idx").on(table.companyId, table.parentId),
-    projectIdx: index("issues_company_project_idx").on(table.companyId, table.projectId),
-    originIdx: index("issues_company_origin_idx").on(table.companyId, table.originKind, table.originId),
-    projectWorkspaceIdx: index("issues_company_project_workspace_idx").on(table.companyId, table.projectWorkspaceId),
-    executionWorkspaceIdx: index("issues_company_execution_workspace_idx").on(table.companyId, table.executionWorkspaceId),
-    dueMonitorIdx: index("issues_company_monitor_due_idx").on(table.companyId, table.monitorNextCheckAt),
-    companyUpdatedIdx: index("issues_company_updated_idx").on(table.companyId, table.updatedAt),
-    companyCreatedIdx: index("issues_company_created_idx").on(table.companyId, table.createdAt),
+    responsibleUserIdx: index("issues_company_responsible_user_idx").on(table.responsibleUserId),
+    parentIdx: index("issues_company_parent_idx").on(table.parentId),
+    projectIdx: index("issues_company_project_idx").on(table.projectId),
+    originIdx: index("issues_company_origin_idx").on(table.originKind, table.originId),
+    onboardingFirstTaskIdx: uniqueIndex("issues_onboarding_first_task_uq")
+      .on(table.originKind)
+      .where(sql`${table.originKind} = 'onboarding_first_task'`),
+    projectWorkspaceIdx: index("issues_company_project_workspace_idx").on(table.projectWorkspaceId),
+    executionWorkspaceIdx: index("issues_company_execution_workspace_idx").on(table.executionWorkspaceId),
+    dueMonitorIdx: index("issues_company_monitor_due_idx").on(table.monitorNextCheckAt),
+    companyUpdatedIdx: index("issues_company_updated_idx").on(table.updatedAt),
+    companyCreatedIdx: index("issues_company_created_idx").on(table.createdAt),
     openNormalizedTitleCreatedIdx: index("issues_open_normalized_title_created_idx")
       .on(
-        table.companyId,
         table.parentId,
         sql`lower(regexp_replace(btrim(${table.title}), '\\s+', ' ', 'g'))`,
         table.createdAt,
       )
       .where(sql`${table.hiddenAt} is null and ${table.status} not in ('done', 'cancelled')`),
-    companyPriorityIdx: index("issues_company_priority_idx").on(table.companyId, table.priority),
+    companyPriorityIdx: index("issues_company_priority_idx").on(table.priority),
     identifierIdx: uniqueIndex("issues_identifier_idx").on(table.identifier),
     titleSearchIdx: index("issues_title_search_idx").using("gin", table.title.op("gin_trgm_ops")),
     identifierSearchIdx: index("issues_identifier_search_idx").using("gin", table.identifier.op("gin_trgm_ops")),
     descriptionSearchIdx: index("issues_description_search_idx").using("gin", table.description.op("gin_trgm_ops")),
     openRoutineExecutionIdx: uniqueIndex("issues_open_routine_execution_uq")
-      .on(table.companyId, table.originKind, table.originId, table.originFingerprint)
+      .on(table.originKind, table.originId, table.originFingerprint)
       .where(
         sql`${table.originKind} = 'routine_execution'
           and ${table.originId} is not null
@@ -147,7 +144,7 @@ export const issues = pgTable(
           and ${table.status} in ('backlog', 'todo', 'in_progress', 'in_review', 'blocked')`,
       ),
     activeLivenessRecoveryIncidentIdx: uniqueIndex("issues_active_liveness_recovery_incident_uq")
-      .on(table.companyId, table.originKind, table.originId)
+      .on(table.originKind, table.originId)
       .where(
         sql`${table.originKind} = 'harness_liveness_escalation'
           and ${table.originId} is not null
@@ -155,7 +152,7 @@ export const issues = pgTable(
           and ${table.status} not in ('done', 'cancelled')`,
       ),
     activeLivenessRecoveryLeafIdx: uniqueIndex("issues_active_liveness_recovery_leaf_uq")
-      .on(table.companyId, table.originKind, table.originFingerprint)
+      .on(table.originKind, table.originFingerprint)
       .where(
         sql`${table.originKind} = 'harness_liveness_escalation'
           and ${table.originFingerprint} <> 'default'
@@ -163,7 +160,7 @@ export const issues = pgTable(
           and ${table.status} not in ('done', 'cancelled')`,
       ),
     activeStaleRunEvaluationIdx: uniqueIndex("issues_active_stale_run_evaluation_uq")
-      .on(table.companyId, table.originKind, table.originId)
+      .on(table.originKind, table.originId)
       .where(
         sql`${table.originKind} = 'stale_active_run_evaluation'
           and ${table.originId} is not null
@@ -171,7 +168,7 @@ export const issues = pgTable(
           and ${table.status} not in ('done', 'cancelled')`,
       ),
     activeTaskWatchdogIdx: uniqueIndex("issues_active_task_watchdog_uq")
-      .on(table.companyId, table.originKind, table.originId)
+      .on(table.originKind, table.originId)
       .where(
         sql`${table.originKind} = 'task_watchdog'
           and ${table.originId} is not null
@@ -179,7 +176,7 @@ export const issues = pgTable(
           and ${table.status} not in ('done', 'cancelled')`,
       ),
     activeProductivityReviewIdx: uniqueIndex("issues_active_productivity_review_uq")
-      .on(table.companyId, table.originKind, table.originId)
+      .on(table.originKind, table.originId)
       .where(
         sql`${table.originKind} = 'issue_productivity_review'
           and ${table.originId} is not null
@@ -187,7 +184,7 @@ export const issues = pgTable(
           and ${table.status} not in ('done', 'cancelled')`,
       ),
     activeStrandedIssueRecoveryIdx: uniqueIndex("issues_active_stranded_issue_recovery_uq")
-      .on(table.companyId, table.originKind, table.originId)
+      .on(table.originKind, table.originId)
       .where(
         sql`${table.originKind} = 'stranded_issue_recovery'
           and ${table.originId} is not null
@@ -198,8 +195,5 @@ export const issues = pgTable(
     // greeting, description suppression), so at most one issue per company may ever
     // carry it — concurrent creates race on the pre-insert count check and this
     // index is what atomically rejects the loser.
-    onboardingFirstTaskIdx: uniqueIndex("issues_onboarding_first_task_uq")
-      .on(table.companyId)
-      .where(sql`${table.originKind} = 'onboarding_first_task'`),
   }),
 );

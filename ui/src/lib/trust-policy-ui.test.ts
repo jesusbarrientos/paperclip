@@ -25,7 +25,7 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
   });
 
   it("clears containment across a JSON permissions patch when restoring standard trust", () => {
-    const lowTrust = setSingleLowTrustBoundaryTarget(null, "company-1", { type: "root_issue", id: "issue-1" });
+    const lowTrust = setSingleLowTrustBoundaryTarget(null, { type: "root_issue", id: "issue-1" });
     const patch = JSON.parse(JSON.stringify(buildPermissionsForTrustPreset(lowTrust, "standard")));
     const persisted = { ...lowTrust, ...patch };
     expect(persisted.trustPreset).toBe("standard");
@@ -33,8 +33,8 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
     expect(getLowTrustBoundary(persisted)).toBeNull();
   });
 
-  it("writes one project boundary with mode and company id", () => {
-    const permissions = setSingleLowTrustBoundaryTarget(null, "company-1", {
+  it("writes one project boundary with mode", () => {
+    const permissions = setSingleLowTrustBoundaryTarget(null, {
       type: "project",
       id: "project-1",
     });
@@ -50,7 +50,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
         },
         trustBoundary: {
           mode: "low_trust_review",
-          companyId: "company-1",
           projectIds: ["project-1"],
         },
       },
@@ -65,7 +64,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
           customEeField: { mode: "preserved" },
           trustBoundary: {
             mode: "low_trust_review",
-            companyId: "company-1",
             projectIds: ["project-1"],
             rootIssueId: "root-1",
             issueIds: ["issue-1"],
@@ -73,7 +71,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
           },
         },
       },
-      "company-2",
       { type: "issue", id: "issue-2" },
     );
 
@@ -81,7 +78,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
       customEeField: { mode: "preserved" },
       trustBoundary: {
         mode: "low_trust_review",
-        companyId: "company-2",
         issueIds: ["issue-2"],
         allowedToolClasses: ["git.read"],
       },
@@ -96,7 +92,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
       authorizationPolicy: {
         trustBoundary: {
           mode: "low_trust_review",
-          companyId: "company-1",
           rootIssueId: "issue-root",
         },
       },
@@ -109,7 +104,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
   it("marks multi-boundary policies read-only for CE", () => {
     const boundary = {
       mode: "low_trust_review" as const,
-      companyId: "company-1",
       projectIds: ["project-1", "project-2"],
     };
 
@@ -124,7 +118,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
       authorizationPolicy: {
         trustBoundary: {
           mode: "low_trust_review",
-          companyId: "company-1",
           issueIds: ["issue-1"],
           allowedSecretBindingIds: ["binding-1"],
         },
@@ -133,7 +126,6 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
 
     expect(permissions.authorizationPolicy?.trustBoundary).toEqual({
       mode: "low_trust_review",
-      companyId: "company-1",
       allowedSecretBindingIds: ["binding-1"],
     });
   });

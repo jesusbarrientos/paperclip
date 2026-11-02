@@ -20,9 +20,8 @@ import type { AiConnectionRouterRequest, AiConnectionRouterResult } from "@paper
  *
  *     // Subscribe to events
  *     ctx.events.on("issue.created", async (event) => {
- *       const companyId = event.companyId;
- *       const config = await ctx.config.get(companyId);
- *       const apiKey = await ctx.secrets.resolve(config.apiKeyRef, { companyId, configPath: "apiKeyRef" });
+ *       const config = await ctx.config.get();
+ *       const apiKey = await ctx.secrets.resolve(config.apiKeyRef, { configPath: "apiKeyRef" });
  *       await ctx.http.fetch(`https://api.linear.app/...`, {
  *         method: "POST",
  *         headers: { Authorization: `Bearer ${apiKey}` },
@@ -37,10 +36,9 @@ import type { AiConnectionRouterRequest, AiConnectionRouterResult } from "@paper
  *     });
  *
  *     // Register data for the UI
- *     ctx.data.register("sync-health", async ({ companyId }) => {
+ *     ctx.data.register("sync-health", async () => {
  *       const state = await ctx.state.get({
- *         scopeKind: "company",
- *         scopeId: String(companyId),
+ *         scopeKind: "instance",
  *         stateKey: "last-sync",
  *       });
  *       return { lastSync: state };
@@ -172,7 +170,6 @@ export interface PluginApiRequestInput {
     userId?: string | null;
     runId?: string | null;
   };
-  companyId: string;
   headers: Record<string, string>;
 }
 
@@ -180,31 +177,6 @@ export interface PluginApiResponse {
   status?: number;
   headers?: Record<string, string>;
   body?: unknown;
-}
-
-// ---------------------------------------------------------------------------
-// Config change context
-// ---------------------------------------------------------------------------
-
-/**
- * Scope metadata delivered alongside a `configChanged` RPC so the worker knows
- * *which company's* configuration changed.
- *
- * The host→worker `configChanged` message has always carried the company scope,
- * but the SDK historically dropped it before invoking `onConfigChanged`, leaving
- * proactive plugins to keep a single worker-global config. That is safe for a
- * single-tenant plugin but silently collapses a multi-company plugin onto
- * whichever company's config was delivered last. Threading the scope through
- * lets a `multiCompanyConfig` plugin maintain per-company state.
- *
- * @see PLUGIN_SPEC.md §13.4 — `configChanged`
- */
-export interface PluginConfigChangeContext {
-  /**
-   * The company whose configuration changed, or `null` for an instance/global
-   * save that is not bound to a specific company.
-   */
-  companyId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,38 +221,14 @@ export interface PluginDefinition {
   onHealth?(): Promise<PluginHealthDiagnostics>;
 
   /**
-   * When true, this plugin's worker correctly serves configuration from more
-   * than one company inside a single worker process — for example by keying its
-   * state on `context.companyId` in `onConfigChanged` and running one connection
-   * / subscription set per company.
-   *
-   * When false or omitted (the default), the plugin is treated as single-tenant.
-   * The host then **fails closed** if `configChanged` would ever deliver a
-   * second, distinct company's configuration to the same worker: instead of
-   * silently collapsing the worker onto whichever company arrived last (a
-   * cross-tenant identity/secret confusion bug), the delivery is rejected with
-   * `PLUGIN_RPC_ERROR_CODES.CROSS_TENANT_CONFIG`. Re-delivering an unchanged
-   * config for a different company (idempotent replay) is still allowed.
-   */
-  multiCompanyConfig?: boolean;
-
-  /**
-   * Called when the operator updates this plugin's company-scoped configuration
-   * at runtime, without restarting the worker.
+   * Called when the operator updates this plugin's configuration at runtime, without restarting the worker.
    *
    * If not implemented, the host restarts the worker to apply the new config.
    *
    * @param newConfig - The newly resolved configuration
-   * @param context - Scope of the change. `context.companyId` identifies the
-   *   company whose config changed (null for an instance/global save). A
-   *   multi-company plugin (`multiCompanyConfig: true`) MUST key its per-company
-   *   state on this value rather than assuming a single global config.
    * @see PLUGIN_SPEC.md §13.4 — `configChanged`
    */
-  onConfigChanged?(
-    newConfig: Record<string, unknown>,
-    context?: PluginConfigChangeContext,
-  ): Promise<void>;
+  onConfigChanged?(newConfig: Record<string, unknown>): Promise<void>;
 
   /**
    * Called when the host is about to shut down the plugin worker.
@@ -323,8 +271,8 @@ export interface PluginDefinition {
 
   /**
    * Called for manifest-declared scoped JSON API routes under
-   * `/api/plugins/:pluginId/api/*` after the host has enforced auth, company
-   * access, capabilities, and checkout policy.
+   * `/api/plugins/:pluginId/api/*` after the host has enforced auth,
+   * capabilities, and checkout policy.
    */
   onApiRequest?(input: PluginApiRequestInput): Promise<PluginApiResponse>;
 

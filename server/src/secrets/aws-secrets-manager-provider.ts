@@ -81,7 +81,7 @@ interface CachedAwsCredentialProvider {
   pending: Promise<AwsCredentialIdentity> | null;
 }
 
-type ManagedSecretNamespaceContext = Pick<SecretProviderWriteContext, "companyId" | "secretKey">;
+type ManagedSecretNamespaceContext = Pick<SecretProviderWriteContext, "secretKey">;
 
 const awsCredentialProviders = new Map<string, CachedAwsCredentialProvider>();
 
@@ -447,7 +447,6 @@ function buildManagedSecretName(
   return [
     sanitizePathSegment(config.prefix),
     sanitizePathSegment(config.deploymentId),
-    sanitizePathSegment(context.companyId),
     sanitizePathSegment(context.secretKey),
   ]
     .filter(Boolean)
@@ -539,7 +538,6 @@ function buildManagedSecretTags(
     { Key: "paperclip:managed-by", Value: "paperclip" },
     { Key: "paperclip:provider-owner", Value: config.providerOwnerTag },
     { Key: "paperclip:deployment-id", Value: config.deploymentId },
-    { Key: "paperclip:company-id", Value: context.companyId },
     { Key: "paperclip:secret-key", Value: context.secretKey },
     { Key: "paperclip:environment", Value: config.environmentTag },
   ];
@@ -670,7 +668,6 @@ function discoveryDisplayName(input: {
 }
 
 function discoverAwsProviderConfigCandidates(input: {
-  companyId: string;
   config: AwsSecretsManagerConfig;
   draftConfig: Record<string, unknown>;
   entries: AwsSecretsManagerListSecretEntry[];
@@ -699,10 +696,6 @@ function discoverAwsProviderConfigCandidates(input: {
     const tags = normalizeAwsTags(entry.Tags);
     const paperclipManaged = tagValue(tags, ["paperclip:managed-by"])?.toLowerCase() === "paperclip";
     const paperclipCompanyId = tagValue(tags, ["paperclip:company-id"]);
-    if (paperclipManaged && paperclipCompanyId !== input.companyId) {
-      skippedForeignPaperclipSampleCount += 1;
-      continue;
-    }
     const path = inferPathSignals(entry, tags);
     samples.push({
       entry,
@@ -764,7 +757,7 @@ function discoverAwsProviderConfigCandidates(input: {
       if (kmsKeys.length > 1 && !draftKmsKeyId) {
         candidateWarnings.push("Sampled AWS secrets use multiple KMS keys; choose the intended KMS key before saving.");
       }
-      if (group.some((sample) => sample.paperclipManaged && sample.paperclipCompanyId === input.companyId)) {
+      if (group.some((sample) => sample.paperclipManaged)) {
         candidateWarnings.push("Sample includes Paperclip-managed secrets for this company; do not import them as external references.");
       }
 
@@ -1272,7 +1265,6 @@ export function createAwsSecretsManagerProvider(
           Filters: query ? [{ Key: "all", Values: [query] }] : undefined,
         });
         return discoverAwsProviderConfigCandidates({
-          companyId: input.companyId,
           config,
           draftConfig: input.providerConfig.config,
           entries: listed.SecretList ?? [],

@@ -7,7 +7,6 @@ import { attentionApi } from "../api/attention";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { decisionsApi } from "../api/decisions";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { useInboxDismissals } from "../hooks/useInboxBadge";
@@ -62,8 +61,8 @@ const ATTENTION_SCROLL_LOAD_THRESHOLD_PX = 480;
 const DECISION_HISTORY_VISIBLE_LIMIT = 50;
 const DECISION_HISTORY_QUERY_LIMIT = DECISION_HISTORY_VISIBLE_LIMIT + 1;
 
-export function decisionHistoryQueryEnabled(companyId: string | null | undefined, open: boolean) {
-  return Boolean(companyId && open);
+export function decisionHistoryQueryEnabled(open: boolean) {
+  return Boolean(open);
 }
 
 export function decisionHistoryCount(count: number | undefined) {
@@ -85,7 +84,6 @@ function findScrollContainer(element: HTMLElement | null): HTMLElement | null {
 }
 
 export function WhatNeedsMe() {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedAttentionId, setSelectedAttentionId] = useState<string | null>(null);
@@ -122,7 +120,7 @@ export function WhatNeedsMe() {
   const [pendingHide, setPendingHide] = useState<Set<string>>(() => new Set());
   const [pendingRestore, setPendingRestore] = useState<Set<string>>(() => new Set());
 
-  const { dismiss, snooze, restore } = useInboxDismissals(selectedCompanyId);
+  const { dismiss, snooze, restore } = useInboxDismissals();
   const { pushToast } = useToastActions();
   const navigate = useNavigate();
 
@@ -140,9 +138,9 @@ export function WhatNeedsMe() {
 
   // Re-hydrate per-company preferences when the company changes.
   useEffect(() => {
-    setFilters(loadAttentionFilters(selectedCompanyId));
-    setCollapsedGroupKeys(loadCollapsedAttentionGroupKeys(selectedCompanyId));
-  }, [selectedCompanyId]);
+    setFilters(loadAttentionFilters());
+    setCollapsedGroupKeys(loadCollapsedAttentionGroupKeys());
+  }, []);
 
   const {
     data: feed,
@@ -151,39 +149,37 @@ export function WhatNeedsMe() {
   } = useQuery({
     // Distinct from the sidebar badge's `queryKeys.attention` so dismissed rows
     // (needed for the curtains) never inflate the badge count. Invalidating the
-    // `["attention", companyId]` prefix still cascades to this query.
+    // `["attention"]` prefix still cascades to this query.
     queryKey: [
-      ...queryKeys.attention(selectedCompanyId!),
+      ...queryKeys.attention(),
       "with-dismissed",
       activityBounds.activitySince ?? null,
       activityBounds.activityUntil ?? null,
     ],
-    queryFn: () => attentionApi.list(selectedCompanyId!, {
+    queryFn: () => attentionApi.list({
       includeDismissed: true,
       all: true,
       ...activityBounds,
     }),
-    enabled: !!selectedCompanyId,
     refetchOnWindowFocus: true,
   });
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
   });
 
   // Decision history — decided / expired decisions leave the open attention
   // feed (entryRule = open only), so we fetch them directly for the curtains.
   const { data: decidedDecisions, isLoading: decidedDecisionsLoading } = useQuery({
-    queryKey: queryKeys.decisions.list(selectedCompanyId!, "decided"),
-    queryFn: () => decisionsApi.list(selectedCompanyId!, { status: "decided", limit: DECISION_HISTORY_QUERY_LIMIT }),
-    enabled: decisionHistoryQueryEnabled(selectedCompanyId, decidedOpen),
+    queryKey: queryKeys.decisions.list("decided"),
+    queryFn: () => decisionsApi.list({ status: "decided", limit: DECISION_HISTORY_QUERY_LIMIT }),
+    enabled: decisionHistoryQueryEnabled(decidedOpen),
   });
   const { data: expiredDecisions, isLoading: expiredDecisionsLoading } = useQuery({
-    queryKey: queryKeys.decisions.list(selectedCompanyId!, "expired"),
-    queryFn: () => decisionsApi.list(selectedCompanyId!, { status: "expired", limit: DECISION_HISTORY_QUERY_LIMIT }),
-    enabled: decisionHistoryQueryEnabled(selectedCompanyId, expiredOpen),
+    queryKey: queryKeys.decisions.list("expired"),
+    queryFn: () => decisionsApi.list({ status: "expired", limit: DECISION_HISTORY_QUERY_LIMIT }),
+    enabled: decisionHistoryQueryEnabled(expiredOpen),
   });
 
   const { data: session } = useQuery({
@@ -273,7 +269,7 @@ export function WhatNeedsMe() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     setRenderedRowLimit(INITIAL_ATTENTION_ROW_RENDER_LIMIT);
-  }, [selectedCompanyId]);
+  }, []);
 
   // Keyboard selection may point past the budget (e.g. wrapping to the last
   // row), so the effective limit is derived to always cover it — the selected
@@ -397,14 +393,14 @@ export function WhatNeedsMe() {
   };
   const updateFilters = (next: AttentionFilterState) => {
     setFilters(next);
-    saveAttentionFilters(selectedCompanyId, next);
+    saveAttentionFilters(next);
   };
   const toggleGroupCollapse = (key: string) => {
     setCollapsedGroupKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
-      saveCollapsedAttentionGroupKeys(selectedCompanyId, next);
+      saveCollapsedAttentionGroupKeys(next);
       return next;
     });
   };
@@ -506,9 +502,6 @@ export function WhatNeedsMe() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleDismiss, keyboardItems, navigate, selectedAttentionId]);
 
-  if (!selectedCompanyId) {
-    return <p className="text-sm text-muted-foreground">Select an organization first.</p>;
-  }
 
   if (isLoading) {
     return <PageSkeleton variant="approvals" />;
@@ -535,7 +528,7 @@ export function WhatNeedsMe() {
       {/* Queue quicklinks + date-range chips (§4.1–§4.2). The rail self-hides
           when the company has no queues; the chips filter the desk server-side. */}
       <div className="space-y-2">
-        <DecisionQueueRail companyId={selectedCompanyId} activeQueueKey={null} />
+        <DecisionQueueRail activeQueueKey={null} />
         <DecisionDateChips
           value={dateRange}
           custom={customRange}
@@ -606,7 +599,6 @@ export function WhatNeedsMe() {
                               <div className={bundleId ? "border-l-2 border-violet-500/40 pl-3" : undefined}>
                                 <AttentionQueueRow
                                   item={item}
-                                  companyId={selectedCompanyId}
                                   expanded={expandedId === item.id}
                                   onToggleExpand={handleToggleExpand}
                                   onDismiss={handleDismiss}
@@ -641,7 +633,6 @@ export function WhatNeedsMe() {
                 <AttentionQueueRow
                   key={item.id}
                   item={item}
-                  companyId={selectedCompanyId}
                   variant="hidden"
                   expanded={false}
                   onToggleExpand={noopToggleExpand}
@@ -665,7 +656,6 @@ export function WhatNeedsMe() {
                 <AttentionQueueRow
                   key={item.id}
                   item={item}
-                  companyId={selectedCompanyId}
                   variant="hidden"
                   expanded={false}
                   onToggleExpand={noopToggleExpand}
@@ -692,7 +682,6 @@ export function WhatNeedsMe() {
                 <AgingItemRow
                   key={item.id}
                   item={item}
-                  companyId={selectedCompanyId}
                   now={now}
                   agentMap={agentMap}
                   agents={agents}
@@ -722,7 +711,6 @@ export function WhatNeedsMe() {
             decidedDecisions!.slice(0, DECISION_HISTORY_VISIBLE_LIMIT).map((decision) => (
               <DecisionResolver
                 key={decision.id}
-                companyId={selectedCompanyId}
                 decisionId={decision.id}
                 agentMap={agentMap}
                 initialDecision={{ ...decision, executions: decision.executions ?? [] }}
@@ -745,7 +733,6 @@ export function WhatNeedsMe() {
             expiredDecisions!.slice(0, DECISION_HISTORY_VISIBLE_LIMIT).map((decision) => (
               <DecisionResolver
                 key={decision.id}
-                companyId={selectedCompanyId}
                 decisionId={decision.id}
                 agentMap={agentMap}
                 initialDecision={{ ...decision, executions: decision.executions ?? [] }}

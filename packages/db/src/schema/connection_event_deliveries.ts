@@ -1,6 +1,4 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
-
 /**
  * The instance-side durable receipt for normalized connector events.
  *
@@ -12,7 +10,6 @@ export const connectionEventDeliveries = pgTable(
   "connection_event_deliveries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     providerDeliveryId: text("provider_delivery_id").notNull(),
     event: text("event").notNull(),
@@ -30,10 +27,9 @@ export const connectionEventDeliveries = pgTable(
   },
   (table) => [
     uniqueIndex("connection_event_deliveries_company_provider_id_uq").on(
-      table.companyId,
       table.provider,
       table.providerDeliveryId,
     ),
-    index("connection_event_deliveries_company_status_idx").on(table.companyId, table.status, table.createdAt),
+    index("connection_event_deliveries_company_status_idx").on(table.status, table.createdAt),
   ],
 );

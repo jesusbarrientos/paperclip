@@ -21,7 +21,6 @@ const [company] = await db
 const [ceo] = await db
   .insert(agents)
   .values({
-    companyId: company!.id,
     name: "CEO Agent",
     role: "ceo",
     title: "Chief Executive Officer",
@@ -35,7 +34,6 @@ const [ceo] = await db
 const [engineer] = await db
   .insert(agents)
   .values({
-    companyId: company!.id,
     name: "Engineer Agent",
     role: "engineer",
     title: "Software Engineer",
@@ -50,7 +48,6 @@ const [engineer] = await db
 const [goal] = await db
   .insert(goals)
   .values({
-    companyId: company!.id,
     title: "Ship V1",
     description: "Deliver first control plane release",
     level: "company",
@@ -62,7 +59,6 @@ const [goal] = await db
 const [project] = await db
   .insert(projects)
   .values({
-    companyId: company!.id,
     goalId: goal!.id,
     name: "Control Plane MVP",
     description: "Implement core board + agent loop",
@@ -73,7 +69,6 @@ const [project] = await db
 
 await db.insert(issues).values([
   {
-    companyId: company!.id,
     projectId: project!.id,
     goalId: goal!.id,
     title: "Implement atomic task checkout",
@@ -84,7 +79,6 @@ await db.insert(issues).values([
     createdByAgentId: ceo!.id,
   },
   {
-    companyId: company!.id,
     projectId: project!.id,
     goalId: goal!.id,
     title: "Add budget auto-pause",

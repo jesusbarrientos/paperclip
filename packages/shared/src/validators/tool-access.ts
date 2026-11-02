@@ -208,7 +208,6 @@ export type UpdateToolConnection = z.infer<typeof updateToolConnectionSchema>;
 
 export const connectionGrantSchema = z.object({
   id: z.string().guid(),
-  companyId: z.string().guid(),
   connectionId: z.string().guid(),
   kind: connectionGrantKindSchema,
   subjectUserId: z.string().nullable(),
@@ -1020,7 +1019,6 @@ export const revokeToolTrustRuleSchema = z.object({
 export type RevokeToolTrustRule = z.infer<typeof revokeToolTrustRuleSchema>;
 
 export const toolPolicyTestRequestSchema = z.object({
-  companyId: z.string().guid(),
   actor: z.object({
     actorType: z.enum(["agent", "user", "system", "plugin"]),
     actorId: z.string().trim().min(1).max(240),

@@ -13,7 +13,6 @@ const eventId = z
   .max(2500)
   .regex(/^[^\x00-\x20\x7f]+$/);
 const scopeFields = {
-  companyId: z.uuid(),
   endpointId: z.uuid(),
   runtimeGeneration: generation,
   credentialFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
@@ -163,7 +162,6 @@ export function deriveTeamsPersonalRecipient(
   return parseTeamsPersonalRecipient(
     {
       schema: "paperclip.teams.personal-recipient.v1",
-      companyId: expected.data.companyId,
       endpointId: expected.data.endpointId,
       runtimeGeneration: expected.data.runtimeGeneration,
       credentialFingerprint: expected.data.credentialFingerprint,

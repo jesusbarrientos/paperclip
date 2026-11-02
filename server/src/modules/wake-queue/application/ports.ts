@@ -35,7 +35,6 @@ export interface WakeQueueHost {
    * module's own transaction is open.
    */
   resolveResponsibleUserId(input: {
-    companyId: string;
     contextSnapshot: Record<string, unknown>;
     issue: IssueSnapshot;
     /** From a prior `getRoutineEnv` call against the same issue; pass `{ routineId: null, env: null, responsibleUserId: null }` when the issue is not a routine execution. */
@@ -52,11 +51,9 @@ export interface WakeQueueHost {
    * module's own transaction is open.
    */
   getRoutineEnv(input: {
-    companyId: string;
     issue: IssueSnapshot;
   }): Promise<{ routineId: string | null; env: unknown; responsibleUserId: string | null }>;
   resolveSessionBeforeForWakeup(input: {
-    companyId: string;
     agentId: string;
     taskKey: string | null;
   }): Promise<string | null>;
@@ -64,7 +61,6 @@ export interface WakeQueueHost {
 
 export type DeferredWakeCandidate = {
   id: string;
-  companyId: string;
   agentId: string;
   reason: string | null;
   source: string | null;
@@ -86,7 +82,6 @@ export type DeferredWakeCandidate = {
 };
 
 export type PromoteDeferredWakeInput = {
-  companyId: string;
   wakeId: string;
   deferredAgent: InvokableAgentSnapshot;
   issue: IssueSnapshot;
@@ -109,10 +104,9 @@ export type PromoteDeferredWakeInput = {
  * the deferred-wake queue.
  */
 export interface WakeQueueTransaction {
-  findInvokableAgent(input: { companyId: string; agentId: string }): Promise<InvokableAgentSnapshot | null>;
-  findNextDeferredWake(input: { companyId: string; issueId: string; excludedWakeIds?: string[] }): Promise<DeferredWakeCandidate | null>;
+  findInvokableAgent(input: { agentId: string }): Promise<InvokableAgentSnapshot | null>;
+  findNextDeferredWake(input: { issueId: string; excludedWakeIds?: string[] }): Promise<DeferredWakeCandidate | null>;
   getQueuedCommentLiveness(input: {
-    companyId: string;
     issueId: string;
     wakeAgentId: string;
     finishingRunId: string;
@@ -121,13 +115,11 @@ export interface WakeQueueTransaction {
   }): Promise<{ liveNonSelfCommentIds: string[]; containedSelfAuthoredComment: boolean }>;
   /** Cancels the wake with `status = 'deferred_issue_execution'` as an atomic compare-and-set guard. */
   cancelDeferredWake(input: {
-    companyId: string;
     wakeId: string;
     reason: string;
     now: Date;
   }): Promise<boolean>;
   normalizeDeferredWakeCommentIds(input: {
-    companyId: string;
     wakeId: string;
     /** The wake's current payload, as already read by `findNextDeferredWake`, used as the rewrite base. */
     payload: Record<string, unknown>;
@@ -135,9 +127,8 @@ export interface WakeQueueTransaction {
     now: Date;
   }): Promise<DeferredWakeCandidate | null>;
   /** Sets `status = 'failed'` guarded by the current `deferred_issue_execution` status. */
-  failDeferredWake(input: { companyId: string; wakeId: string; now: Date }): Promise<boolean>;
+  failDeferredWake(input: { wakeId: string; now: Date }): Promise<boolean>;
   getPauseHoldFacts(input: {
-    companyId: string;
     issueId: string;
     wakeAgentId: string;
     deferredContextSeed: Record<string, unknown>;
@@ -153,22 +144,20 @@ export interface WakeQueueTransaction {
     releasePolicy: unknown;
   }>;
   getCommentSelfAuthorship(input: {
-    companyId: string;
     issueId: string;
     finishingRunId: string;
     commentIds: string[];
   }): Promise<{ allSelfAuthored: boolean }>;
   /** Proves all candidate comments only report completed child work in the finishing parent's own run. */
   isCompletedDelegationMention(input: {
-    companyId: string;
     issueId: string;
     finishingRunId: string;
     wakeAgentId: string;
     commentIds: string[];
   }): Promise<boolean>;
-  reopenIssue(input: { companyId: string; issueId: string; runId: string }): Promise<IssueSnapshot | null>;
+  reopenIssue(input: { issueId: string; runId: string }): Promise<IssueSnapshot | null>;
   /** Verifies a Done onboarding parent's completion wake against its own completed children. */
-  isCompletedOnboardingHandoffWake(input: { companyId: string; issueId: string; agentId: string;
+  isCompletedOnboardingHandoffWake(input: { issueId: string; agentId: string;
     reason: string | null; contextSnapshot: Record<string, unknown> }): Promise<boolean>;
   /**
    * Atomically claims the wake for promotion, guarded on its current
@@ -177,7 +166,7 @@ export interface WakeQueueTransaction {
    * leave another write committed underneath it. Returns `false` when a
    * concurrent writer already changed the wake's status.
    */
-  claimDeferredWakeForPromotion(input: { companyId: string; wakeId: string; now: Date }): Promise<boolean>;
+  claimDeferredWakeForPromotion(input: { wakeId: string; now: Date }): Promise<boolean>;
   /**
    * Finalizes a wake that `claimDeferredWakeForPromotion` already claimed:
    * inserts the queued run, links it back onto the wake row, and takes the
@@ -186,18 +175,16 @@ export interface WakeQueueTransaction {
   finalizePromotedWake(input: PromoteDeferredWakeInput): Promise<RunSummary>;
   /** An open run already on this issue (optionally scoped to one agent) that would race a new recovery run. */
   hasExistingExecutionPath(input: {
-    companyId: string;
     issueId: string;
     excludeRunId: string;
     agentId: string | null;
   }): Promise<boolean>;
   /** An open, non-hidden issue that still lists this issue as a `blocks` predecessor. */
-  hasExplicitBlockerPath(input: { companyId: string; issueId: string }): Promise<boolean>;
-  isAutomaticRecoverySuppressedByPauseHold(input: { companyId: string; issueId: string }): Promise<boolean>;
+  hasExplicitBlockerPath(input: { issueId: string }): Promise<boolean>;
+  isAutomaticRecoverySuppressedByPauseHold(input: { issueId: string }): Promise<boolean>;
   /** Deny-only facts from the exact finishing run and its durable chat wake owner. */
-  isImmediateRecoverySourceBlocked(input: { companyId: string; runId: string }): Promise<boolean>;
+  isImmediateRecoverySourceBlocked(input: { runId: string }): Promise<boolean>;
   queueReviewParticipantRecoveryRun(input: {
-    companyId: string;
     issue: IssueSnapshot;
     finishingRun: RunSnapshot;
     recoveryAgent: InvokableAgentSnapshot;
@@ -209,7 +196,6 @@ export interface WakeQueueTransaction {
    * caller already resolved.
    */
   queueImmediateRecoveryRun(input: {
-    companyId: string;
     issue: IssueSnapshot;
     finishingRun: RunSnapshot;
     recoveryAgent: InvokableAgentSnapshot;
@@ -235,7 +221,7 @@ export interface WakeQueueTransaction {
  */
 export interface IssueLockWriter {
   withIssueExecutionLock(
-    input: { companyId: string; runId: string; now: Date },
+    input: { runId: string; now: Date },
     fn: (
       locked: LockedIssueExecution,
       ports: { host: WakeQueueHost; transaction: WakeQueueTransaction },
@@ -276,35 +262,25 @@ export type { PostCommitEffect, ReleaseOutcome };
  * opaque handle back and never touches this class directly.
  */
 export class TransactionScope {
-  private constructor(
-    private readonly companyId: string,
-    private readonly rawTx: unknown,
-  ) {}
+  private constructor(private readonly rawTx: unknown) {}
 
-  static create(companyId: string, rawTx: unknown): TransactionScope {
-    return new TransactionScope(companyId, rawTx);
+  static create(rawTx: unknown): TransactionScope {
+    return new TransactionScope(rawTx);
   }
 
-  /** Returns the bound transaction only when `companyId` matches the scope's own company. */
-  requireTx(companyId: string): unknown {
-    if (companyId !== this.companyId) {
-      throw new Error(
-        "wake-queue: the transaction scope belongs to a different company than the requested write",
-      );
-    }
+  requireTx(): unknown {
     return this.rawTx;
   }
 }
 
-/** Reads a scope's bound transaction. Rejects a missing scope with the same clear error as a mismatched one; never falls back to any other executor. */
+/** Reads a scope's bound transaction. Rejects a missing scope; never falls back to any other executor. */
 export function requireTransactionScopeTx(
   scope: TransactionScope | null | undefined,
-  companyId: string,
 ): unknown {
   if (!scope) {
     throw new Error("wake-queue: this call carries no transaction scope");
   }
-  return scope.requireTx(companyId);
+  return scope.requireTx();
 }
 
 /** The active execution run a new wake arrives behind. */
@@ -385,7 +361,6 @@ export interface WakeAdmissionReader {
   matchesActiveWakeActor(
     scope: TransactionScope,
     input: {
-      companyId: string;
       wakeupRequestId: string | null;
       requestedByActorType: string | null;
       requestedByActorId: string | null;
@@ -395,7 +370,6 @@ export interface WakeAdmissionReader {
   isSameExecutionAgent(
     scope: TransactionScope,
     input: {
-      companyId: string;
       activeExecutionRunAgentId: string;
       issueExecutionAgentNameKey: string | null;
       agentNameKey: string | null;
@@ -404,7 +378,6 @@ export interface WakeAdmissionReader {
   findExistingDeferredWake(
     scope: TransactionScope,
     input: {
-      companyId: string;
       agentId: string;
       issueId: string;
       durableActor?: { type: string | null; id: string | null };
@@ -418,7 +391,6 @@ export interface WakeAdmissionWriter {
   coalesceIntoActiveExecutionRun(
     scope: TransactionScope,
     input: {
-      companyId: string;
       activeExecutionRunId: string;
       mergedContextSnapshot: Record<string, unknown>;
       durableReceipt?: DurableWakeAdmissionReceipt;
@@ -435,7 +407,6 @@ export interface WakeAdmissionWriter {
   mergeIntoExistingDeferredWake(
     scope: TransactionScope,
     input: {
-      companyId: string;
       existingDeferredWakeId: string;
       mergedPayload: Record<string, unknown>;
       nextCoalescedCount: number;
@@ -449,7 +420,6 @@ export interface WakeAdmissionWriter {
   insertNewDeferredWake(
     scope: TransactionScope,
     input: {
-      companyId: string;
       agentId: string;
       source: string;
       triggerDetail: string | null;

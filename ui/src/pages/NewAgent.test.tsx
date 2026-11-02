@@ -52,8 +52,8 @@ vi.mock("@/api/secrets", () => ({ secretsApi: secrets }));
 vi.mock("@/api/adapters", () => ({
   adaptersApi: { list: async () => state.adapters },
 }));
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({ selectedCompanyId: "company-1" }),
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({ organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" } }),
 }));
 vi.mock("../context/BreadcrumbContext", () => ({
   useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }),
@@ -175,7 +175,7 @@ beforeEach(() => {
   api.getAdapterAuthSignal.mockResolvedValue({ status: "present" });
   api.getClaudeOAuthTokenStatus.mockRejectedValue(new ApiError("Not found", 404, null));
   api.testEnvironment.mockResolvedValue(pass);
-  api.hire.mockImplementation(async (_company, input) => ({
+  api.hire.mockImplementation(async (input) => ({
     agent: { ...input, id: "new-agent", status: "idle", urlKey: "atlas" },
   }));
   envApi.list.mockResolvedValue([
@@ -220,9 +220,9 @@ describe("New agent setup", () => {
     await settle();
     await click("GrokAPI");
     await click("Use saved API key");
-    expect(api.testEnvironment).toHaveBeenCalledWith("company-1", "paperclip_runner", expect.objectContaining({ environmentId: "grok-sandbox" }));
+    expect(api.testEnvironment).toHaveBeenCalledWith("paperclip_runner", expect.objectContaining({ environmentId: "grok-sandbox" }));
     await click("Finish setup");
-    expect(api.hire.mock.calls[0][1].defaultEnvironmentId).toBe("grok-sandbox");
+    expect(api.hire.mock.calls[0][0].defaultEnvironmentId).toBe("grok-sandbox");
   });
   it.each([false, true])("blocks direct runner setup links when the experiment is disabled (cloud=%s)", async (cloud) => {
     cache.setQueryData(queryKeys.health, { status: "ok", cloud: { managed: cloud } });
@@ -268,7 +268,7 @@ describe("New agent setup", () => {
       await click("GrokAPI");
       await fill("API key", "example-test-secret");
       await click("Connect");
-      expect(managedApi.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+      expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({
         provider: "xai", method: "api_key", apiKey: "example-test-secret",
       }));
     }
@@ -276,7 +276,7 @@ describe("New agent setup", () => {
     await fill("Model", model);
     await click("Run test");
     const binding = { provider: "xai", method, mode: "responsible_user" };
-    expect(api.testEnvironment).toHaveBeenLastCalledWith("company-1", adapterType, expect.objectContaining({
+    expect(api.testEnvironment).toHaveBeenLastCalledWith(adapterType, expect.objectContaining({
       environmentId: "sandbox-1",
       adapterConfig: expect.objectContaining({ model, ...(adapterType === "paperclip_runner" ? { provider: "acpx", acpxAgent: "grok", acpxPermissionMode: "approve-all" } : {}) }),
       aiConnection: binding,
@@ -284,7 +284,7 @@ describe("New agent setup", () => {
     }));
     await click("Finish setup");
     expect(api.hire).toHaveBeenCalledTimes(1);
-    expect(api.hire.mock.calls[0][1]).toMatchObject({
+    expect(api.hire.mock.calls[0][0]).toMatchObject({
       adapterType,
       defaultEnvironmentId: "sandbox-1",
       adapterConfig: { model, ...(adapterType === "paperclip_runner" ? { provider: "acpx", acpxAgent: "grok", acpxPermissionMode: "approve-all" } : {}) },
@@ -302,20 +302,20 @@ describe("New agent setup", () => {
     await fill("Branch", "master");
     await fill("CURSOR_API_KEY", "cursor-test-key");
     await click("Run test");
-    expect(api.testEnvironment.mock.calls[0][2]).toMatchObject({
+    expect(api.testEnvironment.mock.calls[0][1]).toMatchObject({
       adapterConfig: { repoUrl: "https://github.com/paperclipai/paperclip", repoStartingRef: "master" },
       testCredentials: { CURSOR_API_KEY: "cursor-test-key" },
     });
     expect(secrets.create).not.toHaveBeenCalled();
     await click("Finish setup");
-    const config = api.hire.mock.calls[0][1].adapterConfig;
+    const config = api.hire.mock.calls[0][0].adapterConfig;
     expect(config).toMatchObject({ repoUrl: "https://github.com/paperclipai/paperclip", repoStartingRef: "master", env: {
       CURSOR_API_KEY: { type: "secret_ref", secretId: "org-secret-1", version: "latest" },
     } });
     expect(config).not.toHaveProperty("repository");
     expect(config).not.toHaveProperty("branch");
     expect(JSON.stringify(config)).not.toContain("cursor-test-key");
-    expect(secrets.create).toHaveBeenCalledWith("company-1", expect.objectContaining({ value: "cursor-test-key" }));
+    expect(secrets.create).toHaveBeenCalledWith(expect.objectContaining({ value: "cursor-test-key" }));
   });
   it("requires a new Cursor Cloud key even when organization and personal keys exist", async () => {
     secrets.list.mockResolvedValue([{ id: "existing", key: "CURSOR_API_KEY", name: "Cursor", status: "active" }]);
@@ -328,8 +328,8 @@ describe("New agent setup", () => {
     expect(container.textContent).toContain("Enter a Cursor API key");
     await fill("CURSOR_API_KEY", "new-cursor-key");
     await click("Finish setup");
-    expect(secrets.create).toHaveBeenCalledWith("company-1", expect.objectContaining({ value: "new-cursor-key" }));
-    expect(api.hire.mock.calls[0][1].adapterConfig.env.CURSOR_API_KEY).toMatchObject({ type: "secret_ref", secretId: "org-secret-1" });
+    expect(secrets.create).toHaveBeenCalledWith(expect.objectContaining({ value: "new-cursor-key" }));
+    expect(api.hire.mock.calls[0][0].adapterConfig.env.CURSOR_API_KEY).toMatchObject({ type: "secret_ref", secretId: "org-secret-1" });
   });
   it.each([
     ["cursor", "CURSOR_API_KEY"],
@@ -339,8 +339,8 @@ describe("New agent setup", () => {
     await render(adapter);
     await fill(key, "adapter-test-key");
     await click("Finish setup");
-    expect(api.testEnvironment.mock.calls[0][2].testCredentials).toEqual({ [key]: "adapter-test-key" });
-    expect(api.hire.mock.calls[0][1].adapterConfig.env[key]).toMatchObject({ type: "secret_ref", secretId: "org-secret-1" });
+    expect(api.testEnvironment.mock.calls[0][1].testCredentials).toEqual({ [key]: "adapter-test-key" });
+    expect(api.hire.mock.calls[0][0].adapterConfig.env[key]).toMatchObject({ type: "secret_ref", secretId: "org-secret-1" });
     expect(container.querySelector('[aria-label="Thinking effort"]')).toBeNull();
   });
   it("defines a Kimi API model without overriding it with a CLI model alias", async () => {
@@ -352,7 +352,7 @@ describe("New agent setup", () => {
     await fill("Kimi API model name", "kimi-for-coding");
     await fill("Kimi API base URL", "https://api.kimi.com/coding/v1");
     await click("Finish setup");
-    const config = api.hire.mock.calls[0][1].adapterConfig;
+    const config = api.hire.mock.calls[0][0].adapterConfig;
     expect(config).not.toHaveProperty("model");
     expect(config.env).toMatchObject({
       KIMI_MODEL_NAME: { type: "plain", value: "kimi-for-coding" },
@@ -366,11 +366,11 @@ describe("New agent setup", () => {
     await fill("Hermes API base URL", "https://hermes.example.com");
     await fill("API_SERVER_KEY", "hermes-test-key");
     await click("Finish setup");
-    expect(api.testEnvironment.mock.calls[0][2]).toMatchObject({
+    expect(api.testEnvironment.mock.calls[0][1]).toMatchObject({
       adapterConfig: { apiBaseUrl: "https://hermes.example.com" },
       testCredentials: { API_SERVER_KEY: "hermes-test-key" },
     });
-    expect(api.hire.mock.calls[0][1].adapterConfig.apiKey).toMatchObject({ type: "secret_ref", secretId: "org-secret-1" });
+    expect(api.hire.mock.calls[0][0].adapterConfig.apiKey).toMatchObject({ type: "secret_ref", secretId: "org-secret-1" });
     expect(JSON.stringify(api.hire.mock.calls)).not.toContain("hermes-test-key");
   });
   it("uses the shared Grok connection flow and hides ignored Kimi and OpenCode effort controls", async () => {
@@ -435,13 +435,12 @@ describe("New agent setup", () => {
       await render(adapter);
       await connect(adapter === "claude_local" ? "Claude" : "OpenAI");
       expect(api.testEnvironment).toHaveBeenCalledWith(
-        "company-1",
         adapter,
         expect.objectContaining({ environmentId: "local-1" }),
       );
       await click("Finish setup");
       expect(api.hire).toHaveBeenCalledTimes(1);
-      expect(api.hire.mock.calls[0][1]).toMatchObject({
+      expect(api.hire.mock.calls[0][0]).toMatchObject({
         name: "Atlas",
         adapterType: adapter,
         reportsTo: "ceo",
@@ -467,12 +466,12 @@ describe("New agent setup", () => {
     await fill("API key", "connection-key");
     await click("Connect");
     const binding = { provider: key === "ANTHROPIC_API_KEY" ? "anthropic" : "openai", method: "api_key", mode: "responsible_user" };
-    expect(managedApi.create).toHaveBeenCalledWith("company-1", expect.objectContaining({ apiKey: "connection-key", provider: binding.provider }));
-    expect(api.testEnvironment.mock.calls[0][2].testCredentials).toEqual({});
-    expect(api.testEnvironment.mock.calls[0][2].aiConnection).toEqual(binding);
+    expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "connection-key", provider: binding.provider }));
+    expect(api.testEnvironment.mock.calls[0][1].testCredentials).toEqual({});
+    expect(api.testEnvironment.mock.calls[0][1].aiConnection).toEqual(binding);
     expect(secrets.createUserSecretDefinition).not.toHaveBeenCalled();
     await click("Finish setup");
-    expect(api.hire.mock.calls[0][1].runtimeConfig.aiConnection).toEqual(binding);
+    expect(api.hire.mock.calls[0][0].runtimeConfig.aiConnection).toEqual(binding);
     expect(managedApi.create).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(api.hire.mock.calls)).not.toContain("connection-key");
   });
@@ -491,10 +490,10 @@ describe("New agent setup", () => {
     expect((container.querySelector("select[aria-label='Saved API key']") as HTMLSelectElement).value).toBe("user:existing-key");
     await click("Use saved API key");
     const binding = { type: "user_secret_ref", key, version: "latest" };
-    expect(api.testEnvironment.mock.calls[0][2].adapterConfig.env[key]).toEqual(binding);
-    expect(api.testEnvironment.mock.calls[0][2].testCredentials).toEqual({});
+    expect(api.testEnvironment.mock.calls[0][1].adapterConfig.env[key]).toEqual(binding);
+    expect(api.testEnvironment.mock.calls[0][1].testCredentials).toEqual({});
     await click("Finish setup");
-    expect(api.hire.mock.calls[0][1].adapterConfig.env[key]).toEqual(binding);
+    expect(api.hire.mock.calls[0][0].adapterConfig.env[key]).toEqual(binding);
     expect(secrets.createUserSecretDefinition).not.toHaveBeenCalled();
     expect(secrets.createMyUserSecret).not.toHaveBeenCalled();
     expect(secrets.rotateMyUserSecret).not.toHaveBeenCalled();
@@ -508,15 +507,15 @@ describe("New agent setup", () => {
       await click("Run test");
       expect(secrets.rotateMyUserSecret).not.toHaveBeenCalled();
       expect(secrets.createMyUserSecret).not.toHaveBeenCalled();
-      expect(api.testEnvironment.mock.calls[0][2].testCredentials).toEqual({ OPENROUTER_API_KEY: "example-test-secret" });
+      expect(api.testEnvironment.mock.calls[0][1].testCredentials).toEqual({ OPENROUTER_API_KEY: "example-test-secret" });
       await click("Finish setup");
-      expect(api.hire.mock.calls[0][1].adapterConfig.env.OPENROUTER_API_KEY).toEqual({
+      expect(api.hire.mock.calls[0][0].adapterConfig.env.OPENROUTER_API_KEY).toEqual({
         type: "secret_ref",
         secretId: "org-secret-1",
         version: "latest",
       });
       expect(secrets.create).toHaveBeenCalledWith(
-        "company-1", expect.objectContaining({ value: "example-test-secret" }),
+        expect.objectContaining({ value: "example-test-secret" }),
       );
       expect(JSON.stringify(api.hire.mock.calls)).not.toContain(
         "example-test-secret",
@@ -544,18 +543,18 @@ describe("New agent setup", () => {
     await act(async () => connectButton.click());
     await settle();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(managedApi.setDefault).toHaveBeenCalledWith("company-1", "managed-grant");
-    expect(managedApi.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(managedApi.setDefault).toHaveBeenCalledWith("managed-grant");
+    expect(managedApi.create).toHaveBeenCalledWith(expect.objectContaining({
       provider: "openrouter", method: "api_key", apiKey: "example-test-secret",
     }));
     const binding = { provider: "openrouter", method: "api_key", mode: "responsible_user" };
     await click("Run test");
-    expect(api.testEnvironment.mock.calls[0][2]).toEqual(expect.objectContaining({
+    expect(api.testEnvironment.mock.calls[0][1]).toEqual(expect.objectContaining({
       aiConnection: binding, testCredentials: {},
       adapterConfig: expect.objectContaining({ model }),
     }));
     await click("Finish setup");
-    expect(api.hire.mock.calls[0][1]).toEqual(expect.objectContaining({
+    expect(api.hire.mock.calls[0][0]).toEqual(expect.objectContaining({
       adapterType: "opencode_local",
       runtimeConfig: expect.objectContaining({ aiConnection: binding }),
       adapterConfig: expect.objectContaining({ model }),
@@ -573,7 +572,7 @@ describe("New agent setup", () => {
         await connect(runner === "claude" ? "Claude" : "OpenAI");
       else await fill("Model", "openrouter/anthropic/claude-sonnet-4.6");
       await click("Finish setup");
-      const config = api.hire.mock.calls[0][1].adapterConfig;
+      const config = api.hire.mock.calls[0][0].adapterConfig;
       expect(config.provider).toBe(runner === "claude" ? "acpx" : runner);
       if (runner === "claude") {
         expect(config.acpxAgent).toBe("claude");
@@ -603,7 +602,7 @@ describe("New agent setup", () => {
     await click("Run test");
     expect(secrets.rotateMyUserSecret).not.toHaveBeenCalled();
     expect(secrets.createUserSecretDefinition).not.toHaveBeenCalled();
-    expect(api.testEnvironment.mock.calls[0][2].testCredentials.OPENROUTER_API_KEY).toBe("invalid-replacement");
+    expect(api.testEnvironment.mock.calls[0][1].testCredentials.OPENROUTER_API_KEY).toBe("invalid-replacement");
     await click("Finish setup");
     expect(api.hire).not.toHaveBeenCalled();
   });
@@ -676,10 +675,10 @@ describe("New agent setup", () => {
     await click("ClaudeSubscription");
     await click("Use saved subscription");
     await click("Finish setup");
-    expect(api.testEnvironment.mock.calls[0][2].environmentId).toBe(
+    expect(api.testEnvironment.mock.calls[0][1].environmentId).toBe(
       "sandbox-1",
     );
-    expect(api.hire.mock.calls[0][1]).toMatchObject({
+    expect(api.hire.mock.calls[0][0]).toMatchObject({
       defaultEnvironmentId: "sandbox-1",
       applyStoredClaudeLogin: true,
     });

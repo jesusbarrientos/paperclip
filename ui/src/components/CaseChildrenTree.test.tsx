@@ -15,8 +15,8 @@ vi.mock("@/lib/router", () => ({
   Link: ({ children, to, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
     <a href={to} {...props}>{children}</a>
   ),
-  useCaseHref: () => (...segments: string[]) =>
-    `/PAP/${["cases", ...segments].filter(Boolean).join("/")}`,
+  caseHref: (...segments: string[]) =>
+    `/${["cases", ...segments].filter(Boolean).join("/")}`,
 }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,7 +24,6 @@ vi.mock("@/lib/router", () => ({
 function child(overrides: Partial<CaseSummary>): CaseSummary {
   return {
     id: Math.random().toString(36).slice(2),
-    companyId: "c1",
     projectId: null,
     caseNumber: 1,
     identifier: "PAP-C1",
@@ -76,9 +75,9 @@ describe("CaseChildrenTree", () => {
     // StatusBadge renders the status with underscores as spaces.
     expect(text).toContain("in review");
     expect(text).toContain("Hero image");
-    expect(container.querySelector('a[href="/PAP/cases/PAP-C8"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/PAP/cases/PAP-C9"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/PAP/cases/PAP-C8"]')?.className).not.toContain("border");
+    expect(container.querySelector('a[href="/cases/PAP-C8"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/cases/PAP-C9"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/cases/PAP-C8"]')?.className).not.toContain("border");
     act(() => root.unmount());
   });
 

@@ -59,7 +59,7 @@ Quick checks:
 
 ```sh
 curl http://localhost:3100/api/health
-curl http://localhost:3100/api/companies
+curl http://localhost:3100/api/organization
 ```
 
 Reset local dev DB:
@@ -71,13 +71,14 @@ pnpm dev
 
 ## 5. Core Engineering Rules
 
-1. Keep changes company-scoped.
-Every domain entity should be scoped to a company and company boundaries must be enforced in routes/services.
-
-Explicit exception: announcement dismissals are instance-wide user preferences,
-keyed by user and announcement so they persist across companies. Their audit
-context must still validate company membership. The announcement publication-ID
-registry is instance-level feed metadata; it contains no company or user data.
+1. One instance, one organization.
+A Paperclip instance serves exactly one organization. Domain tables carry no
+tenant column and routes carry no tenant segment (`/api/issues`, not
+`/api/companies/:id/issues`). Do not reintroduce a company or organization id
+as a scoping key. Access is enforced through organization membership and
+permission grants (`assertOrgAccess`, `access.decide`), not through ids in the
+request. Organization-level settings (name, issue prefix, budget, governance)
+live on the single organization row, read via `GET /api/organization`.
 
 2. Keep contracts synchronized.
 If you change schema/API behavior, update all impacted layers:
@@ -188,11 +189,11 @@ If anything cannot be run, explicitly report what was not run and why.
 - Base path: `/api`
 - Board access is treated as full-control operator context
 - Agent access uses bearer API keys (`agent_api_keys`), hashed at rest
-- Agent keys must not access other companies
+- Agent keys are bound to an agent; revoked or terminated agents lose access
 
 When adding endpoints:
 
-- apply company access checks
+- apply organization access checks (`assertOrgAccess`) and permission grants
 - enforce actor permissions (board vs agent)
 - write activity log entries for mutations
 - return consistent HTTP errors (`400/401/403/404/409/422/500`)
@@ -200,7 +201,7 @@ When adding endpoints:
 ## 9. UI Expectations
 
 - Keep routes and nav aligned with available API surface
-- Use company selection context for company-scoped pages
+- Read organization data through `useOrganization()`
 - Surface failures clearly; do not silently ignore API errors
 - Form and wizard footers: keep Save & exit (or Cancel/Back) left and the primary action right in the same vertically aligned row. Each step owns the entire footer; never append Save & exit as a separate row. See `DESIGN.md`.
 

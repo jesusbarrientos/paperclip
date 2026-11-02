@@ -36,7 +36,7 @@ export async function resolveInstructionActor(
       ignoreInstanceAdmin: actor.ignoreInstanceAdmin,
     };
   }
-  if (actor.type !== "agent" || !actor.agentId || !actor.companyId)
+  if (actor.type !== "agent" || !actor.agentId)
     throw forbidden("Instruction identity is missing");
   let responsibleUserId: string | null = null;
   let keyScope = actor.keyScope;
@@ -65,7 +65,6 @@ export async function resolveInstructionActor(
       .where(
         and(
           eq(heartbeatRuns.id, actor.runId),
-          eq(heartbeatRuns.companyId, actor.companyId),
           eq(heartbeatRuns.agentId, actor.agentId),
         ),
       );
@@ -86,7 +85,6 @@ export async function resolveInstructionActor(
           and(
             eq(runIdentityContexts.id, run.activeIdentityContextId),
             eq(runIdentityContexts.runId, run.id),
-            eq(runIdentityContexts.companyId, run.companyId),
             eq(runIdentityContexts.status, "accepted"),
           ),
         );
@@ -123,7 +121,6 @@ export async function resolveInstructionActor(
   return {
     type: "agent",
     agentId: actor.agentId,
-    companyId: actor.companyId,
     runId: actor.runId,
     keyId: actor.keyId,
     keyScope,
@@ -136,11 +133,11 @@ export async function resolveInstructionActor(
 export async function authorizeInstructionRead(
   db: Connection,
   actor: AuthorizationActor,
-  target: { companyId: string; id: string },
+  target: { id: string },
 ) {
   const bound = await resolveInstructionActor(db, actor);
   const access = authorizationService(db);
-  const resource = { type: "agent" as const, companyId: target.companyId, agentId: target.id };
+  const resource = { type: "agent" as const, agentId: target.id };
   const peer = bound.type === "agent" && bound.agentId !== target.id;
   const decision = await access.decide({
     actor: bound,
@@ -156,7 +153,7 @@ export async function authorizeInstructionRead(
 export async function authorizeInstructionCommit(
   db: Connection,
   actor: AuthorizationActor,
-  target: { companyId: string; id: string },
+  target: { id: string },
 ) {
   const bound = await resolveInstructionActor(db, actor);
   const access = authorizationService(db);
@@ -165,7 +162,6 @@ export async function authorizeInstructionCommit(
     action: "agent_instructions:update" as const,
     resource: {
       type: "agent" as const,
-      companyId: target.companyId,
       agentId: target.id,
     },
     scope: { targetAgentId: target.id, requiresChangeGrant: true },
@@ -177,7 +173,6 @@ export async function authorizeInstructionCommit(
     bound.type === "agent"
   ) {
     await changeConsentGateService(db).assertConsented({
-      companyId: target.companyId,
       actorAgentId: bound.agentId,
       actorRunId: bound.runId,
       targetKeys: [agentInstructionsChangeTargetKey(target.id)],

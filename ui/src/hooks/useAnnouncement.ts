@@ -6,7 +6,6 @@ import { announcementStoragePrefix, readAnnouncementDismissals, saveAnnouncement
 export const ANNOUNCEMENT_SETTLE_MS = 3000;
 interface Options {
   userId: string | null;
-  companyId: string | null;
   enabled: boolean;
   onSaveFailure: (savedLocally: boolean) => void;
 }
@@ -33,12 +32,12 @@ export function useAnnouncement(options: Options) {
     const active = () => !disposed && latest.current.userId === userId && latest.current.enabled;
 
     async function sync(id: string, savedLocally = true) {
-      if (!active() || writes.has(id) || !latest.current.companyId) return;
+      if (!active() || writes.has(id)) return;
       const controller = new AbortController();
       writes.set(id, controller);
       const timer = setTimeout(() => controller.abort(), 10_000);
       try {
-        await announcementsApi.dismiss(id, latest.current.companyId, controller.signal);
+        await announcementsApi.dismiss(id, controller.signal);
         if (active()) saveAnnouncementDismissal(userId!, id, false);
       } catch {
         if (active() && !warned.has(id)) {

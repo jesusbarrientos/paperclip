@@ -554,12 +554,12 @@ describe("HTTP logger redaction", () => {
     const app = express();
     app.use(express.json());
     app.use(createHttpLogger(testLogger));
-    app.post("/api/companies/:companyId/secrets", (_req, res) => {
+    app.post("/api/secrets", (_req, res) => {
       res.status(422).json({ error: "validation failed" });
     });
 
     const response = await request(app)
-      .post("/api/companies/company-1/secrets")
+      .post("/api/secrets")
       .send({
         name: "OpenAI",
         value: "value-canary-4c845d",

@@ -37,7 +37,7 @@ import {
 } from "../services/invite-rate-limit.js";
 import {
   assertBoard,
-  assertCompanyAccess,
+  assertOrgAccess,
   getAccessibleResource,
   getActorInfo,
 } from "./authz.js";
@@ -106,17 +106,15 @@ export function chatChannelRoutes(db: Db, options: ChatChannelRouteOptions) {
 
   async function assertConnectionManager(
     req: ExpressRequest,
-    companyId: string,
   ) {
     assertBoard(req);
-    assertCompanyAccess(req, companyId);
+    assertOrgAccess(req);
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)
       return;
     const userId = req.actor.userId;
     if (
       userId &&
       (await access.hasPermission(
-        companyId,
         "user",
         userId,
         "tools:manage_connections",
@@ -132,26 +130,24 @@ export function chatChannelRoutes(db: Db, options: ChatChannelRouteOptions) {
   ): Promise<boolean> {
     if (!(await assertEndpointAccess(req, res, service))) return false;
     const endpoint = await service.get(endpointId(req));
-    await assertConnectionManager(req, endpoint.companyId);
+    await assertConnectionManager(req);
     return true;
   }
 
-  router.get("/companies/:companyId/chat-endpoints", async (req, res) => {
+  router.get("/chat-endpoints", async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    res.json(await service.list(companyId));
+    assertOrgAccess(req);
+    res.json(await service.list());
   });
 
   router.post(
-    "/companies/:companyId/chat-endpoints",
+    "/chat-endpoints",
     validate(createChatEndpointSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await assertConnectionManager(req, companyId);
+      await assertConnectionManager(req);
       res
         .status(201)
-        .json(await service.create(companyId, req.body, actorUserId(req)));
+        .json(await service.create(req.body, actorUserId(req)));
     },
   );
 

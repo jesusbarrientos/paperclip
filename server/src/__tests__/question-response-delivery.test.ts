@@ -111,7 +111,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Runner",
       role: "engineer",
       status: "active",
@@ -122,14 +121,12 @@ describeEmbeddedPostgres("question response delivery", () => {
     });
     await db.insert(goals).values({
       id: goalId,
-      companyId,
       title: "Test",
       level: "task",
       status: "active",
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       goalId,
       title: "Deliver answers",
       status: "in_progress",
@@ -138,7 +135,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId,
       agentId,
       invocationSource: "manual",
       status: args.sourceStatus ?? "succeeded",
@@ -152,7 +148,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     if (successorRunId && args.successorStatus) {
       await db.insert(heartbeatRuns).values({
         id: successorRunId,
-        companyId,
         agentId,
         invocationSource: "manual",
         status: args.successorStatus,
@@ -169,7 +164,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     if (sourceCommentId) {
       await db.insert(issueComments).values({
         id: sourceCommentId,
-        companyId,
         issueId,
         authorUserId: "external-user",
         body: args.sourceCommentBody!,
@@ -178,7 +172,7 @@ describeEmbeddedPostgres("question response delivery", () => {
 
     const interactionSvc = issueThreadInteractionService(db);
     const interaction = await interactionSvc.create(
-      { id: issueId, companyId },
+      { id: issueId },
       {
         kind: "ask_user_questions",
         continuationPolicy: "wake_assignee",
@@ -262,7 +256,7 @@ describeEmbeddedPostgres("question response delivery", () => {
       { agentId, runId: sourceRunId },
     );
     const answered = await interactionSvc.answerQuestions(
-      { id: issueId, companyId, status: "in_progress" },
+      { id: issueId, status: "in_progress" },
       interaction.id,
       {
         answers: [
@@ -278,7 +272,6 @@ describeEmbeddedPostgres("question response delivery", () => {
       { userId: "board-user" },
     );
     return {
-      companyId,
       agentId,
       issueId,
       sourceRunId,
@@ -292,7 +285,7 @@ describeEmbeddedPostgres("question response delivery", () => {
     const seeded = await seed({ successorStatus: "running" });
     const steer = vi.fn().mockResolvedValue({ turnId: "unexpected" });
     const wakeup = vi.fn().mockImplementation(async () => {
-      await db.insert(agentWakeupRequests).values({ companyId: seeded.companyId, agentId: seeded.agentId,
+      await db.insert(agentWakeupRequests).values({ agentId: seeded.agentId,
         source: "automation", reason: "issue_commented", status: "deferred_issue_execution",
         idempotencyKey: `question-response:${seeded.interaction.id}`,
         payload: { issueId: seeded.issueId, mutation: "interaction", interactionId: seeded.interaction.id,
@@ -357,7 +350,6 @@ describeEmbeddedPostgres("question response delivery", () => {
         .insert(heartbeatRuns)
         .values({
           id: randomUUID(),
-          companyId: seeded.companyId,
           agentId: seeded.agentId,
           invocationSource: "automation",
           status: "queued",
@@ -451,7 +443,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const otherCommentId = randomUUID();
     await db.insert(issues).values({
       id: otherIssueId,
-      companyId: seeded.companyId,
       goalId,
       title: "Unrelated issue",
       status: "todo",
@@ -459,7 +450,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     });
     await db.insert(issueComments).values({
       id: otherCommentId,
-      companyId: seeded.companyId,
       issueId: otherIssueId,
       authorUserId: "external-user",
       body: "This other issue must remain outside the continuation.",
@@ -479,7 +469,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const fallbackRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: fallbackRunId,
-      companyId: seeded.companyId,
       agentId: seeded.agentId,
       invocationSource: "automation",
       status: "queued",
@@ -632,7 +621,6 @@ describeEmbeddedPostgres("question response delivery", () => {
         .insert(heartbeatRuns)
         .values({
           id: fallbackRunId,
-          companyId: seeded.companyId,
           agentId: seeded.agentId,
           invocationSource: "automation",
           status: "queued",
@@ -680,7 +668,6 @@ describeEmbeddedPostgres("question response delivery", () => {
         .insert(heartbeatRuns)
         .values({
           id: fallbackRunId,
-          companyId: seeded.companyId,
           agentId: seeded.agentId,
           invocationSource: "automation",
           status: "queued",
@@ -729,7 +716,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const seeded = await seed({ sourceStatus: "running" });
     const idempotencyKey = `question-response:${seeded.interaction.id}`;
     const request = {
-      companyId: seeded.companyId,
       agentId: seeded.agentId,
       source: "automation",
       triggerDetail: "system",
@@ -769,7 +755,6 @@ describeEmbeddedPostgres("question response delivery", () => {
           options: { idempotencyKey?: string | null },
         ) => {
           const request = {
-            companyId: seeded.companyId,
             agentId: seeded.agentId,
             source: "automation",
             triggerDetail: "system",
@@ -785,7 +770,6 @@ describeEmbeddedPostgres("question response delivery", () => {
             .returning();
           await db.insert(heartbeatRuns).values({
             id: fallbackRunId,
-            companyId: seeded.companyId,
             agentId: seeded.agentId,
             invocationSource: "automation",
             status: "queued",
@@ -834,7 +818,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const replacementAgentId = randomUUID();
     await db.insert(agents).values({
       id: replacementAgentId,
-      companyId: seeded.companyId,
       name: "Replacement runner",
       role: "engineer",
       status: "active",
@@ -848,7 +831,6 @@ describeEmbeddedPostgres("question response delivery", () => {
       .set({ assigneeAgentId: replacementAgentId })
       .where(eq(issues.id, seeded.issueId));
     await db.insert(agentWakeupRequests).values({
-      companyId: seeded.companyId,
       agentId: seeded.agentId,
       source: "automation",
       triggerDetail: "system",
@@ -882,7 +864,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const [wakeRequest] = await db
       .insert(agentWakeupRequests)
       .values({
-        companyId: seeded.companyId,
         agentId: seeded.agentId,
         source: "automation",
         triggerDetail: "system",
@@ -894,7 +875,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const [wakeRun] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: seeded.companyId,
         agentId: seeded.agentId,
         invocationSource: "automation",
         status: "queued",
@@ -927,7 +907,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const [wakeRequest] = await db
       .insert(agentWakeupRequests)
       .values({
-        companyId: seeded.companyId,
         agentId: seeded.agentId,
         source: "automation",
         triggerDetail: "system",
@@ -940,7 +919,6 @@ describeEmbeddedPostgres("question response delivery", () => {
     const [wakeRun] = await db
       .insert(heartbeatRuns)
       .values({
-        companyId: seeded.companyId,
         agentId: seeded.agentId,
         invocationSource: "automation",
         status: "succeeded",
@@ -1090,7 +1068,6 @@ describeEmbeddedPostgres("question response delivery", () => {
         .insert(heartbeatRuns)
         .values({
           id: secondRunId,
-          companyId: seeded.companyId,
           agentId: seeded.agentId,
           invocationSource: "automation",
           status: "queued",
@@ -1145,7 +1122,6 @@ describeEmbeddedPostgres("question response delivery", () => {
           .insert(heartbeatRuns)
           .values({
             id: fallbackRunId,
-            companyId: seeded.companyId,
             agentId: seeded.agentId,
             invocationSource: "automation",
             status: "queued",
@@ -1193,7 +1169,6 @@ describeEmbeddedPostgres("question response delivery", () => {
         .insert(heartbeatRuns)
         .values({
           id: fallbackRunId,
-          companyId: seeded.companyId,
           agentId: seeded.agentId,
           invocationSource: "automation",
           status: "queued",

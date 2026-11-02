@@ -17,7 +17,6 @@ function act(callback: () => void | Promise<void>) {
 }
 
 const companyState = vi.hoisted(() => ({
-  selectedCompanyId: "company-1",
 }));
 
 const dialogState = vi.hoisted(() => ({
@@ -51,8 +50,8 @@ const mockAuthApi = vi.hoisted(() => ({
   getSession: vi.fn(),
 }));
 
-vi.mock("../context/CompanyContext", () => ({
-  useCompany: () => companyState,
+vi.mock("../context/OrganizationContext", () => ({
+  useOrganization: () => companyState,
 }));
 
 vi.mock("../context/DialogContext", () => ({
@@ -237,7 +236,7 @@ describe("CommandPalette", () => {
     });
 
     await waitForAssertion(() => {
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
+      expect(mockIssuesApi.list).toHaveBeenCalledWith({
         q: "pull/3303",
         limit: 10,
         includeRoutineExecutions: true,
@@ -339,15 +338,15 @@ describe("CommandPalette", () => {
       { id: "p2", urlKey: "billing", name: "Billing Service", description: null, archivedAt: null },
     ];
     mockProjectsApi.list.mockResolvedValue(projects);
-    mockIssuesApi.list.mockImplementation((_companyId: string, opts?: { q?: string }) =>
+    mockIssuesApi.list.mockImplementation((opts?: { q?: string }) =>
       Promise.resolve(opts?.q ? [{ id: "i1", identifier: "ENG-9", title: "Fix login" }] : []),
     );
 
     const { root } = renderWithQueryClient(<CommandPalette />, container, (queryClient) => {
       // Seed the caches so the already-loaded data is available synchronously —
       // this harness's flush model doesn't reliably propagate fresh async fetches.
-      queryClient.setQueryData(queryKeys.projects.list("company-1"), projects);
-      queryClient.setQueryData(queryKeys.issues.search("company-1", "mob", undefined, 10), [
+      queryClient.setQueryData(queryKeys.projects.list(), projects);
+      queryClient.setQueryData(queryKeys.issues.search("mob", undefined, 10), [
         { id: "i1", identifier: "ENG-9", title: "Fix login" },
       ]);
     });
@@ -478,7 +477,7 @@ describe("CommandPalette", () => {
     });
 
     await waitForAssertion(() => {
-      expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
+      expect(mockIssuesApi.list).toHaveBeenCalledWith({
         q: "auth",
         limit: 10,
         includeRoutineExecutions: true,

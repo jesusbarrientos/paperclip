@@ -29,7 +29,6 @@ import {
 } from "./common.js";
 
 interface SkillsOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface SkillFileOptions extends SkillsOptions {
@@ -165,9 +164,9 @@ export function registerSkillsCommands(program: Command): void {
       .option("--force", "Replace a same-key catalog-managed skill when the server allows it", false)
       .action(async (catalogRef: string, opts: CatalogInstallOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const result = await ctx.api.post<CompanySkillInstallCatalogResult>(
-            `/api/companies/${ctx.companyId}/skills/install-catalog`,
+            `/api/skills/install-catalog`,
             {
               catalogSkillId: catalogRef,
               slug: opts.as,
@@ -182,8 +181,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -192,7 +190,7 @@ export function registerSkillsCommands(program: Command): void {
       .description("List company skills")
       .action(async (opts: SkillsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const rows = await listCompanySkills(ctx);
           if (ctx.json) {
             printOutput(rows, { json: true });
@@ -202,8 +200,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -213,17 +210,16 @@ export function registerSkillsCommands(program: Command): void {
       .argument("<skillRef>", "Company skill ID, key, or unique slug")
       .action(async (skillRef: string, opts: SkillsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const skill = await resolveCompanySkill(ctx, skillRef);
           const detail = await ctx.api.get<CompanySkillDetail>(
-            `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}`,
+            `/api/skills/${encodeURIComponent(skill.id)}`,
           );
           printOutput(detail, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -234,11 +230,11 @@ export function registerSkillsCommands(program: Command): void {
       .option("--path <path>", "Relative file path", "SKILL.md")
       .action(async (skillRef: string, opts: SkillFileOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const skill = await resolveCompanySkill(ctx, skillRef);
           const params = new URLSearchParams({ path: opts.path?.trim() || "SKILL.md" });
           const file = await ctx.api.get<CompanySkillFileDetail>(
-            `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}/files?${params.toString()}`,
+            `/api/skills/${encodeURIComponent(skill.id)}/files?${params.toString()}`,
           );
           if (ctx.json) {
             printOutput(file, { json: true });
@@ -251,8 +247,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -262,9 +257,9 @@ export function registerSkillsCommands(program: Command): void {
       .argument("<source>", "Skill source")
       .action(async (source: string, opts: SkillsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const result = await ctx.api.post<CompanySkillImportResult>(
-            `/api/companies/${ctx.companyId}/skills/import`,
+            `/api/skills/import`,
             { source },
           );
           if (ctx.json) {
@@ -281,8 +276,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -295,10 +289,10 @@ export function registerSkillsCommands(program: Command): void {
       .option("--body-file <path>", "Markdown body file; use - to read stdin")
       .action(async (opts: SkillCreateOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const markdown = opts.bodyFile ? await readBodyFile(opts.bodyFile) : undefined;
           const created = await ctx.api.post<CompanySkill>(
-            `/api/companies/${ctx.companyId}/skills`,
+            `/api/skills`,
             {
               name: opts.name,
               slug: opts.slug,
@@ -314,8 +308,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -326,9 +319,9 @@ export function registerSkillsCommands(program: Command): void {
       .option("--workspace-id <id>", "Workspace ID to scan; may be repeated", collectOptionValue, [] as string[])
       .action(async (opts: SkillScanProjectsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const result = await ctx.api.post<CompanySkillProjectScanResult>(
-            `/api/companies/${ctx.companyId}/skills/scan-projects`,
+            `/api/skills/scan-projects`,
             {
               projectIds: emptyToUndefined(opts.projectId),
               workspaceIds: emptyToUndefined(opts.workspaceId),
@@ -344,8 +337,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -355,7 +347,7 @@ export function registerSkillsCommands(program: Command): void {
       .argument("[skillRef]", "Company skill ID, key, or unique slug")
       .action(async (skillRef: string | undefined, opts: SkillsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const rows = await checkCompanySkills(ctx, skillRef);
           if (ctx.json) {
             printOutput(rows, { json: true });
@@ -365,8 +357,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -378,7 +369,7 @@ export function registerSkillsCommands(program: Command): void {
       .option("--force", "Discard local-modification or soft-audit holds; hard-stop audit findings still fail", false)
       .action(async (skillRef: string | undefined, opts: SkillUpdateOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           if (opts.all && skillRef?.trim()) {
             throw new Error("Use either a skill reference or --all, not both.");
           }
@@ -393,8 +384,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -404,7 +394,7 @@ export function registerSkillsCommands(program: Command): void {
       .argument("[skillRef]", "Company skill ID, key, or unique slug")
       .action(async (skillRef: string | undefined, opts: SkillsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const rows = await auditCompanySkills(ctx, skillRef);
           if (ctx.json) {
             printOutput(rows.length === 1 && skillRef ? rows[0]?.audit : rows, { json: true });
@@ -414,8 +404,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -427,11 +416,11 @@ export function registerSkillsCommands(program: Command): void {
       .option("--force", "Discard local modifications or accept soft audit warnings; hard-stop audit findings still fail", false)
       .action(async (skillRef: string, opts: ConfirmedSkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const skill = await resolveCompanySkill(ctx, skillRef);
           await confirmDangerousAction(opts.yes, `Reset catalog skill "${skill.name}" (${skill.key}) to its pinned origin?`);
           const reset = await ctx.api.post<CompanySkill>(
-            `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}/reset`,
+            `/api/skills/${encodeURIComponent(skill.id)}/reset`,
             { force: opts.force || undefined },
           );
           if (ctx.json) {
@@ -442,8 +431,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -454,11 +442,11 @@ export function registerSkillsCommands(program: Command): void {
       .option("--yes", "Confirm removal without prompting", false)
       .action(async (skillRef: string, opts: ConfirmedSkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const skill = await resolveCompanySkill(ctx, skillRef);
           await confirmDangerousAction(opts.yes, `Remove company skill "${skill.name}" (${skill.key})?`);
           const removed = await ctx.api.delete<CompanySkill>(
-            `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}`,
+            `/api/skills/${encodeURIComponent(skill.id)}`,
           );
           if (ctx.json) {
             printOutput(removed, { json: true });
@@ -468,8 +456,7 @@ export function registerSkillsCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   registerAgentSkillCommands(skills);
@@ -485,7 +472,7 @@ function registerAgentSkillCommands(skills: Command): void {
       .argument("<agentRef>", "Agent ID or shortname/url-key")
       .action(async (agentRef: string, opts: SkillsOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const agentRow = await resolveAgent(ctx, agentRef);
           const snapshot = await ctx.api.get<AgentSkillSnapshot>(
             `/api/agents/${encodeURIComponent(agentRow.id)}/skills`,
@@ -498,8 +485,7 @@ function registerAgentSkillCommands(skills: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -518,7 +504,7 @@ function registerAgentSkillCommands(skills: Command): void {
           if (desiredSkills.length === 0) {
             throw new Error("At least one --skill value is required for skills agent sync.");
           }
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const agentRow = await resolveAgent(ctx, agentRef);
           const mode = agentSkillAssignmentModeSchema.parse(opts.mode);
           const snapshot = await ctx.api.post<AgentSkillSnapshot>(
@@ -536,8 +522,7 @@ function registerAgentSkillCommands(skills: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 
   addCommonClientOptions(
@@ -548,7 +533,7 @@ function registerAgentSkillCommands(skills: Command): void {
       .option("--yes", "Confirm clear without prompting", false)
       .action(async (agentRef: string, opts: ConfirmedSkillOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const agentRow = await resolveAgent(ctx, agentRef);
           await confirmDangerousAction(
             opts.yes,
@@ -569,13 +554,12 @@ function registerAgentSkillCommands(skills: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: true },
+      })
   );
 }
 
 async function listCompanySkills(ctx: ResolvedClientContext): Promise<CompanySkillListItem[]> {
-  return (await ctx.api.get<CompanySkillListItem[]>(`/api/companies/${ctx.companyId}/skills`)) ?? [];
+  return (await ctx.api.get<CompanySkillListItem[]>(`/api/skills`)) ?? [];
 }
 
 async function listCatalogSkills(
@@ -643,7 +627,7 @@ async function checkCompanySkills(
   const rows: CompanySkillCheckRow[] = [];
   for (const skill of selected) {
     const status = await ctx.api.get<CompanySkillUpdateStatus>(
-      `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}/update-status`,
+      `/api/skills/${encodeURIComponent(skill.id)}/update-status`,
     );
     if (!status) {
       throw new Error(`No update status returned for skill ${skill.key}.`);
@@ -660,7 +644,7 @@ async function updateOneCompanySkill(
 ): Promise<CompanySkillUpdateRow> {
   const skill = await resolveCompanySkill(ctx, skillRef);
   const updated = await ctx.api.post<CompanySkill>(
-    `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}/install-update`,
+    `/api/skills/${encodeURIComponent(skill.id)}/install-update`,
     { force: opts.force || undefined },
   );
   return {
@@ -694,7 +678,7 @@ async function updateAllCompanySkills(ctx: ResolvedClientContext, opts: SkillUpd
     }
     try {
       const updated = await ctx.api.post<CompanySkill>(
-        `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(row.skill.id)}/install-update`,
+        `/api/skills/${encodeURIComponent(row.skill.id)}/install-update`,
         { force: opts.force || undefined },
       );
       rows.push({
@@ -724,7 +708,7 @@ async function auditCompanySkills(
   const rows: Array<{ skill: CompanySkillReferenceTarget; audit: CompanySkillAuditResult }> = [];
   for (const skill of selected) {
     const audit = await ctx.api.post<CompanySkillAuditResult>(
-      `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}/audit`,
+      `/api/skills/${encodeURIComponent(skill.id)}/audit`,
       {},
     );
     if (!audit) {
@@ -736,8 +720,7 @@ async function auditCompanySkills(
 }
 
 async function resolveAgent(ctx: ResolvedClientContext, agentRef: string): Promise<Agent> {
-  const params = new URLSearchParams({ companyId: ctx.companyId ?? "" });
-  const agent = await ctx.api.get<Agent>(`/api/agents/${encodeURIComponent(agentRef)}?${params.toString()}`);
+  const agent = await ctx.api.get<Agent>(`/api/agents/${encodeURIComponent(agentRef)}`);
   if (!agent) {
     throw new Error(`Agent not found: ${agentRef}`);
   }

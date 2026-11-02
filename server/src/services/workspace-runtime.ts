@@ -156,7 +156,6 @@ export interface ExecutionWorkspaceIssueRef {
 export interface ExecutionWorkspaceAgentRef {
   id: string | null;
   name: string;
-  companyId: string;
 }
 
 export interface RealizedExecutionWorkspace extends ExecutionWorkspaceInput {
@@ -190,7 +189,6 @@ export class WorkspaceRuntimeValidationFailure extends Error {
 
 export interface RuntimeServiceRef {
   id: string;
-  companyId: string;
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;
@@ -723,7 +721,6 @@ function stableRuntimeServiceId(input: {
 function toRuntimeServiceRef(record: RuntimeServiceRecord, overrides?: Partial<RuntimeServiceRef>): RuntimeServiceRef {
   return {
     id: record.id,
-    companyId: record.companyId,
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
@@ -1179,13 +1176,13 @@ function formatIssueReference(issueId: string | null | undefined, identifier: st
   return `[${identifier}](/${match[1]}/issues/${identifier})`;
 }
 
-async function readIssueCompanyId(db: Db, issueId: string | null | undefined): Promise<string | null> {
+async function readExistingIssueId(db: Db, issueId: string | null | undefined): Promise<string | null> {
   if (!issueId) return null;
   return db
-    .select({ companyId: issues.companyId })
+    .select({ id: issues.id })
     .from(issues)
     .where(eq(issues.id, issueId))
-    .then((rows) => rows[0]?.companyId ?? null);
+    .then((rows) => rows[0]?.id ?? null);
 }
 
 async function findGitWorktreeBranchContention(input: {
@@ -1196,10 +1193,8 @@ async function findGitWorktreeBranchContention(input: {
   actualBranchName: string | null;
 }): Promise<GitWorktreeBranchContention | null> {
   if (!input.db) return null;
-  const companyId = await readIssueCompanyId(input.db, input.sourceIssue?.id);
-  if (!companyId) return null;
+  if (!(await readExistingIssueId(input.db, input.sourceIssue?.id))) return null;
   return executionWorkspaceService(input.db).findGitWorktreeContention({
-    companyId,
     worktreePath: input.worktreePath,
     liveBranchName: input.actualBranchName,
     excludingExecutionWorkspaceId: input.executionWorkspaceId,
@@ -1222,14 +1217,10 @@ async function findActiveRuntimeServiceBlockingDirtyQuarantine(input: {
     : null;
   const serviceScopeCondition = inheritedProjectWorkspaceId
     ? and(
-        eq(workspaceRuntimeServices.companyId, input.workspace.companyId),
         eq(workspaceRuntimeServices.projectWorkspaceId, inheritedProjectWorkspaceId),
         eq(workspaceRuntimeServices.scopeType, "project_workspace"),
       )
-    : and(
-        eq(workspaceRuntimeServices.companyId, input.workspace.companyId),
-        eq(workspaceRuntimeServices.executionWorkspaceId, input.workspace.id),
-      );
+    : eq(workspaceRuntimeServices.executionWorkspaceId, input.workspace.id);
 
   const [service] = await input.db
     .select({
@@ -1567,7 +1558,6 @@ function formatDirtyQuarantineAuditComment(input: {
 
 async function writeDirtyQuarantineAuditComments(input: {
   db: Db;
-  companyId: string;
   evidence: GitWorktreeBranchIncoherenceEvidence;
   sourceIssue: ExecutionWorkspaceIssueRef | null;
   rescueBranch: string;
@@ -1590,7 +1580,6 @@ async function writeDirtyQuarantineAuditComments(input: {
     const [sourceComment] = await input.db
       .insert(issueComments)
       .values({
-        companyId: input.companyId,
         issueId: input.evidence.sourceIssueId,
         authorAgentId: null,
         authorUserId: null,
@@ -1611,7 +1600,6 @@ async function writeDirtyQuarantineAuditComments(input: {
     const [claimantComment] = await input.db
       .insert(issueComments)
       .values({
-        companyId: input.companyId,
         issueId: claimantIssueId,
         authorAgentId: null,
         authorUserId: null,
@@ -1632,7 +1620,7 @@ async function writeDirtyQuarantineAuditComments(input: {
 
 async function logDirtyQuarantineActivity(input: {
   db: Db;
-  companyId: string;
+  sourceIssueId: string;
   evidence: GitWorktreeBranchIncoherenceEvidence;
   rescueBranch: string;
   rescueCommitSha: string;
@@ -1642,13 +1630,12 @@ async function logDirtyQuarantineActivity(input: {
   claimantAuditCommentId: string | null;
 }) {
   await logActivity(input.db, {
-    companyId: input.companyId,
     actorType: "system",
     actorId: "workspace_runtime",
     runId: input.heartbeatRunId,
     action: "execution_workspace.dirty_worktree_quarantined",
     entityType: input.evidence.executionWorkspaceId ? "execution_workspace" : "issue",
-    entityId: input.evidence.executionWorkspaceId ?? input.evidence.sourceIssueId ?? input.companyId,
+    entityId: input.evidence.executionWorkspaceId ?? input.sourceIssueId,
     details: {
       reason: GIT_WORKTREE_BRANCH_INCOHERENCE_REASON,
       sourceIssueId: input.evidence.sourceIssueId,
@@ -1724,10 +1711,10 @@ async function quarantineDirtyWorktreeBranchIncoherence(input: {
   phase?: "worktree_prepare" | "workspace_finalize";
   recorder?: WorkspaceOperationRecorder | null;
 }): Promise<DirtyQuarantineRepairResult> {
-  const companyId = await readIssueCompanyId(input.db, input.evidence.sourceIssueId);
-  if (!companyId) {
+  const sourceIssueId = await readExistingIssueId(input.db, input.evidence.sourceIssueId);
+  if (!sourceIssueId) {
     input.evidence.safeRepair.eligible = false;
-    input.evidence.safeRepair.reason = "dirty quarantine repair requires a source issue company for audit";
+    input.evidence.safeRepair.reason = "dirty quarantine repair requires a source issue for audit";
     throw branchIncoherenceValidationFailure(input.evidence);
   }
 
@@ -1873,7 +1860,6 @@ async function quarantineDirtyWorktreeBranchIncoherence(input: {
 
     const comments = await writeDirtyQuarantineAuditComments({
       db: input.db,
-      companyId,
       evidence: input.evidence,
       sourceIssue: input.sourceIssue,
       rescueBranch,
@@ -1883,7 +1869,7 @@ async function quarantineDirtyWorktreeBranchIncoherence(input: {
     });
     await logDirtyQuarantineActivity({
       db: input.db,
-      companyId,
+      sourceIssueId,
       evidence: input.evidence,
       rescueBranch,
       rescueCommitSha,
@@ -1972,7 +1958,6 @@ async function recordForwardBranchReconcileOperation(input: {
 
 async function logForwardBranchReconcileActivity(input: {
   db: Db;
-  companyId: string;
   executionWorkspaceId: string;
   sourceIssueId: string | null;
   runId: string | null;
@@ -1988,7 +1973,6 @@ async function logForwardBranchReconcileActivity(input: {
   recoveryActionId: string | null;
 }) {
   await logActivity(input.db, {
-    companyId: input.companyId,
     actorType: "system",
     actorId: "workspace_runtime",
     runId: input.runId,
@@ -2040,7 +2024,6 @@ export async function reconcilePendingForwardBranchAfterPersistence(input: {
   );
   await logForwardBranchReconcileActivity({
     db: input.db,
-    companyId: result.workspace.companyId,
     executionWorkspaceId: result.workspace.id,
     sourceIssueId: result.workspace.sourceIssueId,
     runId: input.heartbeatRunId ?? null,
@@ -2202,7 +2185,6 @@ export async function ensureGitWorktreeBranchCoherent(input: {
         );
         await logForwardBranchReconcileActivity({
           db: input.db,
-          companyId: result.workspace.companyId,
           executionWorkspaceId: result.workspace.id,
           sourceIssueId: result.workspace.sourceIssueId ?? evidence.sourceIssueId ?? null,
           runId: input.heartbeatRunId ?? null,
@@ -2894,7 +2876,6 @@ function buildWorkspaceCommandEnv(input: {
   env.PAPERCLIP_PROJECT_WORKSPACE_ID = input.base.workspaceId ?? "";
   env.PAPERCLIP_AGENT_ID = input.agent.id ?? "";
   env.PAPERCLIP_AGENT_NAME = input.agent.name;
-  env.PAPERCLIP_COMPANY_ID = input.agent.companyId;
   env.PAPERCLIP_ISSUE_ID = input.issue?.id ?? "";
   env.PAPERCLIP_ISSUE_IDENTIFIER = input.issue?.identifier ?? "";
   env.PAPERCLIP_ISSUE_TITLE = input.issue?.title ?? "";
@@ -4300,14 +4281,13 @@ async function probeEphemeralPort(): Promise<number> {
  * A lane that is stopped, torn down, and reported `removed` still owns its
  * pair until the workspace itself is released (PAP-17419).
  */
-async function readActiveExecutionWorkspaceLeases(db: Db | undefined, companyId: string): Promise<Set<string>> {
+async function readActiveExecutionWorkspaceLeases(db: Db | undefined): Promise<Set<string>> {
   if (!db) return new Set<string>();
   const rows = await db
     .select({ id: executionWorkspaces.id })
     .from(executionWorkspaces)
     .where(
       and(
-        eq(executionWorkspaces.companyId, companyId),
         inArray(executionWorkspaces.status, [...OPEN_EXECUTION_WORKSPACE_LEASE_STATUSES]),
         isNull(executionWorkspaces.closedAt),
       ),
@@ -4325,12 +4305,11 @@ async function readActiveExecutionWorkspaceLeases(db: Db | undefined, companyId:
  */
 async function buildCompanyExposureReservationLedger(input: {
   db?: Db;
-  companyId: string;
   brokerMappings?: BrokerMappingSnapshot[];
 }): Promise<ExposureReservationLedger> {
   const inMemoryRuntimes: InMemoryExposureSnapshot[] = [];
   for (const record of runtimeServicesById.values()) {
-    if (record.companyId !== input.companyId || !record.exposure) continue;
+    if (!record.exposure) continue;
     inMemoryRuntimes.push({
       runtimeServiceId: record.id,
       executionWorkspaceId: record.executionWorkspaceId,
@@ -4353,7 +4332,6 @@ async function buildCompanyExposureReservationLedger(input: {
           issueId: workspaceRuntimeServices.issueId,
         })
         .from(workspaceRuntimeServices)
-        .where(eq(workspaceRuntimeServices.companyId, input.companyId))
     ).map((row) => ({
       id: row.id,
       status: row.status,
@@ -4370,7 +4348,7 @@ async function buildCompanyExposureReservationLedger(input: {
     inMemoryRuntimes,
     brokerMappings: input.brokerMappings ?? [],
     quarantinedPorts: quarantinedRuntimeExposurePorts,
-    activeExecutionWorkspaceIds: await readActiveExecutionWorkspaceLeases(input.db, input.companyId),
+    activeExecutionWorkspaceIds: await readActiveExecutionWorkspaceLeases(input.db),
     inFlightClaimedPorts: exposurePortPairClaims.activePorts(),
   });
 }
@@ -4478,7 +4456,6 @@ async function readExposureListenerOwners(ports: number[]): Promise<Map<number, 
 
 async function allocateAndReserveExposure(input: {
   db?: Db;
-  companyId: string;
   runtimeId: string;
   config: RuntimeExposureConfigInput;
   /** Identity claiming the pair; governs every ownership decision below. */
@@ -4489,7 +4466,6 @@ async function allocateAndReserveExposure(input: {
   const brokerMappings = await readBrokerExposureMappings();
   const ledger = await buildCompanyExposureReservationLedger({
     db: input.db,
-    companyId: input.companyId,
     brokerMappings: brokerMappings ?? [],
   });
   // Serve mappings are checked as their own view, not folded into the ledger:
@@ -4708,7 +4684,6 @@ async function readReservedRuntimePorts(input: {
 
 async function buildRuntimePortAllocationConflict(input: {
   db?: Db;
-  companyId: string;
   executionWorkspaceId: string | null;
   preferredPort: number;
   attemptedPorts: number[];
@@ -4723,7 +4698,6 @@ async function buildRuntimePortAllocationConflict(input: {
         .from(workspaceRuntimeServices)
         .where(
           and(
-            eq(workspaceRuntimeServices.companyId, input.companyId),
             inArray(workspaceRuntimeServices.status, [...ACTIVE_RUNTIME_PORT_RESERVATION_STATUSES]),
             inArray(workspaceRuntimeServices.port, input.attemptedPorts),
             input.executionWorkspaceId
@@ -4763,7 +4737,6 @@ async function buildRuntimePortAllocationConflict(input: {
 
 async function allocateIsolatedWorkspacePort(input: {
   db?: Db;
-  companyId: string;
   executionWorkspaceId: string;
   preferredPort: number;
   stoppedPort: number | null;
@@ -4811,7 +4784,6 @@ async function allocateIsolatedWorkspacePort(input: {
 
   throw await buildRuntimePortAllocationConflict({
     db: input.db,
-    companyId: input.companyId,
     executionWorkspaceId: input.executionWorkspaceId,
     preferredPort: input.preferredPort,
     attemptedPorts,
@@ -5381,7 +5353,6 @@ type RuntimeServiceHealthProbeInput = {
    */
   cwd?: string | null;
   executionWorkspaceId?: string | null;
-  companyId?: string | null;
 };
 
 /**
@@ -5405,8 +5376,7 @@ async function probeManagedWorkspaceRuntimeReadiness(
   if (!isPaperclipDevRuntimeService(input)) return null;
   const identity = resolveManagedWorkspaceIdentity({
     workspaceCwd: input.cwd ?? null,
-    executionWorkspaceId: input.executionWorkspaceId ?? null,
-    companyId: input.companyId ?? null,
+    executionWorkspaceId: input.executionWorkspaceId ?? null
   });
   if (!identity) return null;
 
@@ -5461,7 +5431,6 @@ async function isRuntimeServiceUrlHealthy(
 function toPersistedWorkspaceRuntimeService(record: RuntimeServiceRecord): typeof workspaceRuntimeServices.$inferInsert {
   return {
     id: record.id,
-    companyId: record.companyId,
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
@@ -5534,7 +5503,6 @@ async function persistRuntimeServiceRecord(db: Db | undefined, record: RuntimeSe
 
 async function findStoppedRuntimeServiceReuseCandidate(input: {
   db?: Db;
-  companyId: string;
   reuseKey: string | null;
   serviceName: string;
   command: string;
@@ -5552,7 +5520,6 @@ async function findStoppedRuntimeServiceReuseCandidate(input: {
       .from(workspaceRuntimeServices)
       .where(
         and(
-          eq(workspaceRuntimeServices.companyId, input.companyId),
           eq(workspaceRuntimeServices.reuseKey, input.reuseKey),
           eq(workspaceRuntimeServices.provider, "local_process"),
           eq(workspaceRuntimeServices.status, "stopped"),
@@ -5575,7 +5542,6 @@ async function findStoppedRuntimeServiceReuseCandidate(input: {
     .from(workspaceRuntimeServices)
     .where(
       and(
-        eq(workspaceRuntimeServices.companyId, input.companyId),
         eq(workspaceRuntimeServices.provider, "local_process"),
         eq(workspaceRuntimeServices.status, "stopped"),
         eq(workspaceRuntimeServices.scopeType, input.scopeType),
@@ -5638,7 +5604,6 @@ export function normalizeAdapterManagedRuntimeServices(input: {
         providerRef: report.providerRef ?? null,
         reuseKey: report.reuseKey ?? null,
       }),
-      companyId: input.agent.companyId,
       projectId: report.projectId ?? input.workspace.projectId,
       projectWorkspaceId: report.projectWorkspaceId ?? input.workspace.workspaceId,
       executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -5811,7 +5776,6 @@ async function runRuntimeProvisionWithWorkspaceMutex(input: StartLocalRuntimeSer
 
   const recorder = input.recorder ?? (input.db
     ? workspaceOperationService(input.db).createRecorder({
-        companyId: input.agent.companyId,
         heartbeatRunId: input.startedByRunId === undefined ? input.runId : input.startedByRunId,
         executionWorkspaceId: input.executionWorkspaceId ?? null,
         issueId: input.issue?.id ?? null,
@@ -5867,7 +5831,6 @@ function createProvisioningRuntimeServiceRecord(
   const id = input.runtimeServiceId ?? randomUUID();
   return {
     id,
-    companyId: input.agent.companyId,
     projectId: input.workspace.projectId,
     projectWorkspaceId: input.workspace.workspaceId,
     executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -5958,7 +5921,6 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   );
   const stoppedReuseCandidate = await findStoppedRuntimeServiceReuseCandidate({
     db: input.db,
-    companyId: input.agent.companyId,
     reuseKey: input.reuseKey,
     serviceName,
     command,
@@ -6021,7 +5983,6 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   const reservedExposure = exposureConfig
     ? await allocateAndReserveExposure({
         db: input.db,
-        companyId: input.agent.companyId,
         runtimeId,
         config: exposureConfig,
         claimant: {
@@ -6077,7 +6038,6 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   } else if (!reservedExposure && canAllocateFixedPort) {
     port = await allocateIsolatedWorkspacePort({
       db: input.db,
-      companyId: input.agent.companyId,
       executionWorkspaceId: input.executionWorkspaceId!,
       preferredPort: explicitPort,
       stoppedPort: stoppedReuseCandidate?.port ?? null,
@@ -6155,8 +6115,7 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   const managedWorkspaceIdentity = isPaperclipDevRuntimeService({ serviceName, command })
     ? resolveManagedWorkspaceIdentity({
         workspaceCwd: input.workspace.cwd,
-        executionWorkspaceId: input.executionWorkspaceId ?? null,
-        companyId: input.agent.companyId,
+        executionWorkspaceId: input.executionWorkspaceId ?? null
       })
     : null;
   if (managedWorkspaceIdentity) {
@@ -6237,8 +6196,7 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
       serviceName,
       command,
       cwd: input.workspace.cwd,
-      executionWorkspaceId: input.executionWorkspaceId ?? null,
-      companyId: input.agent.companyId,
+      executionWorkspaceId: input.executionWorkspaceId ?? null
     }))) {
       await terminateLocalService(adoptedRecord);
       await removeLocalServiceRegistryRecord(adoptedRecord.serviceKey);
@@ -6247,7 +6205,6 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
       return {
         record: {
           id: adoptedRecord.runtimeServiceId ?? randomUUID(),
-          companyId: input.agent.companyId,
           projectId: input.workspace.projectId,
           projectWorkspaceId: input.workspace.workspaceId,
           executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -6334,7 +6291,6 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   const nowIso = new Date().toISOString();
   const record: RuntimeServiceRecord = {
     id: runtimeId,
-    companyId: input.agent.companyId,
     projectId: input.workspace.projectId,
     projectWorkspaceId: input.workspace.workspaceId,
     executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -6807,7 +6763,6 @@ async function startLocalRuntimeService(
     if (fixedPortFallbackEnabled && input.executionWorkspaceId) {
       throw await buildRuntimePortAllocationConflict({
         db: input.db,
-        companyId: input.agent.companyId,
         executionWorkspaceId: input.executionWorkspaceId,
         preferredPort: explicitPort,
         attemptedPorts: [...excludedPorts],
@@ -6925,8 +6880,7 @@ async function findHealthyRunningRuntimeService(reuseKey: string | null) {
     provider: existing.provider,
     port: existing.port,
     cwd: existing.cwd,
-    executionWorkspaceId: existing.executionWorkspaceId,
-    companyId: existing.companyId,
+    executionWorkspaceId: existing.executionWorkspaceId
   };
   let healthy = await isRuntimeServiceUrlHealthy(existing.url, healthInput);
   if (!healthy) {
@@ -7267,7 +7221,6 @@ function selectRuntimeServiceEntries(input: {
 
 async function isPersistedIsolatedExecutionWorkspace(input: {
   db?: Db;
-  companyId: string;
   executionWorkspaceId?: string | null;
 }) {
   if (!input.db || !input.executionWorkspaceId) return false;
@@ -7275,10 +7228,7 @@ async function isPersistedIsolatedExecutionWorkspace(input: {
     .select({ mode: executionWorkspaces.mode })
     .from(executionWorkspaces)
     .where(
-      and(
-        eq(executionWorkspaces.id, input.executionWorkspaceId),
-        eq(executionWorkspaces.companyId, input.companyId),
-      ),
+      eq(executionWorkspaces.id, input.executionWorkspaceId),
     )
     .limit(1)
     .then((rows) => rows[0] ?? null);
@@ -7314,7 +7264,6 @@ async function ensureRuntimeServicesForRunInvocation(
   const provisionCoordinator = createRuntimeProvisionCoordinator();
   const allowFixedPortFallback = await isPersistedIsolatedExecutionWorkspace({
     db: input.db,
-    companyId: input.agent.companyId,
     executionWorkspaceId: input.executionWorkspaceId,
   });
   runtimeServiceLeasesByRun.set(input.runId, acquiredServiceIds);
@@ -7452,7 +7401,7 @@ function resolveRuntimeStartMutexPlan(input: {
       replacementReuseKeys.push(reuseKey);
       return `reuse:${reuseKey}`;
     }
-    return `${input.agent.companyId}:owner:${fallbackOwnerId}`;
+    return `owner:${fallbackOwnerId}`;
   });
   return {
     ownerKeys: [...new Set(keys)].sort(),
@@ -7654,10 +7603,7 @@ async function lockWorkspaceRuntimeStartParents(
       .select({ id: executionWorkspaces.id, mode: executionWorkspaces.mode })
       .from(executionWorkspaces)
       .where(
-        and(
-          eq(executionWorkspaces.id, input.executionWorkspaceId),
-          eq(executionWorkspaces.companyId, input.actor.companyId),
-        ),
+        eq(executionWorkspaces.id, input.executionWorkspaceId),
       )
       .for("update");
     if (!lockedExecutionWorkspace) throw new Error("Execution workspace not found before starting runtime services");
@@ -7669,10 +7615,7 @@ async function lockWorkspaceRuntimeStartParents(
       .select({ id: projectWorkspaces.id })
       .from(projectWorkspaces)
       .where(
-        and(
-          eq(projectWorkspaces.id, input.workspace.workspaceId),
-          eq(projectWorkspaces.companyId, input.actor.companyId),
-        ),
+        eq(projectWorkspaces.id, input.workspace.workspaceId),
       )
       .for("update");
     if (!lockedProjectWorkspace) throw new Error("Project workspace not found before starting runtime services");
@@ -7852,7 +7795,6 @@ async function startRuntimeServicesForWorkspaceControlInvocation(
             if (allowFixedPortFallback && portType !== "auto" && preferredPort > 0 && input.executionWorkspaceId) {
               throw await buildRuntimePortAllocationConflict({
                 db: input.db,
-                companyId: input.actor.companyId,
                 executionWorkspaceId: input.executionWorkspaceId,
                 preferredPort,
                 attemptedPorts: [...excludedPorts],
@@ -8089,7 +8031,6 @@ export async function stopRuntimeServicesForProjectWorkspace(input: {
 
 export async function listWorkspaceRuntimeServicesForProjectWorkspaces(
   db: Db,
-  companyId: string,
   projectWorkspaceIds: string[],
 ) {
   if (projectWorkspaceIds.length === 0) return new Map<string, typeof workspaceRuntimeServices.$inferSelect[]>();
@@ -8098,7 +8039,6 @@ export async function listWorkspaceRuntimeServicesForProjectWorkspaces(
     .from(workspaceRuntimeServices)
     .where(
       and(
-        eq(workspaceRuntimeServices.companyId, companyId),
         inArray(workspaceRuntimeServices.projectWorkspaceId, projectWorkspaceIds),
         eq(workspaceRuntimeServices.scopeType, "project_workspace"),
       ),
@@ -8207,7 +8147,6 @@ async function buildPersistedRuntimeExposureIntentLookup(db: Db) {
 
 export async function refreshPersistedRuntimeServiceHealth(input: {
   db: Db;
-  companyId: string;
   executionWorkspaceId: string;
   projectWorkspaceId?: string | null;
 }) {
@@ -8230,12 +8169,10 @@ export async function refreshPersistedRuntimeServiceHealth(input: {
       url: workspaceRuntimeServices.url,
       healthStatus: workspaceRuntimeServices.healthStatus,
       cwd: workspaceRuntimeServices.cwd,
-      executionWorkspaceId: workspaceRuntimeServices.executionWorkspaceId,
-      companyId: workspaceRuntimeServices.companyId,
+      executionWorkspaceId: workspaceRuntimeServices.executionWorkspaceId
     })
     .from(workspaceRuntimeServices)
     .where(and(
-      eq(workspaceRuntimeServices.companyId, input.companyId),
       eq(workspaceRuntimeServices.provider, "local_process"),
       eq(workspaceRuntimeServices.status, "running"),
       ownershipCondition,
@@ -8252,7 +8189,6 @@ export async function refreshPersistedRuntimeServiceHealth(input: {
     if (row.healthStatus === healthStatus) return;
     await input.db.update(workspaceRuntimeServices).set({ healthStatus, updatedAt: new Date() }).where(and(
       eq(workspaceRuntimeServices.id, row.id),
-      eq(workspaceRuntimeServices.companyId, input.companyId),
       eq(workspaceRuntimeServices.status, "running"),
     ));
   }));
@@ -8302,14 +8238,10 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
     rows,
     ownedListeners: ownedExposureListeners,
   });
-  const companyIdByRowId = new Map(rows.map((row) => [row.id, row.companyId] as const));
   for (const entry of exposureReservationDrift) {
     const description = describeExposureReservationDrift(entry);
     console.warn(`[workspace-runtime] exposure reservation drift: ${description}`);
-    const companyId = companyIdByRowId.get(entry.runtimeServiceId);
-    if (!companyId) continue;
     await logActivity(db, {
-      companyId,
       actorType: "system",
       actorId: "workspace_runtime",
       action: "workspace_runtime.exposure_reservation_drift",
@@ -8448,8 +8380,7 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
         provider: "local_process",
         port: adoptedRecord.port ?? row.port,
         cwd: row.cwd,
-        executionWorkspaceId: row.executionWorkspaceId ?? null,
-        companyId: row.companyId,
+        executionWorkspaceId: row.executionWorkspaceId ?? null
       };
       // A surviving service can be slow to answer one probe when the host is
       // busy at startup. One timeout is not enough evidence to terminate it.
@@ -8471,7 +8402,6 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
       } else {
         const record: RuntimeServiceRecord = {
           id: row.id,
-          companyId: row.companyId,
           projectId: row.projectId ?? null,
           projectWorkspaceId: row.projectWorkspaceId ?? null,
           executionWorkspaceId: row.executionWorkspaceId ?? null,
@@ -8611,7 +8541,7 @@ export async function restartDesiredRuntimeServicesOnStartup(db: Db) {
     try {
       const refs = await startRuntimeServicesForWorkspaceControl({
         db,
-        actor: { id: null, name: "Paperclip", companyId: row.companyId },
+        actor: { id: null, name: "Paperclip" },
         issue: null,
         workspace: {
           baseCwd: row.cwd,
@@ -8660,7 +8590,7 @@ export async function restartDesiredRuntimeServicesOnStartup(db: Db) {
     try {
       const refs = await startRuntimeServicesForWorkspaceControl({
         db,
-        actor: { id: null, name: "Paperclip", companyId: row.companyId },
+        actor: { id: null, name: "Paperclip" },
         issue: row.sourceIssueId
           ? {
               id: row.sourceIssueId,
@@ -8731,7 +8661,6 @@ export async function persistAdapterManagedRuntimeServices(input: {
       .insert(workspaceRuntimeServices)
       .values({
         id: ref.id,
-        companyId: ref.companyId,
         projectId: ref.projectId,
         projectWorkspaceId: ref.projectWorkspaceId,
         executionWorkspaceId: ref.executionWorkspaceId,

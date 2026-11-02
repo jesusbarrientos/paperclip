@@ -18,7 +18,7 @@ export function LegacyProjectRepository({ workspace, projectRef }: { workspace: 
       return projectsApi.updateWorkspace(workspace.projectId, workspace.id, { repoUrl });
     },
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: queryKeys.projects.all(workspace.companyId) });
+      void client.invalidateQueries({ queryKey: queryKeys.projects.all() });
       void client.invalidateQueries({ queryKey: queryKeys.projects.detail(workspace.projectId) });
       void client.invalidateQueries({ queryKey: queryKeys.projects.detail(projectRef) });
       setDraft(null);

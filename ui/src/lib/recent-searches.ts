@@ -1,18 +1,14 @@
-const STORAGE_PREFIX = "paperclip:recent-searches:";
+const STORAGE_KEY = "paperclip:recent-searches";
 const MAX_RECENT_SEARCHES = 5;
-
-function storageKey(companyId: string) {
-  return `${STORAGE_PREFIX}${companyId}`;
-}
 
 function isStorageAvailable() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-export function loadRecentSearches(companyId: string): string[] {
-  if (!isStorageAvailable() || !companyId) return [];
+export function loadRecentSearches(): string[] {
+  if (!isStorageAvailable()) return [];
   try {
-    const raw = window.localStorage.getItem(storageKey(companyId));
+    const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -30,25 +26,25 @@ export function loadRecentSearches(companyId: string): string[] {
   }
 }
 
-export function pushRecentSearch(companyId: string, query: string): string[] {
-  if (!isStorageAvailable() || !companyId) return [];
+export function pushRecentSearch(query: string): string[] {
+  if (!isStorageAvailable()) return [];
   const trimmed = query.trim();
-  if (!trimmed) return loadRecentSearches(companyId);
-  const existing = loadRecentSearches(companyId);
+  if (!trimmed) return loadRecentSearches();
+  const existing = loadRecentSearches();
   const filtered = existing.filter((entry) => entry.toLowerCase() !== trimmed.toLowerCase());
   const next = [trimmed, ...filtered].slice(0, MAX_RECENT_SEARCHES);
   try {
-    window.localStorage.setItem(storageKey(companyId), JSON.stringify(next));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
     // ignore
   }
   return next;
 }
 
-export function clearRecentSearches(companyId: string): void {
-  if (!isStorageAvailable() || !companyId) return;
+export function clearRecentSearches(): void {
+  if (!isStorageAvailable()) return;
   try {
-    window.localStorage.removeItem(storageKey(companyId));
+    window.localStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore
   }

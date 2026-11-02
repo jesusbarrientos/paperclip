@@ -12,11 +12,9 @@ import {
 } from "./common.js";
 
 interface ProjectListOptions extends BaseClientOptions {
-  companyId?: string;
 }
 
 interface ProjectCreateOptions extends BaseClientOptions {
-  companyId?: string;
   name: string;
   description?: string;
   status?: string;
@@ -53,12 +51,11 @@ export function registerProjectCommands(program: Command): void {
   addCommonClientOptions(
     project
       .command("list")
-      .description("List projects for a company")
-      .option("-C, --company-id <id>", "Company ID")
+      .description("List projects")
       .action(async (opts: ProjectListOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const rows = (await ctx.api.get<Project[]>(apiPath`/api/companies/${ctx.companyId}/projects`)) ?? [];
+          const ctx = resolveCommandContext(opts);
+          const rows = (await ctx.api.get<Project[]>(apiPath`/api/projects`)) ?? [];
           if (ctx.json) {
             printOutput(rows, { json: true });
             return;
@@ -80,8 +77,7 @@ export function registerProjectCommands(program: Command): void {
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -89,25 +85,21 @@ export function registerProjectCommands(program: Command): void {
       .command("get")
       .description("Get one project by ID or shortname")
       .argument("<project>", "Project ID or shortname")
-      .option("-C, --company-id <id>", "Company ID for shortname lookup")
       .action(async (projectRef: string, opts: ProjectListOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
-          const query = ctx.companyId ? `?${new URLSearchParams({ companyId: ctx.companyId }).toString()}` : "";
-          const row = await ctx.api.get<Project>(`${apiPath`/api/projects/${projectRef}`}${query}`);
+          const row = await ctx.api.get<Project>(apiPath`/api/projects/${projectRef}`);
           printOutput(row, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
     project
       .command("create")
       .description("Create a project")
-      .requiredOption("-C, --company-id <id>", "Company ID")
       .requiredOption("--name <name>", "Project name")
       .option("--description <text>", "Project description")
       .option("--status <status>", "Project status")
@@ -120,7 +112,7 @@ export function registerProjectCommands(program: Command): void {
       .option("--execution-workspace-policy-json <json>", "Execution workspace policy JSON")
       .action(async (opts: ProjectCreateOptions) => {
         try {
-          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const ctx = resolveCommandContext(opts);
           const payload = createProjectSchema.parse({
             name: opts.name,
             description: opts.description,
@@ -133,13 +125,12 @@ export function registerProjectCommands(program: Command): void {
             env: parseOptionalJson(opts.envJson),
             executionWorkspacePolicy: parseOptionalJson(opts.executionWorkspacePolicyJson),
           });
-          const created = await ctx.api.post<Project>(apiPath`/api/companies/${ctx.companyId}/projects`, payload);
+          const created = await ctx.api.post<Project>(apiPath`/api/projects`, payload);
           printOutput(created, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -147,7 +138,6 @@ export function registerProjectCommands(program: Command): void {
       .command("update")
       .description("Update a project")
       .argument("<project>", "Project ID or shortname")
-      .option("-C, --company-id <id>", "Company ID for shortname lookup")
       .option("--name <name>", "Project name")
       .option("--description <text|null>", "Project description")
       .option("--status <status>", "Project status")
@@ -175,14 +165,12 @@ export function registerProjectCommands(program: Command): void {
             executionWorkspacePolicy: parseOptionalJson(opts.executionWorkspacePolicyJson),
             archivedAt: parseNullableString(opts.archivedAt),
           });
-          const query = ctx.companyId ? `?${new URLSearchParams({ companyId: ctx.companyId }).toString()}` : "";
-          const updated = await ctx.api.patch<Project>(`${apiPath`/api/projects/${projectRef}`}${query}`, payload);
+          const updated = await ctx.api.patch<Project>(apiPath`/api/projects/${projectRef}`, payload);
           printOutput(updated, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 
   addCommonClientOptions(
@@ -190,20 +178,17 @@ export function registerProjectCommands(program: Command): void {
       .command("delete")
       .description("Delete a project")
       .argument("<project>", "Project ID or shortname")
-      .option("-C, --company-id <id>", "Company ID for shortname lookup")
       .option("--yes", "Confirm deletion")
       .action(async (projectRef: string, opts: ProjectDeleteOptions) => {
         try {
           if (!opts.yes) throw new Error("Deletion requires --yes.");
           const ctx = resolveCommandContext(opts);
-          const query = ctx.companyId ? `?${new URLSearchParams({ companyId: ctx.companyId }).toString()}` : "";
-          const deleted = await ctx.api.delete<Project>(`${apiPath`/api/projects/${projectRef}`}${query}`);
+          const deleted = await ctx.api.delete<Project>(apiPath`/api/projects/${projectRef}`);
           printOutput(deleted, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
-      }),
-    { includeCompany: false },
+      })
   );
 }
 

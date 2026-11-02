@@ -20,7 +20,6 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
     priorDecisionId: workAssessments.priorDecisionId,
   }).from(issueThreadInteractions)
     .innerJoin(statusDecisionEffects, and(
-      eq(statusDecisionEffects.companyId, issueThreadInteractions.companyId),
       eq(statusDecisionEffects.issueId, issueThreadInteractions.issueId),
       sql`${statusDecisionEffects.targetId} = ${issueThreadInteractions.id}::text`,
       eq(statusDecisionEffects.targetType, "issue_thread_interaction"),
@@ -28,13 +27,11 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
     ))
     .innerJoin(statusDecisions, and(
       eq(statusDecisions.id, statusDecisionEffects.decisionId),
-      eq(statusDecisions.companyId, issueThreadInteractions.companyId),
       eq(statusDecisions.issueId, issueThreadInteractions.issueId),
       eq(statusDecisions.runId, issueThreadInteractions.sourceRunId),
     ))
     .innerJoin(workAssessments, and(
       eq(workAssessments.id, statusDecisions.assessmentId),
-      eq(workAssessments.companyId, statusDecisions.companyId),
       eq(workAssessments.issueId, statusDecisions.issueId),
     ))
     .where(and(
@@ -61,12 +58,9 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
       await db.transaction(async (tx) => {
         // Same lock order as status commits: coordinator, issue, interaction.
         await tx.select({ runId: nativeRunFinalizations.runId }).from(nativeRunFinalizations)
-          .where(and(eq(nativeRunFinalizations.runId, decision.runId),
-            eq(nativeRunFinalizations.companyId, decision.companyId)))
+          .where(eq(nativeRunFinalizations.runId, decision.runId))
           .for("update");
-        const issue = await tx.select().from(issues).where(and(
-          eq(issues.id, decision.issueId), eq(issues.companyId, decision.companyId),
-        )).for("update").then((rows) => rows[0]);
+        const issue = await tx.select().from(issues).where(eq(issues.id, decision.issueId)).for("update").then((rows) => rows[0]);
         if (!issue) return;
         const now = new Date();
         const [cancelled] = await tx.update(issueThreadInteractions).set({
@@ -76,7 +70,6 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
           updatedAt: now,
         }).where(and(
           eq(issueThreadInteractions.id, interaction.id),
-          eq(issueThreadInteractions.companyId, decision.companyId),
           eq(issueThreadInteractions.status, "pending"),
         )).returning({ id: issueThreadInteractions.id });
         if (!cancelled) return;
@@ -87,14 +80,12 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
 
         const pendingInteraction = await tx.select({ id: issueThreadInteractions.id })
           .from(issueThreadInteractions).where(and(
-            eq(issueThreadInteractions.companyId, issue.companyId),
             eq(issueThreadInteractions.issueId, issue.id),
             eq(issueThreadInteractions.status, "pending"),
           )).limit(1);
         const pendingApproval = await tx.select({ id: approvals.id }).from(issueApprovals)
-          .innerJoin(approvals, and(eq(approvals.id, issueApprovals.approvalId),
-            eq(approvals.companyId, issue.companyId)))
-          .where(and(eq(issueApprovals.companyId, issue.companyId), eq(issueApprovals.issueId, issue.id),
+          .innerJoin(approvals, eq(approvals.id, issueApprovals.approvalId))
+          .where(and(eq(issueApprovals.issueId, issue.id),
             inArray(approvals.status, ["pending", "revision_requested"]))).limit(1);
         const restoreStatus = issue.status === "in_review"
           && issue.lastStatusDecisionId === decision.id
@@ -104,7 +95,7 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
           && issue.executionState?.status !== "pending";
         if (restoreStatus) {
           const priorDecision = priorDecisionId ? await tx.select().from(statusDecisions).where(and(
-            eq(statusDecisions.id, priorDecisionId), eq(statusDecisions.companyId, issue.companyId),
+            eq(statusDecisions.id, priorDecisionId),
             eq(statusDecisions.issueId, issue.id),
           )).then((rows) => rows[0]) : null;
           await issueService(tx as unknown as Db).update(issue.id, {
@@ -115,7 +106,6 @@ export async function dismissObsoleteNativePolicyReviews(db: Db, runIds?: string
           }, tx, publications);
         }
         const { publication } = await persistActivity(tx as unknown as Db, {
-          companyId: issue.companyId,
           actorType: "system",
           actorId: "native-policy-review-cleanup",
           action: restoreStatus ? "issue.updated" : "issue.interaction_cancelled",

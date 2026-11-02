@@ -22,7 +22,6 @@ import { stateChipFor } from "./RichWorkProductCard";
 function workProduct(overrides: Partial<IssueWorkProduct> = {}): IssueWorkProduct {
   return {
     id: "work-product-1",
-    companyId: "company-1",
     projectId: null,
     issueId: "issue-1",
     executionWorkspaceId: null,
@@ -580,7 +579,7 @@ describe("TaskChatProtocolCard", () => {
 
   it("renders committed ACP permission choices and preserves its exact resolution binding", async () => {
     const event: HeartbeatRunEvent = {
-      id: 1, seq: 1, companyId: "company-1", runId: "run-1", agentId: "agent-1",
+      id: 1, seq: 1, runId: "run-1", agentId: "agent-1",
       eventType: "runtime_request.created", stream: "system", level: "info", color: null, message: null,
       createdAt: new Date("2026-09-28T12:00:00Z"),
       payload: { prpEvent: {

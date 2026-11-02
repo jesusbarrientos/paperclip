@@ -47,7 +47,6 @@ import {
 import type {
   JsonRpcId,
   PluginInvocationContext,
-  PluginInvocationScope,
   JsonRpcResponse,
   JsonRpcRequest,
   JsonRpcNotification,
@@ -436,17 +435,6 @@ export interface WorkerStartOptions {
    */
   duplexRouteSlots?: DuplexRouteSlotController | null;
   /**
-   * Companies this worker may act on from proactive (no-invocation) worker→host
-   * calls — the plugin's configured companies. Seeded onto the handle at
-   * creation, BEFORE the child process spawns, so a proactive plugin that
-   * issues host calls during setup() (e.g. the chat gateway's one-shot
-   * `events.subscribe`, which runs while `startWorker` is still awaiting the
-   * initialize response) is already authorized when those calls arrive. The set
-   * can still be replaced at runtime via `setProactiveCompanyScopes` (e.g. on a
-   * config change). Never widens access beyond the listed companies (LOOA-695).
-   */
-  proactiveCompanyScopes?: readonly string[];
-  /**
    * Callback for stream notifications from the worker (streams.open/emit/close).
    * The host wires this to the PluginStreamBus to fan out events to SSE clients.
    */
@@ -538,7 +526,6 @@ interface PendingRequest {
 }
 
 interface ActiveInvocation {
-  scope: PluginInvocationScope;
   timer?: ReturnType<typeof setTimeout>;
   // The host-minted W3C `traceparent` for the active startup span, or undefined
   // when no startup span is active. The span host handler reads it to mint the
@@ -567,7 +554,6 @@ export type ExecuteLogSink = (
 export interface LoginPtyOpenInput {
   /** The environment driver key. It routes the worker; it confers no command authority. */
   driverKey: string;
-  companyId: string;
   environmentId: string;
   providerLeaseId: string;
   /** The host-resolved fixed command identity. The worker maps it to a compile-time command. */
@@ -605,7 +591,6 @@ export interface LoginPtyHostSession {
  */
 export interface DuplexChannelOpenInput {
   driverKey: string;
-  companyId: string;
   environmentId: string;
   providerLeaseId: string;
   /**
@@ -641,27 +626,16 @@ export interface DuplexChannelHostSession {
 
 /**
  * Host-owned route for one active execute call. The host mints the invocation
- * id and stores the exact company id and log sink here. A worker never selects
- * this record; the host looks it up by the host-issued invocation id on the
- * message envelope. The company id is the single authority for the delivery
- * target, so an `execute.log` notification never carries a company id.
+ * id and stores the log sink here. A worker never selects this record; the host
+ * looks it up by the host-issued invocation id on the message envelope.
  */
 interface ExecuteLogRoute {
-  companyId: string;
   onLog: ExecuteLogSink;
   /**
    * The count of characters delivered through this route. The router bounds the
    * per-execute total and drops chunks past the configured ceiling.
    */
   deliveredChars: number;
-  /**
-   * Latched when the router cannot bind the shared worker pipe to a single
-   * company, because a second company's execute overlapped this one. After the
-   * latch the router drops every further chunk for this route and lets the final
-   * command result deliver the complete output. The latch keeps the delivered
-   * prefix contiguous, so the run log never shows a gap.
-   */
-  crossCompanyBlocked: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -741,13 +715,6 @@ export interface PluginWorkerHandle {
     input: DuplexChannelOpenInput,
   ): Promise<DuplexChannelHostSession>;
 
-  /**
-   * Authorize the set of companies this worker may act on from proactive
-   * (non-invocation) context. Replaces any previously-authorized set. See the
-   * proactive-company-scope note in `createPluginWorkerHandle` for rationale.
-   */
-  setProactiveCompanyScopes(companyIds: readonly string[]): void;
-
   /** Subscribe to worker events. */
   on<K extends WorkerHandleEventName>(
     event: K,
@@ -815,12 +782,6 @@ export interface PluginWorkerManager {
    * Check if a worker is registered and running for a plugin.
    */
   isRunning(pluginId: string): boolean;
-
-  /**
-   * Authorize the companies a plugin's worker may act on from proactive
-   * (non-invocation) context. No-op if the worker is not registered.
-   */
-  setProactiveCompanyScopes(pluginId: string, companyIds: readonly string[]): void;
 
   /**
    * Stop all managed workers. Called during server shutdown.
@@ -966,33 +927,6 @@ export function createPluginWorkerHandle(
   const duplexChannelCloseTimeoutMs =
     options.duplexChannelLimits?.closeTimeoutMs ?? DUPLEX_CHANNEL_CLOSE_TIMEOUT_MS;
 
-  // ------------------------------------------------------------------
-  // Proactive company scopes (LOOA-629)
-  // ------------------------------------------------------------------
-  // A proactive plugin (e.g. the chat gateway) does company-scoped work from
-  // its own timers/loops — not inside a host-issued top-level invocation
-  // (onEvent/performAction/executeTool/configChanged). Those worker→host calls
-  // carry no `paperclipInvocationId`, so the governed-access gate
-  // (host-client-factory.ts) rejects any company-scoped request with
-  // "company context is required" (regression class from #9557). The host
-  // authorizes a bounded set of companies — the plugin's configured companies,
-  // set by the loader after startup config delivery — for such proactive work.
-  // A no-invocation call that references one of these companies resolves to
-  // that company's scope; a call referencing any other company stays denied,
-  // and in-invocation calls keep their strict single-company match.
-  //
-  // Seeded from options at handle creation — before the child process is
-  // spawned — so a proactive plugin's setup()-time host calls (which land while
-  // `startWorker` is still awaiting initialize) are authorized in time. The
-  // loader used to call setProactiveCompanyScopes only AFTER startWorker
-  // resolved, which was too late for the gateway's one-shot events.subscribe
-  // and left outbound push permanently dead (LOOA-695).
-  const proactiveCompanyScopes = new Set<string>();
-  for (const id of options.proactiveCompanyScopes ?? []) {
-    const trimmed = readNonEmptyString(id);
-    if (trimmed) proactiveCompanyScopes.add(trimmed);
-  }
-
   // Optional methods reported by the worker during initialization
   let supportedMethods: string[] = [];
 
@@ -1004,8 +938,7 @@ export function createPluginWorkerHandle(
   let nextRestartAt: number | null = null;
 
   // Track open stream channels so we can emit synthetic close on crash.
-  // Maps channel → companyId.
-  const openStreamChannels = new Map<string, string>();
+  const openStreamChannels = new Set<string>();
 
   // Shutdown coordination
   let intentionalStop = false;
@@ -1112,34 +1045,7 @@ export function createPluginWorkerHandle(
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
-  function deriveInvocationScope(
-    method: HostToWorkerMethodName | string,
-    params: unknown,
-  ): PluginInvocationScope | null {
-    if (!isRecord(params)) return null;
-
-    const directCompanyId = readNonEmptyString(params.companyId);
-    if (directCompanyId) return { companyId: directCompanyId };
-
-    if (method === "performAction" && isRecord(params.actorContext)) {
-      const companyId = readNonEmptyString(params.actorContext.companyId);
-      return companyId ? { companyId } : null;
-    }
-
-    if (method === "executeTool" && isRecord(params.runContext)) {
-      const companyId = readNonEmptyString(params.runContext.companyId);
-      return companyId ? { companyId } : null;
-    }
-
-    if (method === "onEvent" && isRecord(params.event)) {
-      const companyId = readNonEmptyString(params.event.companyId);
-      return companyId ? { companyId } : null;
-    }
-
-    return null;
-  }
-
-  function registerInvocation(scope: PluginInvocationScope, ttlMs?: number): PluginInvocationContext {
+  function registerInvocation(ttlMs?: number): PluginInvocationContext {
     // Mint a W3C `traceparent` from the active startup span, so the worker's
     // provider span can parent to it. The host keeps the value on its own record
     // (below) and never trusts the worker to supply the parent. Outside a
@@ -1150,10 +1056,9 @@ export function createPluginWorkerHandle(
       : undefined;
     const invocation: PluginInvocationContext = {
       id: randomUUID(),
-      scope,
       ...(traceparent ? { traceparent } : {}),
     };
-    const entry: ActiveInvocation = { scope, traceparent };
+    const entry: ActiveInvocation = { traceparent };
     if (ttlMs !== undefined) {
       entry.timer = setTimeout(() => {
         activeInvocations.delete(invocation.id);
@@ -1172,17 +1077,14 @@ export function createPluginWorkerHandle(
   }
 
   // Store the host-owned execute route for one active execute call. The host
-  // holds the exact company id and log sink; the worker never supplies them.
+  // holds the log sink; the worker never supplies it.
   function registerExecuteRoute(
     invocationId: string,
-    companyId: string,
     onLog: ExecuteLogSink,
   ): void {
     activeExecuteRoutes.set(invocationId, {
-      companyId,
       onLog,
       deliveredChars: 0,
-      crossCompanyBlocked: false,
     });
   }
 
@@ -1208,7 +1110,7 @@ export function createPluginWorkerHandle(
 
   // Drop an `execute.log` notification. Write a rate-limited debug record with
   // the reason and a running drop count. The record never carries the chunk
-  // bytes, the company id, or command data.
+  // bytes or command data.
   function dropExecuteLogNotification(reason: string): void {
     executeLogDropCount += 1;
     const nowMs = Date.now();
@@ -1223,21 +1125,8 @@ export function createPluginWorkerHandle(
   }
 
   // Route one `execute.log` notification to its host-owned execute route. The
-  // route is the single authority for the delivery target and the company
-  // binding. This never reads a company id from the notification and never
-  // routes through the generic active-invocation record.
-  //
-  // Complete mediation: the host and the worker share one stdio pipe, and the
-  // worker process sees every active invocation id. So the host cannot prove
-  // which concurrent invocation produced a notification, and it must NOT treat
-  // the worker-supplied `paperclipInvocationId` alone as proof of origin. The
-  // host validates the exact company scope instead: it delivers only while every
-  // active execute route on this worker belongs to ONE company. When a second
-  // company's execute overlaps, the host fails closed — it latches the active
-  // routes and drops the chunk — so a worker that runs company A can never forge
-  // company B's active id and inject output into B's route. The final command
-  // result still delivers the complete output, so no byte is lost; only the live
-  // stream pauses while two companies overlap.
+  // route is the single authority for the delivery target. This never routes
+  // through the generic active-invocation record.
   function routeExecuteLogNotification(notification: JsonRpcNotification): void {
     const invocationId = readNonEmptyString(
       (notification as { paperclipInvocationId?: unknown }).paperclipInvocationId,
@@ -1267,33 +1156,6 @@ export function createPluginWorkerHandle(
       // No active execute route for this id: a late chunk after settlement or
       // timeout, a non-execute invocation, or an unknown id. Drop it.
       dropExecuteLogNotification("no-active-route");
-      return;
-    }
-    // The route already lost single-company attribution earlier in its life, so
-    // it stays closed for the rest of the call.
-    if (route.crossCompanyBlocked) {
-      dropExecuteLogNotification("cross-company-scope");
-      return;
-    }
-    // Validate the exact company scope. Deliver only while every active execute
-    // route on this worker belongs to one company. A second company's active
-    // route makes the shared pipe ambiguous, so the host fails closed: it
-    // latches every active route and drops the chunk.
-    let onlyCompanyId: string | null = null;
-    let crossCompany = false;
-    for (const active of activeExecuteRoutes.values()) {
-      if (onlyCompanyId === null) {
-        onlyCompanyId = active.companyId;
-      } else if (onlyCompanyId !== active.companyId) {
-        crossCompany = true;
-        break;
-      }
-    }
-    if (crossCompany) {
-      for (const active of activeExecuteRoutes.values()) {
-        active.crossCompanyBlocked = true;
-      }
-      dropExecuteLogNotification("cross-company-scope");
       return;
     }
     // Bound the total characters one execute call may stream. Past the ceiling
@@ -1788,7 +1650,6 @@ export function createPluginWorkerHandle(
         {
           hostRouteId,
           driverKey: input.driverKey,
-          companyId: input.companyId,
           environmentId: input.environmentId,
           providerLeaseId: input.providerLeaseId,
           loginCommandKey: input.loginCommandKey,
@@ -2473,7 +2334,6 @@ export function createPluginWorkerHandle(
         {
           hostRouteId,
           driverKey: input.driverKey,
-          companyId: input.companyId,
           environmentId: input.environmentId,
           providerLeaseId: input.providerLeaseId,
           command: input.command,
@@ -2628,67 +2488,13 @@ export function createPluginWorkerHandle(
     };
   }
 
-  /**
-   * Extract the single company a worker→host call references, mirroring the SDK
-   * governed-access gate's own derivation (host-client-factory.ts
-   * `requestedCompanyScope`) so a proactive call resolves to exactly the company
-   * the gate would require:
-   *   - explicit `params.companyId`;
-   *   - a company-scoped state key (`scopeKind: "company"` + `scopeId`);
-   *   - `events.subscribe`'s `params.filter.companyId` (how the SDK's
-   *     `ctx.events.on(name, { companyId }, fn)` issues its subscribe).
-   *
-   * Returns null whenever the gate treats the call as a wildcard (`companies.list`,
-   * a `scopeKind: "company"` key with no `scopeId`) or as referencing no company
-   * (instance-scoped state, an unfiltered subscribe). A wildcard is deliberately
-   * NOT granted proactively: proactive resolution only ever admits a single,
-   * explicit company, never "all". This keeps the resolver and the gate in
-   * lockstep in the functional direction (LOOA-693 AC#4 / LOOA-695).
-   */
-  function referencedCompanyId(method: string, params: unknown): string | null {
-    // Gate returns { kind: "all" } for companies.list regardless of params —
-    // never a single company — so proactive access declines it here.
-    if (method === "companies.list") return null;
-    if (!isRecord(params)) return null;
-    const direct = readNonEmptyString(params.companyId);
-    if (direct) return direct;
-    if (params.scopeKind === "company") {
-      // scopeId present → that company; absent → wildcard ("all") in the gate,
-      // which we never grant proactively → null.
-      return readNonEmptyString(params.scopeId);
-    }
-    if (method === "events.subscribe" && isRecord(params.filter)) {
-      return readNonEmptyString(params.filter.companyId);
-    }
-    return null;
-  }
-
   function contextForWorkerMessage(message: JsonRpcRequest | JsonRpcNotification): WorkerHostCallContext {
     const invocationId = readNonEmptyString(
       (message as { paperclipInvocationId?: unknown }).paperclipInvocationId,
     );
-    if (!invocationId) {
-      // No host-issued invocation is being echoed. This is a genuinely
-      // proactive worker→host call (timer/loop). If it references a company the
-      // plugin is authorized to act on proactively, resolve it to that
-      // company's scope so the governed-access gate admits it. This never
-      // widens access beyond the plugin's configured companies, and only
-      // applies when the worker is NOT inside a host-issued invocation (which
-      // would carry an id and keep its strict single-company match below).
-      const proactiveCompanyId = referencedCompanyId(
-        message.method,
-        (message as { params?: unknown }).params,
-      );
-      if (proactiveCompanyId && proactiveCompanyScopes.has(proactiveCompanyId)) {
-        return { invocationScope: { companyId: proactiveCompanyId } };
-      }
-      const hasActiveInvocation = activeInvocations.size > 0 ||
-        Array.from(pendingRequests.values()).some((pending) => pending.invocationId);
-      return hasActiveInvocation ? { invalidInvocationScope: true } : {};
-    }
+    if (!invocationId) return {};
     const entry = activeInvocations.get(invocationId);
-    if (!entry) return { invalidInvocationScope: true };
-    return { invocationScope: entry.scope, traceparent: entry.traceparent };
+    return entry?.traceparent ? { traceparent: entry.traceparent } : {};
   }
 
   /**
@@ -2819,28 +2625,10 @@ export function createPluginWorkerHandle(
       notification.method === "streams.close"
     ) {
       const params = (notification.params ?? {}) as Record<string, unknown>;
-      const companyId = String(params.companyId ?? "");
-      const context = contextForWorkerMessage(notification);
-      if (context.invalidInvocationScope) {
-        log.warn(
-          { method: notification.method, companyId },
-          "dropping plugin stream notification with invalid invocation scope",
-        );
-        return;
-      }
-      const allowedCompanyId = context.invocationScope?.companyId;
-      if (allowedCompanyId && companyId !== allowedCompanyId) {
-        log.warn(
-          { method: notification.method, companyId, allowedCompanyId },
-          "dropping plugin stream notification outside invocation company scope",
-        );
-        return;
-      }
-
       // Track open channels so we can emit synthetic close on crash
       if (notification.method === "streams.open") {
         const ch = String(params.channel ?? "");
-        if (ch) openStreamChannels.set(ch, companyId);
+        if (ch) openStreamChannels.add(ch);
       } else if (notification.method === "streams.close") {
         openStreamChannels.delete(String(params.channel ?? ""));
       }
@@ -2976,9 +2764,9 @@ export function createPluginWorkerHandle(
     // Emit synthetic close for any orphaned stream channels so SSE clients
     // are notified instead of hanging indefinitely.
     if (openStreamChannels.size > 0 && options.onStreamNotification) {
-      for (const [channel, companyId] of openStreamChannels) {
+      for (const channel of openStreamChannels) {
         try {
-          options.onStreamNotification("streams.close", { channel, companyId });
+          options.onStreamNotification("streams.close", { channel });
         } catch {
           // Best-effort cleanup — don't let it interfere with exit handling
         }
@@ -3304,14 +3092,9 @@ export function createPluginWorkerHandle(
 
       const id = nextRequestId++;
       const timeout = resolveRpcCallTimeoutMs(timeoutMs, rpcTimeoutMs);
-      const invocationScope = deriveInvocationScope(method, params);
-      const invocation = invocationScope ? registerInvocation(invocationScope) : null;
-      // Register the host-owned execute route only for an execute call that
-      // carries a log sink. The company id comes from the host-derived
-      // invocation scope, never from the worker. This binds the sink to the
-      // exact company for the life of the call.
-      if (invocation && invocationScope && executeLogSink && method === "environmentExecute") {
-        registerExecuteRoute(invocation.id, invocationScope.companyId, executeLogSink);
+      const invocation = registerInvocation();
+      if (executeLogSink && method === "environmentExecute") {
+        registerExecuteRoute(invocation.id, executeLogSink);
       }
 
       // Guard against double-settlement. When a process exits all pending
@@ -3459,11 +3242,10 @@ export function createPluginWorkerHandle(
 
     notify(method: string, params: unknown) {
       if (status !== "running") return;
-      const invocationScope = deriveInvocationScope(method, params);
-      // Notifications have no response to settle on, so the invocation scope
-      // is GC'd by TTL. Call-path invocations are registered without a TTL and
-      // cleared on settlement, so they survive arbitrarily long call timeouts.
-      const invocation = invocationScope ? registerInvocation(invocationScope, MAX_RPC_TIMEOUT_MS) : null;
+      // Notifications have no response to settle on, so the invocation is GC'd
+      // by TTL. Call-path invocations are registered without a TTL and cleared
+      // on settlement, so they survive arbitrarily long call timeouts.
+      const invocation = registerInvocation(MAX_RPC_TIMEOUT_MS);
       try {
         sendMessage({
           jsonrpc: JSONRPC_VERSION,
@@ -3489,14 +3271,6 @@ export function createPluginWorkerHandle(
       listener: (payload: WorkerHandleEvents[K]) => void,
     ) {
       emitter.off(event, listener);
-    },
-
-    setProactiveCompanyScopes(companyIds: readonly string[]): void {
-      proactiveCompanyScopes.clear();
-      for (const id of companyIds) {
-        const trimmed = readNonEmptyString(id);
-        if (trimmed) proactiveCompanyScopes.add(trimmed);
-      }
     },
 
     diagnostics(): WorkerDiagnostics {
@@ -3717,10 +3491,6 @@ export function createPluginWorkerManager(
     isRunning(pluginId: string): boolean {
       const handle = workers.get(pluginId);
       return handle?.status === "running";
-    },
-
-    setProactiveCompanyScopes(pluginId: string, companyIds: readonly string[]): void {
-      workers.get(pluginId)?.setProactiveCompanyScopes(companyIds);
     },
 
     async stopAll(): Promise<void> {

@@ -10,7 +10,6 @@ function createWorkProductRow(overrides: Partial<Record<string, unknown>> = {}) 
   const now = new Date("2026-03-17T00:00:00.000Z");
   return {
     id: "work-product-1",
-    companyId: "company-1",
     projectId: "project-1",
     issueId: "issue-1",
     executionWorkspaceId: null,
@@ -66,7 +65,6 @@ describe("workProductService", () => {
 
   it("refreshes pull-request state without mutating the stored work product", async () => {
     const product = createWorkProductRow({
-      companyId: "company-1",
       url: "https://github.com/paperclipai/paperclip/pull/42",
       metadata: {
         repo: "paperclipai/paperclip",
@@ -92,7 +90,7 @@ describe("workProductService", () => {
 
     const [refreshed] = await refreshPullRequestWorkProductMetadata([product], resolve);
 
-    expect(resolve).toHaveBeenCalledWith("company-1", {
+    expect(resolve).toHaveBeenCalledWith({
       host: "github.com",
       owner: "paperclipai",
       repo: "paperclip",
@@ -114,12 +112,12 @@ describe("workProductService", () => {
     const resolveCommitDetails = vi.fn(async () => ({ additions: 13, deletions: 2, changedFiles: 3 }));
     const svc = workProductService({} as any, { resolveCommitDetails });
 
-    await expect(svc.resolveCommitDiffSummary("company-1", {
+    await expect(svc.resolveCommitDiffSummary({
       provider: "github",
       url: "https://github.com/paperclipai/paperclip/commit/9c12ae7b41e5",
       metadata: null,
     })).resolves.toEqual({ additions: 13, deletions: 2, changedFiles: 3 });
-    expect(resolveCommitDetails).toHaveBeenCalledWith("company-1", {
+    expect(resolveCommitDetails).toHaveBeenCalledWith({
       host: "github.com",
       owner: "paperclipai",
       repo: "paperclip",
@@ -144,7 +142,7 @@ describe("workProductService", () => {
     const transaction = vi.fn(async (callback: (input: typeof tx) => Promise<unknown>) => await callback(tx));
 
     const svc = workProductService({ transaction } as any);
-    const result = await svc.createForIssue("issue-1", "company-1", {
+    const result = await svc.createForIssue("issue-1", {
       type: "pull_request",
       provider: "github",
       title: "PR 1",

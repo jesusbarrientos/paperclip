@@ -7,7 +7,7 @@ import { createRequest, isJsonRpcResponse, JsonRpcCallError, parseMessage, seria
 import { startWorkerRpcHost } from "../src/worker-rpc-host.js";
 
 const ownership = {
-  providerLeaseId: "paperclip-create-attempt-1", companyId: "company-1", environmentId: "environment-1",
+  providerLeaseId: "paperclip-create-attempt-1", environmentId: "environment-1",
   runId: "run-1", attemptId: "attempt-1", accountFingerprint: "a".repeat(64),
   labels: { "paperclip-provider": "daytona" },
 };
@@ -59,7 +59,7 @@ describe("failed environment creation ownership", () => {
   });
 
   it.each([
-    { providerLeaseId: "../other" }, { companyId: "" }, { environmentId: null }, { attemptId: "a".repeat(201) },
+    { providerLeaseId: "../other" }, { environmentId: null }, { attemptId: "a".repeat(201) },
     { runId: "other/run" }, { observedProviderLeaseId: "../other" }, { accountFingerprint: "secret-key" }, { labels: { apiKey: "secret-key" } },
     { labels: { "paperclip-provider": "Bearer secret-key" } }, { labels: [] },
     { labels: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`paperclip-${String.fromCharCode(97 + i)}`, "x"])) },

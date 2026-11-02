@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { composerAgentAppearance, composerAgents } from "./fixtures";
 
 const agents = new Map(composerAgents.map((fixture) => [fixture.id, {
-  id: fixture.id, companyId: "storybook", name: fixture.name, role: fixture.role,
+  id: fixture.id, name: fixture.name, role: fixture.role,
   appearance: composerAgentAppearance(fixture.id),
   adapterType: fixture.adapterType,
   adapterConfig: {
@@ -105,7 +105,7 @@ export function ComposerRunSettingsLiveStory({
             <ComposerModeChip mode={mode} onRemove={() => setMode("standard")} mobile={mobile} />
           </div>
           <div className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1.5", mobile && "flex-1 justify-end")}>
-            <ComposerRunSettingsPicker companyId="storybook" assigneeValue={assignee} currentAssigneeValue={assignee}
+            <ComposerRunSettingsPicker assigneeValue={assignee} currentAssigneeValue={assignee}
               options={options} agents={agents} settings={settings} onSettingsChange={setSettings}
               onAssigneeChange={(value) => { setAssignee(value); setSettings(null); }} mobile={mobile}
               modelOptionsOverride={selectedAgent?.models ?? []}

@@ -5,7 +5,6 @@ import { goalsApi } from "../api/goals";
 import { projectsApi } from "../api/projects";
 import { assetsApi } from "../api/assets";
 import { usePanel } from "../context/PanelContext";
-import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -48,7 +47,6 @@ export function GoalPropertiesToggleButton({
 
 export function GoalDetail() {
   const { goalId } = useParams<{ goalId: string }>();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { openNewGoal } = useDialogActions();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -63,24 +61,17 @@ export function GoalDetail() {
     queryFn: () => goalsApi.get(goalId!),
     enabled: !!goalId
   });
-  const resolvedCompanyId = goal?.companyId ?? selectedCompanyId;
 
   const { data: allGoals } = useQuery({
-    queryKey: queryKeys.goals.list(resolvedCompanyId!),
-    queryFn: () => goalsApi.list(resolvedCompanyId!),
-    enabled: !!resolvedCompanyId
+    queryKey: queryKeys.goals.list(),
+    queryFn: () => goalsApi.list(),
   });
 
   const { data: allProjects } = useQuery({
-    queryKey: queryKeys.projects.list(resolvedCompanyId!, { includeArchived: true }),
-    queryFn: () => projectsApi.list(resolvedCompanyId!, { includeArchived: true }),
-    enabled: !!resolvedCompanyId
+    queryKey: queryKeys.projects.list({ includeArchived: true }),
+    queryFn: () => projectsApi.list({ includeArchived: true }),
   });
 
-  useEffect(() => {
-    if (!goal?.companyId || goal.companyId === selectedCompanyId) return;
-    setSelectedCompanyId(goal.companyId, { source: "route_sync" });
-  }, [goal?.companyId, selectedCompanyId, setSelectedCompanyId]);
 
   const updateGoal = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -89,19 +80,15 @@ export function GoalDetail() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.goals.detail(goalId!)
       });
-      if (resolvedCompanyId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.goals.list(resolvedCompanyId)
-        });
-      }
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.goals.list()
+      });
     }
   });
 
   const uploadImage = useMutation({
     mutationFn: async (file: File) => {
-      if (!resolvedCompanyId) throw new Error("No organization selected");
       return assetsApi.uploadImage(
-        resolvedCompanyId,
         file,
         `goals/${goalId ?? "draft"}`
       );

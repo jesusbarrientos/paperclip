@@ -59,8 +59,8 @@ describe("prepareClaudeConfigSeed", () => {
     const onLog = vi.fn(async () => {});
     const env = createEnv(root, sourceDir);
 
-    const first = await prepareClaudeConfigSeed(env, onLog, "company-1");
-    const second = await prepareClaudeConfigSeed(env, onLog, "company-1");
+    const first = await prepareClaudeConfigSeed(env, onLog);
+    const second = await prepareClaudeConfigSeed(env, onLog);
 
     expect(first).toBe(second);
     await expect(fs.readFile(path.join(first, "settings.json"), "utf8"))
@@ -78,10 +78,10 @@ describe("prepareClaudeConfigSeed", () => {
 
     const onLog = vi.fn(async () => {});
     const env = createEnv(root, sourceDir);
-    const first = await prepareClaudeConfigSeed(env, onLog, "company-1");
+    const first = await prepareClaudeConfigSeed(env, onLog);
 
     await fs.writeFile(path.join(sourceDir, "settings.json"), JSON.stringify({ theme: "dark" }), "utf8");
-    const second = await prepareClaudeConfigSeed(env, onLog, "company-1");
+    const second = await prepareClaudeConfigSeed(env, onLog);
 
     expect(second).not.toBe(first);
     await expect(fs.readFile(path.join(first, "settings.json"), "utf8"))
@@ -113,7 +113,7 @@ describe("prepareClaudeConfigSeed", () => {
 
     const onLog = vi.fn(async () => {});
     const env = createEnv(root, sourceDir);
-    const seedDir = await prepareClaudeConfigSeed(env, onLog, "company-1");
+    const seedDir = await prepareClaudeConfigSeed(env, onLog);
     const remoteSettings = JSON.parse(await fs.readFile(path.join(seedDir, "settings.json"), "utf8"));
 
     expect(remoteSettings.permissions).toEqual({ defaultMode: "default" });
@@ -196,7 +196,6 @@ describe("prepareSandboxClaudeProbeRuntime managed-config diagnostics", () => {
       target: sandboxTarget,
       // The probe passes no CLAUDE_CONFIG_DIR, so the managed branch runs.
       cwd: "/home/daytona/paperclip-workspace",
-      companyId: "company-1",
       env: {},
       installCommand: "install-claude",
       detectCommand: "claude",

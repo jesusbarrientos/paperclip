@@ -11,7 +11,6 @@ const OPEN = {
   identity: {
     runId: "run-semantic-1",
     sessionId: "session-semantic-1",
-    companyId: "company-1",
     issueId: "task-1",
     agentId: "actor-1",
   },
@@ -28,7 +27,6 @@ async function running(
     actors: seed.actors ?? [
       {
         id: "actor-1",
-        companyId: "company-1",
         name: "Semantic Engineer",
         role: "engineer",
         status: "active",
@@ -187,7 +185,6 @@ describe("Capability semantic catalog and authorization", () => {
       tasks: [
         {
           id: "task-1",
-          companyId: "company-1",
           identifier: "MCK-1",
           title: "Active task",
           description: null,
@@ -203,7 +200,6 @@ describe("Capability semantic catalog and authorization", () => {
         },
         {
           id: "task-2",
-          companyId: "company-1",
           identifier: "MCK-2",
           title: "Blocking task",
           description: null,
@@ -272,7 +268,6 @@ describe("Capability semantic catalog and authorization", () => {
     const adapter = await running([], {
       tasks: [{
         id: "task-1",
-        companyId: "company-1",
         identifier: "MCK-1",
         title: "Ask-only task",
         description: null,

@@ -161,19 +161,19 @@ isolation enabled. Choose a new worktree, reuse an eligible worktree from that
 project, or keep the shared project workspace. Reuse carries the worktree's source
 checkout, including a non-primary checkout. Changing projects clears the
 previous worktree choice. Switching from reuse to a new worktree or the project
-workspace restores the project default checkout. Task creation uses the selected company and has
+workspace restores the project default checkout. Task creation uses the instance's organization and has
 no separate heading or settings control.
-Fresh tasks start with an empty request and the last task assignee chosen in that
-company, including a human. If that assignee is unavailable, the CEO is the
-default, or the first eligible agent when the company has no CEO. Explicit launch
+Fresh tasks start with an empty request and the last task assignee chosen in the
+organization, including a human. If that assignee is unavailable, the CEO is the
+default, or the first eligible agent when the organization has no CEO. Explicit launch
 assignees and saved drafts keep their selection. Selecting an assignee never
 inserts a mention. Clicking the assignee opens its searchable list directly;
 model and effort have a separate trigger and appear only for agents whose
 harness supports those settings.
-Fresh tasks also keep the company's last project (including No project); launch
+Fresh tasks also keep the organization's last project (including No project); launch
 context and saved drafts take precedence. New projects receive a random palette
 color and become the remembered project. The shared composer remembers the last
-effort within the company and applies it only when the selected model supports
+effort within the organization and applies it only when the selected model supports
 that level. Explicit task overrides and drafts take precedence. Default model
 labels show the configured or known adapter model, otherwise simply Default.
 Claude defaults supplied by the server's host environment remain Default unless
@@ -520,7 +520,7 @@ per-query results and latency measurements; scale measurements are opt-in.
 
 ### Recent task ordering
 
-The streamlined sidebar keeps five recent tasks per company and account in browser
+The streamlined sidebar keeps five recent tasks per account in browser
 storage. It sorts by the newest observed task or comment activity, not by live-run
 state. Older detail responses cannot move the stored activity time backward.
 Activity-only reorderings wait for one second without further activity changes;
@@ -609,8 +609,8 @@ linked Git worktree the command sets worktree runtime mode and safely arms
 **Run tasks in this worktree** for the current isolated instance. Primary
 checkouts and non-Git directories leave that experimental setting unchanged.
 
-If the selected data directory already contains any company, `test-drive`
-preserves all companies, agents, and secrets and ignores the bootstrap flags.
+If the selected data directory already contains an organization, `test-drive`
+preserves the organization, its agents, and secrets and ignores the bootstrap flags.
 The worktree execution setting is the only value it may reconcile in that
 case.
 
@@ -632,7 +632,7 @@ After Slack verifies its Events Request URL, the wizard asks you to send
 allowed to start work. It records the Slack identity and sends a private,
 one-time confirmation link that expires after 15 minutes; it creates no task
 and grants no access. You can confirm **This is my Slack account** in the wizard,
-or follow the private link and sign into Paperclip. Both paths check company
+or follow the private link and sign into Paperclip. Both paths check organization
 membership before linking, and future messages use the linked user's current
 permissions. The wizard only lists identities that sent the connect command to
 this endpoint during the current test.
@@ -641,15 +641,14 @@ New Slack connections disable **Allow unlinked people** by default. The Access
 page includes the shareable connect command and instructions for other users.
 Other Slack users join through the same connect command after setup. A signed-in
 nonmember can **Request access** from the confirmation page. This creates a
-pending human join request in the company's existing admin approval queue; it
+pending human join request in the instance's existing admin approval queue; it
 does not grant membership or link the identity. After approval, confirm the
 identity, or send the connect command again if the link has expired. Successful
 confirmation also queues a private Slack acknowledgement.
 
 Slack identity invitation pages retain the cloud authentication and bootstrap
 checks. Signed-in nonmembers may open a valid private invitation to request
-membership, but confirmation still requires membership in the invitation's
-company. Preview, access-request, and confirmation APIs also enforce the chat
+membership, but confirmation still requires organization membership. Preview, access-request, and confirmation APIs also enforce the chat
 connector rollout flag on the server; invitees cannot read board experimental
 settings before they join. Expired or consumed tokens grant no access.
 
@@ -719,9 +718,9 @@ Every local install keeps runtime state directly under the selected instance roo
   runtime-service-logs/                         # append-only managed-service stdout/stderr
   secrets/master.key                             # local_encrypted master key
   workspaces/<agent-id>/                         # default agent workspaces
-  projects/                                      # project execution workspaces
-  companies/<company-id>/agents/<agent-id>/codex-home/
-                                                   # per-agent codex_local home
+  projects/<project-id>/                         # managed project checkouts
+  organization/                                  # organization-owned state
+    agents/<agent-id>/codex-home/                # per-agent codex_local home
 ```
 
 `PAPERCLIP_HOME` and `PAPERCLIP_INSTANCE_ID` override the home root and instance id respectively. `paperclipai onboard` echoes the resolved values in its banner (`Local home: <home> | instance: <id> | config: <path>`) so you can confirm where state will land before continuing.
@@ -799,11 +798,11 @@ When a local agent run has no resolved project/session workspace, Paperclip fall
 
 This path honors `PAPERCLIP_HOME` and `PAPERCLIP_INSTANCE_ID` in non-default setups.
 
-For `codex_local`, Paperclip assigns new and updated agents an isolated Codex home under the instance root and blocks shared host/company Codex homes:
+For `codex_local`, Paperclip assigns new and updated agents an isolated Codex home under the instance root and blocks shared host/organization Codex homes:
 
-- `~/.paperclip/instances/default/companies/<company-id>/agents/<agent-id>/codex-home`
+- `~/.paperclip/instances/default/organization/agents/<agent-id>/codex-home`
 
-Paperclip also persists an empty `OPENAI_API_KEY` override for those agents so a host-level `OPENAI_API_KEY` cannot leak into Codex runs through process inheritance. If an operator explicitly configures `adapterConfig.env.CODEX_HOME`, it must not point at the shared company `codex-home`, `$CODEX_HOME`, or `~/.codex`.
+Paperclip also persists an empty `OPENAI_API_KEY` override for those agents so a host-level `OPENAI_API_KEY` cannot leak into Codex runs through process inheritance. If an operator explicitly configures `adapterConfig.env.CODEX_HOME`, it must not point at the shared organization `codex-home`, `$CODEX_HOME`, or `~/.codex`.
 
 If the `codex` CLI is not installed or not on `PATH`, `codex_local` agent runs fail at execution time with a clear adapter error. Quota polling uses a short-lived `codex app-server` subprocess: when `codex` cannot be spawned, that provider reports `ok: false` in aggregated quota results and the API server keeps running (it must not exit on a missing binary).
 
@@ -883,7 +882,7 @@ This command:
 
 Seed modes:
 
-- `minimal` keeps core app state like companies, projects, issues, comments, approvals, and auth state, preserves schema for all tables, but omits row data from heavy operational history such as heartbeat runs, wake requests, activity logs, runtime services, and agent session state
+- `minimal` keeps core app state like the organization, projects, issues, comments, approvals, and auth state, preserves schema for all tables, but omits row data from heavy operational history such as heartbeat runs, wake requests, activity logs, runtime services, and agent session state
 - `full` makes a full logical clone of the source instance
 - `--no-seed` creates an empty isolated instance
 
@@ -911,11 +910,11 @@ The default `worktree init` still seeds eagerly. A lean worktree (created withou
 - The built-in deferred seed is recorded as its own terminal `workspace_seed` operation. A zero exit code is not enough for success: the operation succeeds only when `.paperclip/seed-manifest.json` contains complete verified evidence; failed, missing, or malformed manifests produce a failed operation with the seed phase in metadata.
 - Worktrees created before lazy seeding shipped may have neither marker. Paperclip adopts them only after their configured database proves a compatible migration journal and the core Paperclip schema; otherwise managed startup creates a pending manifest and performs the normal verified seed. Manual markerless worktrees must provide `--from-config` so the source remains explicit.
 
-Both `minimal` and `full` modes use the same terminal data-validation contract. Source validation accepts a migration journal that is a prefix of the checkout's journal and records the source revision in seed diagnostics; it rejects a source that is ahead of the checkout because that would require a downgrade. After restore, Paperclip applies pending migrations and requires the target journal to be current. Both validations also read an auth user with an instance administrator role, active company membership, and representative cloned company/issue pair. Authenticated instances additionally require that administrator to have a non-empty credential account. `local_trusted` instances accept the implicit local Board user without an account row because that mode intentionally has no human login flow. Restore, migrations, execution quarantine, routine pausing, workspace rebinding, and post-restore validation all run under the seed lock. An interruption leaves the exact active phase in terminal `failed` state; it cannot produce readiness evidence.
+Both `minimal` and `full` modes use the same terminal data-validation contract. Source validation accepts a migration journal that is a prefix of the checkout's journal and records the source revision in seed diagnostics; it rejects a source that is ahead of the checkout because that would require a downgrade. After restore, Paperclip applies pending migrations and requires the target journal to be current. Both validations also read an auth user with an instance administrator role, active organization membership, and a representative cloned issue. Authenticated instances additionally require that administrator to have a non-empty credential account. `local_trusted` instances accept the implicit local Board user without an account row because that mode intentionally has no human login flow. Restore, migrations, execution quarantine, routine pausing, workspace rebinding, and post-restore validation all run under the seed lock. An interruption leaves the exact active phase in terminal `failed` state; it cannot produce readiness evidence.
 
 The seed process must own the target embedded PostgreSQL lifecycle for that entire sequence. It refuses to restore into a target postmaster that is already running, suppresses the embedded provider's process-global exit hooks, and stops its owned target only after validation or failure cleanup. A shutdown detected during restore is recorded as a target-database shutdown diagnostic rather than a generic restore failure.
 
-The seed manifest never grants source-path authority. Its source path and instance are diagnostic assertions derived from the realpath-canonical registered source. Deferred seeding resolves registration independently before taking the seed lock; under that lock it replaces stale source diagnostics from the registered value and then revalidates the manifest before any backup, service stop, spawn, or database mutation. Missing registration, invalid registered paths, source/target identity collisions, target-instance mismatches, and company mismatches fail closed.
+The seed manifest never grants source-path authority. Its source path and instance are diagnostic assertions derived from the realpath-canonical registered source. Deferred seeding resolves registration independently before taking the seed lock; under that lock it replaces stale source diagnostics from the registered value and then revalidates the manifest before any backup, service stop, spawn, or database mutation. Missing registration, invalid registered paths, source/target identity collisions, and target-instance mismatches fail closed.
 
 **Unverified-seed guard.** `pnpm dev` (the dev-runner) refuses to boot a worktree whose manifest is pending, running, failed, malformed, or missing required verification evidence and points you at the fix:
 
@@ -952,8 +951,8 @@ eval "$(paperclipai worktree env)"
 
 Opening a managed workspace board no longer depends on knowing which cloned password is current. `Open workspace` asks the main control plane for a short-lived, single-use ticket; the isolated workspace verifies it and creates its own instance-scoped Better Auth session.
 
-- **Issue** — `POST /api/execution-workspaces/{id}/login-handoff` (board actors only). The ticket is bound to the caller's user id and email, the execution workspace id, the workspace's company id, the isolated instance id, the live runtime origin, a nonce, and a ~90 s expiry. Nothing in the request body influences that binding; only the landing path is caller-supplied and it is reduced to a same-origin path before signing.
-- **Exchange** — `GET /api/auth/{workspace-handoff}/exchange?ticket=…` on the workspace itself, registered as a Better Auth plugin so session creation and cookie signing use Better Auth's own path. It verifies the signature, expiry, origin, instance, workspace, company, the cloned user's email, and an active membership **in that company**, records the nonce so a replay loses, and answers with an HTTP redirect — which is what keeps the ticket out of browser history. Request logs redact the `ticket` parameter.
+- **Issue** — `POST /api/execution-workspaces/{id}/login-handoff` (board actors only). The ticket is bound to the caller's user id and email, the execution workspace id, the isolated instance id, the live runtime origin, a nonce, and a ~90 s expiry. Nothing in the request body influences that binding; only the landing path is caller-supplied and it is reduced to a same-origin path before signing.
+- **Exchange** — `GET /api/auth/{workspace-handoff}/exchange?ticket=…` on the workspace itself, registered as a Better Auth plugin so session creation and cookie signing use Better Auth's own path. It verifies the signature, expiry, origin, instance, workspace, the cloned user's email, and an active organization membership, records the nonce so a replay loses, and answers with an HTTP redirect — which is what keeps the ticket out of browser history. Request logs redact the `ticket` parameter.
 - **Fallback** — direct email/password sign-in still works and the UI labels it accurately as *snapshot-local credentials*. A rejected ticket redirects to `/auth?workspaceHandoffError=<reason>` rather than failing opaquely.
 
 Key material is derived, never shared. The control plane keeps a root secret (`PAPERCLIP_WORKSPACE_HANDOFF_SECRET`, or a domain-separated derivation from the instance's existing signing secret when that is unset) and injects only per-workspace values into the guest process:
@@ -963,7 +962,6 @@ Key material is derived, never shared. The control plane keeps a root secret (`P
 | `PAPERCLIP_WORKSPACE_HANDOFF_KEY` | Per-workspace ticket verification key. A guest cannot mint a ticket for a sibling workspace. |
 | `PAPERCLIP_WORKSPACE_READINESS_TOKEN` | Bearer token the control plane presents to read this workspace's protected readiness. |
 | `PAPERCLIP_EXECUTION_WORKSPACE_ID` | Execution workspace the guest was provisioned for, used for identity checks. |
-| `PAPERCLIP_EXECUTION_WORKSPACE_COMPANY_ID` | Company whose board the guest represents. Scopes both the membership check and the readiness probes, so "some company in the clone is fine" cannot pass for the one being opened. |
 
 Protected `/api/health` on a cloned workspace additionally carries a `workspace` block — `state`, `databaseReady`, `cloneDataReady`, `authHandoffReady`, `seedState`, `seedPhase`, `instanceId`, `executionWorkspaceId`, `failurePhase`. Public health stays redacted. Managed runtime start will not publish `running / healthy` unless that block agrees and names this exact instance and workspace, and runtime-service work products are refreshed from the live runtime row so a port change cannot leave a stale user-facing URL.
 
@@ -1172,7 +1170,7 @@ and instructions, and resets execution sessions while retaining run history.
 Other adapters require an explicit provider choice. Legacy ACPX Codex agent
 settings normalize to native Codex on configuration updates and before fresh
 runs; immutable run descriptors remain readable. The **Paperclip Runner**
-experimental setting and company access checks still apply.
+experimental setting and organization access checks still apply.
 
 Agent configuration uses the same section layout across adapters: model and
 provider belong to **Adapter**, environment variables have their own section,
@@ -1219,7 +1217,7 @@ selected run's user comments so the agent can answer the original request.
 
 An unsaved Agent Chat uses an ephemeral `chat:<agent-id>` view-model ID. Task
 browser polling starts after the first send or upload creates a persisted task
-UUID. Saved chats retain the task browser's company and credential access checks.
+UUID. Saved chats retain the task browser's organization and credential access checks.
 Task browser routes reject malformed task IDs with `404` before querying PostgreSQL.
 
 A native continuation that requires reconciliation shows **Recovery needed**
@@ -1283,7 +1281,7 @@ the updated sandbox image with the matching runner qualification changes.
 ### Native runner restart recovery
 
 Project discovery through `list_projects` returns up to 50 compact summaries.
-It uses `GET /api/companies/:companyId/projects?view=summary&limit=50&cursor=...`;
+It uses `GET /api/projects?view=summary&limit=50&cursor=...`;
 the cursor is optional. The database reads bounded summary projections. Agent
 and run trust boundaries narrow database candidates before per-project access
 checks. Projects with their own authorization policy remain candidates because
@@ -1479,13 +1477,13 @@ In another terminal:
 
 ```sh
 curl http://localhost:3100/api/health
-curl http://localhost:3100/api/companies
+curl http://localhost:3100/api/organization
 ```
 
 Expected:
 
 - `/api/health` returns `{"status":"ok"}`
-- `/api/companies` returns a JSON array
+- `/api/organization` returns the instance's organization (or `404` before onboarding creates it)
 
 On `*.staging.paperclip.app`, the account menu shows the running server's
 short commit SHA below the user's email. Hover over it for the full SHA,
@@ -1584,11 +1582,11 @@ CLI configuration support:
 - `pnpm paperclipai onboard` writes a default `secrets` config section (`local_encrypted`, strict mode off, key file path set) and creates a local key file when needed.
 - `pnpm paperclipai configure --section secrets` lets you update provider/strict mode/key path and creates the local key file when needed.
 - `pnpm paperclipai doctor` validates secrets adapter configuration, can create a missing local key file with `--repair`, and reports missing AWS Secrets Manager bootstrap env when that provider is selected.
-- Provider health is available at `GET /api/companies/:companyId/secret-providers/health` and reports local key permission warnings plus backup guidance.
+- Provider health is available at `GET /api/secret-providers/health` and reports local key permission warnings plus backup guidance.
 
-Per-company provider vaults are configured in the board UI under
+Organization provider vaults are configured in the board UI under
 `Company Settings → Secrets → Provider vaults`, backed by
-`/api/companies/{companyId}/secret-provider-configs`. The CLI does not own
+`/api/secret-provider-configs`. The CLI does not own
 vault lifecycle today. See `docs/deploy/secrets.md` (`Provider Vaults` section)
 for the operator model.
 
@@ -1635,16 +1633,10 @@ Link-local destinations remain denied even when explicitly listed.
 
 ## Company Deletion Toggle
 
-Company deletion is intended as a dev/debug capability and can be disabled at runtime:
-
-```sh
-PAPERCLIP_ENABLE_COMPANY_DELETION=false
-```
-
-Default behavior:
-
-- `local_trusted`: enabled
-- `authenticated`: disabled
+The API no longer exposes a company deletion route: an instance serves exactly one
+organization, created during onboarding. `PAPERCLIP_ENABLE_COMPANY_DELETION` is
+still parsed and reported as `companyDeletionEnabled` in `/api/health`, but it
+gates nothing.
 
 ## CLI Client Operations
 
@@ -1653,15 +1645,15 @@ Paperclip CLI now includes client-side control-plane commands in addition to set
 Quick examples:
 
 ```sh
-npx paperclipai issue list --company-id <company-id>
-npx paperclipai issue create --company-id <company-id> --title "Investigate checkout conflict"
+npx paperclipai issue list
+npx paperclipai issue create --title "Investigate checkout conflict"
 npx paperclipai issue update <issue-id> --status in_progress --comment "Started triage"
 ```
 
 Set defaults once with context profiles:
 
 ```sh
-npx paperclipai context set --api-base http://localhost:3100 --company-id <company-id>
+npx paperclipai context set --api-base http://localhost:3100
 ```
 
 Then run commands without repeating flags:
@@ -1677,7 +1669,7 @@ See full command reference in `doc/CLI.md`.
 
 Agent-oriented invite onboarding now exposes machine-readable API docs:
 
-The board UI generates agent onboarding prompts from the add-agent modal (`+` in the agent sidebar), so agent onboarding sits with the rest of agent creation rather than company member invite settings.
+The board UI generates agent onboarding prompts from the add-agent modal (`+` in the agent sidebar), so agent onboarding sits with the rest of agent creation rather than organization member invite settings.
 
 - `GET /api/invites/:token` returns invite summary plus onboarding and skills index links.
 - `GET /api/invites/:token/onboarding` returns onboarding manifest details (registration endpoint, claim endpoint template, skill install hints).
@@ -1792,13 +1784,13 @@ package avatar PNGs using the API renderer; static hosting needs no API proxy.
 
 ### Investigating polling load
 
-The company heartbeat-run and live-run lists load secret registries in one
-company-scoped query per response. Registry reads project only
+The organization heartbeat-run and live-run lists load secret registries in one
+query per response. Registry reads project only
 `paperclipSecretRedactions` from the run context. They do not load the full
 prompt/context JSON. Decrypted values live only for that request and each run
 uses its own registry.
 
-Hidden browser tabs suspend the company live-events connection and transcript
+Hidden browser tabs suspend the organization live-events connection (`/api/events/ws`) and transcript
 log reads. Returning to a visible tab refreshes active queries once and resumes
 transcript reads from their retained offsets. A queued live-event invalidation
 that flushes after the tab hides marks data stale without starting a refetch.
@@ -1824,7 +1816,7 @@ URL or old workspace timestamp alone does not prove that a row is disposable.
 ### Browser realtime connection recovery
 
 If a browser cannot construct a WebSocket, the live-update and run transcript
-clients use their disconnected retry paths. While the company event stream is
+clients use their disconnected retry paths. While the organization event stream is
 disconnected, visible active queries refresh every 15 seconds. This fallback
 stops when the socket opens, the tab is hidden, or the provider unmounts. A
 reconnected socket also refreshes visible queries to recover missed events.

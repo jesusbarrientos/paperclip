@@ -189,7 +189,7 @@ function remoteArgs(
   overrides: Record<string, unknown> = {},
 ) {
   return {
-    agent: { id: "agent-1", companyId: "company-1" },
+    agent: { id: "agent-1" },
     runtime: {},
     config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir, cwd: localCwd },
     context: {},
@@ -504,7 +504,7 @@ describe("composed ACPX run fault matrix", () => {
     const firstExecute = createAcpxEngineExecutor({ createRuntime: () => completedRuntime() });
     const first = await firstExecute({
       runId: "fault-resume-a",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config,
       context: {},
@@ -534,7 +534,7 @@ describe("composed ACPX run fault matrix", () => {
     });
     const second = await secondExecute({
       runId: "fault-resume-b",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: { sessionParams: (first as { sessionParams?: unknown }).sessionParams },
       config,
       context: {},
@@ -855,7 +855,7 @@ describe("composed ACPX run fault matrix", () => {
     });
     const result = await execute({
       runId: "fault-host-gate",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -892,7 +892,7 @@ describe("composed ACPX run fault matrix", () => {
 
     const result = await execute({
       runId: "fault-host-turn-fail",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: {
         agent: "custom",
@@ -927,7 +927,7 @@ describe("composed ACPX run per-phase telemetry", () => {
 
     const result = await execute({
       runId: "phase-telemetry",
-      agent: { id: "agent-1", companyId: "company-1" },
+      agent: { id: "agent-1" },
       runtime: {},
       config: { agent: "custom", agentCommand: "node ./fake-acp.js", stateDir: path.join(root, "state") },
       context: {},

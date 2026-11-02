@@ -31,7 +31,6 @@ const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,239}$/;
 const RUNNER_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 export interface PrepareRunnerPrpSessionInput {
-  readonly companyId: string;
   readonly issueId: string;
   readonly runId: string;
   readonly agentId: string;
@@ -92,7 +91,6 @@ function clampDuration(
 
 function validateInput(input: PrepareRunnerPrpSessionInput): void {
   for (const id of [
-    input.companyId,
     input.issueId,
     input.runId,
     input.agentId,
@@ -173,30 +171,22 @@ export function runnerPrpCoordinator(
         .from(heartbeatRuns)
         .innerJoin(
           issues,
-          and(
-            eq(issues.id, heartbeatRuns.nativeIssueId),
-            eq(issues.companyId, heartbeatRuns.companyId),
-          ),
+          eq(issues.id, heartbeatRuns.nativeIssueId),
         )
         .innerJoin(
           agents,
-          and(
-            eq(agents.id, heartbeatRuns.agentId),
-            eq(agents.companyId, heartbeatRuns.companyId),
-          ),
+          eq(agents.id, heartbeatRuns.agentId),
         )
         .innerJoin(
           completionContracts,
           and(
             eq(completionContracts.id, heartbeatRuns.completionContractId),
-            eq(completionContracts.companyId, heartbeatRuns.companyId),
             eq(completionContracts.issueId, heartbeatRuns.nativeIssueId),
           ),
         )
         .where(
           and(
             eq(heartbeatRuns.id, input.runId),
-            eq(heartbeatRuns.companyId, input.companyId),
             eq(heartbeatRuns.agentId, input.agentId),
             eq(heartbeatRuns.nativeIssueId, input.issueId),
             eq(heartbeatRuns.runnerInstanceId, input.runnerInstanceId),
@@ -227,14 +217,12 @@ export function runnerPrpCoordinator(
       if (!criterionIds) throw new Error("runner_prp_run_not_authorized");
 
       const semanticAuthority = new PaperclipRunnerSemanticAuthority(db, {
-        companyId: input.companyId,
         issueId: input.issueId,
         runId: input.runId,
         agentId: input.agentId,
       });
       const semanticTools = await semanticAuthority.listAlwaysAvailableTools();
       const storeBinding = {
-        companyId: input.companyId,
         issueId: input.issueId,
         runId: input.runId,
         agentId: input.agentId,
@@ -307,7 +295,6 @@ export function runnerPrpCoordinator(
       let registration: Awaited<ReturnType<typeof registerRunnerPrpAuthority>>;
       try {
         registration = await registerRunnerPrpAuthority({
-          companyId: input.companyId,
           issueId: input.issueId,
           agentId: input.agentId,
           runId: input.runId,

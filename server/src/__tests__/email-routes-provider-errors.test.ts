@@ -7,10 +7,8 @@ import { errorHandler } from "../middleware/error-handler.js";
 import { emailRoutes } from "../routes/email.js";
 import { agentmailApi } from "../services/agentmail-api.js";
 import type { EmailChannelService } from "../services/email-channels.js";
-
-const companyId = "11111111-1111-4111-8111-111111111111";
 const agentId = "22222222-2222-4222-8222-222222222222";
-const setupPath = `/api/companies/${companyId}/email/inboxes`;
+const setupPath = `/api/email/inboxes`;
 const setupInput = {
   assignedAgentId: agentId,
   apiKey: "private-api-key",
@@ -99,7 +97,7 @@ describe("AgentMail provider errors at the HTTP boundary", () => {
   it("keeps a rejected provider key distinct from Paperclip session authentication", async () => {
     const api = agentmailApi("private-api-key", vi.fn(async () => new Response(null, { status: 401 })));
     const response = await request(app(() => api.whoami()))
-      .post(`/api/companies/${companyId}/email/inspect`).send({ apiKey: "private-api-key" }).expect(422);
+      .post(`/api/email/inspect`).send({ apiKey: "private-api-key" }).expect(422);
     expect(response.body.error).toContain("AgentMail rejected the API key");
     expect(response.body.details.operation).toBe("inspect_key");
   });

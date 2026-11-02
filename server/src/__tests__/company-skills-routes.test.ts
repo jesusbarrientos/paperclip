@@ -191,6 +191,10 @@ function registerModuleMocks() {
     };
   });
 
+  vi.doMock("../services/organization.js", () => ({
+    organizationService: () => ({ findId: async () => "company-1", requireId: async () => "company-1" }),
+  }));
+
   vi.doMock("../services/index.js", () => ({
     accessService: () => mockAccessService,
     agentService: () => mockAgentService,
@@ -227,7 +231,7 @@ describe("company skill mutation permissions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSkillSourceService.sourceForSkill.mockResolvedValue(null);
-    mockSkillSourceService.importFromUrl.mockImplementation((companyId, source) => mockCompanySkillService.importFromSource(companyId, source));
+    mockSkillSourceService.importFromUrl.mockImplementation((source) => mockCompanySkillService.importFromSource(source));
     mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
     mockCompanySkillService.importFromSource.mockResolvedValue({
       imported: [],
@@ -252,7 +256,6 @@ describe("company skill mutation permissions", () => {
     mockCompanySkillService.getVersion.mockResolvedValue(null);
     mockCompanySkillService.createVersion.mockResolvedValue({
       id: "version-1",
-      companyId: "company-1",
       companySkillId: "skill-1",
       revisionNumber: 1,
       label: "v1",
@@ -273,7 +276,6 @@ describe("company skill mutation permissions", () => {
     });
     const forkedSkill = {
       id: "skill-fork",
-      companyId: "company-1",
       key: "company/company-1/review-fork",
       slug: "review-fork",
       name: "Review Fork",
@@ -341,7 +343,6 @@ describe("company skill mutation permissions", () => {
     mockCompanySkillService.listComments.mockResolvedValue([]);
     mockCompanySkillService.createComment.mockResolvedValue({
       id: "comment-1",
-      companyId: "company-1",
       companySkillId: "skill-1",
       parentCommentId: null,
       authorAgentId: null,
@@ -353,7 +354,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.updateComment.mockResolvedValue({
       id: "comment-1",
-      companyId: "company-1",
       companySkillId: "skill-1",
       parentCommentId: null,
       authorAgentId: null,
@@ -365,7 +365,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.deleteComment.mockResolvedValue({
       id: "comment-1",
-      companyId: "company-1",
       companySkillId: "skill-1",
       parentCommentId: null,
       authorAgentId: null,
@@ -379,7 +378,6 @@ describe("company skill mutation permissions", () => {
       action: "created",
       skill: {
         id: "skill-1",
-        companyId: "company-1",
         key: "paperclipai/bundled/software-development/review",
         slug: "review",
         name: "review",
@@ -422,7 +420,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.createLocalSkill.mockResolvedValue({
       id: "skill-1",
-      companyId: "company-1",
       key: "company/company-1/review",
       slug: "review",
       name: "Review",
@@ -520,7 +517,6 @@ describe("company skill mutation permissions", () => {
     mockCompanySkillService.listTestInputs.mockResolvedValue([]);
     mockCompanySkillService.createTestInput.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       skillId: "skill-1",
       name: "smoke/input",
       content: "Try the skill",
@@ -531,7 +527,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.updateTestInput.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       skillId: "skill-1",
       name: "smoke/renamed",
       content: "Try the skill again",
@@ -542,7 +537,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.deleteTestInput.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
       skillId: "skill-1",
       name: "smoke/renamed",
       content: "Try the skill again",
@@ -553,7 +547,6 @@ describe("company skill mutation permissions", () => {
     });
     const templateResponse = {
       id: "66666666-6666-4666-8666-666666666666",
-      companyId: "company-1",
       name: "Custom template",
       description: "Custom run guidance",
       body: "Run {{skillName}} into {{outputDocumentKey}}.",
@@ -591,7 +584,6 @@ describe("company skill mutation permissions", () => {
     mockCompanySkillService.getTestRunDetail.mockResolvedValue(null);
     mockCompanySkillService.createTestRun.mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
       skillId: "skill-1",
       inputId: "11111111-1111-4111-8111-111111111111",
       inputSnapshot: "Try the skill",
@@ -619,7 +611,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.cancelTestRun.mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
       skillId: "skill-1",
       inputId: "11111111-1111-4111-8111-111111111111",
       inputSnapshot: "Try the skill",
@@ -647,13 +638,11 @@ describe("company skill mutation permissions", () => {
     });
     mockIssueService.create.mockResolvedValue({
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: "company-1",
       identifier: "PAP-999",
       title: "Skill test: Review",
     });
     mockIssueService.getById.mockResolvedValue({
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: "company-1",
       status: "in_progress",
       executionRunId: "run-1",
     });
@@ -692,7 +681,7 @@ describe("company skill mutation permissions", () => {
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.decide.mockResolvedValue(allowSkillChangeDecision());
     mockAccessService.hasPermission.mockResolvedValue(false);
-    mockCompanySkillPolicyService.resolveAgentPrincipal.mockImplementation(async (_companyId, agentId) => ({
+    mockCompanySkillPolicyService.resolveAgentPrincipal.mockImplementation(async (agentId) => ({
       type: "agent",
       id: agentId,
       role: "engineer",
@@ -712,11 +701,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -753,37 +742,37 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const preview = await request(app)
-      .post("/api/companies/company-1/skills/scan-projects")
+      .post("/api/skills/scan-projects")
       .send({ mode: "preview", workspaceIds: [workspaceId] });
     expect(preview.status, JSON.stringify(preview.body)).toBe(200);
     expect(preview.body.candidates).toHaveLength(1);
-    expect(mockCompanySkillService.scanProjectWorkspaces).toHaveBeenCalledWith("company-1", {
+    expect(mockCompanySkillService.scanProjectWorkspaces).toHaveBeenCalledWith({
       mode: "preview",
       workspaceIds: [workspaceId],
     });
 
     const selective = await request(app)
-      .post("/api/companies/company-1/skills/scan-projects")
+      .post("/api/skills/scan-projects")
       .send({
         mode: "import",
         workspaceIds: [workspaceId],
         selection: [{ workspaceId, path: ".codex/skills/review", slug: "review-project" }],
       });
     expect(selective.status, JSON.stringify(selective.body)).toBe(200);
-    expect(mockCompanySkillService.scanProjectWorkspaces).toHaveBeenLastCalledWith("company-1", {
+    expect(mockCompanySkillService.scanProjectWorkspaces).toHaveBeenLastCalledWith({
       mode: "import",
       workspaceIds: [workspaceId],
       selection: [{ workspaceId, path: ".codex/skills/review", slug: "review-project" }],
     });
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
     expect(mockLogActivity).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
       action: "company.skills_scanned",
@@ -801,11 +790,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/scan-projects")
+      .post("/api/skills/scan-projects")
       .send({ mode: "preview", workspaceIds: [workspaceId] });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
@@ -817,44 +806,44 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     });
 
     await request(app)
-      .post("/api/companies/company-1/skills")
+      .post("/api/skills")
       .send({ name: "Review", slug: "review", markdown: "# Review" })
       .expect(201);
     await request(app)
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" })
       .expect(201);
     await request(app)
-      .post("/api/companies/company-1/skills/install-catalog")
+      .post("/api/skills/install-catalog")
       .send({ catalogSkillId: "paperclipai:bundled:software-development:review" })
       .expect(201);
     await request(app)
-      .patch("/api/companies/company-1/skills/skill-1")
+      .patch("/api/skills/skill-1")
       .send({ description: "Updated" })
       .expect(200);
     await request(app)
-      .delete("/api/companies/company-1/skills/skill-1")
+      .delete("/api/skills/skill-1")
       .expect(200);
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/audit")
+      .post("/api/skills/skill-1/audit")
       .send({})
       .expect(200);
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/reset")
+      .post("/api/skills/skill-1/reset")
       .send({})
       .expect(200);
 
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
-    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("company-1", "board-user", "agents:create");
+    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("board-user", "agents:create");
     expect(mockCompanySkillService.createLocalSkill).toHaveBeenCalled();
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalled();
     expect(mockCompanySkillService.installFromCatalog).toHaveBeenCalled();
@@ -870,19 +859,19 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
-    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("company-1", "board-user", "agents:create");
+    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("board-user", "agents:create");
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalled();
   });
 
@@ -900,10 +889,9 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://packages.example.com/skill.tgz" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
@@ -924,11 +912,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source });
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -944,11 +932,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -968,10 +956,9 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
@@ -1001,17 +988,16 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Skill action denied by company policy");
     expect(mockCompanySkillPolicyService.evaluate).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       action: "skills.import",
       resource: expect.objectContaining({
         sourceType: "git",
@@ -1045,11 +1031,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .patch("/api/companies/company-1/skills/skill-1")
+      .patch("/api/skills/skill-1")
       .send({ name: "Updated review" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
@@ -1076,17 +1062,16 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/skill-1/versions")
+      .post("/api/skills/skill-1/versions")
       .send({ label: "v1" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(mockCompanySkillPolicyService.evaluate).toHaveBeenCalledWith(expect.objectContaining({
       action: "skills.create",
-      companyId: "company-1",
       resource: expect.objectContaining({
         skillId: "skill-1",
       }),
@@ -1113,17 +1098,16 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "npx skills add Vercel-Labs/Agent-Browser --skill agent-browser -g" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Skill action denied by company policy");
     expect(mockCompanySkillPolicyService.evaluate).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       action: "skills.import",
       resource: expect.objectContaining({
         sourceType: "git",
@@ -1163,17 +1147,16 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Skill action denied by company policy");
     expect(mockCompanySkillPolicyService.evaluate).toHaveBeenCalledWith(expect.objectContaining({
-      companyId: "company-1",
       action: "skills.import",
       resource: expect.objectContaining({
         sourceType: "git",
@@ -1209,7 +1192,7 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
@@ -1241,7 +1224,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "none" });
 
     const res = await request(app)
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/acme/private-skill?token=secret#token=secret" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(401);
@@ -1256,7 +1239,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "none" });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/skills/skill-1")
+      .patch("/api/skills/skill-1")
       .send({ description: "Updated" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(401);
@@ -1270,7 +1253,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
@@ -1291,23 +1274,22 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/install-catalog")
+      .post("/api/skills/install-catalog")
       .send({
         catalogSkillId: "paperclipai:bundled:software-development:review",
         slug: "review",
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(mockCompanySkillService.installFromCatalog).toHaveBeenCalledWith("company-1", {
+    expect(mockCompanySkillService.installFromCatalog).toHaveBeenCalledWith({
       catalogSkillId: "paperclipai:bundled:software-development:review",
       slug: "review",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId: "company-1",
       action: "company.skill_catalog_installed",
       entityType: "company_skill",
       entityId: "skill-1",
@@ -1324,7 +1306,6 @@ describe("company skill mutation permissions", () => {
       imported: [
         {
           id: "skill-1",
-          companyId: "company-1",
           key: "vercel-labs/agent-browser/find-skills",
           slug: "find-skills",
           name: "Find Skills",
@@ -1351,11 +1332,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -1371,8 +1352,8 @@ describe("company skill mutation permissions", () => {
       await options?.onProgress({ type: 'progress', phase: 'listing', totalSkills: null, checkedSkills: 0, currentPath: null, checkedFiles: 0, totalFiles: null });
       return result;
     });
-    const app = createApp({ type: 'board', userId: 'board', companyIds: ['company-1'], source: 'local_implicit' });
-    const base = '/api/companies/company-1/skill-sources/discover';
+    const app = createApp({ type: 'board', userId: 'board', memberships: [{ membershipRole: "operator", status: "active" }], source: 'local_implicit' });
+    const base = '/api/skill-sources/discover';
     const stream = await request(app).post(base).set('Accept', 'application/x-ndjson').send({ repositoryUrl: 'https://github.com/acme/skills' }).expect(200);
     expect(stream.headers['content-type']).toContain('application/x-ndjson');
     expect(stream.headers['cache-control']).toBe('no-cache, no-transform');
@@ -1387,8 +1368,8 @@ describe("company skill mutation permissions", () => {
       await options.onProgress({ type: 'progress', phase: 'listing' });
       throw new Error('Internal credential detail must not leak');
     });
-    const res = await request(createApp({ type: 'board', userId: 'board', companyIds: ['company-1'], source: 'local_implicit' }))
-      .post('/api/companies/company-1/skill-sources/discover').set('Accept', 'application/x-ndjson').send({ repositoryUrl: 'https://github.com/acme/skills' }).expect(200);
+    const res = await request(createApp({ type: 'board', userId: 'board', memberships: [{ membershipRole: "operator", status: "active" }], source: 'local_implicit' }))
+      .post('/api/skill-sources/discover').set('Accept', 'application/x-ndjson').send({ repositoryUrl: 'https://github.com/acme/skills' }).expect(200);
     const events = res.text.trim().split('\n').map((line: string) => JSON.parse(line));
     expect(events.at(-1)).toEqual({ type: 'error', error: 'Repository scan interrupted. Try again.', status: 500 });
     expect(events.some((event: { type: string }) => event.type === 'complete')).toBe(false);
@@ -1405,11 +1386,11 @@ describe("company skill mutation permissions", () => {
       throw new Error('A stalled scan must abort before continuing');
     });
     try {
-      const app = createApp({ type: 'board', userId: 'board', companyIds: ['company-1'], source: 'local_implicit' }, res => {
+      const app = createApp({ type: 'board', userId: 'board', memberships: [{ membershipRole: "operator", status: "active" }], source: 'local_implicit' }, res => {
         response = res;
         res.write = write;
       });
-      const pending = request(app).post('/api/companies/company-1/skill-sources/discover')
+      const pending = request(app).post('/api/skill-sources/discover')
         .set('Accept', 'application/x-ndjson').send({ repositoryUrl: 'https://github.com/acme/skills' })
         .then(() => null, error => error);
       await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
@@ -1426,34 +1407,13 @@ describe("company skill mutation permissions", () => {
     }
   });
 
-  it("rejects cross-company source reads and mutations for board users and agents", async () => {
-    for (const actor of [
-      { type: "board", userId: "member", companyIds: ["company-1"], isInstanceAdmin: true, source: "session" },
-      { type: "agent", agentId: "agent-1", companyId: "company-1" },
-    ]) {
-      const app = createApp(actor);
-      const base = "/api/companies/company-2/skill-sources";
-      const responses = await Promise.all([
-        request(app).get(base), request(app).get(`${base}/repositories`), request(app).get(`${base}/source-id`),
-        request(app).post(`${base}/discover`).send({ repositoryUrl: "https://github.com/acme/skills" }),
-        request(app).post(`${base}/discover`).set('Accept', 'application/x-ndjson').send({ repositoryUrl: "https://github.com/acme/skills" }),
-        request(app).post(`${base}/preview`).send({ repositoryUrl: "https://github.com/acme/skills", commitSha: "a".repeat(40), skillPath: "SKILL.md", filePath: "SKILL.md" }),
-        request(app).post(base).send({ repositoryUrl: "https://github.com/acme/skills", commitSha: "a".repeat(40), selectedPaths: [] }),
-        request(app).patch(`${base}/source-id`).send({ revision: 0, selectedPaths: [], excludedFolders: [] }),
-        request(app).post(`${base}/source-id/refresh`), request(app).delete(`${base}/source-id`),
-      ]);
-      for (const response of responses) expect(response.status).toBe(403);
-    }
-    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
-  });
-
   it("omits source-managed repository identities from import telemetry", async () => {
     mockCompanySkillService.importFromSource.mockResolvedValue({ imported: [{
       sourceType: "github", key: "github/private-repo/private-skill-name", slug: "private-skill-name",
       metadata: { hostname: "github.com", skillSourceId: "source-1" },
     }], warnings: [] });
-    await request(createApp({ type: "board", userId: "local-board", companyIds: ["company-1"], source: "local_implicit" }))
-      .post("/api/companies/company-1/skills/import").send({ source: "https://github.com/acme/private" }).expect(201);
+    await request(createApp({ type: "board", userId: "local-board", memberships: [{ membershipRole: "operator", status: "active" }], source: "local_implicit" }))
+      .post("/api/skills/import").send({ source: "https://github.com/acme/private" }).expect(201);
     expect(mockTrackSkillImported).toHaveBeenCalledWith(expect.anything(), { sourceType: "github", skillRef: null });
   });
 
@@ -1462,7 +1422,6 @@ describe("company skill mutation permissions", () => {
       imported: [
         {
           id: "skill-1",
-          companyId: "company-1",
           key: "private-skill",
           slug: "private-skill",
           name: "Private Skill",
@@ -1489,11 +1448,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://ghe.example.com/acme/private-skill" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -1508,7 +1467,6 @@ describe("company skill mutation permissions", () => {
       imported: [
         {
           id: "skill-1",
-          companyId: "company-1",
           key: "unknown/private-skill",
           slug: "private-skill",
           name: "Private Skill",
@@ -1531,11 +1489,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/acme/private-skill" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -1545,59 +1503,37 @@ describe("company skill mutation permissions", () => {
     });
   });
 
-  it("allows same-company agents without skill change grants when no explicit policy exists", async () => {
+  it("allows agents without skill change grants when no explicit policy exists", async () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       permissions: { canCreateSkills: false },
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
-    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("company-1", "agent", "55555555-5555-4555-8555-555555555555", "agents:create");
+    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("agent", "55555555-5555-4555-8555-555555555555", "agents:create");
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalled();
-  });
-
-  it("blocks agent catalog installs for other companies", async () => {
-    mockAgentService.getById.mockResolvedValue({
-      id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
-      permissions: { canCreateSkills: true },
-    });
-
-    const res = await request(await createApp({
-      type: "agent",
-      agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
-      runId: "run-1",
-    }))
-      .post("/api/companies/company-2/skills/install-catalog")
-      .send({ catalogSkillId: "paperclipai:bundled:software-development:review" });
-
-    expect(res.status, JSON.stringify(res.body)).toBe(403);
-    expect(mockCompanySkillService.installFromCatalog).not.toHaveBeenCalled();
   });
 
   it("passes store list filters and category count requests to the service", async () => {
     const app = await createApp({ type: "board", source: "local_implicit" });
 
     await request(app)
-      .get("/api/companies/company-1/skills?sort=stars&categories[]=memory&category=git&scope=company&q=review&include=lastEditor")
+      .get("/api/skills?sort=stars&categories[]=memory&category=git&scope=company&q=review&include=lastEditor")
       .expect(200);
-    expect(mockCompanySkillService.list).toHaveBeenCalledWith("company-1", {
+    expect(mockCompanySkillService.list).toHaveBeenCalledWith({
       q: "review",
       sort: "stars",
       categories: ["git", "memory"],
@@ -1605,15 +1541,15 @@ describe("company skill mutation permissions", () => {
       include: ["lastEditor"],
     });
 
-    await request(app).get("/api/companies/company-1/skills/categories").expect(200);
-    expect(mockCompanySkillService.categoryCounts).toHaveBeenCalledWith("company-1");
+    await request(app).get("/api/skills/categories").expect(200);
+    expect(mockCompanySkillService.categoryCounts).toHaveBeenCalledWith();
   });
 
   it("accepts category updates and logs the skill mutation", async () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     const res = await request(app)
-      .patch("/api/companies/company-1/skills/skill-1")
+      .patch("/api/skills/skill-1")
       .send({ categories: ["memory", "review"], sharingScope: "company" })
       .expect(200);
 
@@ -1622,12 +1558,11 @@ describe("company skill mutation permissions", () => {
       categories: ["memory", "review"],
       sharingScope: "company",
     });
-    expect(mockCompanySkillService.updateSkill).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockCompanySkillService.updateSkill).toHaveBeenCalledWith("skill-1", {
       categories: ["memory", "review"],
       sharingScope: "company",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId: "company-1",
       actorType: "user",
       actorId: "user-1",
       action: "company.skill_updated",
@@ -1645,11 +1580,11 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/versions")
+      .post("/api/skills/skill-1/versions")
       .send({ label: "v1" })
       .expect(201);
 
-    expect(mockCompanySkillService.createVersion).toHaveBeenCalledWith("company-1", "skill-1", { label: "v1" }, {
+    expect(mockCompanySkillService.createVersion).toHaveBeenCalledWith("skill-1", { label: "v1" }, {
       type: "user",
       userId: "user-1",
     });
@@ -1664,12 +1599,12 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     const res = await request(app)
-      .delete("/api/companies/company-1/skills/skill-1/files")
+      .delete("/api/skills/skill-1/files")
       .send({ path: "references", target: "folder" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
-    expect(mockCompanySkillService.deleteFile).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockCompanySkillService.deleteFile).toHaveBeenCalledWith("skill-1", {
       path: "references",
       target: "folder",
     }, {
@@ -1688,17 +1623,17 @@ describe("company skill mutation permissions", () => {
     }));
   });
 
-  it("stars, forks, and comments on skills through company-scoped endpoints", async () => {
+  it("stars, forks, and comments on skills through skill endpoints", async () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
-    await request(app).post("/api/companies/company-1/skills/skill-1/star").send({}).expect(200);
-    expect(mockCompanySkillService.starSkill).toHaveBeenCalledWith("company-1", "skill-1", {
+    await request(app).post("/api/skills/skill-1/star").send({}).expect(200);
+    expect(mockCompanySkillService.starSkill).toHaveBeenCalledWith("skill-1", {
       type: "user",
       userId: "user-1",
     });
 
     const forkRes = await request(app)
-      .post("/api/companies/company-1/skills/skill-1/fork")
+      .post("/api/skills/skill-1/fork")
       .send({ slug: "review-fork", reassignAgentIds: ["11111111-1111-4111-8111-111111111111"] })
       .expect(201);
     expect(forkRes.body).toMatchObject({
@@ -1707,7 +1642,6 @@ describe("company skill mutation permissions", () => {
       reassignments: [],
     });
     expect(mockCompanySkillService.forkSkill).toHaveBeenCalledWith(
-      "company-1",
       "skill-1",
       { slug: "review-fork", reassignAgentIds: ["11111111-1111-4111-8111-111111111111"] },
       {
@@ -1716,14 +1650,14 @@ describe("company skill mutation permissions", () => {
       },
     );
 
-    await request(app).get("/api/companies/company-1/skills/skill-1/fork-precheck").expect(200);
-    expect(mockCompanySkillService.forkPrecheck).toHaveBeenCalledWith("company-1", "skill-1", {
+    await request(app).get("/api/skills/skill-1/fork-precheck").expect(200);
+    expect(mockCompanySkillService.forkPrecheck).toHaveBeenCalledWith("skill-1", {
       type: "user",
       userId: "user-1",
     });
 
-    await request(app).post("/api/companies/company-1/skills/skill-1/comments").send({ body: "Looks good" }).expect(201);
-    expect(mockCompanySkillService.createComment).toHaveBeenCalledWith("company-1", "skill-1", { body: "Looks good" }, {
+    await request(app).post("/api/skills/skill-1/comments").send({ body: "Looks good" }).expect(201);
+    expect(mockCompanySkillService.createComment).toHaveBeenCalledWith("skill-1", { body: "Looks good" }, {
       type: "user",
       userId: "user-1",
     });
@@ -1746,7 +1680,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     const res = await request(app)
-      .post("/api/companies/company-1/skills/skill-1/rename")
+      .post("/api/skills/skill-1/rename")
       .send({ name: "Ship PR", slug: "ship-pr" })
       .expect(200);
 
@@ -1757,7 +1691,6 @@ describe("company skill mutation permissions", () => {
       previousKey: "company/company-1/review",
     });
     expect(mockCompanySkillService.renameSkill).toHaveBeenCalledWith(
-      "company-1",
       "skill-1",
       { name: "Ship PR", slug: "ship-pr" },
     );
@@ -1789,7 +1722,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/rename")
+      .post("/api/skills/skill-1/rename")
       .send({ name: "Review", slug: "review" })
       .expect(200);
 
@@ -1802,14 +1735,13 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
       keyId: "agent-key-1",
       source: "agent_key",
     });
 
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/rename")
+      .post("/api/skills/skill-1/rename")
       .send({ name: "Ship PR", slug: "ship-pr" })
       .expect(200);
 
@@ -1826,7 +1758,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/rename")
+      .post("/api/skills/skill-1/rename")
       .send({ slug: "ship-pr" })
       .expect(400);
     expect(mockCompanySkillService.renameSkill).not.toHaveBeenCalled();
@@ -1836,7 +1768,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     await request(app)
-      .post("/api/companies/company-1/skills/skill-1/rename")
+      .post("/api/skills/skill-1/rename")
       .send({ name: "Ship PR\nslug: injected" })
       .expect(400);
     expect(mockCompanySkillService.renameSkill).not.toHaveBeenCalled();
@@ -1845,9 +1777,9 @@ describe("company skill mutation permissions", () => {
   it("does not synthesize a shared board user id for board actors without user ids", async () => {
     const app = await createApp({ type: "board", source: "local_implicit" });
 
-    await request(app).post("/api/companies/company-1/skills/skill-1/star").send({}).expect(200);
+    await request(app).post("/api/skills/skill-1/star").send({}).expect(200);
 
-    expect(mockCompanySkillService.starSkill).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockCompanySkillService.starSkill).toHaveBeenCalledWith("skill-1", {
       type: "user",
       userId: null,
     });
@@ -1857,27 +1789,24 @@ describe("company skill mutation permissions", () => {
     mockAccessService.decide.mockResolvedValue(allowSkillChangeDecision("allow_direct_change"));
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       permissions: { canCreateSkills: false },
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
     expect(mockReflectionCoachMutationGate.assertConsented).not.toHaveBeenCalled();
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalledWith(
-      "company-1",
       "https://github.com/vercel-labs/agent-browser",
     );
   });
@@ -1895,10 +1824,9 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "reflection-coach",
-      companyId: "company-1",
       runId: "run-apply",
     }))
-      .post("/api/companies/company-1/skills")
+      .post("/api/skills")
       .send({ name: "Reflection Draft", slug: "reflection-draft", markdown: "# Draft" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -1916,10 +1844,9 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "reflection-coach",
-      companyId: "company-1",
       runId: "run-apply",
     }))
-      .post("/api/companies/company-1/skills")
+      .post("/api/skills")
       .send({ name: "Reflection Draft", slug: "reflection-draft", markdown: "# Draft" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -1936,49 +1863,44 @@ describe("company skill mutation permissions", () => {
       .mockResolvedValueOnce(allowSkillChangeDecision("allow_consented_change"));
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       permissions: {},
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockReflectionCoachMutationGate.assertConsented).not.toHaveBeenCalled();
     expect(mockAccessService.decide).toHaveBeenCalledTimes(1);
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalledWith(
-      "company-1",
       "https://github.com/vercel-labs/agent-browser",
     );
   });
 
-  it("allows same-company agents without either legacy skill grant", async () => {
+  it("allows agents without either legacy skill grant", async () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       permissions: {},
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalled();
   });
@@ -1987,11 +1909,9 @@ describe("company skill mutation permissions", () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
       permissions: { canCreateSkills: false },
     });
     mockAccessService.hasPermission.mockImplementation(async (
-      _companyId: string,
       _principalType: string,
       _principalId: string,
       key: string,
@@ -2000,18 +1920,17 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       runId: "run-1",
     }))
-      .post("/api/companies/company-1/skills/import")
+      .post("/api/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "company" },
     }));
-    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("company-1", "agent", "agent-1", "agents:create");
+    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("agent", "agent-1", "agents:create");
     expect(mockCompanySkillService.importFromSource).toHaveBeenCalled();
   });
 
@@ -2019,38 +1938,35 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const created = await request(app)
-      .post("/api/companies/company-1/skills/skill-1/test-inputs")
+      .post("/api/skills/skill-1/test-inputs")
       .send({ name: "smoke/input", content: "Try the skill" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(mockCompanySkillService.createTestInput).toHaveBeenCalledWith(
-      "company-1",
       "skill-1",
       { name: "smoke/input", content: "Try the skill" },
       { type: "user", userId: "local-board" },
     );
 
     const updated = await request(app)
-      .patch("/api/companies/company-1/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111")
+      .patch("/api/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111")
       .send({ name: "smoke/renamed", content: "Try the skill again" });
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
     expect(mockCompanySkillService.updateTestInput).toHaveBeenCalledWith(
-      "company-1",
       "skill-1",
       "11111111-1111-4111-8111-111111111111",
       { name: "smoke/renamed", content: "Try the skill again" },
     );
 
     const removed = await request(app)
-      .delete("/api/companies/company-1/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111");
+      .delete("/api/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111");
     expect(removed.status, JSON.stringify(removed.body)).toBe(200);
     expect(mockCompanySkillService.deleteTestInput).toHaveBeenCalledWith(
-      "company-1",
       "skill-1",
       "11111111-1111-4111-8111-111111111111",
     );
@@ -2060,48 +1976,44 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
-    const listed = await request(app).get("/api/companies/company-1/skill-test-run-templates");
+    const listed = await request(app).get("/api/skill-test-run-templates");
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
-    expect(mockCompanySkillService.listTestRunTemplates).toHaveBeenCalledWith("company-1");
+    expect(mockCompanySkillService.listTestRunTemplates).toHaveBeenCalledWith();
 
     const created = await request(app)
-      .post("/api/companies/company-1/skill-test-run-templates")
+      .post("/api/skill-test-run-templates")
       .send({ name: "Custom template", description: "Custom run guidance", body: "Run {{skillName}}." });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(mockCompanySkillService.createTestRunTemplate).toHaveBeenCalledWith(
-      "company-1",
       { name: "Custom template", description: "Custom run guidance", body: "Run {{skillName}}." },
       { type: "user", userId: "local-board" },
     );
 
     const updated = await request(app)
-      .patch("/api/companies/company-1/skill-test-run-templates/66666666-6666-4666-8666-666666666666")
+      .patch("/api/skill-test-run-templates/66666666-6666-4666-8666-666666666666")
       .send({ name: "Renamed template" });
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
     expect(mockCompanySkillService.updateTestRunTemplate).toHaveBeenCalledWith(
-      "company-1",
       "66666666-6666-4666-8666-666666666666",
       { name: "Renamed template" },
       { type: "user", userId: "local-board" },
     );
 
     const removed = await request(app)
-      .delete("/api/companies/company-1/skill-test-run-templates/66666666-6666-4666-8666-666666666666");
+      .delete("/api/skill-test-run-templates/66666666-6666-4666-8666-666666666666");
     expect(removed.status, JSON.stringify(removed.body)).toBe(200);
     expect(mockCompanySkillService.deleteTestRunTemplate).toHaveBeenCalledWith(
-      "company-1",
       "66666666-6666-4666-8666-666666666666",
     );
   });
 
   it("creates and cancels skill test runs through hidden issue orchestration", async () => {
     mockCompanySkillService.createTestRun.mockImplementationOnce(async (
-      _companyId: string,
       _skillId: string,
       _body: unknown,
       _actor: unknown,
@@ -2125,7 +2037,6 @@ describe("company skill mutation permissions", () => {
       await deps.wakeHarnessIssue("44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555");
       return {
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
         skillId: "skill-1",
         inputId: "11111111-1111-4111-8111-111111111111",
         inputSnapshot: "Try the skill",
@@ -2153,7 +2064,6 @@ describe("company skill mutation permissions", () => {
       };
     });
     mockCompanySkillService.cancelTestRun.mockImplementationOnce(async (
-      _companyId: string,
       _skillId: string,
       _runId: string,
       deps: { cancelHarnessIssue: (issueId: string) => Promise<unknown> },
@@ -2161,7 +2071,6 @@ describe("company skill mutation permissions", () => {
       await deps.cancelHarnessIssue("44444444-4444-4444-8444-444444444444");
       return {
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
         skillId: "skill-1",
         inputId: "11111111-1111-4111-8111-111111111111",
         inputSnapshot: "Try the skill",
@@ -2192,16 +2101,16 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const created = await request(app)
-      .post("/api/companies/company-1/skills/skill-1/test-runs")
+      .post("/api/skills/skill-1/test-runs")
       .send({ inputId: "11111111-1111-4111-8111-111111111111", agentId: "55555555-5555-4555-8555-555555555555" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(mockIssueService.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockIssueService.create).toHaveBeenCalledWith(expect.objectContaining({
       harnessKind: "skill_test",
       workMode: "skill_test",
       assigneeAgentId: "55555555-5555-4555-8555-555555555555",
@@ -2213,7 +2122,7 @@ describe("company skill mutation permissions", () => {
     }));
 
     const cancelled = await request(app)
-      .post("/api/companies/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222/cancel")
+      .post("/api/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222/cancel")
       .send({});
     expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
     expect(mockHeartbeatService.cancelRun).toHaveBeenCalledWith("run-1", "Cancelled by skill test run request");
@@ -2224,9 +2133,9 @@ describe("company skill mutation permissions", () => {
   });
 
   it.each([
-    ["create", "post", "/api/companies/company-1/skills/skill-1/test-runs"],
-    ["cancel", "post", "/api/companies/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222/cancel"],
-    ["delete", "delete", "/api/companies/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222"],
+    ["create", "post", "/api/skills/skill-1/test-runs"],
+    ["cancel", "post", "/api/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222/cancel"],
+    ["delete", "delete", "/api/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222"],
   ] as const)("denies agents without tasks:assign permission from %s test runs", async (_operation, method, path) => {
     mockAccessService.decide.mockImplementation(async (input: { action: string }) => {
       if (input.action === "tasks:assign") return denyTaskAssignDecision();
@@ -2234,7 +2143,6 @@ describe("company skill mutation permissions", () => {
     });
     mockCompanySkillService.getTestRunDetail.mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
       skillId: "skill-1",
       issueId: "44444444-4444-4444-8444-444444444444",
       agentId: "55555555-5555-4555-8555-555555555555",
@@ -2244,7 +2152,6 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
       keyScope: null,
       runId: "run-1",
     });
@@ -2263,8 +2170,7 @@ describe("company skill mutation permissions", () => {
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "tasks:assign",
       resource: expect.objectContaining({
-        type: "issue",
-        companyId: "company-1",
+        type: "issue"
       }),
     }));
     expect(mockCompanySkillService.createTestRun).not.toHaveBeenCalled();
@@ -2276,7 +2182,6 @@ describe("company skill mutation permissions", () => {
     mockCompanySkillService.listTestRuns.mockResolvedValueOnce([]);
     mockCompanySkillService.getTestRunDetail.mockResolvedValueOnce({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
       skillId: "skill-1",
       status: "succeeded",
       harnessContent: { available: false, unavailableReason: "expired", documents: [], attachments: [], workProducts: [] },
@@ -2285,22 +2190,21 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const listed = await request(app)
-      .get("/api/companies/company-1/skills/skill-1/test-runs");
+      .get("/api/skills/skill-1/test-runs");
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
 
     const detail = await request(app)
-      .get("/api/companies/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
+      .get("/api/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
     expect(detail.status, JSON.stringify(detail.body)).toBe(200);
 
-    expect(mockCompanySkillService.listTestRuns).toHaveBeenCalledWith("company-1", "skill-1", {});
+    expect(mockCompanySkillService.listTestRuns).toHaveBeenCalledWith("skill-1", {});
     expect(mockCompanySkillService.getTestRunDetail).toHaveBeenCalledWith(
-      "company-1",
       "skill-1",
       "22222222-2222-4222-8222-222222222222",
     );
@@ -2310,12 +2214,10 @@ describe("company skill mutation permissions", () => {
   it("deletes a terminal test run and hides its harness task", async () => {
     mockIssueService.getById.mockResolvedValueOnce({
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: "company-1",
       status: "done",
       executionRunId: null,
     });
     mockCompanySkillService.deleteTestRun.mockImplementationOnce(async (
-      _companyId: string,
       _skillId: string,
       _runId: string,
       deps: { hideHarnessIssue: (issueId: string) => Promise<unknown> },
@@ -2323,7 +2225,6 @@ describe("company skill mutation permissions", () => {
       await deps.hideHarnessIssue("44444444-4444-4444-8444-444444444444");
       return {
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
         skillId: "skill-1",
         inputId: null,
         inputSnapshot: "Try the skill",
@@ -2354,13 +2255,13 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const deleted = await request(app)
-      .delete("/api/companies/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
+      .delete("/api/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
     expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
     expect(mockCompanySkillService.deleteTestRun).toHaveBeenCalled();
     expect(mockIssueService.update).toHaveBeenCalledWith(
@@ -2374,12 +2275,12 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
     const res = await request(app)
-      .delete("/api/companies/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
+      .delete("/api/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
     expect(res.status).toBe(404);
   });
 
@@ -2394,17 +2295,17 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      memberships: [{ membershipRole: "operator", status: "active" }],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .delete("/api/companies/company-1/skills/skill-1");
+      .delete("/api/skills/skill-1");
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body).toEqual({
       error: 'Cannot delete skill "Find Skills" while it is still used by Builder, Reviewer. Detach it from those agents first.',
     });
-    expect(mockCompanySkillService.deleteSkill).toHaveBeenCalledWith("company-1", "skill-1");
+    expect(mockCompanySkillService.deleteSkill).toHaveBeenCalledWith("skill-1");
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 });

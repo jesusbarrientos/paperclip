@@ -5,7 +5,6 @@ import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAdapterCommands } from "../commands/client/adapter.js";
 import { registerAssetCommands } from "../commands/client/asset.js";
-import { registerCompanyCommands, resolveExportOutputPath } from "../commands/client/company.js";
 import { registerSkillCommands } from "../commands/client/skill.js";
 
 const COMPANY_ID = "22222222-2222-4222-8222-222222222222";
@@ -16,7 +15,6 @@ function createProgram(): Command {
   const program = new Command();
   program.exitOverride();
   program.configureOutput({ writeOut: () => {}, writeErr: () => {} });
-  registerCompanyCommands(program);
   registerAdapterCommands(program);
   registerAssetCommands(program);
   registerSkillCommands(program);
@@ -48,33 +46,6 @@ describe("admin, asset, and skill parity commands", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("wraps company management and raw portability endpoints", async () => {
-    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse()));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await run(["company", "stats"]);
-    await run(["company", "create", "--payload-json", "{}"]);
-    await run(["company", "update", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["company", "branding:update", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["company", "archive", COMPANY_ID]);
-    await run(["company", "export:preview", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["company", "export:api", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["company", "import:preview", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["company", "import:apply", COMPANY_ID, "--payload-json", "{}"]);
-
-    expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
-      ["GET", "http://localhost:3100/api/companies/stats"],
-      ["POST", "http://localhost:3100/api/companies"],
-      ["PATCH", `http://localhost:3100/api/companies/${COMPANY_ID}`],
-      ["PATCH", `http://localhost:3100/api/companies/${COMPANY_ID}/branding`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/archive`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/exports/preview`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/exports`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/imports/preview`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/imports/apply`],
-    ]);
-  });
-
   it("wraps adapter management and company adapter endpoints", async () => {
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse()));
     vi.stubGlobal("fetch", fetchMock);
@@ -89,9 +60,9 @@ describe("admin, asset, and skill parity commands", () => {
     await run(["adapter", "reinstall", "codex_local"]);
     await run(["adapter", "config-schema", "codex_local"]);
     await run(["adapter", "ui-parser", "codex_local"]);
-    await run(["adapter", "models", "codex_local", "--company-id", COMPANY_ID, "--refresh", "--environment-id", "env-1"]);
-    await run(["adapter", "detect-model", "codex_local", "--company-id", COMPANY_ID]);
-    await run(["adapter", "test-environment", "codex_local", "--company-id", COMPANY_ID, "--payload-json", "{}"]);
+    await run(["adapter", "models", "codex_local", "--refresh", "--environment-id", "env-1"]);
+    await run(["adapter", "detect-model", "codex_local"]);
+    await run(["adapter", "test-environment", "codex_local", "--payload-json", "{}"]);
     await run(["adapter", "delete", "codex_local"]);
 
     expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
@@ -105,9 +76,9 @@ describe("admin, asset, and skill parity commands", () => {
       ["POST", "http://localhost:3100/api/adapters/codex_local/reinstall"],
       ["GET", "http://localhost:3100/api/adapters/codex_local/config-schema"],
       ["GET", "http://localhost:3100/api/adapters/codex_local/ui-parser.js"],
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/adapters/codex_local/models?refresh=true&environmentId=env-1`],
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/adapters/codex_local/detect-model`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/adapters/codex_local/test-environment`],
+      ["GET", `http://localhost:3100/api/adapters/codex_local/models?refresh=true&environmentId=env-1`],
+      ["GET", `http://localhost:3100/api/adapters/codex_local/detect-model`],
+      ["POST", `http://localhost:3100/api/adapters/codex_local/test-environment`],
       ["DELETE", "http://localhost:3100/api/adapters/codex_local"],
     ]);
   });
@@ -123,49 +94,45 @@ describe("admin, asset, and skill parity commands", () => {
       .mockImplementationOnce(() => Promise.resolve(new Response("asset-bytes")));
     vi.stubGlobal("fetch", fetchMock);
 
-    await run(["asset", "image:upload", "--company-id", COMPANY_ID, "--file", imagePath, "--namespace", "docs", "--alt", "Logo"]);
-    await run(["asset", "logo:upload", "--company-id", COMPANY_ID, "--file", imagePath]);
+    await run(["asset", "image:upload", "--file", imagePath, "--namespace", "docs", "--alt", "Logo"]);
+    await run(["asset", "logo:upload", "--file", imagePath]);
     await run(["asset", "content", ASSET_ID, "--out", outputPath]);
 
     expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/assets/images`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/logo`],
+      ["POST", `http://localhost:3100/api/assets/images`],
+      ["POST", `http://localhost:3100/api/organization/logo`],
       ["GET", `http://localhost:3100/api/assets/${ASSET_ID}/content`],
     ]);
     const firstUpload = fetchMock.mock.calls[0]?.[1]?.body as FormData;
     expect((firstUpload.get("file") as File).type).toBe("image/png");
   });
 
-  it("rejects portable export paths outside the output directory", async () => {
-    expect(() => resolveExportOutputPath(tempDir, "../outside.md")).toThrow("outside output directory");
-  });
-
   it("wraps company skill endpoints", async () => {
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse()));
     vi.stubGlobal("fetch", fetchMock);
 
-    await run(["skill", "list", "--company-id", COMPANY_ID]);
-    await run(["skill", "get", SKILL_ID, "--company-id", COMPANY_ID]);
-    await run(["skill", "file", SKILL_ID, "--company-id", COMPANY_ID, "--path", "SKILL.md"]);
-    await run(["skill", "create", "--company-id", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["skill", "file:update", SKILL_ID, "--company-id", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["skill", "import", "--company-id", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["skill", "scan-projects", "--company-id", COMPANY_ID, "--payload-json", "{}"]);
-    await run(["skill", "update-status", SKILL_ID, "--company-id", COMPANY_ID]);
-    await run(["skill", "install-update", SKILL_ID, "--company-id", COMPANY_ID]);
-    await run(["skill", "delete", SKILL_ID, "--company-id", COMPANY_ID]);
+    await run(["skill", "list"]);
+    await run(["skill", "get", SKILL_ID]);
+    await run(["skill", "file", SKILL_ID, "--path", "SKILL.md"]);
+    await run(["skill", "create", "--payload-json", "{}"]);
+    await run(["skill", "file:update", SKILL_ID, "--payload-json", "{}"]);
+    await run(["skill", "import", "--payload-json", "{}"]);
+    await run(["skill", "scan-projects", "--payload-json", "{}"]);
+    await run(["skill", "update-status", SKILL_ID]);
+    await run(["skill", "install-update", SKILL_ID]);
+    await run(["skill", "delete", SKILL_ID]);
 
     expect(fetchMock.mock.calls.map((call) => [call[1]?.method ?? "GET", call[0]])).toEqual([
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/skills`],
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/${SKILL_ID}`],
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/${SKILL_ID}/files?path=SKILL.md`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/skills`],
-      ["PATCH", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/${SKILL_ID}/files`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/import`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/scan-projects`],
-      ["GET", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/${SKILL_ID}/update-status`],
-      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/${SKILL_ID}/install-update`],
-      ["DELETE", `http://localhost:3100/api/companies/${COMPANY_ID}/skills/${SKILL_ID}`],
+      ["GET", `http://localhost:3100/api/skills`],
+      ["GET", `http://localhost:3100/api/skills/${SKILL_ID}`],
+      ["GET", `http://localhost:3100/api/skills/${SKILL_ID}/files?path=SKILL.md`],
+      ["POST", `http://localhost:3100/api/skills`],
+      ["PATCH", `http://localhost:3100/api/skills/${SKILL_ID}/files`],
+      ["POST", `http://localhost:3100/api/skills/import`],
+      ["POST", `http://localhost:3100/api/skills/scan-projects`],
+      ["GET", `http://localhost:3100/api/skills/${SKILL_ID}/update-status`],
+      ["POST", `http://localhost:3100/api/skills/${SKILL_ID}/install-update`],
+      ["DELETE", `http://localhost:3100/api/skills/${SKILL_ID}`],
     ]);
   });
 });

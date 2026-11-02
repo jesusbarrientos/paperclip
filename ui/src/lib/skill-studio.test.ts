@@ -55,7 +55,6 @@ function makeRunDocument(overrides: Partial<IssueDocument> & { id: string; key: 
   const { id, key, ...documentOverrides } = overrides;
   return {
     id,
-    companyId: "company-1",
     issueId: "issue-1",
     key,
     title: overrides.title ?? null,
@@ -80,7 +79,6 @@ function makeRunAttachment(overrides: Partial<IssueAttachment> & { id: string })
   const { id, ...attachmentOverrides } = overrides;
   return {
     id,
-    companyId: "company-1",
     issueId: "issue-1",
     issueCommentId: null,
     assetId: `asset-${id}`,
@@ -115,7 +113,6 @@ function makeArtifactWorkProduct(
   const contentPath = overrideContentPath ?? `/api/attachments/${attachmentId}/content`;
   return {
     id,
-    companyId: "company-1",
     projectId: null,
     issueId: "issue-1",
     executionWorkspaceId: null,
@@ -561,7 +558,6 @@ describe("agent picker + run labels", () => {
 describe("advanced run template helpers", () => {
   const defaultTemplate: CompanySkillTestRunTemplate = {
     id: DEFAULT_TEST_RUN_TEMPLATE_ID,
-    companyId: "company-1",
     name: "Default test template",
     description: "Default",
     body: "Default {{skillName}}",
@@ -643,7 +639,6 @@ describe("studio landing recency helpers", () => {
     overrides: Partial<CompanySkillListItem> & { id: string },
   ): CompanySkillListItem {
     return {
-      companyId: "company-1",
       key: overrides.id,
       slug: overrides.id,
       name: overrides.id,
@@ -663,7 +658,6 @@ describe("studio landing recency helpers", () => {
       sharingScope: "private",
       publicShareToken: null,
       forkedFromSkillId: null,
-      forkedFromCompanyId: null,
       starCount: 0,
       installCount: 0,
       forkCount: 0,

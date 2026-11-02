@@ -51,7 +51,6 @@ export interface AgentInstructionsFileDetail extends AgentInstructionsFileSummar
 
 export interface AgentInstructionsBundle {
   agentId: string;
-  companyId: string;
   persistence?: "agent_files";
   mode: AgentInstructionsBundleMode | null;
   rootPath: string | null;
@@ -81,7 +80,6 @@ export interface AgentChainOfCommandEntry {
 
 export interface Agent {
   id: string;
-  companyId: string;
   name: string;
   urlKey: string;
   role: AgentRole;
@@ -126,7 +124,6 @@ export interface AgentKeyCreated {
 
 export interface AgentConfigRevision {
   id: string;
-  companyId: string;
   agentId: string;
   createdByAgentId: string | null;
   createdByUserId: string | null;
@@ -345,7 +342,6 @@ export interface AdapterAuthSignalResponse {
 export type AgentInstructionSource = "seed" | "board" | "api" | "tool" | "cleanup" | "restore";
 export interface AgentInstructionRevision {
   id: string;
-  companyId: string;
   agentId: string;
   entryFile: string;
   contentHash: string;

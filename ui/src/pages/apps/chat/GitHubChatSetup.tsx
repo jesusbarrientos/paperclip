@@ -33,7 +33,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/context/ToastContext";
-import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useNavigate, useSearchParams, Link } from "@/lib/router";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -71,7 +70,6 @@ export function GitHubChatSetup() {
   const [secretCopy, setSecretCopy] = useState<"idle" | "copied" | "failed">("idle");
   const identityOnly = params.get("stage") === "identity";
   const reconnecting = params.get("reconnect") === "1";
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [endpoint, setEndpoint] = useState<ChatEndpoint | null>(null);
   const [agentId, setAgentId] = useState(params.get("agentId") ?? "");
@@ -99,9 +97,9 @@ export function GitHubChatSetup() {
   const [copied, setCopied] = useState(false);
   const resume = params.get("resume");
   const agents = useQuery({
-    queryKey: ["github-setup-agents", selectedCompanyId],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && !identityOnly,
+    queryKey: ["github-setup-agents"],
+    queryFn: () => agentsApi.list(),
+    enabled: !identityOnly,
   });
   const current = useQuery({
     queryKey: ["github-setup", resume],
@@ -286,7 +284,7 @@ export function GitHubChatSetup() {
             async () => {
               const bot =
                 endpoint ??
-                (await chatEndpointsApi.create(selectedCompanyId!, {
+                (await chatEndpointsApi.create({
                   provider: "github",
                   assignedAgentId: agentId,
                 }));
@@ -298,7 +296,7 @@ export function GitHubChatSetup() {
               setRecord(await githubChatApi.configuration(bot.id));
               await go(1, bot);
             },
-            !agentId || !selectedCompanyId,
+            !agentId,
           )}
         </>
       )}
@@ -805,7 +803,6 @@ export function GitHubChatSetup() {
         <>
           <GitHubAccessEditor
             endpointId={endpoint.id}
-            companyId={endpoint.companyId}
             configuration={record.configuration}
             onChange={(configuration) =>
               setRecord({ ...record, configuration })

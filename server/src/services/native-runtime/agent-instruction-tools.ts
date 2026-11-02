@@ -24,19 +24,19 @@ export type AgentInstructionToolName = keyof typeof schemas;
 /** Called only after the native authority validates its server-bound active run. */
 export async function executeAgentInstructionTool(input: {
   db: Db;
-  binding: { companyId: string; agentId: string; runId: string };
+  binding: { agentId: string; runId: string };
   tool: AgentInstructionToolName;
   arguments: unknown;
 }) {
   // Never accept an actor, responsible user, company, or source run from tool JSON.
-  const actor: AuthorizationActor = { type: "agent", source: "agent_jwt", companyId: input.binding.companyId, agentId: input.binding.agentId, runId: input.binding.runId };
+  const actor: AuthorizationActor = { type: "agent", source: "agent_jwt", agentId: input.binding.agentId, runId: input.binding.runId };
   const service = agentInstructionRevisionService(input.db);
   const parse = <T>(schema: z.ZodType<T>): T => {
     const result = schema.safeParse(input.arguments);
     if (!result.success) throw badRequest("Invalid instruction tool arguments", result.error.flatten());
     return result.data;
   };
-  const scope = (targetAgentId?: string) => ({ companyId: input.binding.companyId, agentId: targetAgentId ?? input.binding.agentId });
+  const scope = (targetAgentId?: string) => ({ agentId: targetAgentId ?? input.binding.agentId });
   const acknowledge = async (receipt: AgentInstructionCommitReceipt, targetAgentId?: string) => {
     // The commit is already durable. A failed baseline refresh keeps the old CAS
     // fence, so later cleanup preserves a conflict instead of overwriting it.
@@ -55,7 +55,7 @@ export async function executeAgentInstructionTool(input: {
       if (snapshot) return { ...snapshot, entryFile: snapshot.revision.entryFile };
       // An unseeded empty entry still needs its configured filename for the first CAS.
       const agent = await agentService(input.db).getById(target.agentId);
-      if (!agent || agent.companyId !== target.companyId) throw notFound("Agent not found");
+      if (!agent) throw notFound("Agent not found");
       return { entryFile: deriveBundleState(agent).entryFile, revision: null, content: null };
     }
     case "update_agent_instructions": {

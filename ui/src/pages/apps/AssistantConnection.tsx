@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, ExternalLink, Globe, Paperclip, Plug, Terminal } from "lucide-react";
 import { publicMcpApi } from "@/api/publicMcp";
 import { ApiError } from "@/api/client";
-import { useCompany } from "@/context/CompanyContext";
+import { useOrganization } from "@/context/OrganizationContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { Link } from "@/lib/router";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -27,12 +27,11 @@ function AssistantIcon({ assistant }: { assistant: Assistant }) {
 }
 
 export function useAssistantConnections(poll = false) {
-  const { selectedCompanyId } = useCompany();
   const query = useQuery({
     queryKey: connectionsKey, queryFn: publicMcpApi.connections, retry: false,
-    enabled: Boolean(selectedCompanyId), refetchInterval: poll ? 5000 : false,
+    refetchInterval: poll ? 5000 : false,
   });
-  return { ...query, rows: (query.data ?? []).filter(row => row.companyId === selectedCompanyId) };
+  return { ...query, rows: query.data ?? [] };
 }
 
 /** Inbound assistant access belongs beside the existing outbound connectors. */
@@ -86,7 +85,7 @@ function setupError(error: Error): string {
 }
 
 export function AssistantConnection({ initialAssistant = "codex" }: { initialAssistant?: Assistant } = {}) {
-  const { selectedCompany, selectedCompanyId } = useCompany();
+  const { organization } = useOrganization();
   const { setBreadcrumbs } = useBreadcrumbs();
   const client = useQueryClient();
   const [assistant, setAssistant] = useState<Assistant>(initialAssistant);
@@ -97,15 +96,15 @@ export function AssistantConnection({ initialAssistant = "codex" }: { initialAss
     setBreadcrumbs([{ label: "Connectors", href: "/apps" }, { label: "Assistant Connection (MCP)" }]);
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
-  if (!selectedCompanyId || !selectedCompany) return <p className="text-sm text-muted-foreground">Select an organization to connect an assistant.</p>;
+  if (!organization) return <p className="text-sm text-muted-foreground">Loading organization…</p>;
   const serverUrl = setup.data?.serverUrl ?? "";
-  const invitation = serverUrl ? mcpInvitation(serverUrl, { id: selectedCompanyId, name: selectedCompany.name }) : "";
+  const invitation = serverUrl ? mcpInvitation(serverUrl, { id: organization.id, name: organization.name }) : "";
   return <div className="max-w-3xl space-y-6 pb-8">
     <header className="space-y-4">
       <div className="flex items-center gap-3"><Paperclip className="size-7 shrink-0" /><h1 className="text-xl font-semibold">Assistant Connection (MCP)</h1></div>
       <div className="flex items-center gap-3">
-        <CompanyPatternIcon companyName={selectedCompany.name} logoUrl={selectedCompany.logoUrl} className="size-12 shrink-0 rounded-lg" />
-        <div className="space-y-1"><p className="font-medium">{selectedCompany.name}</p><p className="text-sm text-muted-foreground">Connect your assistant to Paperclip. Review work, create tasks, and follow up using your account’s access to this organization.</p></div>
+        <CompanyPatternIcon companyName={organization.name} logoUrl={organization.logoUrl} className="size-12 shrink-0 rounded-lg" />
+        <div className="space-y-1"><p className="font-medium">{organization.name}</p><p className="text-sm text-muted-foreground">Connect your assistant to Paperclip. Review work, create tasks, and follow up using your account’s access to this organization.</p></div>
       </div>
     </header>
     {setup.isPending && <p className="text-sm text-muted-foreground">Loading assistant setup…</p>}
@@ -113,7 +112,7 @@ export function AssistantConnection({ initialAssistant = "codex" }: { initialAss
     {setup.data && !setup.data.enabled && <section className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
       <h2 className="text-sm font-semibold">Enable assistant connections</h2>
       <p className="text-sm text-muted-foreground">An instance administrator must turn on Assistant connections (MCP) in Experimental settings. Then return here to connect your assistant.</p>
-      <Button variant="outline" asChild><Link to="/company/settings/instance/experimental">Open Experimental settings</Link></Button>
+      <Button variant="outline" asChild><Link to="/organization/settings/instance/experimental">Open Experimental settings</Link></Button>
     </section>}
     {setup.data?.enabled && <>
       <section className="space-y-4" aria-label="Invite your assistant">
@@ -128,7 +127,7 @@ export function AssistantConnection({ initialAssistant = "codex" }: { initialAss
         <section className="space-y-4" aria-label={`Set up ${assistants[assistant]}`}>
           {mcpSetupSteps(serverUrl, assistant).map((step, index) => <div key={`${assistant}-${index}`} className="space-y-2"><p className="text-sm text-muted-foreground">{step.text}</p>{step.code && <CopyValue value={step.code} label={`${assistants[assistant]} setup step ${index + 1}`} />}</div>)}
           {assistant !== "browser" && <p className="text-sm text-muted-foreground">{mcpAuthorizationHandoffInstructions}</p>}
-          <p className="text-sm">Choose <strong>{selectedCompany.name}</strong>, review access, then click <strong>Connect organization</strong>.</p>
+          <p className="text-sm">Choose <strong>{organization.name}</strong>, review access, then click <strong>Connect organization</strong>.</p>
           <p className="text-xs text-muted-foreground">Creating tasks and adding comments may start agent work using the organization’s configured execution budget.</p>
         </section>
         <CopyValue value={serverUrl} label="MCP server URL" />
@@ -138,7 +137,7 @@ export function AssistantConnection({ initialAssistant = "codex" }: { initialAss
       <h2 id="connected-assistants" className="text-sm font-semibold">Your connected assistants</h2>
       {connections.isPending && <p className="text-sm text-muted-foreground">Loading connections…</p>}
       {(connections.error || revoke.error) && <p role="alert" className="text-sm text-destructive">{revoke.error ? "Couldn’t revoke this connection. Try again." : "Couldn’t load your connections. Try again."} <button type="button" className="underline" onClick={() => void connections.refetch()}>Refresh</button></p>}
-      {connections.isSuccess && connections.rows.length === 0 && <p className="text-sm text-muted-foreground">No assistants connected to {selectedCompany.name} yet.</p>}
+      {connections.isSuccess && connections.rows.length === 0 && <p className="text-sm text-muted-foreground">No assistants connected to {organization.name} yet.</p>}
       <div className="divide-y divide-border">{connections.rows.map(row => <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="space-y-1"><p className="text-sm font-medium">{row.clientName}</p><p className="text-xs text-muted-foreground">{row.revokedAt ? "Revoked" : `Connected as you · ${row.scopes.includes("paperclip:write") ? "Read and write" : "Read only"}`}</p></div>
         {!row.revokedAt && <Button variant="outline" size="sm" disabled={revoke.isPending} onClick={() => revoke.mutate(row.id)} aria-label={`Revoke ${row.clientName} connection`}>Revoke</Button>}

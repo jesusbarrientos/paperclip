@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
-import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
@@ -206,7 +205,6 @@ export interface OrgChartProps {
 }
 
 export function OrgChart({ orgTree: providedOrgTree, agents: providedAgents, embedded = false }: OrgChartProps = {}) {
-  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   // Import is floored server-side on cloud-managed instances (403 cloud_managed), so the
@@ -218,15 +216,15 @@ export function OrgChart({ orgTree: providedOrgTree, agents: providedAgents, emb
   const showExport = !hiddenSettings.has("company.export");
 
   const { data: queriedOrgTree, isLoading } = useQuery({
-    queryKey: queryKeys.org(selectedCompanyId!),
-    queryFn: () => agentsApi.org(selectedCompanyId!),
-    enabled: !!selectedCompanyId && providedOrgTree === undefined,
+    queryKey: queryKeys.org(),
+    queryFn: () => agentsApi.org(),
+    enabled: providedOrgTree === undefined,
   });
 
   const { data: queriedAgents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && providedAgents === undefined,
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
+    enabled: providedAgents === undefined,
   });
   const orgTree = providedOrgTree ?? queriedOrgTree;
   const agents = providedAgents ?? queriedAgents;
@@ -464,9 +462,6 @@ export function OrgChart({ orgTree: providedOrgTree, agents: providedAgents, emb
     };
   }, [pan, zoom]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Network} message="Select an organization to view the org chart." />;
-  }
 
   if (providedOrgTree === undefined && isLoading) {
     return <PageSkeleton variant="org-chart" />;
@@ -485,7 +480,7 @@ export function OrgChart({ orgTree: providedOrgTree, agents: providedAgents, emb
       {!embedded && (showImport || showExport) ? (
         <div className="mb-2 flex shrink-0 flex-wrap items-center justify-start gap-2">
         {showImport ? (
-          <Link to="/company/import">
+          <Link to="/organization/import">
             <Button variant="outline" size="sm">
               <Upload className="mr-1.5 h-3.5 w-3.5" />
               Import organization
@@ -493,7 +488,7 @@ export function OrgChart({ orgTree: providedOrgTree, agents: providedAgents, emb
           </Link>
         ) : null}
         {showExport ? (
-          <Link to="/company/export">
+          <Link to="/organization/export">
             <Button variant="outline" size="sm">
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export organization

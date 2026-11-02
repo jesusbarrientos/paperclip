@@ -19,7 +19,7 @@ import {
   labels,
 } from "@paperclipai/db";
 
-export async function collectExportFidelityCounts(db: Db, companyId: string): Promise<ExportFidelityCounts> {
+export async function collectExportFidelityCounts(db: Db): Promise<ExportFidelityCounts> {
   const [
     labelDefinitions,
     issueLabelReferences,
@@ -32,26 +32,23 @@ export async function collectExportFidelityCounts(db: Db, companyId: string): Pr
     activityLogEntries,
     issueMonitors,
   ] = await Promise.all([
-    db.select({ count: count() }).from(labels).where(eq(labels.companyId, companyId)).then(firstCount),
-    db.select({ count: count() }).from(issueLabels).where(eq(issueLabels.companyId, companyId)).then(firstCount),
+    db.select({ count: count() }).from(labels).then(firstCount),
+    db.select({ count: count() }).from(issueLabels).then(firstCount),
     db
       .select({ count: count() })
       .from(issueRelations)
-      .where(and(eq(issueRelations.companyId, companyId), eq(issueRelations.type, "blocks")))
+      .where(eq(issueRelations.type, "blocks"))
       .then(firstCount),
-    db.select({ count: count() }).from(issueDocuments).where(eq(issueDocuments.companyId, companyId)).then(firstCount),
-    db.select({ count: count() }).from(issueWorkProducts).where(eq(issueWorkProducts.companyId, companyId)).then(firstCount),
-    db.select({ count: count() }).from(issueAttachments).where(eq(issueAttachments.companyId, companyId)).then(firstCount),
-    db.select({ count: count() }).from(approvals).where(eq(approvals.companyId, companyId)).then(firstCount),
-    db.select({ count: count() }).from(costEvents).where(eq(costEvents.companyId, companyId)).then(firstCount),
-    db.select({ count: count() }).from(activityLog).where(eq(activityLog.companyId, companyId)).then(firstCount),
+    db.select({ count: count() }).from(issueDocuments).then(firstCount),
+    db.select({ count: count() }).from(issueWorkProducts).then(firstCount),
+    db.select({ count: count() }).from(issueAttachments).then(firstCount),
+    db.select({ count: count() }).from(approvals).then(firstCount),
+    db.select({ count: count() }).from(costEvents).then(firstCount),
+    db.select({ count: count() }).from(activityLog).then(firstCount),
     db
       .select({ count: count() })
       .from(issues)
-      .where(and(
-        eq(issues.companyId, companyId),
-        sql`(${issues.monitorNextCheckAt} is not null or ${issues.monitorScheduledBy} is not null)`,
-      ))
+      .where(sql`(${issues.monitorNextCheckAt} is not null or ${issues.monitorScheduledBy} is not null)`)
       .then(firstCount),
   ]);
   return {
@@ -68,10 +65,9 @@ export async function collectExportFidelityCounts(db: Db, companyId: string): Pr
   };
 }
 
-export function buildExportFidelityReport(companyId: string, counts: ExportFidelityCounts): ExportFidelityReport {
+export function buildExportFidelityReport(counts: ExportFidelityCounts): ExportFidelityReport {
   return {
     schema: EXPORT_FIDELITY_REPORT_SCHEMA,
-    companyId,
     counts,
     warnings: buildExportFidelityWarnings(counts),
     generatedAt: new Date().toISOString(),

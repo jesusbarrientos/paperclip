@@ -72,21 +72,21 @@ connector matrix.
 
 ## Quick start
 
-The fastest path is the bundled example. From the Tools & Access UI (`/<prefix>/companies/<companyId>/tools/examples`), pick **Safe read-only Todo / KV fixture** and click **Install**. Then run **Smoke**. You can also do it via API:
+The fastest path is the bundled example. From the Tools & Access UI (`/tools/examples`), pick **Safe read-only Todo / KV fixture** and click **Install**. Then run **Smoke**. You can also do it via API:
 
 ```sh
 # Install the example application + connection + profile in one call.
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/examples/safe-read-only-todo-kv/install" \
+  "$PAPERCLIP_URL/api/tools/examples/safe-read-only-todo-kv/install" \
   -d '{}' | jq .
 
 # Run the bundled smoke check (validates an allowed read, a denied write, audit visibility).
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/examples/safe-read-only-todo-kv/smoke" \
+  "$PAPERCLIP_URL/api/tools/examples/safe-read-only-todo-kv/smoke" \
   -d '{}' | jq '{ok, checks: [.checks[] | {name, ok, decision, reasonCode}]}'
 ```
 
@@ -151,7 +151,7 @@ Operators do not paste arbitrary `command` / `args` for stdio. Allowed stdio ent
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOARD_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/connections" \
+  "$PAPERCLIP_URL/api/tools/connections" \
   -d '{
     "applicationId": "'"$APPLICATION_ID"'",
     "name": "Linear (remote)",
@@ -218,7 +218,7 @@ Example: create a profile that allows only read-only tools and bind it to a proj
 ```sh
 # Profile with default-deny and one include entry for read-only catalog entries.
 curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/profiles" \
+  "$PAPERCLIP_URL/api/tools/profiles" \
   -d '{
     "profileKey": "engineering.read-only",
     "name": "Engineering read-only",
@@ -230,7 +230,7 @@ curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: ap
 
 # Bind it to a project so every agent run in that project gets this profile.
 curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/profiles/$PROFILE_ID/bind" \
+  "$PAPERCLIP_URL/api/tools/profiles/$PROFILE_ID/bind" \
   -d '{ "targetType": "project", "targetId": "'"$PROJECT_ID"'", "priority": 10 }' | jq .
 ```
 
@@ -247,7 +247,7 @@ Binding scopes, narrowest first: `issue` > `routine` > `agent` > `project` > `co
 
 ```sh
 curl -fsS -H "Authorization: Bearer $BOARD_API_KEY" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/profiles/effective/agents/$AGENT_ID" \
+  "$PAPERCLIP_URL/api/tools/profiles/effective/agents/$AGENT_ID" \
   | jq '{profileIds, allowedToolNames}'
 ```
 
@@ -295,7 +295,7 @@ To dry-run a policy decision without making a real call. The dry-run endpoint ta
 
 ```sh
 curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/policy/test" \
+  "$PAPERCLIP_URL/api/tools/policy/test" \
   -d '{
     "companyId": "'"$COMPANY_ID"'",
     "actor": {
@@ -342,7 +342,7 @@ curl -fsS -X POST -H "X-Paperclip-Tool-Gateway-Token: $GATEWAY_TOKEN" -H "Conten
 
 # Promote the approval to a trust rule
 curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/action-requests/$ACTION_REQUEST_ID/trust-rule" \
+  "$PAPERCLIP_URL/api/tools/action-requests/$ACTION_REQUEST_ID/trust-rule" \
   -d '{
     "approvalThreshold": 2,
     "expiresAt": "2026-09-01T00:00:00.000Z"
@@ -350,7 +350,7 @@ curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: ap
 
 # Revoke a trust rule (audit-safe; does not delete)
 curl -fsS -X POST -H "Authorization: Bearer $BOARD_API_KEY" -H "Content-Type: application/json" \
-  "$PAPERCLIP_URL/api/companies/$COMPANY_ID/tools/trust-rules/$POLICY_ID/revoke" \
+  "$PAPERCLIP_URL/api/tools/trust-rules/$POLICY_ID/revoke" \
   -d '{ "reason": "Catalog schema changed." }' | jq '{id, enabled, config: {revokedAt: .config.trustRule.revokedAt}}'
 ```
 
@@ -393,7 +393,7 @@ curl -fsS -H "Authorization: Bearer $BOARD_API_KEY" \
 
 Two practical patterns:
 
-- **Per-run timeline:** `GET /api/companies/:companyId/tools/runs/:runId/decisions` returns every policy decision attached to a single agent run. Use this in QA to prove an agent never touched a denied tool.
+- **Per-run timeline:** `GET /api/tools/runs/:runId/decisions` returns every policy decision attached to a single agent run. Use this in QA to prove an agent never touched a denied tool.
 - **Approval audit:** the audit log itself is the approval-request ledger — filter the gateway audit response for `action == "tool_gateway.approval_requested"` to get the queue, and pair each row with the matching `tool_gateway.call_allowed` / `tool_gateway.call_denied` entry to see how the approval resolved. Approver identity lands on the action request itself; once approved, the action request body shows `resolvedByUserId` and `resolvedAt`.
 
 Audit is the source of truth for the security memo. It is intentionally append-only — there is no edit or delete route.
@@ -438,24 +438,24 @@ These are intentional gaps as of the MCP Access Governance v1 launch. Track or w
 
 | Surface | Path / endpoint | Notes |
 | --- | --- | --- |
-| UI overview | `/<prefix>/companies/<companyId>/tools` | All tabs: Overview, Examples, Applications, Connections, Profiles, Policies, Runtime, Audit. |
-| Examples | `POST /api/companies/:companyId/tools/examples/:id/install` and `…/smoke` | Bundled fixtures for first-run validation. |
-| Applications | `GET\|POST /api/companies/:companyId/tools/applications`, `PATCH /api/tool-applications/:id` | Logical groupings. |
-| Connections | `GET\|POST /api/companies/:companyId/tools/connections`, `GET\|PATCH\|DELETE /api/tool-connections/:id` | `POST …/health-check`, `POST …/catalog/refresh`, `GET …/catalog` for lifecycle. |
-| Profiles | `GET\|POST /api/companies/:companyId/tools/profiles`, `PATCH /api/tool-profiles/:id` | Entries: `POST /api/tool-profiles/:id/entries`, `PATCH\|DELETE /api/tool-profile-entries/:id`. |
-| Bindings | `POST /api/companies/:companyId/tools/profiles/:id/bind` and `…/unbind` | Targets: `company`, `agent`, `project`, `routine`, `issue`. |
-| Effective profile | `GET /api/companies/:companyId/tools/profiles/effective/agents/:agentId` | Use for QA proofs and debugging selector misses. |
-| Policies | `GET\|POST /api/companies/:companyId/tools/policies`, `PATCH\|DELETE /api/companies/:companyId/tools/policies/:id` | Types: `allow`, `block`, `require_approval`, `rate_limit`, `trust_rule`. |
-| Policy dry-run | `POST /api/companies/:companyId/tools/policy/test` | Structured `{ companyId, actor, request, runContext? }` body; decision returned under `.decision`. |
+| UI overview | `/tools` | All tabs: Overview, Examples, Applications, Connections, Profiles, Policies, Runtime, Audit. |
+| Examples | `POST /api/tools/examples/:id/install` and `…/smoke` | Bundled fixtures for first-run validation. |
+| Applications | `GET\|POST /api/tools/applications`, `PATCH /api/tool-applications/:id` | Logical groupings. |
+| Connections | `GET\|POST /api/tools/connections`, `GET\|PATCH\|DELETE /api/tool-connections/:id` | `POST …/health-check`, `POST …/catalog/refresh`, `GET …/catalog` for lifecycle. |
+| Profiles | `GET\|POST /api/tools/profiles`, `PATCH /api/tool-profiles/:id` | Entries: `POST /api/tool-profiles/:id/entries`, `PATCH\|DELETE /api/tool-profile-entries/:id`. |
+| Bindings | `POST /api/tools/profiles/:id/bind` and `…/unbind` | Targets: `company`, `agent`, `project`, `routine`, `issue`. |
+| Effective profile | `GET /api/tools/profiles/effective/agents/:agentId` | Use for QA proofs and debugging selector misses. |
+| Policies | `GET\|POST /api/tools/policies`, `PATCH\|DELETE /api/tools/policies/:id` | Types: `allow`, `block`, `require_approval`, `rate_limit`, `trust_rule`. |
+| Policy dry-run | `POST /api/tools/policy/test` | Structured `{ companyId, actor, request, runContext? }` body; decision returned under `.decision`. |
 | Gateway sessions | `POST /api/tool-gateway/sessions`, `POST /api/tool-gateway/sessions/:sessionId/revoke` | Board callers must supply `companyId`, `agentId`, `runId` to create and `companyId` to revoke; agent JWTs auto-fill from the token. Revocation invalidates the session immediately and emits `tool_gateway.session_revoked` without logging the raw session token. |
 | Gateway calls | `POST /api/tool-gateway/tools/call` | `X-Paperclip-Tool-Gateway-Token` header; body uses `tool` + `parameters`. Approval-required calls respond `409` with `reasonCode: approval_required` and an `actionRequestId`; the agent retries with `approvedActionRequestId`. |
 | Action requests | `POST /api/tool-gateway/action-requests/:id/approve` | Requires `companyId` (body or query). Listing is via the audit log: filter for `tool_gateway.approval_requested`. |
-| Trust rules | `POST /api/companies/:companyId/tools/action-requests/:id/trust-rule`, `POST /api/companies/:companyId/tools/trust-rules/:id/revoke` | Approval-derived allow policies. |
-| Runtime health | `GET /api/companies/:companyId/tools/runtime-health` | Alerts and metrics. Pair with [MCP-RUNTIME-OPERATIONS.md](./MCP-RUNTIME-OPERATIONS.md). |
-| Runtime slots | `GET /api/companies/:companyId/tools/runtime-slots`, `POST /api/companies/:companyId/tools/runtime-slots/:id/stop\|restart` | Process supervision. |
-| Audit | `GET /api/tool-gateway/audit?companyId=…&limit=…`, `GET /api/companies/:companyId/tools/runs/:runId/decisions` | Call event log. |
-| Stdio templates | `GET /api/companies/:companyId/tools/stdio-templates` | Approved local stdio template IDs only. |
-| Bulk import preview | `POST /api/companies/:companyId/tools/mcp/import-json` | Inspect a discovery JSON without persisting anything. |
+| Trust rules | `POST /api/tools/action-requests/:id/trust-rule`, `POST /api/tools/trust-rules/:id/revoke` | Approval-derived allow policies. |
+| Runtime health | `GET /api/tools/runtime-health` | Alerts and metrics. Pair with [MCP-RUNTIME-OPERATIONS.md](./MCP-RUNTIME-OPERATIONS.md). |
+| Runtime slots | `GET /api/tools/runtime-slots`, `POST /api/tools/runtime-slots/:id/stop\|restart` | Process supervision. |
+| Audit | `GET /api/tool-gateway/audit?companyId=…&limit=…`, `GET /api/tools/runs/:runId/decisions` | Call event log. |
+| Stdio templates | `GET /api/tools/stdio-templates` | Approved local stdio template IDs only. |
+| Bulk import preview | `POST /api/tools/mcp/import-json` | Inspect a discovery JSON without persisting anything. |
 | Demo script | [MCP-DEMO-SCRIPT.md](./MCP-DEMO-SCRIPT.md) | Walks read / approval-gated write / denied flows end-to-end. |
 | Runtime runbook | [MCP-RUNTIME-OPERATIONS.md](./MCP-RUNTIME-OPERATIONS.md) | Alerts, stuck slots, recovery. |
 | Deployment modes | [DEPLOYMENT-MODES.md](./DEPLOYMENT-MODES.md) | Auth, exposure, bind. |

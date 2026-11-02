@@ -11,7 +11,6 @@ const mockPluginsApi = vi.hoisted(() => ({
 
 const mockSetBreadcrumbs = vi.hoisted(() => vi.fn());
 const mockParams = vi.hoisted(() => ({
-  companyPrefix: "PAP" as string | undefined,
   pluginId: undefined as string | undefined,
   pluginRoutePath: undefined as string | undefined,
   "*": undefined as string | undefined,
@@ -27,10 +26,9 @@ vi.mock("@/context/BreadcrumbContext", () => ({
   }),
 }));
 
-vi.mock("@/context/CompanyContext", () => ({
-  useCompany: () => ({
-    companies: [{ id: "company-1", name: "Paperclip", issuePrefix: "PAP" }],
-    selectedCompanyId: "company-1",
+vi.mock("@/context/OrganizationContext", () => ({
+  useOrganization: () => ({
+    organization: { id: "company-1", name: "Paperclip", issuePrefix: "PAP" },
   }),
 }));
 
@@ -111,7 +109,6 @@ describe("PluginPage", () => {
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    mockParams.companyPrefix = "PAP";
     mockParams.pluginId = undefined;
     mockParams.pluginRoutePath = undefined;
     mockParams["*"] = undefined;
@@ -130,11 +127,11 @@ describe("PluginPage", () => {
     const root = await renderPage(container);
 
     expect(mockSetBreadcrumbs).toHaveBeenCalledWith([
-      { label: "Plugins", href: "/company/settings/instance/plugins" },
+      { label: "Plugins", href: "/organization/settings/instance/plugins" },
       { label: "LLM Wiki" },
     ]);
     expect(container.textContent).toContain("Back");
-    expect(container.querySelector('a[href="/PAP/dashboard"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/dashboard"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();
@@ -168,7 +165,7 @@ describe("PluginPage", () => {
 
     expect(mockSetBreadcrumbs).toHaveBeenCalledWith([{ label: "Wiki" }]);
     expect(container.textContent).not.toContain("Back");
-    expect(container.querySelector('a[href="/PAP/dashboard"]')).toBeNull();
+    expect(container.querySelector('a[href="/dashboard"]')).toBeNull();
     // Page slot itself still renders.
     expect(container.querySelector('[data-testid="plugin-slot-mount"]')?.textContent).toBe("Wiki");
 

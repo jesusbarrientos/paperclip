@@ -7,7 +7,6 @@ import { badRequest } from "../errors.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
 
 export interface AgentActionAuditFilters {
-  companyId: string;
   actorScope?: "agents" | "all";
   agentId?: string;
   responsibleUserId?: string;
@@ -54,7 +53,7 @@ export function agentActionAuditService(db: Db) {
       const cursor = decodeCursor(filters.cursor);
       if (filters.cursor && !cursor) throw badRequest("Invalid audit cursor");
       const effectiveResponsibleUserId = sql<string | null>`coalesce(${activityLog.responsibleUserId}, ${heartbeatRuns.responsibleUserId})`;
-      const conditions = [eq(activityLog.companyId, filters.companyId)];
+      const conditions = [];
       // Preserve the historical agent-audit query unless the caller opts into
       // the unified all-actors feed explicitly.
       if (filters.actorScope !== "all") conditions.push(isNotNull(activityLog.agentId));
@@ -85,7 +84,6 @@ export function agentActionAuditService(db: Db) {
 
       const rows = await db.select({
         id: activityLog.id,
-        companyId: activityLog.companyId,
         actorType: activityLog.actorType,
         actorId: activityLog.actorId,
         action: activityLog.action,
@@ -97,10 +95,7 @@ export function agentActionAuditService(db: Db) {
         details: activityLog.details,
         createdAt: activityLog.createdAt,
         cursorCreatedAt: sql<string>`to_char(${activityLog.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as("cursor_created_at"),
-      }).from(activityLog).leftJoin(heartbeatRuns, and(
-        eq(heartbeatRuns.companyId, activityLog.companyId),
-        eq(heartbeatRuns.id, activityLog.runId),
-      )).where(and(...conditions)).orderBy(desc(activityLog.createdAt), desc(activityLog.id)).limit(filters.limit + 1);
+      }).from(activityLog).leftJoin(heartbeatRuns, eq(heartbeatRuns.id, activityLog.runId)).where(and(...conditions)).orderBy(desc(activityLog.createdAt), desc(activityLog.id)).limit(filters.limit + 1);
 
       const page = rows.slice(0, filters.limit);
       const commentEntityIds = [...new Set(page
@@ -116,16 +111,11 @@ export function agentActionAuditService(db: Db) {
         id: issueComments.id, body: issueComments.body, issueId: issues.id, identifier: issues.identifier, title: issues.title,
       }).from(issueComments).innerJoin(issues, and(
         eq(issues.id, issueComments.issueId),
-        eq(issues.companyId, filters.companyId),
         visibleIssueCondition(),
-      )).where(and(
-        eq(issueComments.companyId, filters.companyId),
-        inArray(issueComments.id, commentEntityIds),
-      ));
+      )).where(inArray(issueComments.id, commentEntityIds));
       const issueRows = issueEntityIds.length === 0 ? [] : await db.select({
         id: issues.id, identifier: issues.identifier, title: issues.title,
       }).from(issues).where(and(
-        eq(issues.companyId, filters.companyId),
         visibleIssueCondition(),
         inArray(issues.id, issueEntityIds),
       ));
@@ -134,15 +124,11 @@ export function agentActionAuditService(db: Db) {
         issueId: issues.id, identifier: issues.identifier, title: issues.title,
       }).from(issueDocuments).innerJoin(issues, and(
         eq(issues.id, issueDocuments.issueId),
-        eq(issues.companyId, filters.companyId),
         visibleIssueCondition(),
-      )).where(and(
-        eq(issueDocuments.companyId, filters.companyId),
-        or(
-          inArray(issueDocuments.id, documentEntityIds),
-          inArray(issueDocuments.documentId, documentEntityIds),
-        ),
-      ));
+      )).where(or(
+                    inArray(issueDocuments.id, documentEntityIds),
+                    inArray(issueDocuments.documentId, documentEntityIds),
+                  ));
 
       const comments = new Map(commentRows.map((row) => [row.id, row]));
       const issueMap = new Map(issueRows.map((row) => [row.id, row]));
@@ -167,7 +153,6 @@ export function agentActionAuditService(db: Db) {
           || row.entityType === "issue_document";
         return {
           id: row.id,
-          companyId: row.companyId,
           actorType: row.actorType,
           actorId: row.actorId,
           action: row.action,

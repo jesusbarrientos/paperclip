@@ -5,9 +5,9 @@ import Markdown, { defaultUrlTransform, type Components, type Options } from "re
 import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
 import { GithubIcon } from "@/components/icons/github-icon";
-import { Link, useCaseHref } from "@/lib/router";
+import { Link, caseHref } from "@/lib/router";
 import { useTheme } from "../context/ThemeContext";
-import { useOptionalCompany } from "../context/CompanyContext";
+import { useOptionalOrganization } from "../context/OrganizationContext";
 import { mentionChipInlineStyle, parseMentionChipHref } from "../lib/mention-chips";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
@@ -52,12 +52,12 @@ function MarkdownAgentMention({ agentId, children, style }: {
   children: ReactNode;
   style?: React.CSSProperties;
 }) {
-  const companyId = useOptionalCompany()?.selectedCompanyId;
-  // All mentions share the company list cache; never fetch one agent per chip.
+  const hasOrganization = Boolean(useOptionalOrganization()?.organization);
+  // All mentions share the agent list cache; never fetch one agent per chip.
   const { data: agents } = useQuery<Agent[]>({
-    queryKey: queryKeys.agents.list(companyId ?? "__none__"),
-    queryFn: () => agentsApi.list(companyId!),
-    enabled: Boolean(companyId),
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => agentsApi.list(),
+    enabled: hasOrganization,
     staleTime: 60_000,
   });
   const appearance = agents?.find((agent) => agent.id === agentId)?.appearance;
@@ -189,7 +189,6 @@ function MarkdownCaseLink({
 }) {
   // Cases resolve via the get-by-identifier route; navigate there on click.
   // Kept boxless/underlined to match the issue mention treatment.
-  const caseHref = useCaseHref();
   return (
     <Link
       to={caseHref(identifier)}
@@ -764,16 +763,15 @@ function MarkdownBodyImpl({
   resolveWorkspaceFileRef,
 }: MarkdownBodyProps) {
   const { theme } = useTheme();
-  // Read company prefixes non-throwingly: MarkdownBody renders in surfaces that
-  // may lack a CompanyProvider. A null context (or no companies yet) leaves
-  // knownPrefixes undefined, which keeps issue auto-linking permissive.
-  const company = useOptionalCompany();
-  const companies = company?.companies;
+  // Read the organization prefix non-throwingly: MarkdownBody renders in surfaces
+  // that may lack an OrganizationProvider. A null context (or no organization yet)
+  // leaves knownPrefixes undefined, which keeps issue auto-linking permissive.
+  const issuePrefix = useOptionalOrganization()?.organization?.issuePrefix;
   // Stable identity so it can feed the memoized remark plugins without
   // re-creating them (and forcing a full markdown re-parse) every render.
   const knownPrefixes = useMemo(
-    () => (companies?.length ? companies.map((c) => c.issuePrefix) : undefined),
-    [companies],
+    () => (issuePrefix ? [issuePrefix] : undefined),
+    [issuePrefix],
   );
   const externalReferenceLookup = useMemo<MarkdownExternalReferenceMap | null>(() => {
     if (!externalReferences) return null;
@@ -913,7 +911,7 @@ function MarkdownBodyImpl({
               ? `/skills/${parsed.skillId}`
               : parsed.kind === "routine"
                 ? `/routines/${parsed.routineId}`
-                : "/company/settings/access";
+                : "/organization/settings/access";
         return (
           <a
             href={targetHref}

@@ -10,7 +10,6 @@ import {
   bigint,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { runEventPayload } from "../run-event-payload.js";
@@ -19,7 +18,6 @@ export const heartbeatRunEvents = pgTable(
   "heartbeat_run_events",
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
     runId: uuid("run_id").notNull().references(() => heartbeatRuns.id),
     agentId: uuid("agent_id").notNull().references(() => agents.id),
     seq: bigint("seq", { mode: "number" }).notNull(),
@@ -44,7 +42,6 @@ export const heartbeatRunEvents = pgTable(
     runSourceSeqUq: uniqueIndex("heartbeat_run_events_run_source_seq_uq")
       .on(table.runId, table.sourceInstanceId, table.sourceSeq)
       .where(sql`${table.sourceInstanceId} is not null and ${table.sourceSeq} is not null`),
-    companyRunIdx: index("heartbeat_run_events_company_run_idx").on(table.companyId, table.runId),
-    companyCreatedIdx: index("heartbeat_run_events_company_created_idx").on(table.companyId, table.createdAt),
+    companyCreatedIdx: index("heartbeat_run_events_company_created_idx").on(table.createdAt),
   }),
 );

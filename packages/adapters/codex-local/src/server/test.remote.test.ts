@@ -157,7 +157,6 @@ describe("codex remote environment diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         engine: "cli",
@@ -231,7 +230,6 @@ describe("codex remote environment diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         engine: "cli",
@@ -292,7 +290,6 @@ describe("codex remote environment diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: { engine: "cli", command: "codex" },
       executionTarget: remoteTarget,
@@ -337,7 +334,6 @@ describe("codex remote environment diagnostics", () => {
     };
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: { engine: "cli", command: "codex" },
       executionTarget: remoteTarget,
@@ -384,7 +380,7 @@ describe("codex remote environment diagnostics", () => {
     };
   }
 
-  it("stages a configured managed per-agent CODEX_HOME instead of the company default home", async () => {
+  it("stages a configured managed per-agent CODEX_HOME instead of the default managed home", async () => {
     // Execute honors env.CODEX_HOME, so the probe must exercise that same home
     // — otherwise the Test and real runs authenticate with different
     // credentials and can disagree in both directions.
@@ -392,8 +388,7 @@ describe("codex remote environment diagnostics", () => {
       process.env.PAPERCLIP_HOME!,
       "instances",
       "default",
-      "companies",
-      "company-1",
+      "organization",
       "agents",
       "agent-x",
       "codex-home",
@@ -404,7 +399,6 @@ describe("codex remote environment diagnostics", () => {
     await fs.writeFile(path.join(perAgentHome, "config.toml"), 'model = "gpt-5"\n', "utf8");
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         engine: "cli",
@@ -416,7 +410,7 @@ describe("codex remote environment diagnostics", () => {
     });
 
     expect(result.status).toBe("pass");
-    // The company default home preparation never ran; the configured managed
+    // The default managed home preparation never ran; the configured managed
     // home was seeded in place and its credential is what got staged.
     expect(prepareManagedCodexHome).not.toHaveBeenCalled();
     expect(capturedHomeAssetAuthJson.value).toBe(promoted);
@@ -442,7 +436,6 @@ describe("codex remote environment diagnostics", () => {
     );
 
     const result = await testEnvironment({
-      companyId: "company-1",
       adapterType: "codex_local",
       config: {
         engine: "cli",

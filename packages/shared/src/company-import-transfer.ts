@@ -5,14 +5,15 @@ import { z } from "zod";
 // their requests/responses against the inferred types, so all three sides
 // share one description of the payload shapes and route paths.
 
-/** Transfer routes relative to the companies router (`/api/companies`). */
+/** Transfer routes relative to the organization router (`/api/organization`). */
 export const COMPANY_IMPORT_TRANSFERS_ROUTE_PATH = "/import/transfers";
-export const COMPANY_IMPORT_TRANSFERS_API_PATH = `/api/companies${COMPANY_IMPORT_TRANSFERS_ROUTE_PATH}`;
+export const COMPANY_IMPORT_TRANSFERS_API_PATH = `/api/organization${COMPANY_IMPORT_TRANSFERS_ROUTE_PATH}`;
 
 /**
- * Paths for one transfer, relative to the companies API root — callers prefix
- * their own mount ("/companies" in the browser client, "/api/companies" in
- * the CLI; the server registers the same shapes as express params).
+ * Paths for one transfer, relative to the organization API root — callers
+ * prefix their own mount ("/organization" in the browser client,
+ * "/api/organization" in the CLI; the server registers the same shapes as
+ * express params).
  */
 export function companyImportTransferPath(transferId: string): string {
   return `${COMPANY_IMPORT_TRANSFERS_ROUTE_PATH}/${encodeURIComponent(transferId)}`;
@@ -45,7 +46,7 @@ export const companyImportTransferDeclaredPartSchema = z.object({
 });
 
 /**
- * Declaration body for POST /api/companies/import/transfers: the caller's
+ * Declaration body for POST /api/organization/import/transfers: the caller's
  * existing .zip described as contiguous content-addressed byte-range parts.
  */
 export const companyImportTransferDeclarationSchema = z.object({

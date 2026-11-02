@@ -75,18 +75,15 @@ if (!embeddedPostgresSupport.supported) {
 describeEmbeddedPostgres("native run finalizer / status decision committer — agent.task_run emission", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId: string;
   let agentId: string;
 
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-native-finalizer-telemetry-");
     db = createDb(tempDb.connectionString);
-    companyId = randomUUID();
     agentId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Telemetry", issuePrefix: "TLM" });
+    await db.insert(companies).values({ name: "Telemetry", issuePrefix: "TLM" });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Native worker",
       adapterType: "codex_local",
       status: "running",
@@ -106,7 +103,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     const contractSha256 = `contract-${contractId}`;
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Native telemetry fixture",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -114,7 +110,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     });
     await db.insert(completionContracts).values({
       id: contractId,
-      companyId,
       issueId,
       revision: 1,
       schemaVersion: "paperclip.completion-contract.v1",
@@ -133,7 +128,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
       agentId,
       status: "running",
       runtimeMode: "native",
@@ -149,7 +143,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
 
   function newPort(fixture: Awaited<ReturnType<typeof seedNativeRun>>) {
     return new PaperclipControlPlanePort(db, {
-      companyId,
       issueId: fixture.issueId,
       runId: fixture.runId,
       agentId,
@@ -171,7 +164,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
       identity: {
         runId: fixture.runId,
         sessionId: fixture.sessionId,
-        companyId,
         issueId: fixture.issueId,
         agentId,
       },
@@ -201,7 +193,7 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     // An unchanged failed workspace must replay its existing decision.
     await finalizeNativeRun({ db, runId: fixture.runId, workspaceFinalizeStatus: "failed" });
     expect(await db.select().from(statusDecisions).where(eq(statusDecisions.runId, fixture.runId))).toHaveLength(1);
-    await db.insert(workspaceOperations).values({ companyId, issueId: fixture.issueId,
+    await db.insert(workspaceOperations).values({ issueId: fixture.issueId,
       heartbeatRunId: fixture.runId, phase: "workspace_finalize", status: "succeeded" });
     await db.update(nativeRunFinalizations).set({ nextAttemptAt: null }).where(eq(nativeRunFinalizations.runId, fixture.runId));
     await reconcileNativeFinalizations(db, [fixture.runId]);
@@ -218,7 +210,7 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     await reconcileNativeFinalizations(db, [fixture.runId]);
     expect(await db.select().from(statusDecisions).where(eq(statusDecisions.runId, fixture.runId))).toHaveLength(2);
     expect(await db.select().from(nativeRunResults).where(eq(nativeRunResults.runId, fixture.runId))).toHaveLength(1);
-    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, companyId))).toHaveLength(0);
+    expect(await db.select().from(agentWakeupRequests)).toHaveLength(0);
   });
 
   it("emits exactly one agent.task_run event when the native finalizer commits a terminal status", async () => {
@@ -600,7 +592,7 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
   it("materializes recovery for an agent-owned invalid-result outcome", async () => {
     const fixture = await seedNativeRun();
     await db.insert(nativeRunFinalizations).values({
-      runId: fixture.runId, companyId, issueId: fixture.issueId,
+      runId: fixture.runId, issueId: fixture.issueId,
       phase: "terminal_failure", failureCode: "native_finalization_invalid",
       failureDetail: { recoveryOwner: { kind: "agent", agentId } },
     });
@@ -616,7 +608,7 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     "does not reopen board-owned %s repair for a late failure", async (failureCode) => {
     const fixture = await seedNativeRun();
     await db.insert(nativeRunFinalizations).values({
-      runId: fixture.runId, companyId, issueId: fixture.issueId, phase: "workspace_finalizing",
+      runId: fixture.runId, issueId: fixture.issueId, phase: "workspace_finalizing",
     });
     await recordNativeFinalizationFailure({ db, runId: fixture.runId,
       error: new Error(failureCode), failureScope: "workspace", permanent: true });
@@ -637,7 +629,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     // to exist — no persisted native result is required.
     await db.insert(nativeRunFinalizations).values({
       runId: fixture.runId,
-      companyId,
       issueId: fixture.issueId,
       phase: "observed",
       attempt: 0,
@@ -666,7 +657,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     const fixture = await seedNativeRun();
     await db.insert(nativeRunFinalizations).values({
       runId: fixture.runId,
-      companyId,
       issueId: fixture.issueId,
       phase: "observed",
       attempt: 1,
@@ -711,7 +701,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     const fixture = await seedNativeRun();
     await db.insert(nativeRunFinalizations).values({
       runId: fixture.runId,
-      companyId,
       issueId: fixture.issueId,
       phase: "workspace_finalizing",
       attempt: 1,
@@ -797,12 +786,12 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
         workspaceId: randomUUID(), leaseId: randomUUID(), providerLeaseId: "missing-old-sandbox", remoteCwd: "/work", resourceDisposition: "destroy" } },
     }).where(eq(heartbeatRuns.id, fixture.runId));
     await db.update(issues).set({ status: "blocked" }).where(eq(issues.id, fixture.issueId));
-    if (actionState !== "missing") await db.insert(issueRecoveryActions).values({ companyId, sourceIssueId: fixture.issueId,
+    if (actionState !== "missing") await db.insert(issueRecoveryActions).values({ sourceIssueId: fixture.issueId,
       kind: "active_run_watchdog", ownerType: "board", cause: "native_workspace_sync_out_unsafe_archive", fingerprint: fixture.runId,
       evidence: { runId: fixture.runId }, nextAction: "Repair the unsafe link manually", status: actionState,
       ...(actionState === "resolved" ? { outcome: "restored", resolutionNote: "new_source_execution_path", resolvedAt: new Date() } : {}),
     });
-    const priorWakeups = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, companyId));
+    const priorWakeups = await db.select().from(agentWakeupRequests);
     const priorActivity = await db.select().from(activityLog).where(eq(activityLog.entityId, fixture.issueId));
     await recoverLegacyUnsafeWorkspaceExports(db, [fixture.runId]);
     expect(await db.select().from(activityLog).where(eq(activityLog.entityId, fixture.issueId))).toEqual(priorActivity);
@@ -813,7 +802,7 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, fixture.runId)))[0]).toMatchObject({ status: "succeeded", nativePhase: "committed", error: null, errorCode: null });
     expect((await db.select().from(issues).where(eq(issues.id, fixture.issueId)))[0].status).toBe("done");
     expect(await db.select().from(nativeRunResults).where(eq(nativeRunResults.runId, fixture.runId))).toEqual(originalResults);
-    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, companyId))).toEqual(priorWakeups);
+    expect(await db.select().from(agentWakeupRequests)).toEqual(priorWakeups);
     expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.nativeIssueId, fixture.issueId))).toHaveLength(1);
     const actions = await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, fixture.issueId));
     expect(actions.every(action => action.status === "resolved" && action.nextAction === "")).toBe(true);
@@ -830,7 +819,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     const resultId = randomUUID();
     await db.insert(nativeRunResults).values({
       id: resultId,
-      companyId,
       issueId: fixture.issueId,
       runId: fixture.runId,
       completionContractId: fixture.contractId,
@@ -842,13 +830,11 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     const assessmentId = randomUUID();
     await db.insert(workAssessments).values({
       id: assessmentId,
-      companyId,
       issueId: fixture.issueId,
       runId: fixture.runId,
       contractId: fixture.contractId,
       resultId,
       triggerKind: "native_result",
-      triggerActorCompanyId: companyId,
       priorIssueStatus: "in_progress",
       priorStatusVersion: 0,
       policyVersion: "telemetry-v1",
@@ -857,7 +843,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     });
     await db.insert(nativeRunFinalizations).values({
       runId: fixture.runId,
-      companyId,
       issueId: fixture.issueId,
       phase: "arbitrating",
       attempt: 0,
@@ -882,7 +867,6 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     const callsBefore = mockTelemetryClient.track.mock.calls.length;
     await commitNativeStatusDecision({
       db,
-      companyId,
       issueId: fixture.issueId,
       runId: fixture.runId,
       assessmentId,

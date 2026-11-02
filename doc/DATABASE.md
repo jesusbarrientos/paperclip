@@ -33,8 +33,8 @@ To backfill existing content manually after migrating, run:
 
 ```sh
 pnpm issue-references:backfill
-# optional: limit to one company
-pnpm issue-references:backfill -- --company <company-id>
+# optional: pass the organization id explicitly (defaults to the single row in `companies`)
+pnpm issue-references:backfill -- --company <organization-id>
 ```
 
 Future issue, comment, and document writes sync references automatically without running the backfill command.
@@ -177,7 +177,7 @@ idempotent actor synchronization operations, not arbitrary transactions. A
 persistent outage still fails the request after the bounded retries; each
 connection attempt remains subject to the configured database connect timeout.
 
-The dashboard's company lookup, agent and task counts, pending approval count,
+The dashboard's organization lookup, agent and task counts, pending approval count,
 monthly spend, and run activity aggregate each retry these connection errors
 at most twice. The heartbeat run list and base issue lookup by UUID or identifier
 use the same bounded retries. Each callback is read-only and rebuilds its query
@@ -213,6 +213,27 @@ The database mode is controlled by `DATABASE_URL`:
 
 Your Drizzle schema (`packages/db/src/schema/`) stays the same regardless of mode.
 
+## Single organization per instance
+
+A Paperclip database holds exactly one organization: the single row in
+`companies` (name, issue prefix/counter, budget, status/pause, governance flags).
+Domain tables have no `company_id` column; only the legacy `companies`,
+`company_logos`, `company_onboarding_seeds`, and `company_transfer_runs` tables
+keep it until they are folded into an organization row. Several tables keep their
+historical `company_*` names (`company_memberships`, `company_secrets`,
+`company_skills`, ...) even though they now hold instance-level rows.
+
+Migrations `0306_instance_level_access.sql` (memberships, permission grants,
+invites, join requests, and agent API keys become instance-level, one membership
+per principal) and `0307_remove_company_columns.sql` (drops `company_id` from
+domain tables) refuse to apply when the database holds more than one company, and
+the server refuses to start in that state. Paperclip ships no automatic split of a
+multi-company database.
+
+Migration SQL, generated snapshots, and some index names (for example
+`decisions_company_idempotency_uq`) still mention "company" for history; that
+does not imply a `company_id` column.
+
 ## Migration authoring checklist
 
 The 0126 issue comment attribution backfill showed the failure mode this checklist is meant to prevent: each batch looked for the next rows with an unindexed predicate, so PostgreSQL repeatedly scanned the same table and the migration became O(n²) as the table grew.
@@ -242,7 +263,7 @@ The private `instance_settings` row whose singleton key is
 claim id, previous pool origin, canonical origin, and stack slug accepted from
 Cloud's signed pre-activation assertion. It is separate from the normal
 `default` settings row and never appears in the settings API. This is
-intentionally instance-scoped rather than company-scoped: an instance has one
+intentionally kept in instance settings rather than on the organization row: an instance has one
 public identity, and the existing unique singleton-key index makes concurrent
 or later attempts to replace it fail closed. The server loads the row before
 constructing URL-dependent runtime services on every boot.
@@ -252,7 +273,7 @@ constructing URL-dependent runtime services on every boot.
 `PAPERCLIP_CLOUD_WARM_STANDBY=1` is an opt-in control-plane marker for an
 unclaimed warm application. It requires Cloud configuration, a stack identity,
 and runtime identity verification keys. After restoring the durable identity,
-startup checks once for company data. Existing companies or a persisted claim
+startup checks once for organization data. An existing organization or a persisted claim
 keep the application fully active. A failed database check fails startup.
 
 An empty unclaimed application keeps its HTTP server and sandbox plugins ready,
@@ -270,7 +291,7 @@ normal requests and polling resume. No polling discovers claims and no process
 restart is required. Timers resume on their next normal tick; request-driven
 work can proceed immediately. Claim failure leaves standby intact. A restart
 restores the claim even if provider environment alignment has not completed.
-Deleting a claimed workspace's last company never puts it back into standby.
+A claimed workspace never returns to standby, even if its organization data is later removed.
 
 Deploy support before enabling the marker. Validate idle database transactions
 and health probes, claim/bootstrap latency, recurring work after claim, and a
@@ -286,9 +307,9 @@ Paperclip stores current-user sidebar membership state in:
 - `project_memberships`
 - `agent_memberships`
 
-These rows are company-scoped and user-scoped. A missing row means the user is joined, so existing users keep seeing projects and agents in the sidebar until they explicitly leave them. Rows only control sidebar visibility; they do not affect project/agent detail access, all-pages, selectors, assignment flows, or existing company permissions.
+These rows are user-scoped within the instance's organization. A missing row means the user is joined, so existing users keep seeing projects and agents in the sidebar until they explicitly leave them. Rows only control sidebar visibility; they do not affect project/agent detail access, all-pages, selectors, assignment flows, or existing organization permissions.
 
-Both tables use a unique key on `(company_id, user_id, resource_id)` and keep `state` as `joined` or `left`. Join/leave mutations are idempotent board-user `/me` operations and write activity entries when the effective state changes.
+Both tables use a unique key on `(user_id, resource_id)` and keep `state` as `joined` or `left`. Join/leave mutations are idempotent board-user `/me` operations and write activity entries when the effective state changes.
 
 ## Decision training snapshot retention
 
@@ -306,9 +327,9 @@ The decisions desk stores queue membership, decide-by/snooze state, and retentio
 
 `decision_triage_events` is append-only history for queue and triage changes. Current rows and history both carry server-derived user/agent, heartbeat run, API-key, and responsible-user attribution where applicable. Queue reads must resolve and authorize their source rows at read time; a sidecar row is never a visibility grant.
 
-Triage writes serialize on the company and attention-source identity so concurrent partial updates preserve both fields and produce monotonic history versions.
+Triage writes serialize on the attention-source identity so concurrent partial updates preserve both fields and produce monotonic history versions.
 
-`decision_retention` tracks the last observed source `activityAt`, Keep, reversible archive provenance, and monotonic source/archive versions. `decision_archive_notification_outbox` has a unique key over company, source identity, archive version, and immutable origin agent so repeated sweeps cannot enqueue duplicate notifications; delivery claims are retryable and coalesced per agent.
+`decision_retention` tracks the last observed source `activityAt`, Keep, reversible archive provenance, and monotonic source/archive versions. `decision_archive_notification_outbox` has a unique key over source identity, archive version, and immutable origin agent so repeated sweeps cannot enqueue duplicate notifications; delivery claims are retryable and coalesced per agent.
 
 ## Native runner persistence
 
@@ -324,7 +345,7 @@ rollout explicitly selects it.
 append-oriented evidence and status-decision chain. Unique fingerprints,
 versions, ordinals, and idempotency keys make retries deterministic. Composite
 foreign keys bind every contract, result, assessment, decision, effect, and
-finalization to one company, issue, and run. The database rejects mixed-owner
+finalization to one issue and run. The database rejects mixed-owner
 evidence even when every referenced ID exists. Native source identities on
 `heartbeat_run_events` are nullable so legacy events remain readable without
 rewriting historical rows. Per-run native source identifiers are unique, while
@@ -373,14 +394,14 @@ endpoint has no additional instructions.
 ## Telegram private draft identities
 
 `chat_telegram_draft_ids` is a content-free, instance-wide PostgreSQL sequence,
-not a company-owned record. Telegram's native Stop callback carries a draft ID
+not an organization-owned record. Telegram's native Stop callback carries a draft ID
 but no actor or Paperclip generation. IDs therefore must not be recycled when
-a transaction rolls back or an endpoint/company is deleted and its bot is
+a transaction rolls back or an endpoint is deleted and its bot is
 connected again. The sequence allocates positive 31-bit IDs without cycling;
 exhaustion refuses new draft allocation rather than wrapping or falling back to
 random IDs. Never reset it as part of chat cleanup.
 
-The matching `chat_actions` entry remains company/endpoint-scoped and binds the
+The matching `chat_actions` entry remains endpoint-scoped and binds the
 draft to its exact conversation, publication attempt, runtime, credential and
 approved text. Stop can suppress that private draft's final publication; it
 cannot cancel a task or model run. Logical backups preserve the sequence, but
@@ -396,7 +417,7 @@ Legacy attachments and uploads without a registered run keep a null value; the
 migration deliberately does not infer attribution from mutable work products.
 Deleting the originating run clears the reference and fails closed for automatic
 chat handoff. An agent's external file selection must match the attachment's
-company, task, agent, and originating run. Editing or recreating a work-product
+task, agent, and originating run. Editing or recreating a work-product
 record cannot reassign that authority to a later run.
 
 ## Question-response delivery receipts
@@ -478,7 +499,7 @@ pnpm paperclipai configure --section secrets
 Inline secret migration command:
 
 ```sh
-npx paperclipai secrets migrate-inline-env --company-id <company-id> --apply
+npx paperclipai secrets migrate-inline-env --apply
 
 # direct database maintenance fallback
 pnpm secrets:migrate-inline-env --apply
@@ -488,7 +509,7 @@ Hosted AWS provider notes live in [SECRETS-AWS-PROVIDER.md](./SECRETS-AWS-PROVID
 
 ### Persistent agent conversations
 
-Migration `0274_agent_chat.sql` adds conversation identity/state and session generation/boundary columns to `issues`, plus idempotent client request IDs and processed session-boundary generations to `issue_comments`. The company/agent/user unique index resolves concurrent first writes to one issue. A check constraint preserves the assigned-agent identity and prevents terminal conversation status. Comment request IDs are unique per issue and user. There is no separate chat/message store. Provider sessions continue to use `agent_task_sessions`; `/new` removes only the matching conversation session, and session writers fence stale generations against the issue row.
+Migration `0274_agent_chat.sql` adds conversation identity/state and session generation/boundary columns to `issues`, plus idempotent client request IDs and processed session-boundary generations to `issue_comments`. The agent/user unique index resolves concurrent first writes to one issue. A check constraint preserves the assigned-agent identity and prevents terminal conversation status. Comment request IDs are unique per issue and user. There is no separate chat/message store. Provider sessions continue to use `agent_task_sessions`; `/new` removes only the matching conversation session, and session writers fence stale generations against the issue row.
 
 ## Resource lifecycle events
 
@@ -499,7 +520,7 @@ Rejected hires emit termination without creation. Agents created as terminated
 emit no creation event. Capture is generic and works on self-hosted and managed
 instances; recording an event does not authorize a provider operation.
 
-A partial unique `(company_id, resource_type, resource_id)` index deduplicates
+A partial unique `(resource_type, resource_id)` index deduplicates
 creation. Each actual agent pause, resume, or termination appends another event,
 including budget actions and generic status updates. The agent row stays locked
 until status and event commit, so concurrent repeat requests emit one hook.
@@ -512,11 +533,11 @@ Hire approval and rejection commit with agent activation or termination, so a
 failed event write leaves the decision pending and retryable.
 
 The numeric event ID orders transitions for a resource. Future plugin delivery
-must enforce company scope, preserve resource order, and track acknowledgments
+must enforce organization access, preserve resource order, and track acknowledgments
 per plugin. A global high-water mark can skip transactions that have not yet
 committed; it is not a safe delivery cursor. The journal stores only identity,
 action, and timestamps, not repository snapshots, credentials, provider config,
-or resource health. Company deletion cascades to its events. Resource deletion
+or resource health. Resource deletion
 retains events, so consumers must revalidate existence and eligibility and load
 current authorized repository data. A termination hook does not authorize
 removing persistent VM or project data.
@@ -557,8 +578,8 @@ remain in local or object storage.
 
 ### Runner API response reservations
 
-`runner_api_response_reservations` holds company-scoped API snapshot reservations.
-Before a capture spills, the server locks company admission and counts stored
+`runner_api_response_reservations` holds API snapshot reservations for the organization.
+Before a capture spills, the server locks organization admission and counts stored
 `runner-api` assets plus unattached reservations against a 20 GiB default quota.
 A committed asset replaces its reservation in that total. The asset foreign key
 cascades on deletion, while deleting a run sets `run_id` to null so an orphan

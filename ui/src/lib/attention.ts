@@ -614,14 +614,12 @@ export function saveAttentionSortOrder(order: AttentionSortOrder) {
   }
 }
 
-function getAttentionFiltersStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${ATTENTION_FILTERS_KEY_PREFIX}:${companyId}`;
+function getAttentionFiltersStorageKey(): string {
+  return ATTENTION_FILTERS_KEY_PREFIX;
 }
 
-function getAttentionCollapsedGroupsStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${ATTENTION_COLLAPSED_GROUPS_KEY_PREFIX}:${companyId}`;
+function getAttentionCollapsedGroupsStorageKey(): string {
+  return ATTENTION_COLLAPSED_GROUPS_KEY_PREFIX;
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -631,9 +629,8 @@ function normalizeStringArray(value: unknown): string[] {
 
 const ALL_SEVERITIES: AttentionSeverity[] = ["critical", "high", "medium", "low"];
 
-export function loadAttentionFilters(companyId: string | null | undefined): AttentionFilterState {
-  const storageKey = getAttentionFiltersStorageKey(companyId);
-  if (!storageKey) return { ...defaultAttentionFilterState };
+export function loadAttentionFilters(): AttentionFilterState {
+  const storageKey = getAttentionFiltersStorageKey();
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return { ...defaultAttentionFilterState };
@@ -652,11 +649,9 @@ export function loadAttentionFilters(companyId: string | null | undefined): Atte
 }
 
 export function saveAttentionFilters(
-  companyId: string | null | undefined,
   filters: AttentionFilterState,
 ) {
-  const storageKey = getAttentionFiltersStorageKey(companyId);
-  if (!storageKey) return;
+  const storageKey = getAttentionFiltersStorageKey();
   try {
     localStorage.setItem(storageKey, JSON.stringify(filters));
   } catch {
@@ -664,9 +659,8 @@ export function saveAttentionFilters(
   }
 }
 
-export function loadCollapsedAttentionGroupKeys(companyId: string | null | undefined): Set<string> {
-  const storageKey = getAttentionCollapsedGroupsStorageKey(companyId);
-  if (!storageKey) return new Set();
+export function loadCollapsedAttentionGroupKeys(): Set<string> {
+  const storageKey = getAttentionCollapsedGroupsStorageKey();
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return new Set();
@@ -678,11 +672,9 @@ export function loadCollapsedAttentionGroupKeys(companyId: string | null | undef
 }
 
 export function saveCollapsedAttentionGroupKeys(
-  companyId: string | null | undefined,
   groupKeys: ReadonlySet<string>,
 ) {
-  const storageKey = getAttentionCollapsedGroupsStorageKey(companyId);
-  if (!storageKey) return;
+  const storageKey = getAttentionCollapsedGroupsStorageKey();
   try {
     localStorage.setItem(storageKey, JSON.stringify([...groupKeys]));
   } catch {

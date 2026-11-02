@@ -41,7 +41,7 @@ it("spawns a real Node ACP agent with per-session env on this platform", async (
 
   const result = await execute({
     runId: "spawn-smoke",
-    agent: { id: "spawn-agent", companyId: "spawn-company" },
+    agent: { id: "spawn-agent" },
     runtime: {},
     config: {
       agent: "custom",
@@ -78,7 +78,7 @@ it("retains a typed ACP failure as diagnostics without making it assistant outpu
 
   const result = await execute({
     runId: "typed-failure-smoke",
-    agent: { id: "spawn-agent", companyId: "spawn-company" },
+    agent: { id: "spawn-agent" },
     runtime: {},
     config: {
       agent: "custom",
@@ -113,7 +113,7 @@ it("fails closed on a typed ACP session failure in persistent mode", async () =>
 
   const result = await execute({
     runId: "persistent-typed-failure-smoke",
-    agent: { id: "spawn-agent", companyId: "spawn-company" },
+    agent: { id: "spawn-agent" },
     runtime: {},
     config: {
       agent: "custom",
@@ -149,7 +149,7 @@ it("preserves ordinary assistant text even when it resembles a provider error", 
 
   const result = await execute({
     runId: "error-shaped-answer-smoke",
-    agent: { id: "spawn-agent", companyId: "spawn-company" },
+    agent: { id: "spawn-agent" },
     runtime: {},
     config: {
       agent: "custom",
@@ -181,7 +181,7 @@ it("keeps a typed retry warning nonfatal when the turn produces an answer", asyn
 
   const result = await execute({
     runId: "typed-warning-smoke",
-    agent: { id: "spawn-agent", companyId: "spawn-company" },
+    agent: { id: "spawn-agent" },
     runtime: {},
     config: {
       agent: "custom",

@@ -143,7 +143,6 @@ function agentActor(
   return {
     type: "agent",
     agentId,
-    companyId: fixture.company.id,
     runId:
       agentId === fixture.agents.lowTrust.id
         ? fixture.runs.lowTrust.id
@@ -156,7 +155,6 @@ function standardReportActor(fixture: Fixture): Express.Request["actor"] {
   return {
     type: "agent",
     agentId: fixture.agents.standard.id,
-    companyId: fixture.company.id,
     runId: fixture.runs.standardReport.id,
     source: "agent_jwt",
   };
@@ -169,7 +167,6 @@ function skillTestActor(
   return {
     type: "agent",
     agentId: fixture.agents.standard.id,
-    companyId: fixture.company.id,
     runId: fixture.runs.standard.id,
     source: "agent_jwt",
     keyScope: { kind: "skill_test", issueId },
@@ -183,7 +180,6 @@ function boardActor(fixture: Fixture): Express.Request["actor"] {
     companyIds: [fixture.company.id],
     memberships: [
       {
-        companyId: fixture.company.id,
         membershipRole: "operator",
         status: "active",
       },
@@ -379,7 +375,6 @@ async function createQuarantinedContinuationSummary(
   const [document] = await db
     .insert(documents)
     .values({
-      companyId: fixture.company.id,
       title: "Continuation Summary",
       latestBody: `Continuation must not leak ${fixture.canaries.raw}`,
       createdByAgentId: fixture.agents.lowTrust.id,
@@ -390,7 +385,6 @@ async function createQuarantinedContinuationSummary(
   const [revision] = await db
     .insert(documentRevisions)
     .values({
-      companyId: fixture.company.id,
       documentId: document!.id,
       revisionNumber: 1,
       title: "Continuation Summary",
@@ -403,7 +397,6 @@ async function createQuarantinedContinuationSummary(
     .set({ latestRevisionId: revision!.id })
     .where(eq(documents.id, document!.id));
   await db.insert(issueDocuments).values({
-    companyId: fixture.company.id,
     issueId,
     documentId: document!.id,
     key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
@@ -438,7 +431,6 @@ async function seedLowTrustFixture(db: Db) {
   const [allowedProject] = await db
     .insert(projects)
     .values({
-      companyId: company!.id,
       name: `Allowed ${nonce}`,
       status: "in_progress",
     })
@@ -446,7 +438,6 @@ async function seedLowTrustFixture(db: Db) {
   const [outOfScopeProject] = await db
     .insert(projects)
     .values({
-      companyId: company!.id,
       name: `Out ${nonce}`,
       description: canary("FLAG-PROJECT-7R4G"),
       status: "in_progress",
@@ -456,7 +447,6 @@ async function seedLowTrustFixture(db: Db) {
   const [collaborator] = await db
     .insert(agents)
     .values({
-      companyId: company!.id,
       name: "Same Boundary Collaborator",
       role: "engineer",
       adapterType: "process",
@@ -468,7 +458,6 @@ async function seedLowTrustFixture(db: Db) {
   const [standard] = await db
     .insert(agents)
     .values({
-      companyId: company!.id,
       name: "Standard Engineer",
       role: "engineer",
       adapterType: "process",
@@ -480,7 +469,6 @@ async function seedLowTrustFixture(db: Db) {
   const [cto] = await db
     .insert(agents)
     .values({
-      companyId: company!.id,
       name: "CTO",
       role: "cto",
       adapterType: "process",
@@ -493,7 +481,6 @@ async function seedLowTrustFixture(db: Db) {
   const [reviewGrandparent] = await db
     .insert(issues)
     .values({
-      companyId: company!.id,
       projectId: allowedProject!.id,
       title: "Review grandparent",
       status: "in_progress",
@@ -505,7 +492,6 @@ async function seedLowTrustFixture(db: Db) {
   const [reviewRoot] = await db
     .insert(issues)
     .values({
-      companyId: company!.id,
       projectId: allowedProject!.id,
       parentId: reviewGrandparent!.id,
       title: "Review root",
@@ -518,7 +504,6 @@ async function seedLowTrustFixture(db: Db) {
   const [assignedReview] = await db
     .insert(issues)
     .values({
-      companyId: company!.id,
       projectId: allowedProject!.id,
       parentId: reviewRoot!.id,
       title: "Assigned low-trust review",
@@ -530,7 +515,6 @@ async function seedLowTrustFixture(db: Db) {
   const [sameBoundaryChild] = await db
     .insert(issues)
     .values({
-      companyId: company!.id,
       projectId: allowedProject!.id,
       parentId: reviewRoot!.id,
       title: "Same boundary child",
@@ -543,7 +527,6 @@ async function seedLowTrustFixture(db: Db) {
   const [standardChild] = await db
     .insert(issues)
     .values({
-      companyId: company!.id,
       projectId: allowedProject!.id,
       parentId: reviewRoot!.id,
       title: "Assigned standard child",
@@ -556,7 +539,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingOutOfScope] = await db
     .insert(issues)
     .values({
-      companyId: company!.id,
       projectId: outOfScopeProject!.id,
       title: `Sibling ${canaries.issueSibling}`,
       description: canaries.issueSibling,
@@ -569,7 +551,6 @@ async function seedLowTrustFixture(db: Db) {
   const [lowTrust] = await db
     .insert(agents)
     .values({
-      companyId: company!.id,
       name: "Low Trust Reviewer",
       role: "engineer",
       adapterType: "process",
@@ -580,7 +561,6 @@ async function seedLowTrustFixture(db: Db) {
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: company!.id,
             projectIds: [allowedProject!.id],
             rootIssueId: reviewRoot!.id,
             issueIds: [
@@ -610,7 +590,6 @@ async function seedLowTrustFixture(db: Db) {
   const [lowTrustRun] = await db
     .insert(heartbeatRuns)
     .values({
-      companyId: company!.id,
       agentId: lowTrust!.id,
       status: "running",
       contextSnapshot: {
@@ -622,7 +601,6 @@ async function seedLowTrustFixture(db: Db) {
   const [standardRun] = await db
     .insert(heartbeatRuns)
     .values({
-      companyId: company!.id,
       agentId: standard!.id,
       status: "running",
       contextSnapshot: { issueId: assignedReview!.id },
@@ -631,7 +609,6 @@ async function seedLowTrustFixture(db: Db) {
   const [standardReportRun] = await db
     .insert(heartbeatRuns)
     .values({
-      companyId: company!.id,
       agentId: standard!.id,
       status: "running",
       contextSnapshot: { issueId: standardChild!.id },
@@ -659,7 +636,6 @@ async function seedLowTrustFixture(db: Db) {
   standardChild!.executionRunId = standardReportRun!.id;
 
   await db.insert(issueComments).values({
-    companyId: company!.id,
     issueId: siblingOutOfScope!.id,
     authorAgentId: standard!.id,
     authorType: "agent",
@@ -668,7 +644,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingDoc] = await db
     .insert(documents)
     .values({
-      companyId: company!.id,
       title: "Sibling doc",
       latestBody: canaries.documentSibling,
       createdByAgentId: standard!.id,
@@ -678,7 +653,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingRevision] = await db
     .insert(documentRevisions)
     .values({
-      companyId: company!.id,
       documentId: siblingDoc!.id,
       revisionNumber: 1,
       title: "Sibling doc",
@@ -691,7 +665,6 @@ async function seedLowTrustFixture(db: Db) {
     .set({ latestRevisionId: siblingRevision!.id })
     .where(eq(documents.id, siblingDoc!.id));
   await db.insert(issueDocuments).values({
-    companyId: company!.id,
     issueId: siblingOutOfScope!.id,
     documentId: siblingDoc!.id,
     key: "canary",
@@ -699,7 +672,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingAnnotationThread] = await db
     .insert(documentAnnotationThreads)
     .values({
-      companyId: company!.id,
       issueId: siblingOutOfScope!.id,
       documentId: siblingDoc!.id,
       documentKey: "canary",
@@ -727,7 +699,6 @@ async function seedLowTrustFixture(db: Db) {
     })
     .returning();
   await db.insert(documentAnnotationComments).values({
-    companyId: company!.id,
     threadId: siblingAnnotationThread!.id,
     issueId: siblingOutOfScope!.id,
     documentId: siblingDoc!.id,
@@ -738,7 +709,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingAttachmentAsset] = await db
     .insert(assets)
     .values({
-      companyId: company!.id,
       provider: "local_disk",
       objectKey: `issues/${siblingOutOfScope!.id}/attachment-canary.txt`,
       contentType: "text/plain",
@@ -751,7 +721,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingAttachment] = await db
     .insert(issueAttachments)
     .values({
-      companyId: company!.id,
       issueId: siblingOutOfScope!.id,
       assetId: siblingAttachmentAsset!.id,
     })
@@ -759,7 +728,6 @@ async function seedLowTrustFixture(db: Db) {
   const [siblingExternalObject] = await db
     .insert(externalObjects)
     .values({
-      companyId: company!.id,
       providerKey: "url",
       objectType: "link",
       externalId: `external-${nonce}`,
@@ -771,7 +739,6 @@ async function seedLowTrustFixture(db: Db) {
     })
     .returning();
   await db.insert(externalObjectMentions).values({
-    companyId: company!.id,
     sourceIssueId: siblingOutOfScope!.id,
     sourceKind: "description",
     matchedTextRedacted: canaries.externalObjectSibling,
@@ -784,7 +751,6 @@ async function seedLowTrustFixture(db: Db) {
     objectType: "link",
   });
   await db.insert(issueWorkProducts).values({
-    companyId: company!.id,
     projectId: outOfScopeProject!.id,
     issueId: siblingOutOfScope!.id,
     type: "artifact",
@@ -796,7 +762,6 @@ async function seedLowTrustFixture(db: Db) {
   const [approval] = await db
     .insert(approvals)
     .values({
-      companyId: company!.id,
       type: "request_board_approval",
       requestedByAgentId: standard!.id,
       status: "pending",
@@ -804,13 +769,11 @@ async function seedLowTrustFixture(db: Db) {
     })
     .returning();
   await db.insert(issueApprovals).values({
-    companyId: company!.id,
     issueId: assignedReview!.id,
     approvalId: approval!.id,
     linkedByAgentId: standard!.id,
   });
   await db.insert(issueApprovals).values({
-    companyId: company!.id,
     issueId: siblingOutOfScope!.id,
     approvalId: approval!.id,
     linkedByAgentId: standard!.id,
@@ -936,13 +899,10 @@ describeEmbeddedPostgres(
       await db.update(agents).set({ runtimeConfig: { heartbeat: { wakeOnDemand: true, maxConcurrentRuns: 1 } } })
         .where(eq(agents.id, fixture.agents.lowTrust.id));
       const board = createApp(db, boardActor(fixture));
-      const created = await request(board).post(`/api/companies/${fixture.company.id}/issues`)
+      const created = await request(board).post(`/api/issues`)
         .send({ title: "Human assigned outside intake", status: "todo", assigneeAgentId: fixture.agents.lowTrust.id });
       expect(created.status, JSON.stringify(created.body)).toBe(201);
-      const queued = () => db.select().from(agentWakeupRequests).where(and(
-        eq(agentWakeupRequests.companyId, fixture.company.id),
-        eq(agentWakeupRequests.agentId, fixture.agents.lowTrust.id),
-      )).then(rows => rows.find(row => row.payload?.issueId === created.body.id && row.runId));
+      const queued = () => db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, fixture.agents.lowTrust.id)).then(rows => rows.find(row => row.payload?.issueId === created.body.id && row.runId));
       await waitFor(async () => Boolean(await queued()));
       const wake = (await queued())!;
       expect(wake).toMatchObject({ requestedByActorType: "user", requestedByActorId: "board-user" });
@@ -994,10 +954,10 @@ describeEmbeddedPostgres(
       await db.update(agents).set({ runtimeConfig: { heartbeat: { wakeOnDemand: true, maxConcurrentRuns: 1 } } })
         .where(eq(agents.id, fixture.agents.lowTrust.id));
       const board = createApp(db, boardActor(fixture));
-      const created = await request(board).post(`/api/companies/${fixture.company.id}/issues`)
+      const created = await request(board).post(`/api/issues`)
         .send({ title: "Human backlog assignment", status: "backlog", assigneeAgentId: fixture.agents.lowTrust.id });
       expect(created.status, JSON.stringify(created.body)).toBe(201);
-      const receipts = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, fixture.company.id));
+      const receipts = await db.select().from(agentWakeupRequests);
       expect(receipts.filter(w => w.payload?.issueId === created.body.id)).toEqual([expect.objectContaining({
         reason: "issue_human_assignment", status: "completed", runId: null, requestedByActorId: "board-user",
       })]);
@@ -1319,7 +1279,6 @@ describeEmbeddedPostgres(
       const [targetIssue] = await db
         .insert(issues)
         .values({
-          companyId: fixture.company.id,
           projectId: fixture.projects.outOfScope.id,
           title: "Coach-owned mention target",
           status: "in_progress",
@@ -1329,7 +1288,6 @@ describeEmbeddedPostgres(
         })
         .returning();
       await db.insert(issueComments).values({
-        companyId: fixture.company.id,
         issueId: targetIssue!.id,
         authorAgentId: fixture.agents.standard.id,
         authorType: "agent",
@@ -1339,7 +1297,6 @@ describeEmbeddedPostgres(
       const unmentioned = await db
         .insert(agents)
         .values({
-          companyId: fixture.company.id,
           name: "Unmentioned Low Trust Reviewer",
           role: "engineer",
           adapterType: "process",
@@ -1379,7 +1336,6 @@ describeEmbeddedPostgres(
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: fixture.company.id,
             rootIssueId: fixture.issues.siblingOutOfScope.id,
           },
         },
@@ -1433,7 +1389,6 @@ describeEmbeddedPostgres(
       expect(lowTrustRes.status, JSON.stringify(lowTrustRes.body)).toBe(200);
       expect(lowTrustRes.body).toMatchObject({
         id: fixture.agents.lowTrust.id,
-        companyId: fixture.company.id,
         trustPreset: LOW_TRUST_REVIEW_PRESET,
       });
       expect(lowTrustRes.body).not.toHaveProperty("adapterConfig");
@@ -1451,7 +1406,6 @@ describeEmbeddedPostgres(
       ).toBe(200);
       expect(lowTrustSelfByIdRes.body).toMatchObject({
         id: fixture.agents.lowTrust.id,
-        companyId: fixture.company.id,
         trustPreset: LOW_TRUST_REVIEW_PRESET,
       });
       expect(lowTrustSelfByIdRes.body).not.toHaveProperty("adapterConfig");
@@ -1496,7 +1450,6 @@ describeEmbeddedPostgres(
       ).toBe(200);
       expect(issueScopedLowTrustRes.body).toMatchObject({
         id: fixture.agents.standard.id,
-        companyId: fixture.company.id,
         trustPreset: LOW_TRUST_REVIEW_PRESET,
       });
       expect(issueScopedLowTrustRes.body).not.toHaveProperty("adapterConfig");
@@ -1522,7 +1475,6 @@ describeEmbeddedPostgres(
         );
         expect(restrictedRes.body).toMatchObject({
           id: fixture.agents.standard.id,
-          companyId: fixture.company.id,
           keyScope: restrictedActor.keyScope,
         });
         expect(restrictedRes.body).not.toHaveProperty("adapterConfig");
@@ -1544,7 +1496,6 @@ describeEmbeddedPostgres(
             authorizationPolicy: {
               trustBoundary: {
                 mode: LOW_TRUST_REVIEW_PRESET,
-                companyId: fixture.company.id,
                 projectIds: [fixture.projects.allowed.id],
               },
             },
@@ -1561,7 +1512,6 @@ describeEmbeddedPostgres(
       ).toBe(200);
       expect(projectScopedLowTrustRes.body).toMatchObject({
         id: fixture.agents.standard.id,
-        companyId: fixture.company.id,
         trustPreset: LOW_TRUST_REVIEW_PRESET,
       });
       expect(projectScopedLowTrustRes.body).not.toHaveProperty("adapterConfig");
@@ -1679,7 +1629,7 @@ describeEmbeddedPostgres(
           id: "LT-26 company issue outside boundary",
           req: () =>
             request(app)
-              .post(`/api/companies/${fixture.company.id}/issues`)
+              .post(`/api/issues`)
               .send({
                 title: `child ${fixture.canaries.issueSibling}`,
                 projectId: fixture.projects.outOfScope.id,
@@ -1762,7 +1712,7 @@ describeEmbeddedPostgres(
       const beforeBulkSummary = await snapshot(db);
       const bulkSummary = await request(app)
         .post(
-          `/api/companies/${fixture.company.id}/issues/external-object-summaries`,
+          `/api/issues/external-object-summaries`,
         )
         .send({ issueIds: [fixture.issues.siblingOutOfScope.id] });
       expect(bulkSummary.status, JSON.stringify(bulkSummary.body)).toBe(200);
@@ -1884,7 +1834,7 @@ describeEmbeddedPostgres(
 
       const bulkSummary = await request(app)
         .post(
-          `/api/companies/${fixture.company.id}/issues/external-object-summaries`,
+          `/api/issues/external-object-summaries`,
         )
         .send({ issueIds: [fixture.issues.siblingOutOfScope.id] });
       expect(bulkSummary.status, JSON.stringify(bulkSummary.body)).toBe(200);
@@ -1896,7 +1846,6 @@ describeEmbeddedPostgres(
       const fixture = await seedLowTrustFixture(db);
       await db.insert(issues).values([
         {
-          companyId: fixture.company.id,
           projectId: fixture.projects.allowed.id,
           parentId: fixture.issues.reviewRoot.id,
           title: "Visible blocked vendor wait",
@@ -1906,7 +1855,6 @@ describeEmbeddedPostgres(
             "external owner: Visible vendor\nexternal action: Finish visible review",
         },
         {
-          companyId: fixture.company.id,
           projectId: fixture.projects.outOfScope.id,
           title: "Hidden blocked vendor wait",
           status: "blocked",
@@ -1917,13 +1865,13 @@ describeEmbeddedPostgres(
       ]);
 
       const boardCount = await request(createApp(db, boardActor(fixture)))
-        .get(`/api/companies/${fixture.company.id}/issues/count`)
+        .get(`/api/issues/count`)
         .query({ attention: "blocked", q: "blocked vendor wait" });
       expect(boardCount.status, JSON.stringify(boardCount.body)).toBe(200);
       expect(boardCount.body.count).toBe(2);
 
       const lowTrustCount = await request(createApp(db, agentActor(fixture)))
-        .get(`/api/companies/${fixture.company.id}/issues/count`)
+        .get(`/api/issues/count`)
         .query({ attention: "blocked", q: "blocked vendor wait" });
       expect(lowTrustCount.status, JSON.stringify(lowTrustCount.body)).toBe(
         200,
@@ -1988,7 +1936,6 @@ describeEmbeddedPostgres(
         const scopedComment = await db
           .insert(issueComments)
           .values({
-            companyId: fixture.company.id,
             issueId: fixture.issues.reviewRoot.id,
             authorAgentId: fixture.agents.lowTrust.id,
             createdByRunId: fixture.runs.lowTrust.id,
@@ -2185,7 +2132,6 @@ describeEmbeddedPostgres(
       const [rawProduct] = await db
         .insert(issueWorkProducts)
         .values({
-          companyId: fixture.company.id,
           projectId: fixture.projects.allowed.id,
           issueId: fixture.issues.assignedReview.id,
           type: "artifact",
@@ -2202,50 +2148,6 @@ describeEmbeddedPostgres(
           },
         })
         .returning();
-
-      const [otherCompany] = await db
-        .insert(companies)
-        .values({
-          name: "Foreign low-trust source",
-          issuePrefix: `FGN${randomUUID().slice(0, 4).toUpperCase()}`,
-          defaultResponsibleUserId: "board-user",
-        })
-        .returning();
-      const [foreignIssue] = await db
-        .insert(issues)
-        .values({
-          companyId: otherCompany!.id,
-          parentId: fixture.issues.assignedReview.id,
-          title: "Foreign quarantined issue",
-          status: "done",
-          priority: "medium",
-          sourceTrust: {
-            preset: LOW_TRUST_REVIEW_PRESET,
-            disposition: "quarantined",
-            sourceIssueId: fixture.issues.assignedReview.id,
-            sourceRunId: fixture.runs.lowTrust.id,
-            sourceAgentId: fixture.agents.lowTrust.id,
-          },
-        })
-        .returning();
-
-      const rejectedPromotion = await request(app)
-        .post(
-          `/api/issues/${fixture.issues.assignedReview.id}/low-trust/promotions`,
-        )
-        .send({
-          sourceArtifactKind: "issue",
-          sourceArtifactId: foreignIssue!.id,
-          title: "Rejected foreign issue",
-          summary: "Should not promote across company boundaries.",
-        });
-      expect(
-        rejectedPromotion.status,
-        JSON.stringify(rejectedPromotion.body),
-      ).toBe(404);
-      expect(rejectedPromotion.body.error).toBe(
-        "Low-trust source artifact not found",
-      );
 
       const promotion = await request(app)
         .post(

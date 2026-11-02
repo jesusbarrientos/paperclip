@@ -85,7 +85,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       identifier: `PAP-${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       title: "Annotation race",
       description: "Validate annotation revision guards",
@@ -102,11 +101,11 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
       body: "Alpha selected text omega",
     });
 
-    return { companyId, issueId, document: created.document };
+    return { issueId, document: created.document };
   }
 
   it("fails closed when a concurrent document update wins before annotation thread creation commits", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const concurrentUpdateCanCommit = deferred<void>();
     const concurrentUpdateHasWritten = deferred<void>();
 
@@ -115,7 +114,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
       const [revision] = await tx
         .insert(documentRevisions)
         .values({
-          companyId,
           documentId: document.id,
           revisionNumber: document.latestRevisionNumber + 1,
           title: "Plan",
@@ -189,11 +187,10 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("removes linked annotation comments and resolves empty threads when an issue comment is deleted", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const [issueComment] = await db
       .insert(issueComments)
       .values({
-        companyId,
         issueId,
         authorType: "user",
         authorUserId: "board-user",
@@ -237,11 +234,10 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("rejects annotation comments linked to already-deleted issue comments", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const [issueComment] = await db
       .insert(issueComments)
       .values({
-        companyId,
         issueId,
         authorType: "user",
         authorUserId: "board-user",
@@ -277,11 +273,10 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("does not report already-resolved empty threads as newly resolved during linked comment cleanup", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const [issueComment] = await db
       .insert(issueComments)
       .values({
-        companyId,
         issueId,
         authorType: "user",
         authorUserId: "board-user",
@@ -321,7 +316,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("builds compact open plan review context and excludes resolved threads", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const longBody = "x".repeat(PLAN_REVIEW_CONTEXT_LIMITS.maxBodyChars + 25);
     const openThread = await annotations.createThread(
       issueId,
@@ -364,7 +359,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const context = await buildPlanReviewContext({
       db,
-      companyId,
       issueId,
       issueWorkMode: "planning",
     });
@@ -403,11 +397,10 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("infers an omitted target issue id while rejecting cross-issue interaction context", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const otherIssueId = randomUUID();
     await db.insert(issues).values({
       id: otherIssueId,
-      companyId,
       identifier: "PAP-9443",
       title: "Other planning task",
       description: null,
@@ -418,7 +411,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
     const [interaction] = await db
       .insert(issueThreadInteractions)
       .values({
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "accepted",
@@ -445,7 +437,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const context = await buildPlanReviewContext({
       db,
-      companyId,
       issueId,
       issueWorkMode: "standard",
       interactionId: interaction.id,
@@ -472,7 +463,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     await expect(buildPlanReviewContext({
       db,
-      companyId,
       issueId: otherIssueId,
       issueWorkMode: "standard",
       interactionId: interaction.id,
@@ -480,7 +470,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("includes open plan annotations for standard-mode issue comment wakes", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument("standard");
+    const { issueId, document } = await createIssueWithDocument("standard");
     const thread = await annotations.createThread(
       issueId,
       "plan",
@@ -498,7 +488,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
     const [comment] = await db
       .insert(issueComments)
       .values({
-        companyId,
         issueId,
         authorUserId: "board-user",
         body: "Please continue with the plan feedback above.",
@@ -507,7 +496,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const payload = await buildPaperclipWakePayload({
       db,
-      companyId,
       contextSnapshot: {
         issueId,
         wakeCommentIds: [comment.id],
@@ -542,7 +530,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("includes accepted plan annotations in the structured wake payload", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     const thread = await annotations.createThread(
       issueId,
       "plan",
@@ -560,7 +548,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
     const [interaction] = await db
       .insert(issueThreadInteractions)
       .values({
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "accepted",
@@ -587,7 +574,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const payload = await buildPaperclipWakePayload({
       db,
-      companyId,
       contextSnapshot: {
         issueId,
         interactionId: interaction.id,
@@ -631,7 +617,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("fails closed when an annotation delta comment id points at a different issue", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument("standard");
+    const { issueId, document } = await createIssueWithDocument("standard");
     const { issueId: otherIssueId, document: otherDocument } = await createIssueWithDocument("standard");
     const otherThread = await annotations.createThread(
       otherIssueId,
@@ -650,7 +636,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const payload = await buildPaperclipWakePayload({
       db,
-      companyId,
       contextSnapshot: {
         issueId,
         annotationCommentId: otherThread.comments[0]!.id,
@@ -663,7 +648,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("includes plan review context for same-issue annotation deltas on standard issues", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument("standard");
+    const { issueId, document } = await createIssueWithDocument("standard");
     const thread = await annotations.createThread(
       issueId,
       "plan",
@@ -681,7 +666,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const payload = await buildPaperclipWakePayload({
       db,
-      companyId,
       contextSnapshot: {
         issueId,
         annotationCommentId: thread.comments[0]!.id,
@@ -718,7 +702,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("includes rejection result with an omitted target issue id even when the reason is empty", async () => {
-    const { companyId, issueId, document } = await createIssueWithDocument();
+    const { issueId, document } = await createIssueWithDocument();
     await annotations.createThread(
       issueId,
       "plan",
@@ -736,7 +720,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
     const [interaction] = await db
       .insert(issueThreadInteractions)
       .values({
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "rejected",
@@ -763,7 +746,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const payload = await buildPaperclipWakePayload({
       db,
-      companyId,
       contextSnapshot: {
         issueId,
         interactionId: interaction.id,
@@ -800,7 +782,7 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
   });
 
   it("groups non-plan annotations by most recently updated document and applies global caps", async () => {
-    const { companyId, issueId } = await createIssueWithDocument("standard");
+    const { issueId } = await createIssueWithDocument("standard");
     const older = (await docs.upsertIssueDocument({
       issueId,
       key: "qa-evidence",
@@ -841,7 +823,6 @@ describeEmbeddedPostgres("documentAnnotationService", () => {
 
     const context = await buildDocumentReviewContext({
       db,
-      companyId,
       issueId,
       includeForIssueComment: true,
     });

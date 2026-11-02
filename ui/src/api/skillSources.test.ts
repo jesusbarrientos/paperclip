@@ -21,10 +21,10 @@ describe('live skill source discovery', () => {
     const fetchMock = vi.fn().mockResolvedValue(response([candidate, { type: 'complete', discovery }], true));
     vi.stubGlobal('fetch', fetchMock);
     const updates = vi.fn();
-    expect(await skillSourcesApi.discoverStream('company-1', input, updates)).toEqual(discovery);
+    expect(await skillSourcesApi.discoverStream(input, updates)).toEqual(discovery);
     expect(updates).toHaveBeenCalledExactlyOnceWith(candidate);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/api/companies/company-1/skill-sources/discover');
+    expect(url).toBe('/api/skill-sources/discover');
     expect(init.credentials).toBe('include');
     expect(init.headers.get('Accept')).toBe('application/x-ndjson');
     expect(init.headers.get('Content-Type')).toBe('application/json');
@@ -32,17 +32,17 @@ describe('live skill source discovery', () => {
   it('does not accept partial candidates when the connection closes without a complete frame', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([candidate])));
     const updates = vi.fn();
-    await expect(skillSourcesApi.discoverStream('company-1', input, updates)).rejects.toThrow('scan interrupted');
+    await expect(skillSourcesApi.discoverStream(input, updates)).rejects.toThrow('scan interrupted');
     expect(updates).toHaveBeenCalledWith(candidate);
   });
   it('surfaces an in-stream provider error after partial progress', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([candidate, { type: 'error', error: 'Reconnect GitHub', status: 403 }])));
-    await expect(skillSourcesApi.discoverStream('company-1', input, vi.fn())).rejects.toMatchObject({ message: 'Reconnect GitHub', status: 403 });
+    await expect(skillSourcesApi.discoverStream(input, vi.fn())).rejects.toMatchObject({ message: 'Reconnect GitHub', status: 403 });
   });
   it('preserves normal HTTP authorization and session recovery handling', async () => {
     const recover = vi.spyOn(tenantSessionRecovery, 'recoverIfNeeded').mockReturnValue(null);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: 'Company access denied' }, { status: 403 })));
-    await expect(skillSourcesApi.discoverStream('company-2', input, vi.fn())).rejects.toMatchObject({ status: 403, message: 'Company access denied' });
+    await expect(skillSourcesApi.discoverStream(input, vi.fn())).rejects.toMatchObject({ status: 403, message: 'Company access denied' });
     expect(recover).toHaveBeenCalledWith(403, { error: 'Company access denied' });
   });
   it('passes cancellation to fetch and stops consuming events once aborted', async () => {
@@ -50,7 +50,7 @@ describe('live skill source discovery', () => {
     const fetchMock = vi.fn().mockResolvedValue(response([candidate]));
     vi.stubGlobal('fetch', fetchMock);
     const updates = vi.fn(() => controller.abort());
-    await expect(skillSourcesApi.discoverStream('company-1', input, updates, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(skillSourcesApi.discoverStream(input, updates, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(fetchMock.mock.calls[0]![1].signal).toBe(controller.signal);
   });
 });

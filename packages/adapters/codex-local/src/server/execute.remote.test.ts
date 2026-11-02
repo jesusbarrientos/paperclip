@@ -105,7 +105,6 @@ describe("codex remote execution", () => {
       runId: "run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -269,7 +268,6 @@ describe("codex remote execution", () => {
       runId: "run-allowlist",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -348,7 +346,6 @@ describe("codex remote execution", () => {
       runId: "run-ssh-no-resume",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -414,7 +411,6 @@ describe("codex remote execution", () => {
       runId: "run-ssh-resume",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -489,7 +485,6 @@ describe("codex remote execution", () => {
       runId: "run-target",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -571,7 +566,6 @@ describe("codex remote execution", () => {
       runId: "run-in-place",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "CodexCoder",
         adapterType: "codex_local",
         adapterConfig: {},
@@ -660,7 +654,6 @@ describe("codex remote execution", () => {
       runId: "run-codex-cli-fallback-context",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
         name: "Codex Coder",
         adapterType: "codex_local",
         adapterConfig: {},

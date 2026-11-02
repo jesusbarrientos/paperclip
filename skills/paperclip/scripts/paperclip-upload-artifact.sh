@@ -11,11 +11,10 @@ Uploads a generated file from the current workspace to the current Paperclip
 issue, then creates an attachment-backed artifact work product by default.
 
 Required environment for live uploads:
-  PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_COMPANY_ID, PAPERCLIP_TASK_ID, PAPERCLIP_RUN_ID
+  PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_TASK_ID, PAPERCLIP_RUN_ID
 
 Options:
   --issue-id ID          Issue id to attach to (default: PAPERCLIP_TASK_ID)
-  --company-id ID        Company id (default: PAPERCLIP_COMPANY_ID)
   --title TEXT           Work product title (default: file basename)
   --summary TEXT         Work product summary
   --content-type TYPE    Override detected upload content type
@@ -265,7 +264,6 @@ acquire_operation_lock() {
 
 file_path=""
 issue_id="${PAPERCLIP_TASK_ID:-}"
-company_id="${PAPERCLIP_COMPANY_ID:-}"
 title=""
 summary=""
 content_type=""
@@ -281,10 +279,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --issue-id)
       issue_id="${2:-}"
-      shift 2
-      ;;
-    --company-id)
-      company_id="${2:-}"
       shift 2
       ;;
     --title)
@@ -386,7 +380,6 @@ if [[ "$dry_run" == "1" ]]; then
   jq -n \
     --arg file "$file_path" \
     --arg issueId "$issue_id" \
-    --arg companyId "$company_id" \
     --arg title "$title" \
     --arg summary "$summary" \
     --arg contentType "$content_type" \
@@ -394,7 +387,7 @@ if [[ "$dry_run" == "1" ]]; then
     --arg chatComment "$chat_comment" \
     --argjson createWorkProduct "$create_work_product_json" \
     --argjson isPrimary "$is_primary_json" \
-    '{file: $file, issueId: $issueId, companyId: $companyId, title: $title, summary: $summary, contentType: $contentType, status: $status, chatComment: (if $chatComment == "" then null else $chatComment end), createWorkProduct: $createWorkProduct, isPrimary: $isPrimary}'
+    '{file: $file, issueId: $issueId, title: $title, summary: $summary, contentType: $contentType, status: $status, chatComment: (if $chatComment == "" then null else $chatComment end), createWorkProduct: $createWorkProduct, isPrimary: $isPrimary}'
   exit 0
 fi
 
@@ -403,8 +396,8 @@ if [[ -z "${PAPERCLIP_API_URL:-}" || -z "${PAPERCLIP_API_KEY:-}" || -z "${PAPERC
   exit 1
 fi
 
-if [[ -z "$issue_id" || -z "$company_id" ]]; then
-  printf 'Missing issue or company id. Pass --issue-id/--company-id or set PAPERCLIP_TASK_ID/PAPERCLIP_COMPANY_ID.\n' >&2
+if [[ -z "$issue_id" ]]; then
+  printf 'Missing issue id. Pass --issue-id or set PAPERCLIP_TASK_ID.\n' >&2
   exit 1
 fi
 
@@ -416,7 +409,7 @@ esac
 file_sha256="$(sha256_file "$file_path")"
 original_filename="$(basename "$file_path")"
 operation_key="$(
-  sha256_text "$api_base|$company_id|$issue_id|$PAPERCLIP_RUN_ID|$original_filename|$file_sha256|$content_type"
+  sha256_text "$api_base|$issue_id|$PAPERCLIP_RUN_ID|$original_filename|$file_sha256|$content_type"
 )"
 acquire_operation_lock "$operation_key"
 trap release_operation_lock EXIT
@@ -469,7 +462,7 @@ if [[ -z "$attachment" ]]; then
   upload_status=0
   attachment="$(
     upload_file \
-      "$api_base/companies/$company_id/issues/$issue_id/attachments" \
+      "$api_base/issues/$issue_id/attachments" \
       "$file_path" \
       "$content_type"
   )" || upload_status=$?

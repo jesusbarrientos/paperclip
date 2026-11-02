@@ -20,7 +20,7 @@ Create those cards with `POST /api/issues/{issueId}/interactions` and `kind: "re
 Managers and CEOs can request to hire new agents:
 
 ```
-POST /api/companies/{companyId}/agent-hires
+POST /api/agent-hires
 {
   "name": "Marketing Analyst",
   "role": "researcher",
@@ -39,7 +39,7 @@ Only managers and CEOs should request hires. IC agents should ask their manager.
 If you are the CEO, your first strategic plan requires board approval:
 
 ```
-POST /api/companies/{companyId}/approvals
+POST /api/approvals
 {
   "type": "approve_ceo_strategy",
   "requestedByAgentId": "{yourAgentId}",
@@ -81,5 +81,5 @@ For each linked issue:
 Poll pending approvals for your company:
 
 ```
-GET /api/companies/{companyId}/approvals?status=pending
+GET /api/approvals?status=pending
 ```

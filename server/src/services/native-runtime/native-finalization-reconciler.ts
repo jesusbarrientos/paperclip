@@ -180,7 +180,6 @@ export function reconcileRetainedNativeSessionCleanups(
   db: Db,
   options: {
     cleanup: (input: {
-      companyId: string;
       runId: string;
     }) => Promise<NativeCleanupOutcome>;
     onError?: (error: unknown, runId: string) => void;
@@ -201,15 +200,13 @@ export function reconcileRetainedNativeSessionCleanups(
     const selectCandidates = (cursor: string | null) =>
       db
         .select({
-          runId: heartbeatRuns.id,
-          companyId: heartbeatRuns.companyId,
+          runId: heartbeatRuns.id
         })
         .from(heartbeatRuns)
         .innerJoin(
           nativeRunFinalizations,
           and(
             eq(nativeRunFinalizations.runId, heartbeatRuns.id),
-            eq(nativeRunFinalizations.companyId, heartbeatRuns.companyId),
             eq(nativeRunFinalizations.issueId, heartbeatRuns.nativeIssueId),
           ),
         )
@@ -218,7 +215,6 @@ export function reconcileRetainedNativeSessionCleanups(
           and(
             eq(nativeRunResults.id, nativeRunFinalizations.resultId),
             eq(nativeRunResults.runId, heartbeatRuns.id),
-            eq(nativeRunResults.companyId, heartbeatRuns.companyId),
             eq(nativeRunResults.issueId, heartbeatRuns.nativeIssueId),
           ),
         )
@@ -474,7 +470,6 @@ export async function claimNativeSessionResumptions(input: {
           tx,
         );
         await issueRecoveryActionService(tx as unknown as Db).upsertSourceScoped({
-          companyId: row.run.companyId,
           sourceIssueId: row.coordinator.issueId,
           kind: "active_run_watchdog",
           ownerType: "board",
@@ -541,7 +536,6 @@ export async function reconcileNativeFinalizations(
     environmentRuntime?: EnvironmentRuntimeService;
     onWorkspaceSettled?: (input: {
       runId: string;
-      companyId: string;
       agentId: string;
       succeeded: boolean;
     }) => Promise<void>;
@@ -563,7 +557,6 @@ export async function reconcileNativeFinalizations(
   const rows = await db
     .select({
       runId: heartbeatRuns.id,
-      companyId: heartbeatRuns.companyId,
       agentId: heartbeatRuns.agentId,
       issueId: nativeRunFinalizations.issueId,
       issueStatus: issues.status,
@@ -577,10 +570,7 @@ export async function reconcileNativeFinalizations(
     })
     .from(heartbeatRuns)
     .innerJoin(nativeRunFinalizations, eq(nativeRunFinalizations.runId, heartbeatRuns.id))
-    .innerJoin(issues, and(
-      eq(issues.id, nativeRunFinalizations.issueId),
-      eq(issues.companyId, heartbeatRuns.companyId),
-    ))
+    .innerJoin(issues, eq(issues.id, nativeRunFinalizations.issueId))
     .where(and(
       eq(heartbeatRuns.runtimeMode, "native"),
       isNotNull(nativeRunFinalizations.resultId),
@@ -600,7 +590,6 @@ export async function reconcileNativeFinalizations(
   for (const row of rows) {
     const pendingEffects = row.decisionId
       ? await db.select({ id: statusDecisionEffects.id }).from(statusDecisionEffects).where(and(
-          eq(statusDecisionEffects.companyId, row.companyId),
           eq(statusDecisionEffects.issueId, row.issueId),
           eq(statusDecisionEffects.decisionId, row.decisionId),
           inArray(statusDecisionEffects.deliveryState, ["pending", "failed"]),
@@ -617,7 +606,6 @@ export async function reconcileNativeFinalizations(
       }
       const deliveredEffectIds = await dispatchPendingNativeStatusEffects({
         db,
-        companyId: row.companyId,
         issueId: row.issueId,
         decisionId: row.decisionId,
         runId: row.runId,
@@ -638,12 +626,10 @@ export async function reconcileNativeFinalizations(
         createdAt: workAssessments.createdAt,
       }).from(workAssessments).where(and(
         eq(workAssessments.id, row.assessmentId),
-        eq(workAssessments.companyId, row.companyId),
         eq(workAssessments.issueId, row.issueId),
       )).limit(1).then((entries) => entries[0] ?? null);
       const changedEvidence = assessment
         ? await db.select({ id: issueWorkProducts.id }).from(issueWorkProducts).where(and(
-            eq(issueWorkProducts.companyId, row.companyId),
             eq(issueWorkProducts.issueId, row.issueId),
             or(
               gt(issueWorkProducts.createdAt, assessment.createdAt),
@@ -654,7 +640,6 @@ export async function reconcileNativeFinalizations(
       const currentDecision = row.decisionId
         ? await db.select().from(statusDecisions).where(and(
             eq(statusDecisions.id, row.decisionId),
-            eq(statusDecisions.companyId, row.companyId),
             eq(statusDecisions.issueId, row.issueId),
           )).limit(1).then((entries) => entries[0] ?? null)
         : null;
@@ -664,7 +649,7 @@ export async function reconcileNativeFinalizations(
         // erase its accepted, still-authorized response. Repair presentation
         // before the status-only early return below, without rerunning work.
         await repairCommittedNativeChatResponse(db, {
-          companyId: row.companyId, issueId: row.issueId, runId: row.runId,
+          issueId: row.issueId, runId: row.runId,
         });
       }
       if (
@@ -678,7 +663,6 @@ export async function reconcileNativeFinalizations(
         // earlier response independently before status reconciliation skips
         // its superseded decision; this cannot change issue disposition.
         await repairCommittedNativeReviewResponse(db, {
-          companyId: row.companyId,
           issueId: row.issueId,
           runId: row.runId,
           decisionId: row.decisionId,
@@ -723,20 +707,17 @@ export async function reconcileNativeFinalizations(
         [resultRow, contractRow] = await Promise.all([
           db.select().from(nativeRunResults).where(and(
             eq(nativeRunResults.id, assessment.resultId),
-            eq(nativeRunResults.companyId, row.companyId),
             eq(nativeRunResults.issueId, row.issueId),
             eq(nativeRunResults.runId, row.runId),
           )).limit(1).then((entries) => entries[0] ?? null),
           db.select().from(completionContracts).where(and(
             eq(completionContracts.id, assessment.contractId),
-            eq(completionContracts.companyId, row.companyId),
             eq(completionContracts.issueId, row.issueId),
           )).limit(1).then((entries) => entries[0] ?? null),
         ]);
         if (!resultRow || !contractRow) throw new Error("native_reconciliation_evidence_binding_missing");
         reassessment = await classifyNativeEvidence({
           db,
-          companyId: row.companyId,
           issueId: row.issueId,
           runId: row.runId,
           contract: record(contractRow.contractJson),
@@ -758,13 +739,13 @@ export async function reconcileNativeFinalizations(
           throw new Error("native_reconciliation_reassessment_missing");
         }
         const currentIssue = retiredAutomaticReview
-          ? await db.select().from(issues).where(and(eq(issues.id, row.issueId), eq(issues.companyId, row.companyId))).then((entries) => entries[0])
+          ? await db.select().from(issues).where(eq(issues.id, row.issueId)).then((entries) => entries[0])
           : null;
         const readiness = retiredAutomaticReview ? await issueService(db).getDependencyReadiness(row.issueId, db) : null;
         const currentRun = retiredAutomaticReview ? await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, row.runId)).then((entries) => entries[0]) : null;
         // Never replay an old result over a new run or a later task contract.
         const latestContract = retiredAutomaticReview ? await db.select({ id: completionContracts.id }).from(completionContracts)
-          .where(and(eq(completionContracts.companyId, row.companyId), eq(completionContracts.issueId, row.issueId)))
+          .where(eq(completionContracts.issueId, row.issueId))
           .orderBy(desc(completionContracts.revision)).limit(1).then((entries) => entries[0]) : null;
         if (retiredAutomaticReview && (!currentIssue || currentRun?.status !== "succeeded"
           || latestContract?.id !== contractRow.id
@@ -772,13 +753,11 @@ export async function reconcileNativeFinalizations(
         // A committed decision proves the original barrier passed. If a later
         // workspace operation exists, do not ignore a pending or failed retry.
         const reviewBarrier = retiredAutomaticReview ? await db.select({ status: workspaceOperations.status })
-          .from(workspaceOperations).where(and(eq(workspaceOperations.companyId, row.companyId),
-            eq(workspaceOperations.heartbeatRunId, row.runId), eq(workspaceOperations.phase, "workspace_finalize")))
+          .from(workspaceOperations).where(and(eq(workspaceOperations.heartbeatRunId, row.runId), eq(workspaceOperations.phase, "workspace_finalize")))
           .orderBy(desc(workspaceOperations.createdAt)).limit(1).then((entries) => entries[0]) : null;
         if (reviewBarrier && reviewBarrier.status !== "succeeded") continue;
         const reassessmentRow = await recordNativeWorkAssessment({
           db,
-          companyId: row.companyId,
           issueId: row.issueId,
           runId: row.runId,
           turnId: resultRow.turnId,
@@ -796,7 +775,7 @@ export async function reconcileNativeFinalizations(
         const decision = retiredAutomaticReview && currentIssue
           ? resolveNativeFinalizerStatus({
               assessment: reassessment, terminalState: "succeeded", workspaceFinalizeStatus: "succeeded",
-              governanceGate: await pendingNativeGovernance({ db, companyId: row.companyId, issueId: row.issueId,
+              governanceGate: await pendingNativeGovernance({ db, issueId: row.issueId,
                 runId: row.runId, executionState: record(currentIssue.executionState) }),
               completionClaimPolicyAccepted: contractRow.risk === "low" && contractRow.completionAuthority === "agent_claim_policy",
               hasUnresolvedIssueBlockers: (readiness?.unresolvedBlockerCount ?? 0) > 0,
@@ -810,7 +789,6 @@ export async function reconcileNativeFinalizations(
         try {
           committed = await commitNativeStatusDecision({
             db,
-            companyId: row.companyId,
             issueId: row.issueId,
             runId: row.runId,
             assessmentId: reassessmentRow.id,
@@ -890,7 +868,6 @@ export async function reconcileNativeFinalizations(
           await options
             .onWorkspaceSettled?.({
               runId: row.runId,
-              companyId: row.companyId,
               agentId: row.agentId,
               succeeded: false,
             })
@@ -925,7 +902,6 @@ export async function reconcileNativeFinalizations(
           await options
             .onWorkspaceSettled?.({
               runId: row.runId,
-              companyId: row.companyId,
               agentId: row.agentId,
               succeeded: true,
             })
@@ -974,7 +950,6 @@ export async function reconcileNativeFinalizations(
         await options
           .onWorkspaceSettled?.({
             runId: row.runId,
-            companyId: row.companyId,
             agentId: row.agentId,
             succeeded: true,
           })
