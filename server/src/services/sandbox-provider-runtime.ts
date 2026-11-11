@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { MACHINE_SANDBOX_PROVIDER } from "@paperclipai/shared";
+import { MachineSandboxProvider } from "./machine-sandbox-provider.js";
 import type {
   EnvironmentLeaseStatus,
   EnvironmentProbeResult,
@@ -66,6 +68,7 @@ export interface SandboxExecuteInput {
   env?: Record<string, string>;
   stdin?: string;
   timeoutMs?: number;
+  onLog?: (stream: "stdout" | "stderr", chunk: string) => Promise<void> | void;
 }
 
 export interface SandboxLeaseHandle {
@@ -88,6 +91,7 @@ export interface SandboxExecuteResult {
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  timedOut?: boolean;
 }
 
 export interface SandboxProvider {
@@ -233,6 +237,7 @@ class FakeSandboxProvider implements SandboxProvider {
 
 const registeredSandboxProviders = new Map<SandboxEnvironmentProvider, SandboxProvider>([
   ["fake", new FakeSandboxProvider()],
+  [MACHINE_SANDBOX_PROVIDER, new MachineSandboxProvider()],
 ]);
 
 /**

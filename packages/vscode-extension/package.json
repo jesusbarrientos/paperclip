@@ -1,0 +1,106 @@
+{
+  "name": "@paperclipai/vscode-extension",
+  "displayName": "Paperclip",
+  "description": "Work on Paperclip issues from VS Code: chat with the issue's agent, follow runs live, and switch the workspace to the issue's worktree.",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "publisher": "paperclipai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paperclipai/paperclip",
+    "directory": "packages/vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Paperclip",
+      "properties": {
+        "paperclip.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3100",
+          "description": "Base URL of the Paperclip server."
+        },
+        "paperclip.cliPath": {
+          "type": "string",
+          "default": "paperclipai",
+          "description": "Path to the paperclipai CLI used to start or pair the machine daemon."
+        },
+        "paperclip.autoStartDaemon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the local machine daemon when a run is requested on this machine and it is not connected."
+        }
+      }
+    },
+    "commands": [
+      { "command": "paperclip.signIn", "title": "Sign In", "category": "Paperclip" },
+      { "command": "paperclip.signOut", "title": "Sign Out", "category": "Paperclip" },
+      { "command": "paperclip.selectIssue", "title": "Select Issue", "category": "Paperclip" },
+      { "command": "paperclip.openChat", "title": "Open Chat", "category": "Paperclip" },
+      { "command": "paperclip.runOnThisMachine", "title": "Run on This Machine", "category": "Paperclip" },
+      { "command": "paperclip.runOnServer", "title": "Run on Server", "category": "Paperclip" },
+      { "command": "paperclip.moveToServer", "title": "Move Work to Server", "category": "Paperclip" },
+      { "command": "paperclip.moveToThisMachine", "title": "Move Work to This Machine", "category": "Paperclip" },
+      { "command": "paperclip.interruptRun", "title": "Interrupt Run", "category": "Paperclip" },
+      { "command": "paperclip.openInBrowser", "title": "Open Issue in Browser", "category": "Paperclip" },
+      { "command": "paperclip.refresh", "title": "Refresh", "category": "Paperclip", "icon": "$(refresh)" },
+      { "command": "paperclip.pairMachine", "title": "Pair This Machine", "category": "Paperclip" },
+      { "command": "paperclip.startDaemon", "title": "Start Machine Daemon", "category": "Paperclip" },
+      { "command": "paperclip.openManagedWorkspace", "title": "Open Paperclip Workspace", "category": "Paperclip" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "paperclip", "title": "Paperclip", "icon": "media/paperclip.svg" }
+      ]
+    },
+    "views": {
+      "paperclip": [
+        { "id": "paperclip.issues", "name": "Issues" }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "paperclip.issues",
+        "contents": "Sign in to see your Paperclip projects and issues.\n[Sign In](command:paperclip.signIn)",
+        "when": "!paperclip.signedIn"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "paperclip.refresh", "when": "view == paperclip.issues", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "paperclip.openInBrowser", "when": "view == paperclip.issues && viewItem == issue" }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@paperclipai/shared": "workspace:*",
+    "@types/node": "^24.0.0",
+    "@types/vscode": "~1.90.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

@@ -5,6 +5,7 @@ import {
   Download,
   FlaskConical,
   KeyRound,
+  Laptop,
   MonitorCog,
   Puzzle,
   Shield,
@@ -135,6 +136,12 @@ export function OrganizationSettingsSidebar() {
               end
             />
           )}
+          <SidebarNavItem
+            to={`${INSTANCE_SETTINGS_PATH_PREFIX}/machines`}
+            label="Machines"
+            icon={Laptop}
+            end
+          />
           {showPage("instance.access") && (
             <SidebarNavItem
               to={`${INSTANCE_SETTINGS_PATH_PREFIX}/access`}

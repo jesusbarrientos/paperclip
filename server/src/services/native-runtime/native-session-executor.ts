@@ -57,6 +57,7 @@ import type {
   AdapterRuntimeEvent,
 } from "../../adapters/index.js";
 import type { NativeFinalizationResult } from "@paperclipai/shared";
+import { MACHINE_SANDBOX_PROVIDER } from "@paperclipai/shared";
 import type {
   HarnessRuntimeRequestResolution,
   NativeExecutionInput,
@@ -9218,6 +9219,14 @@ export function parseRemoteExecutableCandidate(stdout: string): string | null {
   return posix.normalize(candidate);
 }
 
+export function isMachineRunnerTarget(
+  target: AdapterExecutionTarget | null,
+): boolean {
+  return target?.kind === "remote" &&
+    target.transport === "sandbox" &&
+    target.providerKey === MACHINE_SANDBOX_PROVIDER;
+}
+
 export function mayUsePreinstalledRunnerArtifact(
   configuredRemoteBinaryPath: string | null | undefined,
 ): boolean {
@@ -11039,7 +11048,11 @@ async function createRunnerdBackendWithinSessionClaim(
             "runner.artifact.verify_preinstalled",
             () => verifyRemoteRunner(requiredMode, preinstalledRunner),
           );
-          if (existsSync(controllerRunnerBinary) &&
+          // A registered machine runs the runnerd its daemon installed for its own
+          // OS/arch, so its bytes never equal the controller artifact. The
+          // contract check in verifyRemoteRunner above still applies.
+          if (!isMachineRunnerTarget(remoteTarget) &&
+              existsSync(controllerRunnerBinary) &&
               !await matchesControllerRunnerArtifact(preinstalledRunner)) {
             throw new Error("runner_remote_preinstalled_artifact_mismatch");
           }

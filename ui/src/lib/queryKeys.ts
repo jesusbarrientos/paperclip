@@ -470,6 +470,14 @@ export const queryKeys = {
     workspaceOperations: (id: string) =>
       ["execution-workspaces", "workspace-operations", id] as const,
   },
+  machines: {
+    list: () => ["machines", "list"] as const,
+    pairing: (machineId: string, token: string) => ["machines", "pairing", machineId, token] as const,
+  },
+  workContexts: {
+    all: () => ["work-context"] as const,
+    detail: (issueId: string) => ["work-context", issueId] as const,
+  },
   environments: {
     list: () => ["environments", "list"] as const,
     capabilities: () =>

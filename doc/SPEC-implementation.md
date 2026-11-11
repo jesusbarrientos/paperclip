@@ -1955,3 +1955,18 @@ and honor current ownership, review, governance, pause, dependency, budget, and
 cleanup gates. Restart or duplicate finalization must not create another
 successor. Permanent model/auth incompatibility and usage-limit exhaustion retain
 their existing operator recovery requirements.
+
+### Execution machines and work contexts (experimental)
+
+A board user can run an issue's agent work on a paired execution machine
+(a developer computer or the Ubuntu host) instead of the server. The server
+keeps run ownership, configuration, permissions, budgets and activity logging.
+Each issue has one active work context. The context names its location and
+carries a fencing token that increments on every move. A run never changes
+location on its own: an offline or revoked machine fails the run with
+`machine_disconnected`. Agents cannot select a machine. Files move between
+locations as git snapshots stored in a per-issue mirror on the server. A
+handoff first cancels the active run, then takes a final snapshot, and never
+overwrites local edits on the target. See [Execution machines](machines.md)
+for pairing, network requirements, sync, handoff, dev containers and the
+VS Code extension.

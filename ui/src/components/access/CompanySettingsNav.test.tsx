@@ -82,6 +82,7 @@ describe("CompanySettingsNav", () => {
     expect(getCompanySettingsTab("/organization/settings/instance/profile")).toBe("instance-profile");
     expect(getCompanySettingsTab("/PAP/organization/settings/instance/general")).toBe("general");
     expect(getCompanySettingsTab("/organization/settings/instance/environments")).toBe("instance-environments");
+    expect(getCompanySettingsTab("/organization/settings/instance/machines")).toBe("instance-machines");
     expect(getCompanySettingsTab("/organization/settings/instance/access")).toBe("instance-access");
     expect(getCompanySettingsTab("/PAP/organization/settings/instance/access")).toBe("instance-access");
     expect(getCompanySettingsTab("/organization/settings/instance/experimental")).toBe("instance-experimental");
@@ -127,6 +128,7 @@ describe("CompanySettingsNav", () => {
           { value: "secrets", label: "Secrets" },
           { value: "instance-profile", label: "Profile" },
           { value: "instance-environments", label: "Environments" },
+          { value: "instance-machines", label: "Machines" },
           { value: "instance-access", label: "Access" },
           { value: "instance-experimental", label: "Experimental" },
           { value: "instance-plugins", label: "Plugins" },
@@ -168,6 +170,7 @@ describe("CompanySettingsNav", () => {
       "secrets",
       "instance-profile",
       "instance-environments",
+      "instance-machines",
       "instance-access",
       "instance-experimental",
       "instance-adapters",

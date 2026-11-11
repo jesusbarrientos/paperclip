@@ -214,6 +214,10 @@ const publicRoutineWebhookPath = /^\/api\/routine-triggers\/public\/[a-f0-9]{24}
 
 const publicMcpGatewayProtocolPath = /^\/mcp\/gateways\/gw_[a-f0-9]{32}\/?$/i;
 
+// Machine daemons authenticate with a pcm_* credential that only the machine
+// routes understand; reading it as an agent JWT would reject every call.
+const machineCredentialPath = /^\/api\/machines\/v1\//;
+
 export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHandler {
   const boardAuth = boardAuthService(db);
   return async (req, _res, next) => {
@@ -250,6 +254,12 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     // the normal actor authentication path below.
     if (hasBearerCredentials && publicMcpGatewayProtocolPath.test(req.path)) {
       if (runIdHeader) req.actor.runId = runIdHeader;
+      next();
+      return;
+    }
+
+    if (hasBearerCredentials && machineCredentialPath.test(req.path)) {
+      req.actor = { type: "none", source: "none" };
       next();
       return;
     }

@@ -108,6 +108,7 @@ import {
 } from "./helpers";
 import { PropertyPicker } from "./property-picker";
 import { PropertyChip, PropertyRow, PropertySection } from "./primitives";
+import { IssueExecutionLocation } from "../IssueExecutionLocation";
 import {
   buildWorkspaceSelectionUpdate,
   currentWorkspaceSelection,
@@ -2577,6 +2578,8 @@ export function IssueProperties({
       </PropertySection>
 
       <PropertySection title="Execution" streamlined={streamlinedPropertiesEnabled}>
+        <IssueExecutionLocation issueId={issue.id} issueStatus={issue.status} hasAssignee={Boolean(issue.assigneeAgentId)} inline={inline} />
+
         {/* Read-only: agents set the policy, the board does not. */}
         {reviewPolicyBadge ? (
           <PropertyRow label="Approvals">

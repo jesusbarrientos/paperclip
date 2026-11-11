@@ -62,6 +62,8 @@ import { getOperatorSettingDefaults } from "./services/setting-defaults.js";
 import { setupEnvironmentCustomImageTerminalWebSocketServer } from "./realtime/environment-custom-image-terminal-ws.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
 import { setupRunnerPrpWebSocketServer } from "./realtime/runner-prp-ws.js";
+import { setupMachineControlWebSocketServer } from "./realtime/machine-control-ws.js";
+import { startMachineRunSnapshotter, startWorkContextSessionSweeper } from "./routes/work-contexts.js";
 import { cloudActorHeaderSourceFromHeaders, resolveCloudTenantActor } from "./middleware/auth.js";
 import {
   feedbackService,
@@ -969,6 +971,9 @@ async function startServerWithDatabaseTeardown(
   let startupListenerBound = false;
   try {
   setupRunnerPrpWebSocketServer(server, { apiUrl: configuredApiUrl });
+  setupMachineControlWebSocketServer(server, db as any);
+  startWorkContextSessionSweeper(db as any, { pluginWorkerManager });
+  startMachineRunSnapshotter(db as any);
   setupEnvironmentCustomImageTerminalWebSocketServer(server, db as any, {
     pluginWorkerManager,
   });

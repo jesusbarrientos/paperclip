@@ -96,6 +96,8 @@ import { BoardClaimPage } from "./pages/BoardClaim";
 import { AssistantConnection } from "./pages/apps/AssistantConnection";
 import { McpConnectPage, McpDevicePage, AssistantConnectionsPage } from "./pages/McpConnect";
 import { CliAuthPage } from "./pages/CliAuth";
+import { MachinePairingPage } from "./pages/MachinePairing";
+import { Machines } from "./pages/Machines";
 import { InviteLandingPage } from "./pages/InviteLanding";
 import { JoinRequestQueue } from "./pages/JoinRequestQueue";
 import { NotFoundPage } from "./pages/NotFound";
@@ -244,6 +246,7 @@ function boardRoutes(streamlinedUiEnabled: boolean, combinedInboxTasksEnabled: b
         <Route path="organization/settings/instance/environments/new" element={<OrganizationEnvironments mode="create" />} />
         <Route path="organization/settings/instance/environments/:environmentId/edit" element={<OrganizationEnvironments mode="edit" />} />
       </Route>
+      <Route path="organization/settings/instance/machines" element={<Machines />} />
       <Route element={<HiddenSettingsPageGate pageKey="instance.access" />}>
         <Route path="organization/settings/instance/access" element={<InstanceAccess />} />
       </Route>
@@ -696,6 +699,7 @@ export function App() {
         <Route path="mcp-device" element={<McpDevicePage />} />
         <Route path="assistant-connections" element={<AssistantConnectionsPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
+        <Route path="machines/pair/:machineId" element={<MachinePairingPage />} />
         <Route path="invite/:token" element={<InviteLandingPage />} />
         <Route element={streamlinedUiLoaded ? <CloudAccessGate allowMembershipRequest /> : <PaperclipLoading />}>
           {/* The identity APIs enforce the chat rollout flag. Nonmembers cannot

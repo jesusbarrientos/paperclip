@@ -2892,6 +2892,31 @@ function createSandboxEnvironmentDriver(
           }), input.onLog);
         }
       }
+      const builtinProviderKey = readString(input.lease.metadata?.provider);
+      const builtinProvider = builtinProviderKey ? getBuiltinSandboxProvider(builtinProviderKey) : null;
+      if (builtinProvider?.execute) {
+        const config = builtinProvider.configFromLeaseMetadata(input.lease.metadata ?? {});
+        if (!config) {
+          throw new Error(`Sandbox lease metadata does not describe a "${builtinProviderKey}" provider config.`);
+        }
+        const result = await builtinProvider.execute({
+          config,
+          providerLeaseId: input.lease.providerLeaseId,
+          command: input.command,
+          args: input.args,
+          cwd: input.cwd,
+          env: input.env,
+          stdin: input.stdin,
+          timeoutMs: input.timeoutMs,
+          onLog: input.onLog,
+        });
+        return {
+          exitCode: result.exitCode,
+          timedOut: result.timedOut === true,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        };
+      }
       throw new Error("Sandbox driver does not support direct command execution for built-in providers.");
     },
 

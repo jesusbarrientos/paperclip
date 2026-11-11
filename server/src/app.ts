@@ -58,6 +58,8 @@ import { companySkillPolicyRoutes } from "./routes/company-skill-policy.js";
 import { inboxAgentPolicyRoutes } from "./routes/inbox-agent-policy.js";
 import { builtInAgentRoutes } from "./routes/built-in-agents.js";
 import { folderRoutes } from "./routes/folders.js";
+import { machineRoutes } from "./routes/machines.js";
+import { workContextRoutes } from "./routes/work-contexts.js";
 import { summarySlotRoutes } from "./routes/summary-slots.js";
 import { statusCardRoutes } from "./routes/status-cards.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
@@ -679,6 +681,8 @@ export async function createApp(
   api.use(organizationRoutes(db));
   api.use(llmRoutes(db));
   api.use(folderRoutes(db));
+  api.use(machineRoutes(db));
+  api.use(workContextRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(companySkillRoutes(db));
   api.use(companySkillPolicyRoutes(db));
   api.use(inboxAgentPolicyRoutes(db));

@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { createRequire } from "node:module";
 import type { Duplex } from "node:stream";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentApiKeys, agents, companyMemberships, instanceUserRoles } from "@paperclipai/db";
-import type { DeploymentMode } from "@paperclipai/shared";
+import { agentApiKeys, agents, companyMemberships, heartbeatRunEvents, instanceUserRoles } from "@paperclipai/db";
+import type { DeploymentMode, LiveEvent } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "../middleware/logger.js";
 import { subscribeLiveEvents } from "../services/live-events.js";
+import { boardAuthService } from "../services/board-auth.js";
 
 interface WsSocket {
   readyState: number;
@@ -191,7 +192,9 @@ async function authorizeUpgrade(
     .where(and(eq(agentApiKeys.keyHash, tokenHash), isNull(agentApiKeys.revokedAt)))
     .then((rows) => rows[0] ?? null);
 
-  if (!key) return null;
+  if (!key) {
+    return authorizeBoardApiKey(db, token);
+  }
   const keyAgent = await db
     .select({ id: agents.id })
     .from(agents)
@@ -210,6 +213,100 @@ async function authorizeUpgrade(
     actorType: "agent",
     actorId: key.agentId,
   };
+}
+
+async function authorizeBoardApiKey(db: Db, token: string): Promise<UpgradeContext | null> {
+  const boardAuth = boardAuthService(db);
+  const key = await boardAuth.findBoardApiKeyByToken(token);
+  if (!key) return null;
+  const access = await boardAuth.resolveBoardAccess(key.userId);
+  if (!access.isInstanceAdmin && access.memberships.length === 0) return null;
+  void boardAuth.touchBoardApiKey(key.id).catch(() => undefined);
+  return { actorType: "board", actorId: key.userId };
+}
+
+interface SubscriptionFilter {
+  issueId: string | null;
+  runId: string | null;
+  types: Set<string> | null;
+}
+
+export function parseSubscription(url: URL): SubscriptionFilter {
+  const read = (name: string) => url.searchParams.get(name)?.trim() || null;
+  const types = read("types");
+  return {
+    issueId: read("issueId"),
+    runId: read("runId"),
+    types: types ? new Set(types.split(",").map((value) => value.trim()).filter(Boolean)) : null,
+  };
+}
+
+/**
+ * Run events and logs of an issue's runs carry the issue id only on some
+ * frames, so a filtered socket remembers which runs belong to its issue.
+ */
+export function createEventFilter(filter: SubscriptionFilter) {
+  const issueRunIds = new Set<string>();
+  return (event: LiveEvent) => {
+    if (filter.types && !filter.types.has(event.type)) return false;
+    const payload = event.payload ?? {};
+    const runId = typeof payload.runId === "string" ? payload.runId : null;
+    // Activity rows name the issue as their entity rather than in issueId.
+    const issueId =
+      typeof payload.issueId === "string"
+        ? payload.issueId
+        : payload.entityType === "issue" && typeof payload.entityId === "string"
+          ? payload.entityId
+          : null;
+    if (filter.runId && runId !== filter.runId) return false;
+    if (filter.issueId) {
+      if (issueId === filter.issueId) {
+        if (runId) issueRunIds.add(runId);
+        return true;
+      }
+      return Boolean(runId && issueRunIds.has(runId));
+    }
+    return true;
+  };
+}
+
+const REPLAY_LIMIT = 2000;
+
+export async function replayRunEvents(db: Db, socket: WsSocket, runId: string, afterSeq: number) {
+  const rows = await db
+    .select()
+    .from(heartbeatRunEvents)
+    .where(and(eq(heartbeatRunEvents.runId, runId), gt(heartbeatRunEvents.seq, afterSeq)))
+    .orderBy(asc(heartbeatRunEvents.seq))
+    .limit(REPLAY_LIMIT);
+  for (const row of rows) {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({
+      id: 0,
+      type: "heartbeat.run.event",
+      createdAt: row.createdAt.toISOString(),
+      replay: true,
+      payload: {
+        runId: row.runId,
+        agentId: row.agentId,
+        seq: row.seq,
+        eventType: row.eventType,
+        stream: row.stream ?? null,
+        level: row.level ?? null,
+        color: row.color ?? null,
+        message: row.message ?? null,
+        payload: row.payload ?? null,
+      },
+    }));
+  }
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      id: 0,
+      type: "replay.complete",
+      createdAt: new Date().toISOString(),
+      payload: { runId, afterSeq, count: rows.length, truncated: rows.length === REPLAY_LIMIT },
+    }));
+  }
 }
 
 export function setupLiveEventsWebSocketServer(
@@ -248,10 +345,41 @@ export function setupLiveEventsWebSocketServer(
       return;
     }
 
-    const unsubscribe = subscribeLiveEvents((event) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const filter = parseSubscription(url);
+    const accepts = createEventFilter(filter);
+    const afterSeqRaw = url.searchParams.get("afterSeq");
+    const afterSeq = afterSeqRaw !== null && /^\d+$/.test(afterSeqRaw) ? Number(afterSeqRaw) : null;
+    const pendingLive: LiveEvent[] = [];
+    let replaying = filter.runId !== null && afterSeq !== null;
+    const deliver = (event: LiveEvent) => {
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify(event));
+    };
+
+    const unsubscribe = subscribeLiveEvents((event) => {
+      if (!accepts(event)) return;
+      if (replaying) {
+        pendingLive.push(event);
+        return;
+      }
+      deliver(event);
     });
+
+    if (replaying && filter.runId !== null && afterSeq !== null) {
+      void replayRunEvents(db, socket, filter.runId, afterSeq)
+        .catch((err) => logger.warn({ err, runId: filter.runId }, "live websocket replay failed"))
+        .finally(() => {
+          replaying = false;
+          let lastReplayedSeq = afterSeq;
+          for (const event of pendingLive.splice(0)) {
+            const seq = typeof event.payload?.seq === "number" ? event.payload.seq : null;
+            if (event.type === "heartbeat.run.event" && seq !== null && seq <= lastReplayedSeq) continue;
+            if (seq !== null) lastReplayedSeq = Math.max(lastReplayedSeq, seq);
+            deliver(event);
+          }
+        });
+    }
 
     cleanupByClient.set(socket, unsubscribe);
     aliveByClient.set(socket, true);

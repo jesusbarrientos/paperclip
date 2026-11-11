@@ -1,4 +1,6 @@
 import { retryIdempotentDatabaseOperation } from "../database-retry.js";
+import { workContextService } from "./work-contexts.js";
+import { killMachineExecsForRun } from "./machine-connections.js";
 import { prepareConnectionInstructionDelivery } from "./connection-instructions.js";
 import { resolveAssignedConnectionInstructionsForRun } from "./native-runtime/assigned-mcp-tools.js";
 import { externalObjectService } from "./external-objects.js";
@@ -21115,6 +21117,16 @@ export function heartbeatService(
         }
         selectedEnvironmentId = kubernetesEnvironment.id;
       }
+      if (!executionForcedToKubernetes) {
+        const machineEnvironment = await workContextService(db).resolveRunEnvironment(issueId);
+        if (machineEnvironment) {
+          selectedEnvironmentId = machineEnvironment.environmentId;
+          await db
+            .update(heartbeatRuns)
+            .set({ executionMachineId: machineEnvironment.machineId })
+            .where(eq(heartbeatRuns.id, run.id));
+        }
+      }
       const selectedEnvironmentForConfig =
         selectedEnvironmentId === localEnvironment.id
           ? localEnvironment
@@ -29143,6 +29155,8 @@ export function heartbeatService(
               );
             control.controller.abort(new Error(reason));
           }
+          // Sandbox execution has no cancel of its own, so a machine run's agent outlives the abort.
+          if (run.executionMachineId) killMachineExecsForRun(run.id);
           let terminationSettled = false;
           try {
             await cancelHeartbeatNativeRun({

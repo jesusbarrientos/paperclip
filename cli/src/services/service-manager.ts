@@ -54,7 +54,7 @@ export const defaultCommandRunner: CommandRunner = async (command, args, options
   return { stdout: result.stdout, stderr: result.stderr };
 };
 
-function escapeSystemd(value: string): string {
+export function escapeSystemd(value: string): string {
   if (/\r|\n/.test(value)) {
     throw new Error("Systemd service values must not contain line breaks");
   }
@@ -65,7 +65,7 @@ function escapeSystemd(value: string): string {
     .replaceAll("%", "%%");
 }
 
-function escapeXml(value: string): string {
+export function escapeXml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
 

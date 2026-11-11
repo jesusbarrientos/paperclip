@@ -1671,6 +1671,10 @@ function handleLiveEvent(
       });
     }
     invalidateVisibleIssueRunQueries(queryClient, pathname, payload);
+    const runIssueId = readString(payload.issueId);
+    if (runIssueId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.workContexts.detail(runIssueId) });
+    }
     if (event.type === "heartbeat.run.status") {
       const toast = buildRunStatusToast(payload, nameOf);
       if (toast && !suppressRunToast) {
@@ -1687,6 +1691,20 @@ function handleLiveEvent(
   }
 
   if (event.type === "heartbeat.run.event") {
+    return;
+  }
+
+  if (event.type === "machine.status") {
+    queryClient.invalidateQueries({ queryKey: queryKeys.machines.list() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.workContexts.all() });
+    return;
+  }
+
+  if (event.type === "work_context.updated") {
+    const issueId = readString(payload.issueId);
+    queryClient.invalidateQueries({
+      queryKey: issueId ? queryKeys.workContexts.detail(issueId) : queryKeys.workContexts.all(),
+    });
     return;
   }
 

@@ -13,8 +13,8 @@ import {
 } from "../services/sandbox-provider-runtime.ts";
 
 describe("sandbox provider runtime", () => {
-  it("exposes fake as the built-in sandbox provider implementation", async () => {
-    expect(listSandboxProviders().map((provider) => provider.provider).sort()).toEqual(["fake"]);
+  it("exposes fake and paperclip_machine as the built-in sandbox provider implementations", async () => {
+    expect(listSandboxProviders().map((provider) => provider.provider).sort()).toEqual(["fake", "paperclip_machine"]);
     expect(getSandboxProvider("fake")?.provider).toBe("fake");
     expect(getSandboxProvider("fake-plugin")).toBeNull();
 

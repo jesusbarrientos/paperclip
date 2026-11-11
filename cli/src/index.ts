@@ -51,6 +51,7 @@ import { installCommand } from "./commands/install.js";
 import { uninstallCommand } from "./commands/uninstall.js";
 import { updateCommand } from "./commands/update.js";
 import { registerServiceCommands } from "./commands/service.js";
+import { registerMachineCommands } from "./commands/machine/index.js";
 import { registerConnectionIntentCommands } from "./commands/client/connections.js";
 import {
   assertTestDriveDatabaseIsolation,
@@ -208,6 +209,7 @@ const run = program
 
 registerRunCommands(run);
 registerServiceCommands(program);
+registerMachineCommands(program);
 
 const heartbeat = program.command("heartbeat").description("Heartbeat utilities");
 

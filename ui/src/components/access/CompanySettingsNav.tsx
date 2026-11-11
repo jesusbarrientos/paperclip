@@ -13,6 +13,7 @@ const items = [
   { value: "secrets", label: "Secrets", href: "/organization/settings/secrets" },
   { value: "instance-profile", label: "Profile", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/profile` },
   { value: "instance-environments", label: "Environments", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/environments` },
+  { value: "instance-machines", label: "Machines", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/machines` },
   { value: "instance-access", label: "Access", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/access` },
   { value: "instance-experimental", label: "Experimental", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/experimental` },
   { value: "instance-plugins", label: "Plugins", href: `${INSTANCE_SETTINGS_PATH_PREFIX}/plugins` },
@@ -42,6 +43,10 @@ export function getCompanySettingsTab(pathname: string): CompanySettingsTab {
 
   if (pathname.includes(`${INSTANCE_SETTINGS_PATH_PREFIX}/environments`)) {
     return "instance-environments";
+  }
+
+  if (pathname.includes(`${INSTANCE_SETTINGS_PATH_PREFIX}/machines`)) {
+    return "instance-machines";
   }
 
   if (pathname.includes(`${INSTANCE_SETTINGS_PATH_PREFIX}/access`)) {
