@@ -10,6 +10,7 @@ import {
   Bot,
   Code,
   Gem,
+  Globe,
   Moon,
   MousePointer2,
   Sparkles,
@@ -121,6 +122,11 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     label: "Pi",
     description: "Pi harness",
     icon: Terminal,
+  },
+  openrouter_local: {
+    label: "OpenRouter",
+    description: "OpenRouter unified API for 100+ models",
+    icon: Globe,
   },
   cursor: {
     label: "Cursor",

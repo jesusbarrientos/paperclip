@@ -382,6 +382,19 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/adapters/openrouter-local:
+    dependencies:
+      '@paperclipai/adapter-utils':
+        specifier: workspace:*
+        version: link:../../adapter-utils
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/adapters/pi-local:
     dependencies:
       '@paperclipai/adapter-utils':
@@ -965,6 +978,9 @@ importers:
       '@paperclipai/adapter-opencode-local':
         specifier: workspace:*
         version: link:../packages/adapters/opencode-local
+      '@paperclipai/adapter-openrouter-local':
+        specifier: workspace:*
+        version: link:../packages/adapters/openrouter-local
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
@@ -7682,7 +7698,6 @@ packages:
 
   opencode-ai@1.18.34:
     resolution: {integrity: sha512-9WUS2T0t4HHDVzXvuwTHF0nvhXvZ9mQ0r+ozCvKdJu0LVoQpOzqAW4qWTC3ygNc5Oedcc7j+Oct24JYlQYnySA==}
-    cpu: [arm64, x64]
     os: [darwin, linux, win32]
     hasBin: true
 

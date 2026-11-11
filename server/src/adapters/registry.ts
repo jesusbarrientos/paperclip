@@ -112,6 +112,17 @@ import {
   models as openCodeModels,
 } from "@paperclipai/adapter-opencode-local";
 import {
+  execute as openRouterExecute,
+  testEnvironment as openRouterTestEnvironment,
+  listOpenRouterModels,
+  getConfigSchema as getOpenRouterConfigSchema,
+  sessionCodec as openRouterSessionCodec,
+} from "@paperclipai/adapter-openrouter-local/server";
+import {
+  agentConfigurationDoc as openRouterAgentConfigurationDoc,
+  models as openRouterModels,
+} from "@paperclipai/adapter-openrouter-local";
+import {
   execute as openclawGatewayExecute,
   testEnvironment as openclawGatewayTestEnvironment,
 } from "@paperclipai/adapter-openclaw-gateway/server";
@@ -861,6 +872,22 @@ const piLocalAdapter: ServerAdapterModule = {
   agentConfigurationDoc: piAgentConfigurationDoc,
 };
 
+const openRouterLocalAdapter: ServerAdapterModule = {
+  type: "openrouter_local",
+  runtimeToolDelivery: "environment",
+  execute: openRouterExecute,
+  testEnvironment: openRouterTestEnvironment,
+  models: openRouterModels,
+  listModels: listOpenRouterModels,
+  supportsLocalAgentJwt: true,
+  supportsInstructionsBundle: true,
+  instructionsPathKey: "instructionsFilePath",
+  requiresMaterializedRuntimeSkills: false,
+  agentConfigurationDoc: openRouterAgentConfigurationDoc,
+  getConfigSchema: getOpenRouterConfigSchema,
+  sessionCodec: openRouterSessionCodec,
+};
+
 const adaptersByType = new Map<string, ServerAdapterModule>();
 
 // For builtin types that are overridden by an external adapter, we keep the
@@ -888,6 +915,7 @@ function registerBuiltInAdapters() {
     hermesGatewayAdapter,
     hermesLocalAdapter,
     openclawGatewayAdapter,
+    openRouterLocalAdapter,
     processAdapter,
     httpAdapter,
   ]) {
